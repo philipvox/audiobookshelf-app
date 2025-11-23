@@ -2,7 +2,7 @@
 
 > **Last Updated**: 2025-11-23
 > **Project**: AudiobookShelf Mobile App
-> **Stage**: Stage 0 - Project Initialization (scaffolding complete, implementation pending)
+> **Stage**: Stage 2 Complete - Authentication System Fully Implemented
 
 ## Table of Contents
 1. [Project Overview](#project-overview)
@@ -33,9 +33,56 @@ A native mobile application (iOS/Android) that wraps AudiobookShelf server with 
 - **TypeScript everywhere**: Type safety from day one
 
 ### Current Status
-✅ **Complete**: Project scaffolding, configuration, documentation framework
-⏳ **Next**: Core API client, authentication, type definitions
-📍 **Stage**: 0 of 6 (Foundation → Core Features → Enhanced Features → Polish)
+✅ **Complete**:
+- Project scaffolding, configuration, documentation framework
+- Complete TypeScript type system (7 files, ~730 lines)
+- Full API client with 30+ methods (4 files, ~590 lines)
+- Authentication service with secure token storage
+- Authentication React context and useAuth hook
+- Login screen with server URL configuration
+- App navigation with authentication flow
+- Splash screen for session restoration
+
+⏳ **Next**: Library feature implementation (browse, grid/list views, filters)
+📍 **Stage**: 2 of 6 (Foundation Complete → Library & Core Features → Enhanced Features → Polish)
+
+### What's Been Implemented
+
+#### Stage 1: Core API Client ✅
+**Files Created:**
+- `src/core/types/user.ts` (61 lines) - User models and permissions
+- `src/core/types/library.ts` (108 lines) - Library, items, collections, playlists
+- `src/core/types/media.ts` (183 lines) - Media content, progress, playback sessions
+- `src/core/types/files.ts` (109 lines) - Audio/ebook files and metadata
+- `src/core/types/metadata.ts` (32 lines) - Authors and series
+- `src/core/types/api.ts` (221 lines) - API request/response types
+- `src/core/types/index.ts` (15 lines) - Type exports
+- `src/core/api/baseClient.ts` (180 lines) - Base HTTP client with axios
+- `src/core/api/client.ts` (241 lines) - Complete API client with 30+ methods
+- `src/core/api/endpoints.ts` (142 lines) - Endpoint URL mappings
+- `src/core/api/index.ts` (27 lines) - API exports
+
+**API Methods Implemented:**
+Authentication, User Management, Libraries, Items, Progress Tracking, Playback Sessions, Search, Series, Authors, Collections, Playlists (see `docs/IMPLEMENTATION_SUMMARY.md` for full list)
+
+#### Stage 2: Authentication System ✅
+**Files Created:**
+- `src/core/auth/authService.ts` (205 lines) - Secure credential storage, login/logout
+- `src/core/auth/authContext.tsx` (156 lines) - React context and useAuth hook
+- `src/core/auth/index.ts` (8 lines) - Auth exports
+- `src/features/auth/screens/LoginScreen.tsx` (275 lines) - Login UI
+- `src/navigation/AppNavigator.tsx` (56 lines) - Auth flow navigation
+- `src/shared/components/SplashScreen.tsx` - Session restore screen
+- `src/features/library/screens/LibraryScreen.tsx` - Placeholder main screen
+
+**Features Implemented:**
+- Secure token storage using Expo SecureStore
+- Server URL configuration and persistence
+- Auto-login on app start with session restoration
+- Token validation on restore
+- Protected route navigation
+- Login screen with form validation
+- Error handling and user feedback
 
 ---
 
@@ -77,7 +124,8 @@ audiobookshelf-app/
 │   │
 │   ├── core/                # Foundation layer (NEVER imports from features)
 │   │   ├── api/             # AudiobookShelf API client
-│   │   │   ├── client.ts    # HTTP client (Axios), auth, error handling
+│   │   │   ├── baseClient.ts # Base HTTP client with axios config
+│   │   │   ├── client.ts    # Main API client with all methods
 │   │   │   ├── endpoints.ts # API endpoint definitions
 │   │   │   └── index.ts     # Public API exports
 │   │   ├── auth/            # Authentication system
@@ -92,7 +140,11 @@ audiobookshelf-app/
 │   │   │   ├── syncService.ts    # Progress sync, offline queue
 │   │   │   └── index.ts          # Sync exports
 │   │   └── types/           # TypeScript type definitions
-│   │       ├── models.ts    # Domain models (Book, Author, Series, etc.)
+│   │       ├── user.ts      # User, permissions, device info
+│   │       ├── library.ts   # Library, items, collections, playlists
+│   │       ├── media.ts     # Book/podcast media, progress, sessions
+│   │       ├── files.ts     # Audio files, ebook files, metadata
+│   │       ├── metadata.ts  # Authors, series
 │   │       ├── api.ts       # API request/response types
 │   │       └── index.ts     # Type exports
 │   │
@@ -298,14 +350,25 @@ export async function getBook(id: string) {
 }
 ```
 
-4. **Create types in core/types/**:
+4. **Add types to appropriate file in core/types/**:
 ```typescript
-export interface Book {
+// In core/types/library.ts (if it's a library-related type)
+export interface Collection {
   id: string;
-  title: string;
+  name: string;
+  description: string;
+  books: string[];
   // ...
 }
 ```
+
+Note: Types are organized by category:
+- **user.ts**: User, permissions, device info
+- **library.ts**: Libraries, items, collections, playlists
+- **media.ts**: Media content, progress, playback sessions
+- **files.ts**: Audio/ebook files, metadata
+- **metadata.ts**: Authors, series
+- **api.ts**: API request/response types
 
 ### Completing a Session
 
@@ -717,8 +780,9 @@ mkdir -p src/features/collections/{components,hooks,screens,services}
 touch src/features/collections/index.ts
 ```
 
-2. **Define types in core/types/models.ts**:
+2. **Define types in appropriate core/types/ file**:
 ```typescript
+// In core/types/library.ts (collections are library-related)
 export interface Collection {
   id: string;
   name: string;
@@ -864,14 +928,16 @@ export async function getAuthor(id: string): Promise<Author> {
 }
 ```
 
-4. **Define type in core/types/models.ts** (if not exists):
+4. **Define type in core/types/metadata.ts** (if not exists):
 ```typescript
+// In core/types/metadata.ts (authors are metadata)
 export interface Author {
   id: string;
   name: string;
   description?: string;
-  books: Book[];
-  imageUrl?: string;
+  imagePath?: string;
+  addedAt: number;
+  updatedAt: number;
 }
 ```
 
@@ -1036,6 +1102,8 @@ npm test -- --coverage
 | File | Purpose | When to Read |
 |------|---------|--------------|
 | **docs/current-work.md** | Active work tracker | **Every session start** |
+| **docs/IMPLEMENTATION_SUMMARY.md** | Stage 1 & 2 implementation details | When understanding what's been built |
+| **docs/api-usage-examples.md** | API client usage examples | When using the API client |
 | **docs/architecture.md** | System design and structure | When understanding architecture |
 | **docs/claude-instructions.md** | Detailed dev guidelines | When writing code |
 | **docs/api-reference.md** | API endpoint documentation | When adding API calls |
