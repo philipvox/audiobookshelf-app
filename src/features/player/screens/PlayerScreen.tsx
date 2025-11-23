@@ -1,6 +1,7 @@
 /**
- * Player screen - complete redesign
+ * Player screen - complete redesign with SafeAreaView fix
  */
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import React, { useState } from 'react';
 import {
@@ -29,8 +30,8 @@ function formatChapterDuration(seconds: number): string {
   const secs = Math.floor(seconds % 60);
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
-
 export function PlayerScreen() {
+  const insets = useSafeAreaInsets();
   const {
     currentBook,
     isPlayerVisible,
@@ -77,7 +78,7 @@ export function PlayerScreen() {
       presentationStyle="fullScreen"
       onRequestClose={closePlayer}
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
         
         <ScrollView 
@@ -88,7 +89,7 @@ export function PlayerScreen() {
           {/* Header with Close Button */}
           <View style={styles.header}>
             <TouchableOpacity onPress={closePlayer} style={styles.closeButton}>
-              <Icon name="chevron-down" size={28} color={theme.colors.text.primary} />
+              <Icon name="chevron-down" size={28} color={theme.colors.text.primary} set="ionicons" />
             </TouchableOpacity>
           </View>
 
@@ -191,7 +192,7 @@ export function PlayerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background.primary,
   },
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.background.elevated,
+    backgroundColor: theme.colors.neutral[200],
     justifyContent: 'center',
     alignItems: 'center',
     ...theme.elevation.small,

@@ -1,9 +1,16 @@
 /**
- * Book detail screen - redesigned with proper back button
+ * Book detail screen - redesigned with proper back button and SafeAreaView
  */
 
 import React from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  StatusBar,
+  SafeAreaView,
+} from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useBookDetails } from '../hooks/useBookDetails';
 import { BookHeader } from '../components/BookHeader';
@@ -45,7 +52,7 @@ export function BookDetailScreen() {
   const chapters = book.media.chapters || [];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
       
       {/* Custom Header with Back Button */}
@@ -55,7 +62,7 @@ export function BookDetailScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Icon name="chevron-back" size={28} color={theme.colors.text.primary} />
+          <Icon name="chevron-back" size={24} color={theme.colors.text.primary} set="ionicons" />
         </TouchableOpacity>
       </View>
 
@@ -68,28 +75,26 @@ export function BookDetailScreen() {
         <BookActions book={book} />
         <BookInfo book={book} />
         <ChapterList chapters={chapters} />
-        <View style={styles.bottomSpacing} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background.primary,
   },
   headerBar: {
     paddingHorizontal: theme.spacing[4],
-    paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.background.primary,
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: theme.radius.medium,
-    backgroundColor: theme.colors.background.elevated,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.neutral[200],
     justifyContent: 'center',
     alignItems: 'center',
     ...theme.elevation.small,
@@ -98,9 +103,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: theme.spacing[32], // Space for mini player
-  },
-  bottomSpacing: {
-    height: theme.spacing[8],
+    paddingBottom: theme.spacing[24], // Space for mini player
   },
 });

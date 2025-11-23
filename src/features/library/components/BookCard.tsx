@@ -1,9 +1,9 @@
 /**
- * Book card - redesigned
+ * Book card - with flexible width for proper grid spacing
  */
 
 import React from 'react';
-import { View, Text, Image, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
@@ -12,6 +12,17 @@ import { theme } from '@/shared/theme';
 interface BookCardProps {
   book: LibraryItem;
 }
+
+const SCREEN_PADDING = theme.spacing[5];
+const CARD_GAP = theme.spacing[3];
+const NUM_COLUMNS = 3;
+
+// Calculate card width based on screen width
+const screenWidth = Dimensions.get('window').width;
+const availableWidth = screenWidth - (SCREEN_PADDING * 2);
+const totalGapWidth = CARD_GAP * (NUM_COLUMNS - 1);
+const CARD_WIDTH = (availableWidth - totalGapWidth) / NUM_COLUMNS;
+const CARD_HEIGHT = CARD_WIDTH * 1.5; // 2:3 aspect ratio
 
 export function BookCard({ book }: BookCardProps) {
   const navigation = useNavigation();
@@ -33,11 +44,12 @@ export function BookCard({ book }: BookCardProps) {
     <Pressable
       style={({ pressed }) => [
         styles.container,
+        { width: CARD_WIDTH },
         pressed && styles.pressed,
       ]}
       onPress={handlePress}
     >
-      <View style={styles.coverContainer}>
+      <View style={[styles.coverContainer, { width: CARD_WIDTH, height: CARD_HEIGHT }]}>
         <Image
           source={{ uri: coverUrl }}
           style={styles.cover}
@@ -66,7 +78,6 @@ export function BookCard({ book }: BookCardProps) {
 
 const styles = StyleSheet.create({
   container: {
-    width: 110,
     marginBottom: theme.spacing[4],
   },
   pressed: {
@@ -74,8 +85,6 @@ const styles = StyleSheet.create({
   },
   coverContainer: {
     position: 'relative',
-    width: 110,
-    height: 165,
     borderRadius: theme.radius.large,
     backgroundColor: theme.colors.neutral[200],
     overflow: 'hidden',
