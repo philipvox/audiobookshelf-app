@@ -1,0 +1,11 @@
+  src/core/api/baseClient.ts
+  src/core/api/client.ts
+  src/core/api/endpoints.ts
+  src/core/api/index.ts
+  src/core/types/api.ts
+  src/core/types/files.ts
+  src/core/types/index.ts
+  src/core/types/library.ts
+  src/core/types/media.ts
+  src/core/types/metadata.ts
+  src/core/types/user.ts
