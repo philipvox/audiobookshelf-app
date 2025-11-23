@@ -404,3 +404,79 @@ src/features/book-detail/
 - Stage 7: Polish & Optimization ⏳
 
 **Progress**: 50% (3 of 6 main stages complete)
+
+
+# Current Work Tracker
+
+## Status: Stage 4 Complete - Ready for Stage 5
+
+### Last Updated
+November 23, 2025
+
+### Current Stage
+Stage 5: Audio Player ⏳ NEXT
+
+### Completed Stages
+- [x] Stage 1: Core API Client (1,319 lines)
+- [x] Stage 2: Authentication (872 lines)
+- [x] Stage 3: Library Browsing (582 lines)
+- [x] Stage 4: Book Detail Screen (973 lines)
+- [ ] Stage 5: Audio Player ← NEXT
+- [ ] Stage 6: Enhanced Features
+
+### What Works Now
+- ✅ Login/logout with token storage
+- ✅ Browse library in 2-column grid
+- ✅ View book details with chapters
+- ✅ Pull-to-refresh library
+- ✅ Navigate between screens
+- ✅ Error handling throughout
+
+### Next: Stage 5 - Audio Player
+
+**Goal**: Implement audio playback with Expo AV
+
+**Files to Create** (~800 lines):
+1. `services/audioService.ts` - Expo AV wrapper
+2. `services/progressService.ts` - Progress sync
+3. `stores/playerStore.ts` - Zustand player state
+4. `components/MiniPlayer.tsx` - Bottom bar player
+5. `components/PlaybackControls.tsx` - Play/pause/skip
+6. `components/ProgressBar.tsx` - Seekable progress
+7. `screens/PlayerScreen.tsx` - Full player modal
+8. `hooks/usePlayer.ts` - Player hook
+9. `index.ts` - Exports
+
+**Files to Update**:
+- `BookActions.tsx` - Real play button
+- `AppNavigator.tsx` - Add MiniPlayer overlay
+
+**Key Features**:
+- Background audio playback
+- Play/pause/seek controls
+- 30s skip forward/backward
+- Playback rate (0.5x - 2x)
+- Progress sync every 5 min
+- Resume from last position
+- Chapter navigation
+- MiniPlayer on all screens
+- Full player modal
+
+**API Methods**:
+- `apiClient.createPlaybackSession()`
+- `apiClient.syncPlaybackSession()`
+- `apiClient.closePlaybackSession()`
+- `apiClient.updateProgress()`
+
+### Blockers
+None
+
+### Project Statistics
+- **Total Lines**: 3,746
+- **Total Files**: 39
+- **Progress**: 67% (4/6 stages)
+- **All files under 400 lines**: ✅
+
+### Notes
+Audio URLs: `${serverUrl}/api/items/${itemId}/play`
+Will need audio session configuration for background playback
