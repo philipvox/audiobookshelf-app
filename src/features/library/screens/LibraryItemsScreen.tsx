@@ -1,5 +1,5 @@
 /**
- * Library screen - fully redesigned
+ * Library screen - with fixed Android spacing
  */
 
 import React from 'react';
@@ -11,6 +11,8 @@ import {
   RefreshControl,
   StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/core/auth';
 import { BookCard } from '../components/BookCard';
 import { useDefaultLibrary } from '../hooks/useDefaultLibrary';
 import { useLibraryItems } from '../hooks/useLibraryItems';
@@ -18,7 +20,38 @@ import { LoadingSpinner, ErrorView, EmptyState } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 import { theme } from '@/shared/theme';
 
+const SCREEN_PADDING = theme.spacing[5];
+const NUM_COLUMNS = 3;
+
+function GreetingHeader() {
+  const { user } = useAuth();
+  
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    const firstName = user?.username || 'there';
+    
+    if (hour < 12) {
+      return `Good morning, ${firstName}`;
+    } else if (hour < 18) {
+      return `Good afternoon, ${firstName}`;
+    } else {
+      return `Good evening, ${firstName}`;
+    }
+  };
+
+  return (
+    <View style={styles.greetingContainer}>
+      <Text style={styles.greeting}>{getGreeting()}</Text>
+      <Text style={styles.subGreeting}>
+        Ready for your next listen?
+      </Text>
+    </View>
+  );
+}
+
 export function LibraryItemsScreen() {
+  const insets = useSafeAreaInsets();
+  
   const {
     library,
     isLoading: isLoadingLibrary,
@@ -37,13 +70,6 @@ export function LibraryItemsScreen() {
 
   const renderItem = ({ item }: { item: LibraryItem }) => (
     <BookCard book={item} />
-  );
-
-  const ListHeader = () => (
-    <View style={styles.header}>
-      <Text style={styles.greeting}>Good morning</Text>
-      <Text style={styles.subGreeting}>We have some fantastic books for you.</Text>
-    </View>
   );
 
   if (isLoadingLibrary || (isLoadingItems && items.length === 0)) {
@@ -89,16 +115,16 @@ export function LibraryItemsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
       <FlatList
         data={items}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        numColumns={3}
+        numColumns={NUM_COLUMNS}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={ListHeader}
+        ListHeaderComponent={<GreetingHeader />}
         refreshControl={
           <RefreshControl
             refreshing={isLoadingItems}
@@ -122,12 +148,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.primary,
   },
   listContent: {
-    padding: theme.spacing[5],
-    paddingBottom: theme.spacing[32], // Extra space for mini player
+    paddingHorizontal: SCREEN_PADDING,
+    paddingTop: SCREEN_PADDING,
+    paddingBottom: theme.spacing[32] + 60, // Extra space for mini player + tab bar
   },
-  header: {
-    marginBottom: theme.spacing[6],
-    paddingTop: theme.spacing[2],
+  greetingContainer: {
+    paddingBottom: theme.spacing[6],
   },
   greeting: {
     fontSize: 34,
@@ -137,13 +163,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   subGreeting: {
-    ...theme.textStyles.body,
-    color: theme.colors.text.secondary,
     fontSize: 15,
+    color: theme.colors.text.secondary,
+    fontWeight: '400',
   },
   row: {
-    justifyContent: 'flex-start',
-    gap: theme.spacing[3],
-    marginBottom: theme.spacing[1],
+    justifyContent: 'space-between',
+    paddingBottom: theme.spacing[3],
   },
 });
