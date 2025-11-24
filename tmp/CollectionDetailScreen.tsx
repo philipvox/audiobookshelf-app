@@ -1,7 +1,7 @@
 /**
- * src/features/series/screens/SeriesDetailScreen.tsx
+ * src/features/collections/screens/CollectionDetailScreen.tsx
  *
- * Screen showing all books in a series from API.
+ * Screen showing collection details and its books.
  */
 
 import React from 'react';
@@ -13,57 +13,47 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLibrarySeries } from '../hooks/useLibrarySeries';
-import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
+import { useCollectionDetails } from '../hooks/useCollectionDetails';
 import { BookCard } from '@/features/library/components/BookCard';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 
-type SeriesDetailRouteParams = {
-  SeriesDetail: {
-    seriesId: string;
+type CollectionDetailRouteParams = {
+  CollectionDetail: {
+    collectionId: string;
   };
 };
 
-type SeriesDetailRouteProp = RouteProp<SeriesDetailRouteParams, 'SeriesDetail'>;
+type CollectionDetailRouteProp = RouteProp<CollectionDetailRouteParams, 'CollectionDetail'>;
 
-export function SeriesDetailScreen() {
-  const insets = useSafeAreaInsets();
-  const route = useRoute<SeriesDetailRouteProp>();
+export function CollectionDetailScreen() {
+  const route = useRoute<CollectionDetailRouteProp>();
   const navigation = useNavigation();
-  const { seriesId } = route.params;
+  const { collectionId } = route.params;
 
-  const { library } = useDefaultLibrary();
-  const { series: allSeries, isLoading, error, refetch } = useLibrarySeries(library?.id || '');
-
-  const series = allSeries.find(s => s.id === seriesId);
-  const books = series?.books || [];
+  const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
 
   if (isLoading) {
-    return <LoadingSpinner text="Loading series..." />;
+    return <LoadingSpinner text="Loading collection..." />;
   }
 
   if (error) {
+    return <ErrorView message="Failed to load collection" onRetry={refetch} />;
+  }
+
+  if (!collection) {
     return (
-      <ErrorView
-        message="Failed to load series"
-        onRetry={refetch}
+      <EmptyState
+        icon="❌"
+        message="Collection not found"
+        description="This collection may have been removed"
       />
     );
   }
 
-  if (!series) {
-    return (
-      <EmptyState
-        icon="❌"
-        message="Series not found"
-        description="This series may have been removed"
-      />
-    );
-  }
+  const books = collection.books || [];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -78,13 +68,13 @@ export function SeriesDetailScreen() {
       </View>
 
       <View style={styles.header}>
-        <Text style={styles.seriesName}>{series.name}</Text>
+        <Text style={styles.collectionName}>{collection.name}</Text>
         <Text style={styles.bookCount}>
           {books.length} {books.length === 1 ? 'book' : 'books'}
         </Text>
-        {series.description && (
+        {collection.description && (
           <Text style={styles.description} numberOfLines={3}>
-            {series.description}
+            {collection.description}
           </Text>
         )}
       </View>
@@ -102,8 +92,8 @@ export function SeriesDetailScreen() {
       ) : (
         <EmptyState
           icon="📚"
-          message="No books in series"
-          description="This series doesn't have any books yet"
+          message="No books in collection"
+          description="Add books to this collection in AudiobookShelf"
         />
       )}
     </SafeAreaView>
@@ -134,7 +124,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border.light,
   },
-  seriesName: {
+  collectionName: {
     fontSize: 28,
     fontWeight: '700',
     color: theme.colors.text.primary,

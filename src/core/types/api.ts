@@ -25,7 +25,15 @@ export interface ApiError {
   message: string;
   details?: unknown;
 }
-
+export interface FilterData {
+  authors: { id: string; name: string }[];
+  genres: string[];
+  tags: string[];
+  series: { id: string; name: string }[];
+  narrators: string[];
+  languages: string[];
+  publishers: string[];
+}
 /**
  * Pagination parameters for list requests
  */

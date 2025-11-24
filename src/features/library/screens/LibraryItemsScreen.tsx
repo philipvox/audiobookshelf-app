@@ -1,7 +1,3 @@
-/**
- * Library screen - with fixed Android spacing
- */
-
 import React from 'react';
 import {
   View,
@@ -13,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/core/auth';
+import { useLibraryPrefetch } from '@/core/hooks';
 import { BookCard } from '../components/BookCard';
 import { useDefaultLibrary } from '../hooks/useDefaultLibrary';
 import { useLibraryItems } from '../hooks/useLibraryItems';
@@ -42,9 +39,7 @@ function GreetingHeader() {
   return (
     <View style={styles.greetingContainer}>
       <Text style={styles.greeting}>{getGreeting()}</Text>
-      <Text style={styles.subGreeting}>
-        Ready for your next listen?
-      </Text>
+      <Text style={styles.subGreeting}>Ready for your next listen?</Text>
     </View>
   );
 }
@@ -52,21 +47,13 @@ function GreetingHeader() {
 export function LibraryItemsScreen() {
   const insets = useSafeAreaInsets();
   
-  const {
-    library,
-    isLoading: isLoadingLibrary,
-    error: libraryError,
-  } = useDefaultLibrary();
-
-  const {
-    items,
-    isLoading: isLoadingItems,
-    error: itemsError,
-    refetch,
-  } = useLibraryItems(library?.id || '', {
+  const { library, isLoading: isLoadingLibrary, error: libraryError } = useDefaultLibrary();
+  const { items, isLoading: isLoadingItems, error: itemsError, refetch } = useLibraryItems(library?.id || '', {
     limit: 50,
-    page: 0,
   });
+
+  // Prefetch all data for other tabs
+  useLibraryPrefetch(library?.id);
 
   const renderItem = ({ item }: { item: LibraryItem }) => (
     <BookCard book={item} />
@@ -77,12 +64,7 @@ export function LibraryItemsScreen() {
   }
 
   if (libraryError) {
-    return (
-      <ErrorView
-        message="Failed to load library"
-        onRetry={refetch}
-      />
-    );
+    return <ErrorView message="Failed to load library" onRetry={refetch} />;
   }
 
   if (!library) {
@@ -96,12 +78,7 @@ export function LibraryItemsScreen() {
   }
 
   if (itemsError) {
-    return (
-      <ErrorView
-        message="Failed to load books"
-        onRetry={refetch}
-      />
-    );
+    return <ErrorView message="Failed to load books" onRetry={refetch} />;
   }
 
   if (items.length === 0) {
@@ -150,7 +127,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: SCREEN_PADDING,
-    paddingBottom: theme.spacing[32] + 60, // Extra space for mini player + tab bar
+    paddingBottom: theme.spacing[32] + 60,
   },
   greetingContainer: {
     paddingBottom: theme.spacing[6],

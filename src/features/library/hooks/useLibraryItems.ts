@@ -1,17 +1,9 @@
-/**
- * src/features/library/hooks/useLibraryItems.ts
- *
- * Hook to fetch library items (books) with pagination and caching.
- * Uses React Query for automatic caching and background updates.
- */
-
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 
 interface UseLibraryItemsOptions {
   limit?: number;
-  page?: number;
   sort?: string;
   filter?: string;
 }
@@ -20,42 +12,62 @@ interface UseLibraryItemsResult {
   items: LibraryItem[];
   total: number;
   isLoading: boolean;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean;
   error: Error | null;
   refetch: () => void;
+  fetchNextPage: () => void;
 }
 
-/**
- * Fetch library items with pagination and caching
- * 
- * @param libraryId - Library ID to fetch items from
- * @param options - Optional pagination and filter options
- */
 export function useLibraryItems(
   libraryId: string,
   options: UseLibraryItemsOptions = {}
 ): UseLibraryItemsResult {
-  const { limit = 50, page = 0, sort, filter } = options;
+  const { limit = 50, sort, filter } = options;
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['library', libraryId, 'items', { limit, page, sort, filter }],
-    queryFn: () =>
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    error,
+    refetch,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['library', libraryId, 'items', { limit, sort, filter }],
+    queryFn: ({ pageParam = 0 }) =>
       apiClient.getLibraryItems(libraryId, {
         limit,
-        page,
+        page: pageParam,
         sort,
         filter,
-        minified: false, // Get full item data
-        include: 'progress', // Include progress for each item
+        minified: false,
+        include: 'progress',
       }),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: !!libraryId, // Only fetch if libraryId exists
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce((sum, page) => sum + page.results.length, 0);
+      if (loadedCount < lastPage.total) {
+        return allPages.length;
+      }
+      return undefined;
+    },
+    initialPageParam: 0,
+    staleTime: 5 * 60 * 1000,
+    enabled: !!libraryId,
   });
 
+  // Flatten all pages into single array
+  const items = data?.pages.flatMap((page) => page.results) || [];
+  const total = data?.pages[0]?.total || 0;
+
   return {
-    items: data?.results || [],
-    total: data?.total || 0,
+    items,
+    total,
     isLoading,
+    isFetchingNextPage,
+    hasNextPage: !!hasNextPage,
     error: error as Error | null,
     refetch,
+    fetchNextPage,
   };
 }

@@ -1,53 +1,52 @@
 import React, { useState } from 'react';
 import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SeriesCard } from '../components/SeriesCard';
-import { useSeries } from '../hooks/useSeries';
+import { NarratorCard } from '../components/NarratorCard';
+import { useNarrators, NarratorInfo } from '../hooks/useNarrators';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { FilterSortBar, SortOption, LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
-import { SeriesInfo } from '../services/seriesAdapter';
 import { theme } from '@/shared/theme';
 
-export function SeriesListScreen() {
+export function NarratorListScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
-  const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
-  const { series, seriesCount, isLoading, error, refetch } = useSeries(
+  const { library } = useDefaultLibrary();
+  const { narrators, narratorCount, isLoading, error, refetch } = useNarrators(
     library?.id || '',
     { sortBy, searchQuery }
   );
 
-  if (isLoadingLibrary || isLoading) {
-    return <LoadingSpinner text="Loading series..." />;
+  if (isLoading) {
+    return <LoadingSpinner text="Loading narrators..." />;
   }
 
   if (error) {
-    return <ErrorView message="Failed to load series" onRetry={refetch} />;
+    return <ErrorView message="Failed to load narrators" onRetry={refetch} />;
   }
 
-  if (seriesCount === 0 && !searchQuery) {
+  if (narratorCount === 0 && !searchQuery) {
     return (
-      <EmptyState icon="📚" message="No series found" description="Your library doesn't have any series" />
+      <EmptyState icon="🎙️" message="No narrators found" description="Your library doesn't have narrator information" />
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search series..." autoFocus={false} />
+        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search narrators..." autoFocus={false} />
         <FilterSortBar sortBy={sortBy} onSortChange={setSortBy} />
       </View>
       <FlatList
-        data={series}
-        renderItem={({ item }) => <SeriesCard series={item} />}
-        keyExtractor={(item: SeriesInfo) => item.id}
+        data={narrators}
+        renderItem={({ item }) => <NarratorCard narrator={item} />}
+        keyExtractor={(item: NarratorInfo) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.colors.primary[500]} />}
-        ListEmptyComponent={<EmptyState icon="🔍" message="No series found" description={`No series match "${searchQuery}"`} />}
+        ListEmptyComponent={<EmptyState icon="🔍" message="No narrators found" description={`No narrators match "${searchQuery}"`} />}
       />
     </SafeAreaView>
   );
