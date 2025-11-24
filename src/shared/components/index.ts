@@ -9,3 +9,5 @@ export { LoadingSpinner } from './LoadingSpinner';
 export { ErrorView } from './ErrorView';
 export { EmptyState } from './EmptyState';
 export { SplashScreen } from './SplashScreen';
+export { FilterSortBar } from './FilterSortBar';
+export type { SortOption } from './FilterSortBar';

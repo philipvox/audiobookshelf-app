@@ -1,53 +1,53 @@
 import React, { useState } from 'react';
 import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SeriesCard } from '../components/SeriesCard';
-import { useSeries } from '../hooks/useSeries';
+import { AuthorCard } from '../components/AuthorCard';
+import { useAuthors } from '../hooks/useAuthors';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { FilterSortBar, SortOption, LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
-import { SeriesInfo } from '../services/seriesAdapter';
+import { AuthorInfo } from '../services/authorAdapter';
 import { theme } from '@/shared/theme';
 
-export function SeriesListScreen() {
+export function AuthorListScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
-  const { series, seriesCount, isLoading, error, refetch } = useSeries(
+  const { authors, authorCount, isLoading, error, refetch } = useAuthors(
     library?.id || '',
     { sortBy, searchQuery }
   );
 
   if (isLoadingLibrary || isLoading) {
-    return <LoadingSpinner text="Loading series..." />;
+    return <LoadingSpinner text="Loading authors..." />;
   }
 
   if (error) {
-    return <ErrorView message="Failed to load series" onRetry={refetch} />;
+    return <ErrorView message="Failed to load authors" onRetry={refetch} />;
   }
 
-  if (seriesCount === 0 && !searchQuery) {
+  if (authorCount === 0 && !searchQuery) {
     return (
-      <EmptyState icon="📚" message="No series found" description="Your library doesn't have any series" />
+      <EmptyState icon="👤" message="No authors found" description="Your library doesn't have any authors" />
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search series..." autoFocus={false} />
+        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search authors..." autoFocus={false} />
         <FilterSortBar sortBy={sortBy} onSortChange={setSortBy} />
       </View>
       <FlatList
-        data={series}
-        renderItem={({ item }) => <SeriesCard series={item} />}
-        keyExtractor={(item: SeriesInfo) => item.id}
+        data={authors}
+        renderItem={({ item }) => <AuthorCard author={item} />}
+        keyExtractor={(item: AuthorInfo) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.colors.primary[500]} />}
-        ListEmptyComponent={<EmptyState icon="🔍" message="No series found" description={`No series match "${searchQuery}"`} />}
+        ListEmptyComponent={<EmptyState icon="🔍" message="No authors found" description={`No authors match "${searchQuery}"`} />}
       />
     </SafeAreaView>
   );

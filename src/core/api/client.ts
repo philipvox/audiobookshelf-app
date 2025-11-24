@@ -146,7 +146,9 @@ class ApiClient extends BaseApiClient {
   }
 
   // ==================== Series ====================
-
+  async getLibraryFilterData(libraryId: string): Promise<FilterData> {
+    return this.get<FilterData>(endpoints.libraries.filterData(libraryId));
+  }
   async getLibrarySeries(libraryId: string): Promise<Series[]> {
     try {
       // Request up to 500 series (should cover most libraries)

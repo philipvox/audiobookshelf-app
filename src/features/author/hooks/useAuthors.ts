@@ -1,40 +1,37 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
-import { SeriesInfo } from '../services/seriesAdapter';
+import { AuthorInfo } from '../services/authorAdapter';
 import { SortOption } from '@/shared/components/FilterSortBar';
 
-interface UseSeriesOptions {
+interface UseAuthorsOptions {
   sortBy?: SortOption;
   searchQuery?: string;
 }
 
-export function useSeries(libraryId: string, options: UseSeriesOptions = {}) {
+export function useAuthors(libraryId: string, options: UseAuthorsOptions = {}) {
   const { sortBy = 'name-asc', searchQuery = '' } = options;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['series', libraryId],
-    queryFn: () => apiClient.getLibrarySeries(libraryId),
+    queryKey: ['authors', libraryId],
+    queryFn: () => apiClient.getLibraryAuthors(libraryId),
     enabled: !!libraryId,
     staleTime: 10 * 60 * 1000,
   });
 
-  const series = useMemo(() => {
+  const authors = useMemo(() => {
     if (!data) return [];
-
-    let result: SeriesInfo[] = data.map((s: any) => ({
-      id: s.id,
-      name: s.name,
-      description: s.description,
-      bookCount: s.books?.length || s.numBooks || 0,
-      totalDuration: s.books?.reduce((sum: number, b: any) => sum + (b.media?.duration || 0), 0) || 0,
-      coverUrl: s.books?.[0]?.id,
-      books: s.books || [],
+    
+    let result: AuthorInfo[] = data.map((author) => ({
+      id: author.id,
+      name: author.name,
+      imagePath: author.imagePath,
+      bookCount: (author as any).numBooks || 0,
     }));
 
     if (searchQuery) {
       const lower = searchQuery.toLowerCase();
-      result = result.filter((s) => s.name.toLowerCase().includes(lower));
+      result = result.filter((a) => a.name.toLowerCase().includes(lower));
     }
 
     result.sort((a, b) => {
@@ -51,8 +48,8 @@ export function useSeries(libraryId: string, options: UseSeriesOptions = {}) {
   }, [data, sortBy, searchQuery]);
 
   return {
-    series,
-    seriesCount: series.length,
+    authors,
+    authorCount: authors.length,
     isLoading,
     error,
     refetch,

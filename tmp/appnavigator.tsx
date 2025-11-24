@@ -1,3 +1,10 @@
+/**
+ * src/navigation/AppNavigator.tsx
+ *
+ * Main app navigator with 4 bottom tabs:
+ * Library, Search, Browse, Profile
+ */
+
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -10,8 +17,8 @@ import { BookDetailScreen } from '@/features/book-detail';
 import { SearchScreen } from '@/features/search';
 import { BrowseScreen } from '@/features/browse';
 import { SeriesDetailScreen } from '@/features/series';
-import { AuthorDetailScreen } from '@/features/author';
-import { NarratorDetailScreen } from '@/features/narrator';
+import { AuthorDetailScreen } from '@/features/authors';
+import { NarratorDetailScreen } from '@/features/narrators';
 import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { MiniPlayer, PlayerScreen } from '@/features/player';
@@ -22,6 +29,9 @@ import { theme } from '@/shared/theme';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+/**
+ * Main tabs for authenticated users
+ */
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -52,6 +62,7 @@ function MainTabs() {
           ),
         }}
       />
+
       <Tab.Screen
         name="SearchTab"
         component={SearchScreen}
@@ -62,6 +73,7 @@ function MainTabs() {
           ),
         }}
       />
+
       <Tab.Screen
         name="BrowseTab"
         component={BrowseScreen}
@@ -72,6 +84,7 @@ function MainTabs() {
           ),
         }}
       />
+
       <Tab.Screen
         name="ProfileTab"
         component={ProfileScreen}
@@ -86,6 +99,9 @@ function MainTabs() {
   );
 }
 
+/**
+ * Main app navigator
+ */
 export function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -96,7 +112,11 @@ export function AppNavigator() {
   return (
     <>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
           {!isAuthenticated ? (
             <Stack.Screen name="Login" component={LoginScreen} />
           ) : (
@@ -126,7 +146,7 @@ export function AppNavigator() {
 const styles = StyleSheet.create({
   miniPlayerContainer: {
     position: 'absolute',
-    bottom: 60,
+    bottom: 60, // Above tab bar
     left: 0,
     right: 0,
   },
