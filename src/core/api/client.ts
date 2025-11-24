@@ -148,8 +148,25 @@ class ApiClient extends BaseApiClient {
   // ==================== Series ====================
 
   async getLibrarySeries(libraryId: string): Promise<Series[]> {
-    const response = await this.get<SeriesResponse>(endpoints.libraries.series(libraryId));
-    return response.results;
+    try {
+      // Request up to 500 series (should cover most libraries)
+      const response = await this.get<any>(
+        `${endpoints.libraries.series(libraryId)}?limit=500`
+      );
+      
+      console.log('=== SERIES API RESPONSE ===');
+      console.log('Total available:', response?.total);
+      console.log('Results returned:', response?.results?.length);
+      
+      if (response?.results && Array.isArray(response.results)) {
+        return response.results;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('getLibrarySeries error:', error);
+      throw error;
+    }
   }
 
   async getSeries(seriesId: string): Promise<Series> {
