@@ -1,5 +1,5 @@
 /**
- * App Navigator - with bottom tabs
+ * App Navigator - with Series tab added
  */
 
 import React from 'react';
@@ -12,6 +12,7 @@ import { LoginScreen } from '@/features/auth/screens/LoginScreen';
 import { LibraryItemsScreen } from '@/features/library';
 import { BookDetailScreen } from '@/features/book-detail';
 import { SearchScreen } from '@/features/search';
+import { SeriesListScreen, SeriesDetailScreen } from '@/features/series';
 import { MiniPlayer, PlayerScreen } from '@/features/player';
 import { SplashScreen } from '@/shared/components/SplashScreen';
 import { Icon } from '@/shared/components/Icon';
@@ -64,6 +65,17 @@ function MainTabs() {
           ),
         }}
       />
+
+      <Tab.Screen
+        name="SeriesTab"
+        component={SeriesListScreen}
+        options={{
+          tabBarLabel: 'Series',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="albums" size={size} color={color} set="ionicons" />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -100,6 +112,10 @@ export function AppNavigator() {
               <Stack.Screen
                 name="BookDetail"
                 component={BookDetailScreen}
+              />
+              <Stack.Screen
+                name="SeriesDetail"
+                component={SeriesDetailScreen}
               />
             </>
           )}
