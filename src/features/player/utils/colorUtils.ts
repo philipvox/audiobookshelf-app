@@ -1,3 +1,5 @@
+// File: src/features/player/utils/colorUtils.ts
+
 export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   if (!hex) return null;
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -15,6 +17,53 @@ export function rgbToHex(r: number, g: number, b: number): string {
     const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16);
     return hex.length === 1 ? '0' + hex : hex;
   }).join('');
+}
+
+export function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h, s, l };
+}
+
+export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+
+  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
 }
 
 export function darkenColor(hex: string, factor: number = 0.2): string {
@@ -47,12 +96,32 @@ export function isLightColor(hex: string): boolean {
   return luminance > 0.5;
 }
 
+// Get brighter version of same color with high saturation and minimum 65% lightness
+export function getHighContrastAccent(hex: string): string {
+  if (!hex) return '#FF6B6B';
+  const rgb = hexToRgb(hex);
+  if (!rgb) return '#FF6B6B';
+  
+  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  
+  // Keep same hue
+  const newH = hsl.h;
+  
+  // High saturation (80%)
+  const newS = 0.8;
+  
+  // Minimum 65% lightness to ensure visibility
+  const newL = 0.65;
+  
+  const newRgb = hslToRgb(newH, newS, newL);
+  return rgbToHex(newRgb.r, newRgb.g, newRgb.b);
+}
+
 export function getAccentColor(hex: string): string {
   if (!hex) return '#FF6B6B';
   const rgb = hexToRgb(hex);
   if (!rgb) return '#FF6B6B';
   
-  // Convert to HSV
   const r = rgb.r / 255;
   const g = rgb.g / 255;
   const b = rgb.b / 255;
@@ -73,14 +142,10 @@ export function getAccentColor(hex: string): string {
     }
   }
   
-  // Rotate hue 180 degrees for complementary
   h = (h + 0.5) % 1;
-  
-  // Boost saturation and value for vibrant accent
   const newS = Math.min(1, s + 0.3);
   const newV = Math.min(1, v + 0.2);
   
-  // Convert back to RGB
   const i = Math.floor(h * 6);
   const f = h * 6 - i;
   const p = newV * (1 - newS);
@@ -98,6 +163,39 @@ export function getAccentColor(hex: string): string {
   }
   
   return rgbToHex(newR * 255, newG * 255, newB * 255);
+}
+
+export function pickGradientColors(colors: string[]): { dark: string; light: string } {
+  if (!colors || colors.length === 0) {
+    return { dark: '#1A1A2E', light: '#2D2D44' };
+  }
+
+  const colorInfo = colors
+    .map(hex => {
+      const rgb = hexToRgb(hex);
+      if (!rgb) return null;
+      const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      return { hex, ...hsl };
+    })
+    .filter((c): c is { hex: string; h: number; s: number; l: number } => {
+      if (!c) return false;
+      return c.l > 0.08 && c.l < 0.92;
+    });
+
+  if (colorInfo.length === 0) {
+    return { dark: '#1A1A2E', light: '#2D2D44' };
+  }
+
+  colorInfo.sort((a, b) => b.s - a.s);
+  const baseColor = colorInfo[0];
+  
+  const darkRgb = hslToRgb(baseColor.h, Math.min(baseColor.s, 0.5), 0.18);
+  const dark = rgbToHex(darkRgb.r, darkRgb.g, darkRgb.b);
+
+  const lightRgb = hslToRgb(baseColor.h, Math.min(baseColor.s, 0.4), 0.32);
+  const light = rgbToHex(lightRgb.r, lightRgb.g, lightRgb.b);
+
+  return { dark, light };
 }
 
 const FALLBACK_PALETTES = [

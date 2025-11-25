@@ -1,18 +1,26 @@
 // File: src/features/player/components/MiniPlayer.tsx
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 import { usePlayerStore } from '../stores/playerStore';
+import { useImageColors } from '../hooks/useImageColors';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { theme } from '@/shared/theme';
+
+const BUTTON_SIZE = 74;
+const BORDER_WIDTH = 5;
 
 export function MiniPlayer() {
+  const insets = useSafeAreaInsets();
   const { currentBook, isPlaying, position, duration, play, pause, togglePlayer } = usePlayerStore();
+  
+  const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : '';
+  const { progressAccent } = useImageColors(coverUrl, currentBook?.id || '');
 
   if (!currentBook) return null;
 
-  const handlePlayPause = async (e: any) => {
-    e.stopPropagation();
+  const handlePlayPause = async () => {
     try {
       if (isPlaying) {
         await pause();
@@ -25,85 +33,116 @@ export function MiniPlayer() {
   };
 
   const progress = duration > 0 ? position / duration : 0;
-  const metadata = currentBook.media.metadata;
-  const title = metadata.title || 'Unknown Title';
-  const author = metadata.authors?.[0]?.name || 'Unknown Author';
-  const coverUrl = apiClient.getItemCoverUrl(currentBook.id);
+
+  // Progress ring calculations
+  const radius = (BUTTON_SIZE - BORDER_WIDTH) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clampedProgress = Math.min(Math.max(progress, 0), 1);
+  const strokeDashoffset = circumference * (1 - clampedProgress);
+  const innerSize = BUTTON_SIZE - BORDER_WIDTH * 2;
+
+  const baseOffset = insets.bottom > 0 ? insets.bottom : 16;
+  const bottomOffset = baseOffset - 6;
+
+  const iconName = isPlaying ? 'pause' : 'play';
 
   return (
-    <TouchableOpacity style={styles.container} onPress={togglePlayer} activeOpacity={0.95}>
-      <View style={styles.progressBarContainer}>
-        <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
-      </View>
-
-      <View style={styles.content}>
-        <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
-
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
-          <Text style={styles.author} numberOfLines={1}>{author}</Text>
+    <View style={[styles.container, { bottom: bottomOffset }]}>
+      <TouchableOpacity 
+        style={styles.button}
+        onPress={handlePlayPause}
+        onLongPress={togglePlayer}
+        delayLongPress={300}
+        activeOpacity={0.95}
+      >
+        {/* Progress ring */}
+        <View style={StyleSheet.absoluteFill}>
+          <Svg width={BUTTON_SIZE} height={BUTTON_SIZE}>
+            {/* Background track */}
+            <Circle
+              cx={BUTTON_SIZE / 2}
+              cy={BUTTON_SIZE / 2}
+              r={radius}
+              fill="none"
+              stroke="rgba(0,0,0,0.15)"
+              strokeWidth={BORDER_WIDTH}
+            />
+            {/* Progress */}
+            <Circle
+              cx={BUTTON_SIZE / 2}
+              cy={BUTTON_SIZE / 2}
+              r={radius}
+              fill="none"
+              stroke={progressAccent}
+              strokeWidth={BORDER_WIDTH}
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              strokeLinecap="round"
+              rotation={-90}
+              origin={`${BUTTON_SIZE / 2}, ${BUTTON_SIZE / 2}`}
+            />
+          </Svg>
         </View>
 
-        <TouchableOpacity
-          style={styles.playButton}
-          onPress={handlePlayPause}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Icon name={isPlaying ? 'pause' : 'play'} size={22} color={theme.colors.neutral[0]} set="ionicons" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+        {/* Cover image */}
+        <Image
+          source={{ uri: coverUrl }}
+          style={[styles.cover, { width: innerSize, height: innerSize, borderRadius: innerSize / 2 }]}
+          resizeMode="cover"
+        />
+
+        {/* Centered glow shadow behind icon */}
+        <View style={styles.iconWrapper}>
+          <View style={styles.iconGlow} />
+          <View style={isPlaying ? undefined : styles.playOffset}>
+            <Icon name={iconName} size={26} color="#FFFFFF" set="ionicons" />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.neutral[900],
-    borderTopLeftRadius: theme.radius.large,
-    borderTopRightRadius: theme.radius.large,
-    overflow: 'hidden',
+    position: 'absolute',
+    right: 20,
+    zIndex: 999,
   },
-  progressBarContainer: {
-    height: 3,
-    backgroundColor: theme.colors.neutral[700],
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: theme.colors.primary[500],
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
+  button: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    position: 'relative',
+    shadowColor: '#000',
+   shadowOffset: { width: 0, height: 30 },
+    shadowOpacity: 0.35,
+    shadowRadius: 54,
+    elevation: 12,
   },
   cover: {
-    width: 48,
-    height: 48,
-    borderRadius: theme.radius.medium,
-    backgroundColor: theme.colors.neutral[700],
+    position: 'absolute',
+    top: BORDER_WIDTH,
+    left: BORDER_WIDTH,
+    backgroundColor: '#333',
   },
-  info: {
-    flex: 1,
-    marginLeft: theme.spacing[3],
-    marginRight: theme.spacing[3],
-  },
-  title: {
-    ...theme.textStyles.bodySmall,
-    fontWeight: '600',
-    color: theme.colors.neutral[0],
-    marginBottom: theme.spacing[1] / 2,
-  },
-  author: {
-    ...theme.textStyles.caption,
-    color: theme.colors.neutral[400],
-  },
-  playButton: {
-    width: 42,
-    height: 42,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.primary[500],
+  iconWrapper: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  iconGlow: {
+    position: 'absolute',
+    width: 15,
+    height: 15,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 25,
+    elevation: 10,
+  },
+  playOffset: {
+    paddingLeft: 3,
   },
 });

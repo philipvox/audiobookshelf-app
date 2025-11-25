@@ -23,31 +23,43 @@ export function SpeedSelector({ visible, onClose }: SpeedSelectorProps) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-        <View style={styles.header}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Playback Speed</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Icon name="close" size={24} color={theme.colors.text.primary} set="ionicons" />
-          </TouchableOpacity>
-        </View>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay}>
+        <TouchableOpacity style={styles.dismissArea} onPress={onClose} activeOpacity={1} />
+        
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing[2] }]}>
+          <View style={styles.header}>
+            <View style={styles.handle} />
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>Playback Speed</Text>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Icon name="close" size={22} color={theme.colors.text.secondary} set="ionicons" />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        <View style={styles.speedList}>
-          {SPEEDS.map((speed) => (
-            <TouchableOpacity
-              key={speed}
-              style={[styles.speedItem, playbackRate === speed && styles.speedItemActive]}
-              onPress={() => handleSelect(speed)}
-            >
-              <Text style={[styles.speedItemText, playbackRate === speed && styles.speedItemTextActive]}>
-                {speed}x
-              </Text>
-              {playbackRate === speed && (
-                <Icon name="checkmark" size={20} color={theme.colors.primary[500]} set="ionicons" />
-              )}
-            </TouchableOpacity>
-          ))}
+          <View style={styles.speedGrid}>
+            {SPEEDS.map((speed) => {
+              const isActive = playbackRate === speed;
+              return (
+                <TouchableOpacity
+                  key={speed}
+                  style={[styles.speedButton, isActive && styles.speedButtonActive]}
+                  onPress={() => handleSelect(speed)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.speedText, isActive && styles.speedTextActive]}>
+                    {speed}×
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       </View>
     </Modal>
@@ -55,57 +67,70 @@ export function SpeedSelector({ visible, onClose }: SpeedSelectorProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  overlay: {
     flex: 1,
+    justifyContent: 'flex-end',
+  },
+  dismissArea: {
+    flex: 1,
+  },
+  sheet: {
     backgroundColor: theme.colors.background.primary,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: theme.spacing[4],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 16,
   },
   header: {
     alignItems: 'center',
-    paddingVertical: theme.spacing[4],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border.light,
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[3],
   },
   handle: {
     width: 36,
     height: 4,
     backgroundColor: theme.colors.neutral[300],
-    borderRadius: theme.radius.small,
-    marginBottom: theme.spacing[3],
+    borderRadius: 2,
+    marginBottom: theme.spacing[2],
   },
-  title: {
-    ...theme.textStyles.h4,
-    color: theme.colors.text.primary,
-  },
-  closeButton: {
-    position: 'absolute',
-    right: theme.spacing[4],
-    top: theme.spacing[5],
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  speedList: {
-    padding: theme.spacing[4],
-  },
-  speedItem: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing[4],
-    paddingHorizontal: theme.spacing[4],
-    borderRadius: theme.radius.medium,
-    marginBottom: theme.spacing[2],
+    width: '100%',
   },
-  speedItemActive: {
-    backgroundColor: theme.colors.primary[50],
-  },
-  speedItemText: {
+  title: {
     ...theme.textStyles.body,
+    fontWeight: '600',
     color: theme.colors.text.primary,
   },
-  speedItemTextActive: {
-    color: theme.colors.primary[500],
+  speedGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing[2],
+    paddingBottom: theme.spacing[2],
+  },
+  speedButton: {
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    borderRadius: theme.radius.medium,
+    backgroundColor: theme.colors.neutral[100],
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  speedButtonActive: {
+    backgroundColor: theme.colors.primary[500],
+  },
+  speedText: {
+    ...theme.textStyles.body,
     fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  speedTextActive: {
+    color: '#FFFFFF',
   },
 });
