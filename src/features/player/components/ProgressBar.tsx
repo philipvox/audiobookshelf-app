@@ -1,11 +1,8 @@
 // File: src/features/player/components/ProgressBar.tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, PanResponder, Dimensions } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, GestureResponderEvent } from 'react-native';
 import { usePlayerStore } from '../stores/playerStore';
 import { theme } from '@/shared/theme';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BAR_WIDTH = SCREEN_WIDTH - (theme.spacing[8] * 2);
 
 function formatTime(seconds: number): string {
   if (!seconds || isNaN(seconds)) return '0:00';
@@ -19,66 +16,158 @@ function formatTime(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
+interface Chapter {
+  id: number;
+  start: number;
+  end: number;
+  title: string;
+}
+
 interface ProgressBarProps {
   textColor?: string;
   trackColor?: string;
   fillColor?: string;
+  mode?: 'book' | 'chapter';
+  chapters?: Chapter[];
+  currentChapterIndex?: number;
+  bookDuration: number;
 }
 
 export function ProgressBar({ 
   textColor = theme.colors.text.tertiary,
   trackColor = theme.colors.neutral[300],
   fillColor = theme.colors.text.primary,
+  mode = 'chapter',
+  chapters = [],
+  currentChapterIndex = 0,
+  bookDuration,
 }: ProgressBarProps) {
-  const { position, duration, seekTo } = usePlayerStore();
+  const { position, seekTo } = usePlayerStore();
   const [isDragging, setIsDragging] = useState(false);
-  const [dragPosition, setDragPosition] = useState(0);
+  const [dragProgress, setDragProgress] = useState(0);
+  const [seekLock, setSeekLock] = useState(false);
+  const [lockedPosition, setLockedPosition] = useState(0);
+  const trackWidth = useRef(300);
 
-  const displayPosition = isDragging ? dragPosition : position;
-  const progress = duration > 0 ? displayPosition / duration : 0;
+  // Use locked position briefly after seek to prevent UI snap-back
+  const effectivePosition = seekLock ? lockedPosition : position;
 
-  const handleSeek = async (newPosition: number) => {
+  const currentChapter = chapters[currentChapterIndex];
+  const isChapterMode = mode === 'chapter' && currentChapter;
+  
+  let displayPosition: number;
+  let displayDuration: number;
+  let progress: number;
+
+  if (isChapterMode) {
+    const chapterStart = currentChapter.start;
+    const chapterEnd = currentChapter.end;
+    const chapterDuration = chapterEnd - chapterStart;
+    const chapterPosition = Math.max(0, effectivePosition - chapterStart);
+    
+    displayPosition = chapterPosition;
+    displayDuration = chapterDuration;
+    progress = chapterDuration > 0 ? chapterPosition / chapterDuration : 0;
+  } else {
+    displayPosition = effectivePosition;
+    displayDuration = bookDuration;
+    progress = bookDuration > 0 ? effectivePosition / bookDuration : 0;
+  }
+
+  const displayProgress = isDragging ? dragProgress : progress;
+
+  const calculateProgress = (pageX: number) => {
+    const padding = theme.spacing[8];
+    const x = pageX - padding;
+    return Math.max(0, Math.min(1, x / trackWidth.current));
+  };
+
+  const handleTouchStart = (e: GestureResponderEvent) => {
+    if (displayDuration <= 0) return;
+    const prog = calculateProgress(e.nativeEvent.pageX);
+    setDragProgress(prog);
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: GestureResponderEvent) => {
+    if (!isDragging || displayDuration <= 0) return;
+    const prog = calculateProgress(e.nativeEvent.pageX);
+    setDragProgress(prog);
+  };
+
+  const handleTouchEnd = async () => {
+    if (!isDragging || displayDuration <= 0) return;
+    setIsDragging(false);
+    
+    let newPosition: number;
+    if (isChapterMode) {
+      const chapterDuration = currentChapter.end - currentChapter.start;
+      newPosition = currentChapter.start + (dragProgress * chapterDuration);
+    } else {
+      newPosition = dragProgress * bookDuration;
+    }
+    
+    newPosition = Math.max(0, Math.min(newPosition, bookDuration));
+    
+    // Lock position to prevent snap-back
+    setLockedPosition(newPosition);
+    setSeekLock(true);
+    
     try {
       await seekTo(newPosition);
     } catch (error) {
       console.error('Failed to seek:', error);
     }
+    
+    // Release lock after audio catches up
+    setTimeout(() => setSeekLock(false), 500);
   };
 
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (evt) => {
-      setIsDragging(true);
-      const x = evt.nativeEvent.locationX;
-      const ratio = Math.max(0, Math.min(1, x / BAR_WIDTH));
-      setDragPosition(ratio * duration);
-    },
-    onPanResponderMove: (evt) => {
-      const x = evt.nativeEvent.locationX;
-      const ratio = Math.max(0, Math.min(1, x / BAR_WIDTH));
-      setDragPosition(ratio * duration);
-    },
-    onPanResponderRelease: () => {
-      setIsDragging(false);
-      handleSeek(dragPosition);
-    },
-    onPanResponderTerminate: () => {
-      setIsDragging(false);
-    },
-  });
+  const handleLayout = (e: any) => {
+    trackWidth.current = e.nativeEvent.layout.width;
+  };
+
+  const currentTime = isDragging ? dragProgress * displayDuration : displayPosition;
 
   return (
     <View style={styles.container}>
       <View style={styles.timeContainer}>
-        <Text style={[styles.timeText, { color: textColor }]}>{formatTime(displayPosition)}</Text>
-        <Text style={[styles.timeText, { color: textColor }]}>{formatTime(duration)}</Text>
+        <Text style={[styles.timeText, { color: textColor }]}>
+          {formatTime(currentTime)}
+        </Text>
+        <Text style={[styles.timeText, { color: textColor }]}>
+          {formatTime(displayDuration)}
+        </Text>
       </View>
 
-      <View style={styles.progressContainer} {...panResponder.panHandlers}>
-        <View style={[styles.progressTrack, { backgroundColor: trackColor }]}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: fillColor }]} />
-          <View style={[styles.thumb, { left: `${progress * 100}%`, borderColor: fillColor }]} />
+      <View
+        style={styles.touchArea}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={handleTouchStart}
+        onResponderMove={handleTouchMove}
+        onResponderRelease={handleTouchEnd}
+        onResponderTerminate={handleTouchEnd}
+      >
+        <View 
+          style={[styles.progressTrack, { backgroundColor: trackColor }]}
+          onLayout={handleLayout}
+        >
+          <View 
+            style={[
+              styles.progressFill, 
+              { 
+                width: `${displayProgress * 100}%`, 
+                backgroundColor: fillColor 
+              }
+            ]} 
+          />
+          <View 
+            style={[
+              styles.thumb, 
+              { left: `${displayProgress * 100}%` }
+            ]} 
+          />
         </View>
       </View>
     </View>
@@ -98,7 +187,7 @@ const styles = StyleSheet.create({
   timeText: {
     ...theme.textStyles.caption,
   },
-  progressContainer: {
+  touchArea: {
     paddingVertical: theme.spacing[3],
   },
   progressTrack: {
@@ -116,8 +205,12 @@ const styles = StyleSheet.create({
     marginLeft: -8,
     width: 16,
     height: 16,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.neutral[200],
-    borderWidth: 4,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
   },
 });

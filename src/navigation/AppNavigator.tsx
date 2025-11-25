@@ -1,5 +1,5 @@
+// File: src/navigation/AppNavigator.tsx
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -16,8 +16,7 @@ import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { MiniPlayer, PlayerScreen } from '@/features/player';
 import { SplashScreen } from '@/shared/components/SplashScreen';
-import { Icon } from '@/shared/components/Icon';
-import { theme } from '@/shared/theme';
+import { FloatingTabBar } from './components/FloatingTabBar';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -25,63 +24,16 @@ const Tab = createBottomTabNavigator();
 function MainTabs() {
   return (
     <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.colors.background.elevated,
-          borderTopColor: theme.colors.border.light,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        },
-        tabBarActiveTintColor: theme.colors.primary[500],
-        tabBarInactiveTintColor: theme.colors.text.tertiary,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarStyle: { display: 'none' },
       }}
     >
-      <Tab.Screen
-        name="LibraryTab"
-        component={LibraryItemsScreen}
-        options={{
-          tabBarLabel: 'Library',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="library" size={size} color={color} set="ionicons" />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="SearchTab"
-        component={SearchScreen}
-        options={{
-          tabBarLabel: 'Search',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="search" size={size} color={color} set="ionicons" />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="BrowseTab"
-        component={BrowseScreen}
-        options={{
-          tabBarLabel: 'Browse',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="compass" size={size} color={color} set="ionicons" />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="ProfileTab"
-        component={ProfileScreen}
-        options={{
-          tabBarLabel: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="person" size={size} color={color} set="ionicons" />
-          ),
-        }}
-      />
+      <Tab.Screen name="LibraryTab" component={LibraryItemsScreen} />
+      <Tab.Screen name="SearchTab" component={SearchScreen} />
+      <Tab.Screen name="BrowseTab" component={BrowseScreen} />
+      <Tab.Screen name="ProfileTab" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
@@ -112,22 +64,8 @@ export function AppNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
 
-      {isAuthenticated && (
-        <View style={styles.miniPlayerContainer}>
-          <MiniPlayer />
-        </View>
-      )}
-
+      {isAuthenticated && <MiniPlayer />}
       {isAuthenticated && <PlayerScreen />}
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  miniPlayerContainer: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-  },
-});

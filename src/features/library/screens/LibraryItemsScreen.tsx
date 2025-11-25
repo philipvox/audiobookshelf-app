@@ -1,3 +1,4 @@
+// File: src/features/library/screens/LibraryItemsScreen.tsx
 import React from 'react';
 import {
   View,
@@ -7,12 +8,12 @@ import {
   RefreshControl,
   StatusBar,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/core/auth';
 import { useLibraryPrefetch } from '@/core/hooks';
 import { BookCard } from '../components/BookCard';
 import { useDefaultLibrary } from '../hooks/useDefaultLibrary';
 import { useLibraryItems } from '../hooks/useLibraryItems';
+import { TopNavBar } from '@/navigation/components/TopNavBar';
 import { LoadingSpinner, ErrorView, EmptyState } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 import { theme } from '@/shared/theme';
@@ -25,28 +26,25 @@ function GreetingHeader() {
   
   const getGreeting = () => {
     const hour = new Date().getHours();
-    const firstName = user?.username || 'there';
     
     if (hour < 12) {
-      return `Good morning, ${firstName}`;
+      return 'Good morning';
     } else if (hour < 18) {
-      return `Good afternoon, ${firstName}`;
+      return 'Good afternoon';
     } else {
-      return `Good evening, ${firstName}`;
+      return 'Good evening';
     }
   };
 
   return (
     <View style={styles.greetingContainer}>
       <Text style={styles.greeting}>{getGreeting()}</Text>
-      <Text style={styles.subGreeting}>Ready for your next listen?</Text>
+      <Text style={styles.subGreeting}>We have some fantastic books for you.</Text>
     </View>
   );
 }
 
 export function LibraryItemsScreen() {
-  const insets = useSafeAreaInsets();
-  
   const { library, isLoading: isLoadingLibrary, error: libraryError } = useDefaultLibrary();
   const { items, isLoading: isLoadingItems, error: itemsError, refetch } = useLibraryItems(library?.id || '', {
     limit: 50,
@@ -92,8 +90,9 @@ export function LibraryItemsScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
+      <TopNavBar />
       <FlatList
         data={items}
         renderItem={renderItem}
@@ -126,17 +125,17 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: SCREEN_PADDING,
-    paddingTop: SCREEN_PADDING,
-    paddingBottom: theme.spacing[32] + 60,
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[32] + 80,
   },
   greetingContainer: {
-    paddingBottom: theme.spacing[6],
+    paddingBottom: theme.spacing[5],
   },
   greeting: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '700',
     color: theme.colors.text.primary,
-    marginBottom: theme.spacing[2],
+    marginBottom: theme.spacing[1],
     letterSpacing: -0.5,
   },
   subGreeting: {

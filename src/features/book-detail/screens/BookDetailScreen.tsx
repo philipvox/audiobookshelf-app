@@ -1,3 +1,4 @@
+// File: src/features/book-detail/screens/BookDetailScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -25,8 +26,7 @@ type BookDetailRouteParams = {
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const COVER_WIDTH = SCREEN_WIDTH * 0.38;
-const COVER_HEIGHT = COVER_WIDTH * 1.5;
+const COVER_SIZE = SCREEN_WIDTH * 0.38;
 
 type TabType = 'overview' | 'chapters' | 'details';
 
@@ -48,23 +48,22 @@ export function BookDetailScreen() {
   }
 
   const metadata = book.media.metadata as any;
-    const title = metadata.title || 'Unknown Title';
-    const author = metadata.authorName || 'Unknown Author';
-    const rawNarrator = metadata.narratorName || '';
-    const narrator = rawNarrator.replace(/^Narrated by\s*/i, '').trim() || null;
-    const genres = metadata.genres || [];
-    const coverUrl = apiClient.getItemCoverUrl(book.id);
-    const chapters = book.media.chapters || [];
-    const currentPosition = book.userMediaProgress?.currentTime || 0;
-    
-    // Duration: try media.duration first, then sum audioFiles
-    let duration = book.media.duration || 0;
-    if (!duration && book.media.audioFiles?.length) {
-      duration = book.media.audioFiles.reduce((sum: number, f: any) => sum + (f.duration || 0), 0);
-    }
-    
-    const progress = book.userMediaProgress?.progress || 0;
-    const hasProgress = progress > 0 && progress < 1;
+  const title = metadata.title || 'Unknown Title';
+  const author = metadata.authorName || 'Unknown Author';
+  const rawNarrator = metadata.narratorName || '';
+  const narrator = rawNarrator.replace(/^Narrated by\s*/i, '').trim() || null;
+  const genres = metadata.genres || [];
+  const coverUrl = apiClient.getItemCoverUrl(book.id);
+  const chapters = book.media.chapters || [];
+  const currentPosition = book.userMediaProgress?.currentTime || 0;
+  
+  let duration = book.media.duration || 0;
+  if (!duration && book.media.audioFiles?.length) {
+    duration = book.media.audioFiles.reduce((sum: number, f: any) => sum + (f.duration || 0), 0);
+  }
+  
+  const progress = book.userMediaProgress?.progress || 0;
+  const hasProgress = progress > 0 && progress < 1;
 
   const handlePlay = async () => {
     try {
@@ -101,15 +100,10 @@ export function BookDetailScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Top Section - Cover + Info */}
         <View style={styles.topSection}>
-          {/* Cover with Play Overlay */}
-          <TouchableOpacity style={styles.coverContainer} onPress={handlePlay} activeOpacity={0.9}>
+          {/* Square Cover - no play button */}
+          <View style={styles.coverContainer}>
             <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
-            <View style={styles.playOverlay}>
-              <View style={styles.playButton}>
-                <Icon name="play" size={24} color={theme.colors.primary[500]} set="ionicons" />
-              </View>
-            </View>
-          </TouchableOpacity>
+          </View>
 
           {/* Info Side */}
           <View style={styles.infoSide}>
@@ -128,7 +122,7 @@ export function BookDetailScreen() {
               <View style={styles.tagsSection}>
                 <Text style={styles.tagsLabel}>Tags</Text>
                 <View style={styles.tagsRow}>
-                  {genres.slice(0, 2).map((genre, idx) => (
+                  {genres.slice(0, 2).map((genre: string, idx: number) => (
                     <View key={idx} style={styles.tag}>
                       <Text style={styles.tagText}>#{genre.toLowerCase()}</Text>
                     </View>
@@ -149,32 +143,36 @@ export function BookDetailScreen() {
             <Text style={styles.statLabel}>Chapters</Text>
             <Text style={styles.statValue}>{chapters.length}</Text>
           </View>
-          <TouchableOpacity style={styles.playNowButton} onPress={handlePlay} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.playNowButton} onPress={handlePlay}>
             <Text style={styles.playNowText}>{playButtonText}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'overview' && styles.activeTab]}
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
             onPress={() => setActiveTab('overview')}
           >
-            <Text style={[styles.tabText, activeTab === 'overview' && styles.activeTabText]}>Overview</Text>
+            <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
+              Overview
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'chapters' && styles.activeTab]}
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'chapters' && styles.tabActive]}
             onPress={() => setActiveTab('chapters')}
           >
-            <Text style={[styles.tabText, activeTab === 'chapters' && styles.activeTabText]}>
+            <Text style={[styles.tabText, activeTab === 'chapters' && styles.tabTextActive]}>
               Chapters ({chapters.length})
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'details' && styles.activeTab]}
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'details' && styles.tabActive]}
             onPress={() => setActiveTab('details')}
           >
-            <Text style={[styles.tabText, activeTab === 'details' && styles.activeTabText]}>Details</Text>
+            <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
+              Details
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -222,8 +220,8 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing[4],
   },
   coverContainer: {
-    width: COVER_WIDTH,
-    height: COVER_HEIGHT,
+    width: COVER_SIZE,
+    height: COVER_SIZE,
     borderRadius: theme.radius.large,
     overflow: 'hidden',
     backgroundColor: theme.colors.neutral[200],
@@ -232,21 +230,6 @@ const styles = StyleSheet.create({
   cover: {
     width: '100%',
     height: '100%',
-  },
-  playOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingLeft: 4,
-    ...theme.elevation.small,
   },
   infoSide: {
     flex: 1,
@@ -284,7 +267,7 @@ const styles = StyleSheet.create({
   tagsLabel: {
     fontSize: 12,
     color: theme.colors.text.tertiary,
-    marginBottom: theme.spacing[2],
+    marginBottom: theme.spacing[1],
   },
   tagsRow: {
     flexDirection: 'row',
@@ -294,25 +277,20 @@ const styles = StyleSheet.create({
   tag: {
     backgroundColor: theme.colors.neutral[100],
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1] + 2,
-    borderRadius: theme.radius.medium,
-    borderWidth: 1,
-    borderColor: theme.colors.border.default,
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.radius.full,
   },
   tagText: {
     fontSize: 12,
     color: theme.colors.text.secondary,
-    fontWeight: '500',
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: theme.spacing[5],
-    paddingVertical: theme.spacing[4],
-    borderTopWidth: 1,
+    paddingBottom: theme.spacing[4],
     borderBottomWidth: 1,
-    borderColor: theme.colors.border.light,
-    backgroundColor: theme.colors.background.secondary,
+    borderBottomColor: theme.colors.neutral[200],
   },
   statItem: {
     marginRight: theme.spacing[6],
@@ -323,46 +301,49 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing[1],
   },
   statValue: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text.primary,
   },
   playNowButton: {
     marginLeft: 'auto',
     backgroundColor: theme.colors.primary[500],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: theme.spacing[6],
     paddingVertical: theme.spacing[3],
-    borderRadius: theme.radius.medium,
+    borderRadius: theme.radius.full,
   },
   playNowText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: theme.spacing[5],
+    paddingTop: theme.spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border.light,
+    borderBottomColor: theme.colors.neutral[200],
   },
   tab: {
     paddingVertical: theme.spacing[3],
-    marginRight: theme.spacing[6],
-  },
-  activeTab: {
+    marginRight: theme.spacing[5],
     borderBottomWidth: 2,
-    borderBottomColor: theme.colors.primary[500],
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: theme.colors.text.primary,
   },
   tabText: {
     fontSize: 14,
-    fontWeight: '500',
     color: theme.colors.text.tertiary,
+    fontWeight: '500',
   },
-  activeTabText: {
+  tabTextActive: {
     color: theme.colors.text.primary,
     fontWeight: '600',
   },
   tabContent: {
-    paddingBottom: theme.spacing[24],
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[8],
   },
 });

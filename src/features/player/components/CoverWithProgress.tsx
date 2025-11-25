@@ -1,7 +1,7 @@
+// File: src/features/player/components/CoverWithProgress.tsx
 import React from 'react';
-import { View, Image, StyleSheet, Dimensions } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
-import { theme } from '@/shared/theme';
+import { View, Image, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 interface CoverWithProgressProps {
   coverUrl: string;
@@ -22,51 +22,49 @@ export function CoverWithProgress({
   const innerSize = size - borderWidth * 2;
   const innerRadius = borderRadius - borderWidth;
 
-  // Calculate the perimeter of the rounded rectangle
-  // 4 straight sides + 4 quarter circles (= 1 full circle of radius borderRadius)
-  const straightSides = (size - 2 * borderRadius) * 4;
-  const corners = 2 * Math.PI * borderRadius;
-  const totalPerimeter = straightSides + corners;
+  // Calculate path dimensions (stroke center)
+  const offset = borderWidth / 2;
+  const rectSize = size - borderWidth;
+  const r = borderRadius;
 
-  // How much of the perimeter to fill
-  const progressLength = totalPerimeter * Math.min(Math.max(progress, 0), 1);
+  // Create a path starting from bottom-left, going UP (clockwise)
+  const createRoundedRectPath = () => {
+    const left = offset;
+    const top = offset;
+    const right = offset + rectSize;
+    const bottom = offset + rectSize;
+    
+    // Start at bottom of left edge, go UP (clockwise direction)
+    return `
+      M ${left} ${bottom - r}
+      L ${left} ${top + r}
+      Q ${left} ${top} ${left + r} ${top}
+      L ${right - r} ${top}
+      Q ${right} ${top} ${right} ${top + r}
+      L ${right} ${bottom - r}
+      Q ${right} ${bottom} ${right - r} ${bottom}
+      L ${left + r} ${bottom}
+      Q ${left} ${bottom} ${left} ${bottom - r}
+    `;
+  };
 
-  // SVG Rect draws starting from top-left, going clockwise: right, down, left, up
-  // We want to START from bottom-left corner, going UP (clockwise visually)
-  // 
-  // Path order from SVG start (top-left):
-  // 1. Top edge (left to right): size - 2*radius
-  // 2. Top-right corner: quarter circle
-  // 3. Right edge (top to bottom): size - 2*radius  
-  // 4. Bottom-right corner: quarter circle
-  // 5. Bottom edge (right to left): size - 2*radius
-  // 6. Bottom-left corner: quarter circle
-  // 7. Left edge (bottom to top): size - 2*radius
-  // 8. Top-left corner back to start: quarter circle
-  
-  const edgeLength = size - 2 * borderRadius;
-  const quarterCircle = (2 * Math.PI * borderRadius) / 4;
-  
-  // Distance from SVG start to bottom-left corner (where we want our progress to start):
-  // top edge + TR corner + right edge + BR corner + bottom edge + BL corner
-  const distanceToBottomLeft = edgeLength + quarterCircle + edgeLength + quarterCircle + edgeLength + quarterCircle;
-  
-  // To make the stroke START at bottom-left and go UP (continuing the clockwise path),
-  // we offset backwards by the distance to bottom-left
-  const dashOffset = -distanceToBottomLeft;
+  // Calculate total path length
+  const straightEdge = rectSize - 2 * r;
+  const cornerArc = (Math.PI * r) / 2;
+  const totalLength = (straightEdge * 4) + (cornerArc * 4);
+
+  const clampedProgress = Math.min(Math.max(progress, 0), 1);
+  const progressLength = totalLength * clampedProgress;
+
+  const pathD = createRoundedRectPath();
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       {/* Track (subtle background ring) */}
       <View style={StyleSheet.absoluteFill}>
         <Svg width={size} height={size}>
-          <Rect
-            x={borderWidth / 2}
-            y={borderWidth / 2}
-            width={size - borderWidth}
-            height={size - borderWidth}
-            rx={borderRadius}
-            ry={borderRadius}
+          <Path
+            d={pathD}
             fill="none"
             stroke="rgba(255,255,255,0.15)"
             strokeWidth={borderWidth}
@@ -77,18 +75,13 @@ export function CoverWithProgress({
       {/* Progress stroke */}
       <View style={StyleSheet.absoluteFill}>
         <Svg width={size} height={size}>
-          <Rect
-            x={borderWidth / 2}
-            y={borderWidth / 2}
-            width={size - borderWidth}
-            height={size - borderWidth}
-            rx={borderRadius}
-            ry={borderRadius}
+          <Path
+            d={pathD}
             fill="none"
             stroke={accentColor}
             strokeWidth={borderWidth}
-            strokeDasharray={`${progressLength} ${totalPerimeter}`}
-            strokeDashoffset={dashOffset}
+            strokeDasharray={`${progressLength} ${totalLength}`}
+            strokeDashoffset={0}
             strokeLinecap="round"
           />
         </Svg>
