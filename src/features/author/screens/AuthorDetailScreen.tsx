@@ -96,7 +96,16 @@ export function AuthorDetailScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity 
+  style={styles.headerButton} 
+  onPress={() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Main' as never);
+    }
+  }}
+>
           <Icon name="arrow-back" size={22} color={theme.colors.text.primary} set="ionicons" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Author</Text>

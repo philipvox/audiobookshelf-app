@@ -12,7 +12,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       },
       "bundleIdentifier": "com.audiobookshelf.app"
     },
@@ -24,6 +26,11 @@
     },
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6f946d03-1d57-4474-bac2-516532b4c2f6"
+      }
     }
   }
 }
