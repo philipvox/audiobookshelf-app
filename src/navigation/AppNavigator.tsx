@@ -1,4 +1,7 @@
-// File: src/navigation/AppNavigator.tsx
+/**
+ * src/navigation/AppNavigator.tsx
+ */
+
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -14,6 +17,7 @@ import { AuthorDetailScreen } from '@/features/author';
 import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
+import { DownloadsScreen } from '@/features/downloads';
 import { MiniPlayer, PlayerScreen } from '@/features/player';
 import { SplashScreen } from '@/shared/components/SplashScreen';
 import { FloatingTabBar } from './components/FloatingTabBar';
@@ -59,6 +63,7 @@ export function AppNavigator() {
               <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
               <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
               <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
+              <Stack.Screen name="Downloads" component={DownloadsScreen} />
             </>
           )}
         </Stack.Navigator>

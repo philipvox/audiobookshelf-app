@@ -1,4 +1,7 @@
-// File: src/features/book-detail/screens/BookDetailScreen.tsx
+/**
+ * src/features/book-detail/screens/BookDetailScreen.tsx
+ */
+
 import React, { useState } from 'react';
 import {
   View,
@@ -19,6 +22,7 @@ import { LoadingSpinner, ErrorView } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
+import { DownloadButton } from '@/features/downloads';
 import { theme } from '@/shared/theme';
 
 type BookDetailRouteParams = {
@@ -55,7 +59,6 @@ export function BookDetailScreen() {
   const genres = metadata.genres || [];
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const chapters = book.media.chapters || [];
-  const currentPosition = book.userMediaProgress?.currentTime || 0;
   
   let duration = book.media.duration || 0;
   if (!duration && book.media.audioFiles?.length) {
@@ -92,20 +95,21 @@ export function BookDetailScreen() {
           <Icon name="arrow-back" size={22} color={theme.colors.text.primary} set="ionicons" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Book Details</Text>
-        <TouchableOpacity style={styles.headerButton}>
-          <Icon name="heart-outline" size={22} color={theme.colors.primary[500]} set="ionicons" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <DownloadButton item={book} size={22} color={theme.colors.text.secondary} />
+          <TouchableOpacity style={styles.headerButton}>
+            <Icon name="heart-outline" size={22} color={theme.colors.primary[500]} set="ionicons" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Top Section - Cover + Info */}
         <View style={styles.topSection}>
-          {/* Square Cover - no play button */}
           <View style={styles.coverContainer}>
             <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
           </View>
 
-          {/* Info Side */}
           <View style={styles.infoSide}>
             <Text style={styles.title} numberOfLines={3}>{title}</Text>
             <Text style={styles.authorLabel}>
@@ -117,7 +121,6 @@ export function BookDetailScreen() {
               </Text>
             )}
 
-            {/* Tags */}
             {genres.length > 0 && (
               <View style={styles.tagsSection}>
                 <Text style={styles.tagsLabel}>Tags</Text>
@@ -178,9 +181,52 @@ export function BookDetailScreen() {
 
         {/* Tab Content */}
         <View style={styles.tabContent}>
-          {activeTab === 'overview' && <OverviewTab book={book} />}
-          {activeTab === 'chapters' && <ChaptersTab chapters={chapters} currentPosition={currentPosition} />}
-          {activeTab === 'details' && <OverviewTab book={book} showFullDetails />}
+          {activeTab === 'overview' && (
+            <OverviewTab book={book} />
+          )}
+          {activeTab === 'chapters' && (
+            <ChaptersTab chapters={chapters} />
+          )}
+          {activeTab === 'details' && (
+            <View style={styles.detailsTab}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Title</Text>
+                <Text style={styles.detailValue}>{title}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Author</Text>
+                <Text style={styles.detailValue}>{author}</Text>
+              </View>
+              {narrator && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Narrator</Text>
+                  <Text style={styles.detailValue}>{narrator}</Text>
+                </View>
+              )}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Duration</Text>
+                <Text style={styles.detailValue}>{formatDuration(duration)}</Text>
+              </View>
+              {metadata.publishedYear && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Published</Text>
+                  <Text style={styles.detailValue}>{metadata.publishedYear}</Text>
+                </View>
+              )}
+              {metadata.publisher && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Publisher</Text>
+                  <Text style={styles.detailValue}>{metadata.publisher}</Text>
+                </View>
+              )}
+              {metadata.language && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Language</Text>
+                  <Text style={styles.detailValue}>{metadata.language}</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -198,33 +244,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border.light,
   },
   headerButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: theme.spacing[1],
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
     color: theme.colors.text.primary,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   scrollView: {
     flex: 1,
   },
   topSection: {
     flexDirection: 'row',
-    paddingHorizontal: theme.spacing[5],
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[4],
+    padding: theme.spacing[5],
+    gap: theme.spacing[4],
   },
   coverContainer: {
     width: COVER_SIZE,
     height: COVER_SIZE,
-    borderRadius: theme.radius.large,
+    borderRadius: theme.radius.medium,
     overflow: 'hidden',
-    backgroundColor: theme.colors.neutral[200],
     ...theme.elevation.medium,
   },
   cover: {
@@ -233,32 +280,31 @@ const styles = StyleSheet.create({
   },
   infoSide: {
     flex: 1,
-    marginLeft: theme.spacing[4],
-    paddingTop: theme.spacing[1],
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: theme.colors.text.primary,
     marginBottom: theme.spacing[2],
-    lineHeight: 24,
+    lineHeight: 26,
   },
   authorLabel: {
-    fontSize: 13,
-    color: theme.colors.text.tertiary,
+    fontSize: 14,
+    color: theme.colors.text.secondary,
     marginBottom: theme.spacing[1],
   },
   authorName: {
-    color: theme.colors.text.secondary,
+    color: theme.colors.text.primary,
     fontWeight: '500',
   },
   narratorLabel: {
-    fontSize: 13,
-    color: theme.colors.text.tertiary,
-    marginBottom: theme.spacing[3],
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing[2],
   },
   narratorName: {
-    color: theme.colors.text.secondary,
+    color: theme.colors.text.primary,
     fontWeight: '500',
   },
   tagsSection: {
@@ -344,6 +390,24 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     paddingTop: theme.spacing[4],
-    paddingBottom: theme.spacing[8],
+    paddingBottom: theme.spacing[32] + 80,
+  },
+  detailsTab: {
+    paddingHorizontal: theme.spacing[5],
+  },
+  detailRow: {
+    marginBottom: theme.spacing[4],
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    marginBottom: theme.spacing[1],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 15,
+    color: theme.colors.text.primary,
+    lineHeight: 22,
   },
 });
