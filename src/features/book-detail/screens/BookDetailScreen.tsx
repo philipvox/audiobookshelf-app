@@ -91,7 +91,16 @@ export function BookDetailScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity 
+          style={styles.headerButton} 
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Main' as never);
+            }
+          }}
+        >
           <Icon name="arrow-back" size={22} color={theme.colors.text.primary} set="ionicons" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Book Details</Text>

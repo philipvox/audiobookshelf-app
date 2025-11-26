@@ -8,10 +8,7 @@
 import { apiClient } from '@/core/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/**
- * Progress data to sync
- */
-interface ProgressData {
+export interface ProgressData {
   itemId: string;
   currentTime: number;
   duration: number;
@@ -19,38 +16,23 @@ interface ProgressData {
   isFinished: boolean;
 }
 
-/**
- * Local storage key for progress
- */
 const PROGRESS_KEY_PREFIX = 'progress_';
 
-/**
- * Progress sync service
- */
 class ProgressService {
   private syncInterval: NodeJS.Timeout | null = null;
   private lastSyncTime: number = 0;
   private pendingSync: ProgressData | null = null;
 
-  /**
-   * Start automatic progress syncing
-   * Syncs to server every 5 minutes
-   */
   startAutoSync(): void {
-    // Don't start if already running
     if (this.syncInterval) {
       return;
     }
 
-    // Sync every 5 minutes
     this.syncInterval = setInterval(() => {
       this.syncPendingProgress();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
   }
 
-  /**
-   * Stop automatic progress syncing
-   */
   stopAutoSync(): void {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
@@ -58,18 +40,11 @@ class ProgressService {
     }
   }
 
-  /**
-   * Save progress locally and queue for server sync
-   */
   async saveProgress(data: ProgressData): Promise<void> {
     try {
-      // Save to local storage immediately
       await this.saveProgressLocal(data);
-
-      // Queue for server sync
       this.pendingSync = data;
 
-      // Sync immediately if it's been more than 30 seconds since last sync
       const now = Date.now();
       if (now - this.lastSyncTime > 30 * 1000) {
         await this.syncPendingProgress();
@@ -79,25 +54,23 @@ class ProgressService {
     }
   }
 
-  /**
-   * Sync progress when user pauses or seeks
-   * This ensures important position changes are saved immediately
-   */
   async syncOnPause(data: ProgressData): Promise<void> {
     try {
-      // Save locally
       await this.saveProgressLocal(data);
-
-      // Sync to server immediately
       await this.syncToServer(data);
     } catch (error) {
       console.error('Failed to sync progress on pause:', error);
     }
   }
 
-  /**
-   * Mark book as finished
-   */
+  async saveLocalOnly(data: ProgressData): Promise<void> {
+    try {
+      await this.saveProgressLocal(data);
+    } catch (error) {
+      console.error('Failed to save local progress:', error);
+    }
+  }
+
   async markAsFinished(itemId: string, duration: number): Promise<void> {
     const data: ProgressData = {
       itemId,
@@ -116,17 +89,35 @@ class ProgressService {
     }
   }
 
-  /**
-   * Get locally saved progress for a book
-   */
   async getLocalProgress(itemId: string): Promise<number> {
     try {
       const key = PROGRESS_KEY_PREFIX + itemId;
       const value = await AsyncStorage.getItem(key);
 
-      if (value) {
-        const data = JSON.parse(value) as ProgressData;
-        return data.currentTime;
+      if (!value) {
+        return 0;
+      }
+
+      // Try parsing as JSON first (current format)
+      try {
+        const parsed = JSON.parse(value);
+        
+        // Check if it's our ProgressData object
+        if (typeof parsed === 'object' && parsed !== null && 'currentTime' in parsed) {
+          const currentTime = parsed.currentTime;
+          return typeof currentTime === 'number' && !isNaN(currentTime) ? currentTime : 0;
+        }
+        
+        // Parsed but not our expected format - might be a plain number
+        if (typeof parsed === 'number' && !isNaN(parsed)) {
+          return parsed;
+        }
+      } catch {
+        // JSON parse failed, try as plain number string (legacy format)
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          return num;
+        }
       }
 
       return 0;
@@ -136,9 +127,26 @@ class ProgressService {
     }
   }
 
-  /**
-   * Clear local progress for a book
-   */
+  async getFullProgressData(itemId: string): Promise<ProgressData | null> {
+    try {
+      const key = PROGRESS_KEY_PREFIX + itemId;
+      const value = await AsyncStorage.getItem(key);
+
+      if (!value) {
+        return null;
+      }
+
+      const parsed = JSON.parse(value);
+      if (typeof parsed === 'object' && parsed !== null && 'currentTime' in parsed) {
+        return parsed as ProgressData;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   async clearLocalProgress(itemId: string): Promise<void> {
     try {
       const key = PROGRESS_KEY_PREFIX + itemId;
@@ -148,9 +156,6 @@ class ProgressService {
     }
   }
 
-  /**
-   * Save progress to local storage
-   */
   private async saveProgressLocal(data: ProgressData): Promise<void> {
     try {
       const key = PROGRESS_KEY_PREFIX + data.itemId;
@@ -161,9 +166,6 @@ class ProgressService {
     }
   }
 
-  /**
-   * Sync pending progress to server
-   */
   private async syncPendingProgress(): Promise<void> {
     if (!this.pendingSync) {
       return;
@@ -175,9 +177,6 @@ class ProgressService {
     await this.syncToServer(data);
   }
 
-  /**
-   * Sync progress to AudiobookShelf server
-   */
   private async syncToServer(data: ProgressData): Promise<void> {
     try {
       await apiClient.updateProgress(data.itemId, {
@@ -190,10 +189,8 @@ class ProgressService {
       this.lastSyncTime = Date.now();
     } catch (error) {
       console.error('Failed to sync progress to server:', error);
-      // Don't throw - we'll retry on next sync
     }
   }
 }
 
-// Export singleton instance
 export const progressService = new ProgressService();
