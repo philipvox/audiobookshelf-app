@@ -1,42 +1,40 @@
-/**
- * src/features/authors/screens/AuthorDetailScreen.tsx
- *
- * Screen showing author details and their books.
- */
-
-import React from 'react';
+// File: src/features/author/screens/AuthorDetailScreen.tsx
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   Image,
-  FlatList,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  StatusBar,
+  SafeAreaView,
+  Dimensions,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
-import { BookCard } from '@/features/library/components/BookCard';
+import { HorizontalBookItem } from '@/features/library/components/HorizontalBookItem';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 
 type AuthorDetailRouteParams = {
-  AuthorDetail: {
-    authorId: string;
-  };
+  AuthorDetail: { authorId: string };
 };
 
-type AuthorDetailRouteProp = RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const AVATAR_SIZE = SCREEN_WIDTH * 0.35;
+
+type TabType = 'overview' | 'details';
+type SortType = 'title-asc' | 'title-desc' | 'recent';
 
 export function AuthorDetailScreen() {
-  const insets = useSafeAreaInsets();
-  const route = useRoute<AuthorDetailRouteProp>();
+  const route = useRoute<RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>>();
   const navigation = useNavigation();
   const { authorId } = route.params;
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [sortBy, setSortBy] = useState<SortType>('title-asc');
 
   const { data: author, isLoading, error, refetch } = useQuery({
     queryKey: ['author', authorId],
@@ -44,17 +42,34 @@ export function AuthorDetailScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const books = (author as any)?.libraryItems || [];
+
+  const sortedBooks = useMemo(() => {
+    const sorted = [...books];
+    switch (sortBy) {
+      case 'title-asc':
+        return sorted.sort((a, b) => 
+          (a.media.metadata.title || '').localeCompare(b.media.metadata.title || '')
+        );
+      case 'title-desc':
+        return sorted.sort((a, b) => 
+          (b.media.metadata.title || '').localeCompare(a.media.metadata.title || '')
+        );
+      case 'recent':
+        return sorted.sort((a, b) => 
+          (b.addedAt || 0) - (a.addedAt || 0)
+        );
+      default:
+        return sorted;
+    }
+  }, [books, sortBy]);
+
   if (isLoading) {
     return <LoadingSpinner text="Loading author..." />;
   }
 
   if (error) {
-    return (
-      <ErrorView
-        message="Failed to load author"
-        onRetry={refetch}
-      />
-    );
+    return <ErrorView message="Failed to load author" onRetry={refetch} />;
   }
 
   if (!author) {
@@ -67,147 +82,306 @@ export function AuthorDetailScreen() {
     );
   }
 
-  const books = (author as any).libraryItems || [];
   const imageUrl = author.imagePath ? apiClient.getAuthorImageUrl(author.id) : undefined;
 
+  const initials = author.name
+    .split(' ')
+    .map((word) => word[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Icon name="chevron-back" size={24} color={theme.colors.text.primary} set="ionicons" />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
+
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={22} color={theme.colors.text.primary} set="ionicons" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Author</Text>
+        <TouchableOpacity style={styles.headerButton}>
+          <Icon name="heart-outline" size={22} color={theme.colors.primary[500]} set="ionicons" />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.imageContainer}>
+        <View style={styles.topSection}>
+          <View style={styles.avatarContainer}>
             {imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+              <Image source={{ uri: imageUrl }} style={styles.avatar} resizeMode="cover" />
             ) : (
-              <View style={[styles.image, styles.placeholderImage]}>
-                <Text style={styles.placeholderText}>👤</Text>
+              <View style={[styles.avatar, styles.placeholderAvatar]}>
+                <Text style={styles.initialsText}>{initials}</Text>
               </View>
             )}
           </View>
 
-          <Text style={styles.authorName}>{author.name}</Text>
-          <Text style={styles.bookCount}>
-            {books.length} {books.length === 1 ? 'book' : 'books'}
-          </Text>
-
-          {author.description && (
-            <Text style={styles.description} numberOfLines={6}>
-              {author.description}
+          <View style={styles.infoSide}>
+            <Text style={styles.name} numberOfLines={2}>{author.name}</Text>
+            <Text style={styles.bookCount}>
+              {books.length} {books.length === 1 ? 'book' : 'books'}
             </Text>
-          )}
+          </View>
         </View>
 
-        {books.length > 0 && (
-          <View style={styles.booksSection}>
-            <Text style={styles.sectionTitle}>Books</Text>
-            <View style={styles.booksGrid}>
-              {books.map((book: any) => (
-                <View key={book.id} style={styles.bookWrapper}>
-                  <BookCard book={book} />
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
+            onPress={() => setActiveTab('overview')}
+          >
+            <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
+              Overview
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'details' && styles.tabActive]}
+            onPress={() => setActiveTab('details')}
+          >
+            <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
+              Details
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.tabContent}>
+          {activeTab === 'overview' && (
+            <View style={styles.overviewContent}>
+              {author.description && (
+                <Text style={styles.description}>{author.description}</Text>
+              )}
+
+              {sortedBooks.length > 0 && (
+                <View style={styles.booksSection}>
+                  <View style={styles.booksSectionHeader}>
+                    <Text style={styles.sectionTitle}>All Books</Text>
+                    <View style={styles.sortButtons}>
+                      <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'title-asc' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('title-asc')}
+                      >
+                        <Icon name="arrow-up" size={14} color={sortBy === 'title-asc' ? theme.colors.text.primary : theme.colors.text.tertiary} set="ionicons" />
+                        <Text style={[styles.sortButtonText, sortBy === 'title-asc' && styles.sortButtonTextActive]}>A-Z</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'title-desc' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('title-desc')}
+                      >
+                        <Icon name="arrow-down" size={14} color={sortBy === 'title-desc' ? theme.colors.text.primary : theme.colors.text.tertiary} set="ionicons" />
+                        <Text style={[styles.sortButtonText, sortBy === 'title-desc' && styles.sortButtonTextActive]}>Z-A</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'recent' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('recent')}
+                      >
+                        <Icon name="time-outline" size={14} color={sortBy === 'recent' ? theme.colors.text.primary : theme.colors.text.tertiary} set="ionicons" />
+                        <Text style={[styles.sortButtonText, sortBy === 'recent' && styles.sortButtonTextActive]}>Recent</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  {sortedBooks.map((book: any) => (
+                    <HorizontalBookItem key={book.id} book={book} />
+                  ))}
                 </View>
-              ))}
+              )}
+
+              {!author.description && sortedBooks.length === 0 && (
+                <EmptyState
+                  icon="📝"
+                  message="No information available"
+                  description="Author bio and books not found"
+                />
+              )}
             </View>
-          </View>
-        )}
+          )}
+
+          {activeTab === 'details' && (
+            <View style={styles.detailsContent}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Name</Text>
+                <Text style={styles.detailValue}>{author.name}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Books</Text>
+                <Text style={styles.detailValue}>{books.length}</Text>
+              </View>
+              {author.description && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Description</Text>
+                  <Text style={styles.detailValue}>{author.description}</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background.primary,
   },
-  headerBar: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[3],
   },
-  backButton: {
+  headerButton: {
     width: 40,
     height: 40,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.neutral[200],
     justifyContent: 'center',
     alignItems: 'center',
-    ...theme.elevation.small,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
   },
   scrollView: {
     flex: 1,
   },
-  header: {
-    alignItems: 'center',
+  topSection: {
+    flexDirection: 'row',
     paddingHorizontal: theme.spacing[5],
-    paddingVertical: theme.spacing[5],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border.light,
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[4],
   },
-  imageContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: theme.colors.neutral[200],
+  avatarContainer: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     overflow: 'hidden',
-    marginBottom: theme.spacing[4],
+    backgroundColor: theme.colors.neutral[200],
     ...theme.elevation.medium,
   },
-  image: {
+  avatar: {
     width: '100%',
     height: '100%',
   },
-  placeholderImage: {
+  placeholderAvatar: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.colors.neutral[300],
+    backgroundColor: theme.colors.primary[100],
   },
-  placeholderText: {
+  initialsText: {
     fontSize: 48,
+    fontWeight: '700',
+    color: theme.colors.primary[600],
   },
-  authorName: {
-    fontSize: 24,
+  infoSide: {
+    flex: 1,
+    marginLeft: theme.spacing[4],
+    paddingTop: theme.spacing[1],
+    justifyContent: 'center',
+  },
+  name: {
+    fontSize: 22,
     fontWeight: '700',
     color: theme.colors.text.primary,
     marginBottom: theme.spacing[1],
-    textAlign: 'center',
+    lineHeight: 28,
   },
   bookCount: {
     fontSize: 15,
     color: theme.colors.text.secondary,
-    marginBottom: theme.spacing[3],
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: theme.spacing[5],
+    paddingTop: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  tab: {
+    paddingVertical: theme.spacing[3],
+    marginRight: theme.spacing[6],
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: theme.colors.text.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    color: theme.colors.text.tertiary,
+    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+  },
+  tabContent: {
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[32] + 80,
+  },
+  overviewContent: {
+    paddingHorizontal: theme.spacing[5],
   },
   description: {
-    fontSize: 14,
+    fontSize: 15,
     color: theme.colors.text.secondary,
-    lineHeight: 20,
-    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: theme.spacing[5],
   },
   booksSection: {
-    paddingHorizontal: theme.spacing[5],
-    paddingTop: theme.spacing[5],
-    paddingBottom: theme.spacing[32] + 60,
+    marginTop: theme.spacing[2],
+  },
+  booksSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing[3],
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: theme.colors.text.primary,
-    marginBottom: theme.spacing[4],
   },
-  booksGrid: {
+  sortButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: theme.spacing[2],
   },
-  bookWrapper: {
-    width: '31%',
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.radius.small,
+    backgroundColor: theme.colors.neutral[100],
+  },
+  sortButtonActive: {
+    backgroundColor: theme.colors.primary[100],
+  },
+  sortButtonText: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+  },
+  detailsContent: {
+    paddingHorizontal: theme.spacing[5],
+  },
+  detailRow: {
     marginBottom: theme.spacing[4],
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: theme.colors.text.tertiary,
+    marginBottom: theme.spacing[1],
+    fontWeight: '500',
+  },
+  detailValue: {
+    fontSize: 15,
+    color: theme.colors.text.primary,
+    lineHeight: 22,
   },
 });

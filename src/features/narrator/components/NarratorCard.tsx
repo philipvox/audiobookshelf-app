@@ -1,9 +1,4 @@
-/**
- * src/features/narrator/components/NarratorCard.tsx
- * 
- * Card displaying narrator information with book count.
- */
-
+// File: src/features/narrator/components/NarratorCard.tsx
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -19,10 +14,9 @@ export function NarratorCard({ narrator }: NarratorCardProps) {
   const navigation = useNavigation();
 
   const handlePress = () => {
-    navigation.navigate('NarratorDetail' as never, { narratorId: narrator.id } as never);
+    navigation.navigate('NarratorDetail' as never, { narratorName: narrator.name } as never);
   };
 
-  // Generate initials for avatar
   const initials = narrator.name
     .split(' ')
     .map((word) => word[0])
@@ -30,7 +24,6 @@ export function NarratorCard({ narrator }: NarratorCardProps) {
     .join('')
     .toUpperCase();
 
-  // Generate a consistent color based on name
   const colorIndex = narrator.name.charCodeAt(0) % 5;
   const avatarColors = [
     theme.colors.primary[500],
