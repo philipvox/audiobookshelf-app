@@ -10,6 +10,7 @@ import {
   Dimensions,
   Pressable,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ import { CoverWithProgress } from '../components/CoverWithProgress';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
+import { useBookDownload } from '@/features/downloads';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COVER_SIZE = SCREEN_WIDTH * 0.65;
@@ -42,7 +44,7 @@ export function PlayerScreen() {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [progressMode, setProgressMode] = useState<ProgressMode>('chapter');
   const [skipAmount, setSkipAmount] = useState(20);
-
+  
   const {
     currentBook,
     isPlayerVisible,
@@ -50,12 +52,34 @@ export function PlayerScreen() {
     duration: storeDuration,
     playbackRate,
     sleepTimer,
+    isOffline,
     closePlayer,
     jumpToChapter,
   } = usePlayerStore();
 
   const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : '';
   const { background, backgroundLight, progressAccent } = useImageColors(coverUrl, currentBook?.id || '');
+  
+  const { downloaded, downloading, progress, download, remove } = useBookDownload(currentBook?.id || '');
+
+  const handleDownload = async () => {
+    if (!currentBook) return;
+    setShowOptionsMenu(false);
+    
+    if (downloaded) {
+      Alert.alert('Remove Download', 'Remove this book from downloads?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: remove },
+      ]);
+    } else if (!downloading) {
+      try {
+        await download(currentBook);
+        Alert.alert('Download Started', 'The book will download in the background.');
+      } catch (error) {
+        Alert.alert('Download Failed', error instanceof Error ? error.message : 'Unknown error');
+      }
+    }
+  };
 
   if (!isPlayerVisible || !currentBook) {
     return null;
@@ -122,7 +146,20 @@ export function PlayerScreen() {
           <TouchableOpacity onPress={closePlayer} style={styles.headerButton}>
             <Icon name="chevron-down" size={28} color={textColor} set="ionicons" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Now Playing</Text>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Now Playing</Text>
+            <View style={styles.sourceIndicator}>
+              <Icon 
+                name={isOffline ? "phone-portrait-outline" : "cloud-outline"} 
+                size={12} 
+                color={tertiaryTextColor} 
+                set="ionicons" 
+              />
+              <Text style={[styles.sourceText, { color: tertiaryTextColor }]}>
+                {isOffline ? 'Downloaded' : 'Streaming'}
+              </Text>
+            </View>
+          </View>
           <TouchableOpacity 
             style={styles.headerButton}
             onPress={() => setShowOptionsMenu(true)}
@@ -308,6 +345,25 @@ export function PlayerScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                <Text style={[styles.menuHeader, styles.menuHeaderSpaced]}>Download</Text>
+
+                <TouchableOpacity style={styles.menuItem} onPress={handleDownload}>
+                  <Icon 
+                    name={downloaded ? 'checkmark-circle' : downloading ? 'cloud-download' : 'cloud-download-outline'} 
+                    size={20} 
+                    color={downloaded ? theme.colors.status.success : '#333'} 
+                    set="ionicons" 
+                  />
+                  <Text style={styles.menuItemText}>
+                    {downloaded 
+                      ? 'Downloaded ✓' 
+                      : downloading 
+                        ? `Downloading ${Math.round((progress?.progress || 0) * 100)}%` 
+                        : 'Download for Offline'
+                    }
+                  </Text>
+                </TouchableOpacity>
               </ScrollView>
             </View>
           </Pressable>
@@ -339,6 +395,19 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  headerCenter: {
+    alignItems: 'center',
+  },
+  sourceIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 4,
+  },
+  sourceText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   coverSection: {
     alignItems: 'center',
@@ -413,7 +482,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.large,
     paddingVertical: theme.spacing[2],
     minWidth: 200,
-    maxHeight: 320,
+    maxHeight: 400,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,

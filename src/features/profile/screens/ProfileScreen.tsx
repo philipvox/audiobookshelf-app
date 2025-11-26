@@ -1,4 +1,8 @@
-import React from 'react';
+/**
+ * src/features/profile/screens/ProfileScreen.tsx
+ */
+
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,9 +10,12 @@ import {
   StyleSheet,
   Alert,
   StatusBar,
+  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@/core/auth';
+import { useDownloads, formatBytes } from '@/features/downloads';
 import { Button, Card } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
@@ -17,43 +24,67 @@ interface SettingsRowProps {
   icon: string;
   label: string;
   value?: string;
+  onPress?: () => void;
+  showChevron?: boolean;
+  valueColor?: string;
 }
 
-function SettingsRow({ icon, label, value }: SettingsRowProps) {
-  return (
+function SettingsRow({ icon, label, value, onPress, showChevron, valueColor }: SettingsRowProps) {
+  const content = (
     <View style={styles.settingsRow}>
       <View style={styles.settingsRowLeft}>
         <Icon name={icon} size={20} color={theme.colors.text.secondary} set="ionicons" />
         <Text style={styles.settingsLabel}>{label}</Text>
       </View>
-      {value && <Text style={styles.settingsValue}>{value}</Text>}
+      <View style={styles.settingsRowRight}>
+        {value && <Text style={[styles.settingsValue, valueColor && { color: valueColor }]}>{value}</Text>}
+        {showChevron && (
+          <Icon name="chevron-forward" size={18} color={theme.colors.text.tertiary} set="ionicons" />
+        )}
+      </View>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return content;
 }
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const { user, serverUrl, logout, isLoading } = useAuth();
+  const { downloads, totalStorageUsed, loadDownloads } = useDownloads();
+
+  useEffect(() => {
+    loadDownloads();
+  }, []);
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await logout();
-            } catch (err) {
-              Alert.alert('Logout Failed', 'Please try again');
-            }
-          },
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await logout();
+          } catch {
+            Alert.alert('Logout Failed', 'Please try again');
+          }
         },
-      ]
-    );
+      },
+    ]);
+  };
+
+  const handleDownloadsPress = () => {
+    navigation.navigate('Downloads');
   };
 
   const initials = user?.username
@@ -73,8 +104,8 @@ export function ProfileScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background.primary} />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -94,29 +125,37 @@ export function ProfileScreen() {
         <Card variant="elevated" padding={5} style={styles.card}>
           <Text style={styles.cardTitle}>Account</Text>
           <SettingsRow icon="person-outline" label="Username" value={user?.username} />
-          {user?.email && (
-            <SettingsRow icon="mail-outline" label="Email" value={user.email} />
-          )}
-          <SettingsRow icon="shield-checkmark-outline" label="Account Type" value={formatAccountType(user?.type)} />
+          {user?.email && <SettingsRow icon="mail-outline" label="Email" value={user.email} />}
+          <SettingsRow
+            icon="shield-checkmark-outline"
+            label="Account Type"
+            value={formatAccountType(user?.type)}
+          />
         </Card>
 
         <Card variant="elevated" padding={5} style={styles.card}>
           <Text style={styles.cardTitle}>Server</Text>
           <SettingsRow icon="server-outline" label="Server URL" value={serverUrl || 'Not connected'} />
-          <SettingsRow icon="checkmark-circle-outline" label="Status" value="Connected" />
-        </Card>
-
-        <Card variant="elevated" padding={5} style={styles.card}>
-          <Text style={styles.cardTitle}>Settings</Text>
-          <SettingsRow icon="color-palette-outline" label="Theme" value="Light" />
-          <SettingsRow icon="speedometer-outline" label="Default Speed" value="1.0x" />
-          <SettingsRow icon="time-outline" label="Sleep Timer" value="Off" />
+          <SettingsRow icon="checkmark-circle-outline" label="Status" value="Connected" valueColor={theme.colors.status.success} />
         </Card>
 
         <Card variant="elevated" padding={5} style={styles.card}>
           <Text style={styles.cardTitle}>Storage</Text>
-          <SettingsRow icon="cloud-download-outline" label="Downloads" value="0 books" />
-          <SettingsRow icon="folder-outline" label="Cache Size" value="0 MB" />
+          <SettingsRow
+            icon="cloud-download-outline"
+            label="Downloads"
+            value={`${downloads.length} book${downloads.length !== 1 ? 's' : ''}`}
+            onPress={handleDownloadsPress}
+            showChevron
+          />
+          <SettingsRow icon="folder-outline" label="Storage Used" value={formatBytes(totalStorageUsed)} />
+        </Card>
+
+        <Card variant="elevated" padding={5} style={styles.card}>
+          <Text style={styles.cardTitle}>Playback</Text>
+          <SettingsRow icon="speedometer-outline" label="Default Speed" value="1.0x" />
+          <SettingsRow icon="time-outline" label="Skip Forward" value="30s" />
+          <SettingsRow icon="time-outline" label="Skip Back" value="15s" />
         </Card>
 
         <View style={styles.logoutSection}>
@@ -212,6 +251,11 @@ const styles = StyleSheet.create({
   settingsRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  settingsRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing[2],
   },
   settingsLabel: {
     fontSize: 15,
