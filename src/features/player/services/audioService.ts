@@ -1,149 +1,174 @@
 /**
  * src/features/player/services/audioService.ts
- *
- * Cross-platform audio playback service.
- * Works on iOS, Android, and Web.
+ * 
+ * Audio playback service using expo-audio.
+ * Works on both iOS and Android.
  */
 
-import { Audio } from 'expo-av';
-import { Platform } from 'react-native';
+import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
-/**
- * Playback state interface
- */
 export interface PlaybackState {
   isPlaying: boolean;
-  isLoaded: boolean;
-  position: number; // seconds
-  duration: number; // seconds
-  rate: number; // playback speed (0.5 - 2.0)
+  position: number;
+  duration: number;
   isBuffering: boolean;
 }
 
-/**
- * Audio service for managing audio playback across all platforms
- */
+type StatusCallback = (state: PlaybackState) => void;
+
 class AudioService {
-  private sound: Audio.Sound | null = null;
+  private player: AudioPlayer | null = null;
+  private statusCallback: StatusCallback | null = null;
+  private isLoaded: boolean = false;
   private currentUrl: string | null = null;
-  private statusUpdateCallback: ((state: PlaybackState) => void) | null = null;
-  private updateInterval: NodeJS.Timeout | null = null;
+  private statusSubscription: { remove: () => void } | null = null;
+  private pendingPlaybackRate: number = 1.0;
+  private loadPromiseResolve: (() => void) | null = null;
 
   constructor() {
-    this.initializeAudio();
+    // Configure audio mode for playback
+    this.configureAudioMode();
   }
 
-  /**
-   * Initialize audio settings
-   */
-  private async initializeAudio(): Promise<void> {
+  private async configureAudioMode(): Promise<void> {
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        interruptionMode: 'doNotMix',
+        interruptionModeAndroid: 'doNotMix',
       });
+      console.log('[AudioService] Audio mode configured');
     } catch (error) {
-      console.error('Failed to initialize audio mode:', error);
+      console.error('[AudioService] Failed to configure audio mode:', error);
     }
   }
 
   /**
-   * Load audio from URL
+   * Load audio from URL or local file path
    */
   async loadAudio(url: string, startPosition: number = 0): Promise<void> {
+    console.log('[AudioService] Loading audio:', url.substring(0, 100) + '...');
+    console.log('[AudioService] Start position:', startPosition);
+
     try {
-      // Unload previous audio if exists
-      if (this.sound) {
-        await this.unloadAudio();
-      }
+      // Unload any existing audio first
+      await this.unloadAudio();
 
-      // Create and load new sound
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: url },
-        { 
-          shouldPlay: false,
-          positionMillis: startPosition * 1000,
-          progressUpdateIntervalMillis: 1000,
-        },
-        this.onPlaybackStatusUpdate.bind(this)
-      );
+      // Create audio source object
+      const source = { uri: url };
 
-      this.sound = sound;
+      // Create load promise that will be resolved by status callback
+      const loadPromise = new Promise<void>((resolve, reject) => {
+        this.loadPromiseResolve = resolve;
+        
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          if (!this.isLoaded) {
+            this.loadPromiseResolve = null;
+            reject(new Error('Audio load timeout after 30s'));
+          }
+        }, 30000);
+      });
+
+      // Create new player with the source and options
+      console.log('[AudioService] Creating player...');
+      this.player = createAudioPlayer(source, {
+        updateInterval: 500,
+      });
       this.currentUrl = url;
 
-      // Start status update polling as backup
-      this.startStatusUpdates();
-    } catch (error) {
-      console.error('Failed to load audio:', error);
-      throw new Error('Failed to load audio file');
-    }
-  }
-
-  /**
-   * Playback status update callback
-   */
-  private onPlaybackStatusUpdate(status: any): void {
-    if (status.isLoaded) {
-      const state: PlaybackState = {
-        isPlaying: status.isPlaying,
-        isLoaded: true,
-        position: status.positionMillis / 1000,
-        duration: status.durationMillis ? status.durationMillis / 1000 : 0,
-        rate: status.rate,
-        isBuffering: status.isBuffering,
-      };
-
-      if (this.statusUpdateCallback) {
-        this.statusUpdateCallback(state);
-      }
-    }
-  }
-
-  /**
-   * Start polling for status updates (backup for web)
-   */
-  private startStatusUpdates(): void {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-    }
-
-    // Poll every second as backup
-    this.updateInterval = setInterval(async () => {
-      if (this.sound) {
-        try {
-          const status = await this.sound.getStatusAsync();
-          this.onPlaybackStatusUpdate(status);
-        } catch (error) {
-          // Ignore errors during polling
+      // Set up status listener BEFORE waiting
+      this.statusSubscription = this.player.addListener('playbackStatusUpdate', (status) => {
+        // Check if audio is now loaded
+        if (status.isLoaded && !this.isLoaded) {
+          console.log('[AudioService] Audio loaded via status update, duration:', status.duration);
+          this.isLoaded = true;
+          
+          // Resolve the load promise
+          if (this.loadPromiseResolve) {
+            this.loadPromiseResolve();
+            this.loadPromiseResolve = null;
+          }
+          
+          // Seek to start position after load (with small delay for Android)
+          if (startPosition > 0 && this.player) {
+            setTimeout(() => {
+              if (this.player) {
+                console.log('[AudioService] Seeking to start position:', startPosition);
+                this.player.seekTo(startPosition);
+              }
+            }, 100);
+          }
+          
+          // Apply pending playback rate
+          if (this.pendingPlaybackRate !== 1.0 && this.player) {
+            setTimeout(() => {
+              if (this.player) {
+                this.player.setPlaybackRate(this.pendingPlaybackRate);
+              }
+            }, 150);
+          }
         }
-      }
-    }, 1000);
+        
+        // Notify callback if loaded
+        if (this.statusCallback && this.isLoaded) {
+          this.statusCallback({
+            isPlaying: status.playing,
+            position: status.currentTime,
+            duration: status.duration,
+            isBuffering: status.isBuffering,
+          });
+        }
+      });
+
+      // Wait for load to complete
+      await loadPromise;
+
+      console.log('[AudioService] Audio ready');
+
+    } catch (error) {
+      console.error('[AudioService] Failed to load audio:', error);
+      this.isLoaded = false;
+      this.loadPromiseResolve = null;
+      throw error;
+    }
   }
 
   /**
-   * Stop status updates
+   * Set callback for status updates
    */
-  private stopStatusUpdates(): void {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
+  setStatusUpdateCallback(callback: StatusCallback): void {
+    this.statusCallback = callback;
   }
 
   /**
    * Play audio
    */
   async play(): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
+    if (!this.player) {
+      throw new Error('No audio player');
     }
 
+    // Wait for loaded if not yet
+    if (!this.isLoaded) {
+      console.log('[AudioService] Waiting for audio to load before playing...');
+      let attempts = 0;
+      while (!this.isLoaded && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      if (!this.isLoaded) {
+        throw new Error('Audio not loaded after waiting');
+      }
+    }
+
+    console.log('[AudioService] Playing...');
     try {
-      await this.sound.playAsync();
-    } catch (error) {
-      console.error('Failed to play audio:', error);
-      throw error;
+      this.player.play();
+    } catch (e) {
+      console.error('[AudioService] Play error:', e);
+      throw e;
     }
   }
 
@@ -151,175 +176,120 @@ class AudioService {
    * Pause audio
    */
   async pause(): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
-    }
-
-    try {
-      await this.sound.pauseAsync();
-    } catch (error) {
-      console.error('Failed to pause audio:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Stop audio and reset position
-   */
-  async stop(): Promise<void> {
-    if (!this.sound) {
+    if (!this.player) {
+      console.log('[AudioService] No player to pause');
       return;
     }
 
+    console.log('[AudioService] Pausing...');
     try {
-      await this.sound.stopAsync();
-      await this.sound.setPositionAsync(0);
-    } catch (error) {
-      console.error('Failed to stop audio:', error);
+      this.player.pause();
+    } catch (e) {
+      console.error('[AudioService] Pause error:', e);
     }
   }
 
   /**
    * Seek to position in seconds
    */
-  async seekTo(positionSeconds: number): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
+  async seekTo(position: number): Promise<void> {
+    if (!this.player) {
+      console.log('[AudioService] No player to seek');
+      return;
     }
 
+    console.log('[AudioService] Seeking to:', position);
     try {
-      await this.sound.setPositionAsync(positionSeconds * 1000);
-    } catch (error) {
-      console.error('Failed to seek:', error);
-      throw error;
+      this.player.seekTo(position);
+    } catch (e) {
+      console.error('[AudioService] Seek error:', e);
     }
   }
 
   /**
-   * Skip forward by seconds
-   */
-  async skipForward(seconds: number = 30): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
-    }
-
-    try {
-      const status = await this.sound.getStatusAsync();
-      if (status.isLoaded) {
-        const newPosition = Math.min(
-          status.positionMillis + (seconds * 1000),
-          status.durationMillis || 0
-        );
-        await this.sound.setPositionAsync(newPosition);
-      }
-    } catch (error) {
-      console.error('Failed to skip forward:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Skip backward by seconds
-   */
-  async skipBackward(seconds: number = 30): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
-    }
-
-    try {
-      const status = await this.sound.getStatusAsync();
-      if (status.isLoaded) {
-        const newPosition = Math.max(status.positionMillis - (seconds * 1000), 0);
-        await this.sound.setPositionAsync(newPosition);
-      }
-    } catch (error) {
-      console.error('Failed to skip backward:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Set playback rate (0.5x - 2.0x)
+   * Set playback rate
    */
   async setPlaybackRate(rate: number): Promise<void> {
-    if (!this.sound) {
-      throw new Error('No audio loaded');
+    this.pendingPlaybackRate = rate;
+    
+    if (!this.player) {
+      console.log('[AudioService] No player, storing rate for later:', rate);
+      return;
     }
 
-    // Clamp rate between 0.5 and 2.0
-    const clampedRate = Math.max(0.5, Math.min(2.0, rate));
-
+    console.log('[AudioService] Setting playback rate:', rate);
     try {
-      await this.sound.setRateAsync(clampedRate, true);
-    } catch (error) {
-      console.error('Failed to set playback rate:', error);
-      throw error;
+      this.player.setPlaybackRate(rate);
+    } catch (e) {
+      console.error('[AudioService] Set playback rate error:', e);
     }
   }
 
   /**
-   * Get current playback status
+   * Get current position
    */
-  async getStatus(): Promise<PlaybackState | null> {
-    if (!this.sound) {
-      return null;
-    }
-
-    try {
-      const status = await this.sound.getStatusAsync();
-      if (status.isLoaded) {
-        return {
-          isPlaying: status.isPlaying,
-          isLoaded: true,
-          position: status.positionMillis / 1000,
-          duration: status.durationMillis ? status.durationMillis / 1000 : 0,
-          rate: status.rate,
-          isBuffering: status.isBuffering,
-        };
-      }
-    } catch (error) {
-      console.error('Failed to get status:', error);
-    }
-
-    return null;
+  getCurrentPosition(): number {
+    return this.player?.currentTime ?? 0;
   }
 
   /**
-   * Register callback for status updates
+   * Get duration
    */
-  setStatusUpdateCallback(callback: (state: PlaybackState) => void): void {
-    this.statusUpdateCallback = callback;
+  getDuration(): number {
+    return this.player?.duration ?? 0;
+  }
+
+  /**
+   * Check if audio is loaded
+   */
+  getIsLoaded(): boolean {
+    // Must have both isLoaded flag AND a valid player
+    return this.isLoaded && this.player !== null;
+  }
+
+  /**
+   * Check if audio is playing
+   */
+  getIsPlaying(): boolean {
+    return this.player?.playing ?? false;
   }
 
   /**
    * Unload audio and clean up
    */
   async unloadAudio(): Promise<void> {
-    this.stopStatusUpdates();
-    
-    if (this.sound) {
+    console.log('[AudioService] Unloading audio...');
+
+    // Clear load promise
+    this.loadPromiseResolve = null;
+
+    // Remove status subscription
+    if (this.statusSubscription) {
       try {
-        await this.sound.unloadAsync();
-      } catch (error) {
-        console.error('Failed to unload audio:', error);
+        this.statusSubscription.remove();
+      } catch (e) {
+        console.log('[AudioService] Error removing subscription:', e);
       }
-      this.sound = null;
-      this.currentUrl = null;
+      this.statusSubscription = null;
     }
-  }
 
-  /**
-   * Check if audio is loaded
-   */
-  isLoaded(): boolean {
-    return this.sound !== null;
-  }
+    // Release the player
+    if (this.player) {
+      try {
+        this.player.pause();
+      } catch (e) {
+        // Ignore pause errors
+      }
+      try {
+        this.player.release();
+      } catch (e) {
+        console.log('[AudioService] Error releasing player:', e);
+      }
+      this.player = null;
+    }
 
-  /**
-   * Get current audio URL
-   */
-  getCurrentUrl(): string | null {
-    return this.currentUrl;
+    this.isLoaded = false;
+    this.currentUrl = null;
   }
 }
 
