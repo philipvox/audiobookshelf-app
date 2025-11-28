@@ -31,6 +31,15 @@
       "eas": {
         "projectId": "6f946d03-1d57-4474-bac2-516532b4c2f6"
       }
-    }
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to visualize audio."
+        }
+      ],
+      "react-native-audio-api"
+    ]
   }
 }
