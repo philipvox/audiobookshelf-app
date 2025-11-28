@@ -218,7 +218,8 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
       <Pressable 
         style={[styles.card, { backgroundColor: bgColor, zIndex }, style]} 
         onPress={handleCardPress}
-      >
+      > 
+         <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text>
         <View style={styles.topRow}>
           <View style={styles.coverContainer}>
             <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
@@ -245,7 +246,6 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -256,9 +256,9 @@ export const CARD_OVERLAP = -5;
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 5,
+    borderRadius:25,
     borderTopLeftRadius: 25,
-    borderTopRightRadius: 5,
+    borderTopRightRadius: 25,
     paddingTop: 14,
     paddingHorizontal: 14,
     paddingBottom: 16,
@@ -307,9 +307,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: '500',
+    fontWeight: '600',
     lineHeight: 22,
     letterSpacing: -0.5,
+    paddingBottom: 5,
   },
   heartButton: {
     width: 44,
