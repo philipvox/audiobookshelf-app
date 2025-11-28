@@ -182,20 +182,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (isSameBook) {
         console.log('[PlayerStore] Same book - showing player');
         set({ isPlayerVisible: true });
-        if (!isPlaying) {
+        
+        // Check if audio is actually loaded and player exists
+        const isAudioReady = audioService.getIsLoaded();
+        console.log('[PlayerStore] Audio ready:', isAudioReady, 'isPlaying:', isPlaying);
+        
+        if (isAudioReady && !isPlaying) {
+          // Audio is loaded but not playing - try to resume
           try {
             await get().play();
+            return; // Successfully resumed, exit
           } catch (e) {
-            console.log('[PlayerStore] Audio not loaded, will reload');
+            console.log('[PlayerStore] Failed to resume, will reload audio:', e);
+            // Continue to reload
           }
+        } else if (isAudioReady && isPlaying) {
+          // Already playing, just show the player
+          return;
         }
-        return;
+        // If audio not ready, fall through to reload
+        console.log('[PlayerStore] Audio not ready, reloading...');
       }
 
-      console.log('[PlayerStore] Loading new book:', book.id);
+      console.log('[PlayerStore] Loading book:', book.id);
       set({ isLoading: true });
 
-      if (currentBook) {
+      if (currentBook && currentBook.id !== book.id) {
         const progressData = {
           itemId: currentBook.id,
           currentTime: position,
@@ -290,16 +302,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isBuffering: false,
       });
 
+      // Load the audio file and wait for it to complete
       await get().loadAudioFile(fileIndex, fileStartPosition);
       await get().loadBookmarks();
-
-      set({ isLoading: false });
 
       if (!shouldBeOffline) {
         progressService.startAutoSync();
       }
 
-      await get().play();
+      // Now that audio is loaded, start playback
+      // Wait for audio service to be ready with retries
+      let attempts = 0;
+      const maxAttempts = 20; // 2 seconds max
+      while (!audioService.getIsLoaded() && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      
+      set({ isLoading: false });
+      
+      if (audioService.getIsLoaded()) {
+        await get().play();
+      } else {
+        console.warn('[PlayerStore] Audio not loaded after waiting, skipping auto-play');
+      }
     } catch (error) {
       console.error('[PlayerStore] Failed to load book:', error);
       set({ isLoading: false });
@@ -309,6 +335,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   play: async () => {
     try {
+      if (!audioService.getIsLoaded()) {
+        console.warn('[PlayerStore] Cannot play - audio not loaded');
+        throw new Error('No audio loaded');
+      }
       await audioService.play();
       set({ isPlaying: true });
     } catch (error) {

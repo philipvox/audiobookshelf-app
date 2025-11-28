@@ -24,7 +24,7 @@ export function useContinueListening() {
     queryKey: ['itemsInProgress'],
     queryFn: async () => {
       const response = await apiClient.get<ItemsInProgressResponse>('/api/me/items-in-progress');
-      console.log('[ContinueListening] Raw count:', response?.libraryItems?.length);
+      // console.log('[ContinueListening] Raw count:', response?.libraryItems?.length);
       return response?.libraryItems || [];
     },
     staleTime: 1000 * 60 * 2,
@@ -41,7 +41,7 @@ export function useContinueListening() {
       // Or has progressLastUpdate (means it's in progress)
       const hasProgressUpdate = !!item.progressLastUpdate;
       
-      console.log('[ContinueListening] Item:', item.media?.metadata?.title, 'progress:', progress, 'lastUpdate:', item.progressLastUpdate);
+      // console.log('[ContinueListening] Item:', item.media?.metadata?.title, 'progress:', progress, 'lastUpdate:', item.progressLastUpdate);
       
       return hasProgress || hasProgressUpdate;
     })
@@ -51,7 +51,7 @@ export function useContinueListening() {
       return bTime - aTime;
     });
 
-  console.log('[ContinueListening] Final items:', items.length);
+  // console.log('[ContinueListening] Final items:', items.length);
 
   return {
     items,
