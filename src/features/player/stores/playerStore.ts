@@ -1,10 +1,8 @@
 /**
  * src/features/player/stores/playerStore.ts
  * 
- * Player store with:
- * - Checks for local downloaded file first (instant playback)
- * - Falls back to streaming if not downloaded
- * - Proper loading lock to prevent race conditions
+ * Player store using session-based streaming API
+ * Updated to use autoDownloadService for offline playback
  */
 
 import { create } from 'zustand';
@@ -12,12 +10,14 @@ import { LibraryItem } from '@/core/types';
 import { audioService, PlaybackState } from '../services/audioService';
 import { sessionService, SessionChapter } from '../services/sessionService';
 import { progressService } from '../services/progressService';
-// import { autoDownloadService } from '@/features/downloads/services/autoDownloadService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEBUG = true;
 const log = (msg: string, ...args: any[]) => {
   if (DEBUG) console.log(`[Player] ${msg}`, ...args);
+};
+const logError = (msg: string, ...args: any[]) => {
+  console.error(`[Player] ❌ ${msg}`, ...args);
 };
 
 export interface Chapter {
@@ -73,11 +73,41 @@ interface PlayerState {
 
 const BOOKMARKS_KEY = 'player_bookmarks';
 let currentLoadId = 0;
-let isLoadingLock = false;
 
-// ========================================
-// Helper Functions
-// ========================================
+async function getDownloadPath(bookId: string): Promise<string | null> {
+  try {
+    // Use autoDownloadService instead of old downloadService
+    const { autoDownloadService } = await import('@/features/downloads');
+    
+    // Check if still downloading
+    if (autoDownloadService.isDownloading(bookId)) {
+      log('Book still downloading');
+      return null;
+    }
+    
+    // Get local path from autoDownloadService
+    const localPath = autoDownloadService.getLocalPath(bookId);
+    if (!localPath) return null;
+
+    // Verify file exists
+    const FileSystem = await import('expo-file-system/legacy');
+    const info = await FileSystem.getInfoAsync(localPath);
+    
+    if (!info.exists || ((info as any).size || 0) < 10000) {
+      log('Downloaded file missing or corrupt, cleaning up');
+      await autoDownloadService.removeDownload(bookId);
+      return null;
+    }
+
+    // Update last played timestamp
+    autoDownloadService.updateLastPlayed(bookId);
+
+    return localPath;
+  } catch (error) {
+    logError('Failed to verify download:', error);
+    return null;
+  }
+}
 
 function mapSessionChapters(sessionChapters: SessionChapter[]): Chapter[] {
   return sessionChapters.map((ch, i) => ({
@@ -128,10 +158,6 @@ function findChapterIndex(chapters: Chapter[], position: number): number {
   return 0;
 }
 
-// ========================================
-// Store
-// ========================================
-
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentBook: null,
   chapters: [],
@@ -148,32 +174,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   bookmarks: [],
 
   loadBook: async (book: LibraryItem, startPosition?: number) => {
-    // Prevent concurrent loads
-    if (isLoadingLock) {
-      log('⚠️ Load already in progress');
-      return;
-    }
-    
     const { currentBook, position: prevPosition, isOffline: wasOffline } = get();
     
+    const thisLoadId = ++currentLoadId;
+    
+    log('=== loadBook ===');
+    log('Book:', book.id, '-', book.media?.metadata?.title);
+
     // Same book already loaded?
     if (currentBook?.id === book.id && audioService.getIsLoaded()) {
       log('Same book already loaded');
       set({ isPlayerVisible: true });
       if (!get().isPlaying) {
-        try {
-          await audioService.play();
-          set({ isPlaying: true });
-        } catch {}
+        await get().play();
       }
       return;
     }
-
-    const thisLoadId = ++currentLoadId;
-    isLoadingLock = true;
-    
-    log('=== loadBook ===');
-    log('Book:', book.media?.metadata?.title);
 
     set({ isLoading: true, isPlayerVisible: true });
 
@@ -190,7 +206,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             isFinished: false,
           }).catch(() => {});
         } else {
-          sessionService.syncProgress(prevPosition).catch(() => {});
+          await sessionService.syncProgress(prevPosition);
         }
       }
 
@@ -198,17 +214,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await audioService.unloadAudio();
 
       if (thisLoadId !== currentLoadId) {
-        log('Load cancelled');
+        log('Load cancelled - newer load started');
         return;
       }
 
-      // ========================================
-      // CHECK FOR LOCAL DOWNLOADED FILE
-      // ========================================
-      const localPath = autoDownloadService.getLocalPath(book.id);
+      // Check for offline download
+      const localPath = await getDownloadPath(book.id);
       const isOffline = !!localPath;
-      
-      log(isOffline ? '📱 LOCAL PLAYBACK' : '☁️ STREAMING');
+      log('Offline mode:', isOffline);
 
       let streamUrl: string;
       let chapters: Chapter[] = [];
@@ -216,56 +229,55 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       let totalDuration = getBookDuration(book);
 
       if (isOffline && localPath) {
-        // ========================================
-        // LOCAL PLAYBACK - Instant!
-        // ========================================
+        // OFFLINE PLAYBACK - use local file
         streamUrl = localPath;
         chapters = extractChaptersFromBook(book);
+        log('Using offline path:', localPath);
         
-        // Get resume position from local progress
-        const localProgress = await progressService.getLocalProgress(book.id);
-        if (!startPosition && localProgress > 0) {
-          resumePosition = localProgress;
-          log('Local resume:', resumePosition);
+        // Get local progress for offline playback
+        if (!startPosition) {
+          const localProgress = await progressService.getLocalProgress(book.id);
+          if (localProgress && localProgress.currentTime > 0) {
+            resumePosition = localProgress.currentTime;
+            log('Resuming from local progress:', resumePosition);
+          }
         }
-
-        // Update last played time
-        autoDownloadService.updateLastPlayed(book.id);
-
       } else {
-        // ========================================
-        // STREAMING
-        // ========================================
-        log('Starting session...');
+        // ONLINE PLAYBACK - use session API
+        log('Starting playback session...');
         
         const session = await sessionService.startSession(book.id);
 
         if (thisLoadId !== currentLoadId) {
-          log('Load cancelled after session');
+          log('Load cancelled after session start');
           return;
         }
 
         const url = sessionService.getStreamUrl();
         if (!url) {
-          throw new Error('No stream URL');
+          throw new Error('No stream URL from session');
         }
         streamUrl = url;
 
+        // Use chapters from session
         chapters = mapSessionChapters(session.chapters || []);
         
+        // Use duration from session
         if (session.duration > 0) {
           totalDuration = session.duration;
         }
 
+        // Use server's resume position if we don't have one
         if (!startPosition && session.currentTime > 0) {
           resumePosition = session.currentTime;
-          log('Server resume:', resumePosition);
+          log('Resuming from server position:', resumePosition);
         }
 
+        // Start auto-sync
         sessionService.startAutoSync(() => get().position);
       }
 
-      // Set state
+      // Set state before loading audio
       set({
         currentBook: book,
         chapters,
@@ -277,64 +289,51 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
 
       if (thisLoadId !== currentLoadId) {
-        log('Load cancelled before audio');
+        log('Load cancelled before audio load');
         return;
       }
 
       // Load audio
-      log('Loading audio...');
+      log('Loading audio from:', streamUrl.substring(0, 80) + '...');
       await audioService.loadAudio(streamUrl, resumePosition);
 
       if (thisLoadId !== currentLoadId) {
-        log('Load cancelled after audio');
+        log('Load cancelled after audio load');
         return;
       }
 
-      // Status callback
+      // Set up status callback
       audioService.setStatusUpdateCallback((state) => {
         get().updatePlaybackState(state);
       });
 
-      // Playback rate
+      // Apply playback rate
       const { playbackRate } = get();
       if (playbackRate !== 1.0) {
         await audioService.setPlaybackRate(playbackRate);
       }
 
-      // Bookmarks
+      // Load bookmarks
       await get().loadBookmarks();
 
       set({ isLoading: false });
 
       // Auto-play
-      log('Starting playback...');
-      try {
-        await audioService.play();
-        set({ isPlaying: true });
-        log('✓ Playing');
-      } catch (e: any) {
-        log('Play failed:', e.message);
-        // Retry once
-        await new Promise(r => setTimeout(r, 100));
-        try {
-          await audioService.play();
-          set({ isPlaying: true });
-        } catch {}
-      }
+      log('Starting playback');
+      await get().play();
 
     } catch (error: any) {
       if (thisLoadId === currentLoadId) {
-        log('❌ Load failed:', error.message);
+        logError('Failed to load book:', error.message);
         set({ isLoading: false });
       }
       throw error;
-    } finally {
-      isLoadingLock = false;
     }
   },
 
   play: async () => {
     if (!audioService.getIsLoaded()) {
+      logError('Cannot play - no audio loaded');
       throw new Error('No audio loaded');
     }
     await audioService.play();
@@ -348,7 +347,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { currentBook, position, duration, isOffline } = get();
     if (!currentBook) return;
 
-    // Save progress
+    // Sync progress on pause
     if (isOffline) {
       progressService.saveLocalOnly({
         itemId: currentBook.id,
@@ -384,7 +383,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setPlaybackRate: async (rate: number) => {
     await audioService.setPlaybackRate(rate);
     set({ playbackRate: rate });
-    AsyncStorage.setItem('playbackRate', rate.toString()).catch(() => {});
+    
+    try {
+      await AsyncStorage.setItem('playbackRate', rate.toString());
+    } catch {}
   },
 
   jumpToChapter: async (chapterIndex: number) => {
@@ -409,6 +411,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const currentIndex = findChapterIndex(chapters, position);
     const currentChapter = chapters[currentIndex];
     
+    // If more than 3 seconds into chapter, go to start of current chapter
     if (currentChapter && position - currentChapter.start > 3) {
       await get().jumpToChapter(currentIndex);
     } else if (currentIndex > 0) {
@@ -440,6 +443,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       isBuffering: state.isBuffering,
     });
 
+    // Handle track finished
     if ((state as any).didJustFinish) {
       log('Track finished');
       set({ isPlaying: false });
@@ -449,16 +453,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   cleanup: async () => {
     const { position, isOffline, sleepTimerInterval } = get();
 
-    isLoadingLock = false;
-
+    // Clear sleep timer
     if (sleepTimerInterval) {
       clearInterval(sleepTimerInterval);
     }
 
+    // Final sync
     if (!isOffline) {
       await sessionService.closeSession(position);
     }
 
+    // Release audio
     await audioService.unloadAudio();
 
     set({

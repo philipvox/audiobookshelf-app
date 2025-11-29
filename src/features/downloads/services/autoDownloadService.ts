@@ -3,7 +3,8 @@
  * 
  * Audible-style auto-download manager
  * - Downloads top 3 most recently played books
- * - Uses delayed initialization to avoid runtime issues
+ * - Uses fully lazy initialization to avoid "property is not configurable" error
+ * - expo-file-system is ONLY loaded via require() when first needed
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,7 +13,7 @@ import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 
 const MAX_DOWNLOADS = 3;
-const MANIFEST_KEY = 'auto_downloads_manifest_v7';
+const MANIFEST_KEY = 'auto_downloads_manifest_v8';
 const DOWNLOADS_SUBDIR = 'audiobooks';
 
 export interface DownloadedBook {
@@ -36,66 +37,58 @@ export type DownloadStatus = 'none' | 'queued' | 'downloading' | 'completed' | '
 type ProgressCallback = (bookId: string, progress: number) => void;
 type StatusCallback = (bookId: string, status: DownloadStatus) => void;
 
-// FileSystem module - loaded lazily
+// Lazy file system access
 let _fs: any = null;
 let _downloadsDir: string | null = null;
 let _fsReady = false;
-let _fsReadyPromise: Promise<void> | null = null;
+let _fsReadyPromise: Promise<boolean> | null = null;
 
-async function ensureFileSystem(): Promise<any> {
-  if (_fsReady && _fs) return _fs;
+async function ensureFileSystem(): Promise<boolean> {
+  if (_fsReady && _fs) return true;
+  if (_fsReadyPromise) return _fsReadyPromise;
   
-  if (_fsReadyPromise) {
-    await _fsReadyPromise;
-    return _fs;
-  }
-  
-  _fsReadyPromise = new Promise<void>((resolve) => {
-    // Wait for interactions to complete before loading native module
+  _fsReadyPromise = new Promise<boolean>((resolve) => {
     InteractionManager.runAfterInteractions(async () => {
       try {
-        // Small delay to ensure runtime is ready
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 200));
         
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         _fs = require('expo-file-system/legacy');
         _downloadsDir = `${_fs.documentDirectory}${DOWNLOADS_SUBDIR}/`;
         
-        // Create directory
         const info = await _fs.getInfoAsync(_downloadsDir);
         if (!info.exists) {
           await _fs.makeDirectoryAsync(_downloadsDir, { intermediates: true });
         }
         
         _fsReady = true;
-        console.log('[AutoDownload] FileSystem ready');
-        resolve();
+        console.log('[AutoDownload] FileSystem ready:', _downloadsDir);
+        resolve(true);
       } catch (e) {
         console.error('[AutoDownload] FileSystem init error:', e);
-        resolve(); // Resolve anyway to not block
+        _fsReadyPromise = null;
+        resolve(false);
       }
     });
   });
   
-  await _fsReadyPromise;
-  return _fs;
+  return _fsReadyPromise;
 }
 
 class AutoDownloadService {
-  private manifest: DownloadManifest = { books: [], version: 7 };
-  private activeDownloads: Set<string> = new Set();
+  private manifest: DownloadManifest = { books: [], version: 8 };
+  private activeDownloads = new Set<string>();
   private downloadQueue: string[] = [];
   private isProcessingQueue = false;
-  private progressCallbacks: Set<ProgressCallback> = new Set();
-  private statusCallbacks: Set<StatusCallback> = new Set();
-  private progressState: Map<string, number> = new Map();
-  private statusState: Map<string, DownloadStatus> = new Map();
+  private progressCallbacks = new Set<ProgressCallback>();
+  private statusCallbacks = new Set<StatusCallback>();
+  private progressState = new Map<string, number>();
+  private statusState = new Map<string, DownloadStatus>();
   private initialized = false;
   private initPromise: Promise<void> | null = null;
-  private abortControllers: Map<string, AbortController> = new Map();
+  private abortControllers = new Map<string, AbortController>();
 
-  constructor() {
-    // Don't initialize in constructor - wait for first use
-  }
+  constructor() {}
 
   private async init(): Promise<void> {
     if (this.initialized) return;
@@ -103,7 +96,6 @@ class AutoDownloadService {
     
     this.initPromise = (async () => {
       try {
-        // Load manifest from AsyncStorage (no native deps)
         await this.loadManifest();
         this.initialized = true;
         console.log('[AutoDownload] Initialized. Books:', this.manifest.books.length);
@@ -117,9 +109,7 @@ class AutoDownloadService {
   }
 
   private async ensureInit(): Promise<void> {
-    if (!this.initialized) {
-      await this.init();
-    }
+    if (!this.initialized) await this.init();
   }
 
   private async loadManifest(): Promise<void> {
@@ -145,10 +135,7 @@ class AutoDownloadService {
     }
   }
 
-  // ========================================
   // Subscriptions
-  // ========================================
-
   onProgress(callback: ProgressCallback): () => void {
     this.progressCallbacks.add(callback);
     this.progressState.forEach((progress, bookId) => callback(bookId, progress));
@@ -171,10 +158,7 @@ class AutoDownloadService {
     this.statusCallbacks.forEach(cb => { try { cb(bookId, status); } catch {} });
   }
 
-  // ========================================
-  // Public API - Status
-  // ========================================
-
+  // Public Status Methods
   getProgress(bookId: string): number {
     return this.progressState.get(bookId) ?? 0;
   }
@@ -209,16 +193,12 @@ class AutoDownloadService {
     return this.manifest.books.reduce((sum, b) => sum + b.fileSize, 0);
   }
 
-  // ========================================
-  // Public API - Actions
-  // ========================================
-
+  // Public Action Methods
   async syncWithContinueListening(items: LibraryItem[]): Promise<void> {
     await this.ensureInit();
     
-    // Ensure file system is ready before any downloads
-    await ensureFileSystem();
-    if (!_fsReady) {
+    const fsReady = await ensureFileSystem();
+    if (!fsReady) {
       console.warn('[AutoDownload] FileSystem not ready, skipping sync');
       return;
     }
@@ -226,7 +206,9 @@ class AutoDownloadService {
     const topItems = items.slice(0, MAX_DOWNLOADS);
     const topIds = new Set(topItems.map(i => i.id));
 
-    console.log('[AutoDownload] Syncing:', topItems.map(i => i.media?.metadata?.title?.substring(0, 20)).join(', '));
+    console.log('[AutoDownload] Syncing:', topItems.map(i => 
+      i.media?.metadata?.title?.substring(0, 20)
+    ).join(', '));
 
     // Remove books no longer in top 3
     const toRemove = this.manifest.books.filter(b => !topIds.has(b.id));
@@ -286,15 +268,14 @@ class AutoDownloadService {
 
     console.log('[AutoDownload] Removing:', book.title);
 
-    try {
-      const fs = await ensureFileSystem();
-      if (fs) {
-        await fs.deleteAsync(book.localPath, { idempotent: true });
+    if (_fs) {
+      try {
+        await _fs.deleteAsync(book.localPath, { idempotent: true });
         if (book.coverPath) {
-          await fs.deleteAsync(book.coverPath, { idempotent: true });
+          await _fs.deleteAsync(book.coverPath, { idempotent: true });
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     this.manifest.books = this.manifest.books.filter(b => b.id !== bookId);
     await this.saveManifest();
@@ -318,10 +299,7 @@ class AutoDownloadService {
     }
   }
 
-  // ========================================
-  // Private - Queue
-  // ========================================
-
+  // Private Queue Methods
   private queueDownload(bookId: string): void {
     if (this.downloadQueue.includes(bookId)) return;
     if (this.isDownloaded(bookId)) return;
@@ -359,13 +337,8 @@ class AutoDownloadService {
     this.isProcessingQueue = false;
   }
 
-  // ========================================
-  // Private - Download
-  // ========================================
-
   private async executeDownload(bookId: string): Promise<void> {
-    const fs = await ensureFileSystem();
-    if (!fs || !_downloadsDir) {
+    if (!_fs || !_downloadsDir) {
       throw new Error('FileSystem not ready');
     }
 
@@ -379,13 +352,11 @@ class AutoDownloadService {
     this.abortControllers.set(bookId, abortController);
 
     try {
-      // Get book metadata
       const book = await apiClient.getItem(bookId);
       const title = book.media?.metadata?.title || 'Unknown';
       console.log('[AutoDownload] Book:', title);
 
-      // Get stream URL from session API
-      const token = apiClient.getAuthToken?.() || (apiClient as any).authToken || (apiClient as any).token || '';
+      const token = apiClient.getAuthToken?.() || (apiClient as any).authToken || '';
       const baseUrl = apiClient.getBaseURL().replace(/\/+$/, '');
       
       const sessionResponse = await apiClient.post<any>(`/api/items/${bookId}/play`, {
@@ -413,9 +384,8 @@ class AutoDownloadService {
       const filename = `${bookId}${ext}`;
       const localPath = `${_downloadsDir}${filename}`;
 
-      console.log('[AutoDownload] Downloading:', downloadUrl.substring(0, 60) + '...');
+      console.log('[AutoDownload] Downloading...');
 
-      // Download with progress tracking
       const response = await fetch(downloadUrl, {
         signal: abortController.signal,
       });
@@ -427,9 +397,7 @@ class AutoDownloadService {
       const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
       const reader = response.body?.getReader();
       
-      if (!reader) {
-        throw new Error('No response body');
-      }
+      if (!reader) throw new Error('No response body');
 
       const chunks: Uint8Array[] = [];
       let receivedLength = 0;
@@ -446,7 +414,7 @@ class AutoDownloadService {
         }
       }
 
-      // Combine and write
+      // Combine chunks
       const allChunks = new Uint8Array(receivedLength);
       let position = 0;
       for (const chunk of chunks) {
@@ -454,9 +422,10 @@ class AutoDownloadService {
         position += chunk.length;
       }
 
+      // Convert to base64 and write
       const base64 = uint8ArrayToBase64(allChunks);
-      await fs.writeAsStringAsync(localPath, base64, {
-        encoding: fs.EncodingType.Base64,
+      await _fs.writeAsStringAsync(localPath, base64, {
+        encoding: _fs.EncodingType.Base64,
       });
 
       // Close session
@@ -465,10 +434,8 @@ class AutoDownloadService {
       }
 
       // Verify
-      const fileInfo = await fs.getInfoAsync(localPath);
-      if (!fileInfo.exists) {
-        throw new Error('File not created');
-      }
+      const fileInfo = await _fs.getInfoAsync(localPath);
+      if (!fileInfo.exists) throw new Error('File not created');
 
       const fileSize = (fileInfo as any).size || receivedLength;
       console.log('[AutoDownload] Size:', Math.round(fileSize / 1024 / 1024), 'MB');
@@ -478,12 +445,12 @@ class AutoDownloadService {
       try {
         const coverUrl = `${baseUrl}/api/items/${bookId}/cover?token=${token}`;
         const coverLocalPath = `${_downloadsDir}${bookId}_cover.jpg`;
-        await fs.downloadAsync(coverUrl, coverLocalPath);
-        const coverInfo = await fs.getInfoAsync(coverLocalPath);
+        await _fs.downloadAsync(coverUrl, coverLocalPath);
+        const coverInfo = await _fs.getInfoAsync(coverLocalPath);
         if (coverInfo.exists) coverPath = coverLocalPath;
       } catch {}
 
-      // Save manifest
+      // Save to manifest
       const downloadedBook: DownloadedBook = {
         id: bookId,
         title,
@@ -527,36 +494,31 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-// Export a getter function instead of instance
-// Service is created lazily on first access
+// Singleton with lazy instantiation
 let _instance: AutoDownloadService | null = null;
 
+function getInstance(): AutoDownloadService {
+  if (!_instance) {
+    _instance = new AutoDownloadService();
+  }
+  return _instance;
+}
+
 export const autoDownloadService = {
-  get instance() {
-    if (!_instance) {
-      _instance = new AutoDownloadService();
-    }
-    return _instance;
-  },
-  
-  // Proxy all methods
-  onProgress: (cb: ProgressCallback) => autoDownloadService.instance.onProgress(cb),
-  onStatus: (cb: StatusCallback) => autoDownloadService.instance.onStatus(cb),
-  getProgress: (id: string) => autoDownloadService.instance.getProgress(id),
-  getStatus: (id: string) => autoDownloadService.instance.getStatus(id),
-  isDownloaded: (id: string) => autoDownloadService.instance.isDownloaded(id),
-  isDownloading: (id: string) => autoDownloadService.instance.isDownloading(id),
-  getLocalPath: (id: string) => autoDownloadService.instance.getLocalPath(id),
-  getDownloadedBook: (id: string) => autoDownloadService.instance.getDownloadedBook(id),
-  getAllDownloads: () => autoDownloadService.instance.getAllDownloads(),
-  getTotalSize: () => autoDownloadService.instance.getTotalSize(),
-  syncWithContinueListening: (items: LibraryItem[]) => autoDownloadService.instance.syncWithContinueListening(items),
-  waitForDownload: (id: string) => autoDownloadService.instance.waitForDownload(id),
-  cancelDownload: (id: string) => autoDownloadService.instance.cancelDownload(id),
-  removeDownload: (id: string) => autoDownloadService.instance.removeDownload(id),
-  updateLastPlayed: (id: string) => autoDownloadService.instance.updateLastPlayed(id),
-  clearAll: () => autoDownloadService.instance.clearAll(),
+  onProgress: (cb: ProgressCallback) => getInstance().onProgress(cb),
+  onStatus: (cb: StatusCallback) => getInstance().onStatus(cb),
+  getProgress: (id: string) => getInstance().getProgress(id),
+  getStatus: (id: string) => getInstance().getStatus(id),
+  isDownloaded: (id: string) => getInstance().isDownloaded(id),
+  isDownloading: (id: string) => getInstance().isDownloading(id),
+  getLocalPath: (id: string) => getInstance().getLocalPath(id),
+  getDownloadedBook: (id: string) => getInstance().getDownloadedBook(id),
+  getAllDownloads: () => getInstance().getAllDownloads(),
+  getTotalSize: () => getInstance().getTotalSize(),
+  syncWithContinueListening: (items: LibraryItem[]) => getInstance().syncWithContinueListening(items),
+  waitForDownload: (id: string) => getInstance().waitForDownload(id),
+  cancelDownload: (id: string) => getInstance().cancelDownload(id),
+  removeDownload: (id: string) => getInstance().removeDownload(id),
+  updateLastPlayed: (id: string) => getInstance().updateLastPlayed(id),
+  clearAll: () => getInstance().clearAll(),
 };
-
-
-

@@ -28,7 +28,8 @@ import { theme } from '@/shared/theme';
 import { useContinueListening } from '../hooks/useContinueListening';
 import { ContinueListeningCard, CARD_HEIGHT, CARD_OVERLAP } from '../components/ContinueListeningCard';
 import { Icon } from '@/shared/components/Icon';
-// import { autoDownloadService } from '@/features/downloads/services/autoDownloadService';
+import { autoDownloadService } from '@/features/downloads';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HEADER_BG = '#303030';
@@ -68,22 +69,10 @@ export function HomeScreen() {
   // Track last synced items to avoid redundant syncs
   const lastSyncedRef = useRef<string>('');
 
-  // Sync auto-downloads when continue listening changes
   useEffect(() => {
-    if (!continueListeningItems.length) return;
-
-    // Create key from book IDs
-    const itemsKey = continueListeningItems.slice(0, MAX_CARDS).map(i => i.id).join(',');
-    
-    // Skip if already synced
-    if (itemsKey === lastSyncedRef.current) return;
-    lastSyncedRef.current = itemsKey;
-
-    // Sync downloads (non-blocking)
-    // console.log('[HomeScreen] Syncing auto-downloads...');
-    // autoDownloadService.syncWithContinueListening(continueListeningItems).catch(e => {
-    //   console.warn('[HomeScreen] Auto-download sync failed:', e);
-    // });
+    if (continueListeningItems?.length) {
+      autoDownloadService.syncWithContinueListening(continueListeningItems);
+    }
   }, [continueListeningItems]);
 
   const visibleCards = continueListeningItems.slice(0, MAX_CARDS);
