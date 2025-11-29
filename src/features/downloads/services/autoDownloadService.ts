@@ -384,60 +384,37 @@ class AutoDownloadService {
       const filename = `${bookId}${ext}`;
       const localPath = `${_downloadsDir}${filename}`;
 
-      console.log('[AutoDownload] Downloading...');
+      console.log('[AutoDownload] Downloading to:', localPath);
 
-      const response = await fetch(downloadUrl, {
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
-      const reader = response.body?.getReader();
-      
-      if (!reader) throw new Error('No response body');
-
-      const chunks: Uint8Array[] = [];
-      let receivedLength = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        chunks.push(value);
-        receivedLength += value.length;
-        
-        if (contentLength > 0) {
-          this.notifyProgress(bookId, receivedLength / contentLength);
+      // Use FileSystem.downloadAsync with progress callback
+      const downloadResumable = _fs.createDownloadResumable(
+        downloadUrl,
+        localPath,
+        {},
+        (downloadProgress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => {
+          if (downloadProgress.totalBytesExpectedToWrite > 0) {
+            const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+            this.notifyProgress(bookId, progress);
+          }
         }
-      }
+      );
 
-      // Combine chunks
-      const allChunks = new Uint8Array(receivedLength);
-      let position = 0;
-      for (const chunk of chunks) {
-        allChunks.set(chunk, position);
-        position += chunk.length;
+      const result = await downloadResumable.downloadAsync();
+      
+      if (!result || !result.uri) {
+        throw new Error('Download failed - no result');
       }
-
-      // Convert to base64 and write
-      const base64 = uint8ArrayToBase64(allChunks);
-      await _fs.writeAsStringAsync(localPath, base64, {
-        encoding: _fs.EncodingType.Base64,
-      });
 
       // Close session
       if (sessionId) {
         apiClient.post(`/api/session/${sessionId}/close`, {}).catch(() => {});
       }
 
-      // Verify
+      // Verify file
       const fileInfo = await _fs.getInfoAsync(localPath);
       if (!fileInfo.exists) throw new Error('File not created');
 
-      const fileSize = (fileInfo as any).size || receivedLength;
+      const fileSize = (fileInfo as any).size || 0;
       console.log('[AutoDownload] Size:', Math.round(fileSize / 1024 / 1024), 'MB');
 
       // Cover
@@ -483,15 +460,6 @@ class AutoDownloadService {
       this.abortControllers.delete(bookId);
     }
   }
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 // Singleton with lazy instantiation
