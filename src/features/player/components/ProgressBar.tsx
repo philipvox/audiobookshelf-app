@@ -1,11 +1,17 @@
-// File: src/features/player/components/ProgressBar.tsx
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, GestureResponderEvent } from 'react-native';
+/**
+ * src/features/player/components/ProgressBar.tsx
+ * Scrubable progress bar for player
+ */
+
+import React, { useState, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { usePlayerStore } from '../stores/playerStore';
-import { theme } from '@/shared/theme';
 
 function formatTime(seconds: number): string {
-  if (!seconds || isNaN(seconds)) return '0:00';
+  if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -16,159 +22,113 @@ function formatTime(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-interface Chapter {
-  id: number;
-  start: number;
-  end: number;
-  title: string;
-}
-
 interface ProgressBarProps {
   textColor?: string;
   trackColor?: string;
   fillColor?: string;
-  mode?: 'book' | 'chapter';
-  chapters?: Chapter[];
-  currentChapterIndex?: number;
-  bookDuration: number;
 }
 
 export function ProgressBar({ 
-  textColor = theme.colors.text.tertiary,
-  trackColor = theme.colors.neutral[300],
-  fillColor = theme.colors.text.primary,
-  mode = 'chapter',
-  chapters = [],
-  currentChapterIndex = 0,
-  bookDuration,
+  textColor = '#999',
+  trackColor = 'rgba(255,255,255,0.2)',
+  fillColor = '#fff',
 }: ProgressBarProps) {
-  const { position, seekTo } = usePlayerStore();
+  const { position, duration, seekTo } = usePlayerStore();
   const [isDragging, setIsDragging] = useState(false);
-  const [dragProgress, setDragProgress] = useState(0);
-  const [seekLock, setSeekLock] = useState(false);
-  const [lockedPosition, setLockedPosition] = useState(0);
-  const trackWidth = useRef(300);
+  const [dragPosition, setDragPosition] = useState(0);
+  const [barWidth, setBarWidth] = useState(300);
+  const barXRef = useRef(0);
 
-  // Use locked position briefly after seek to prevent UI snap-back
-  const effectivePosition = seekLock ? lockedPosition : position;
+  const displayPosition = isDragging ? dragPosition : position;
+  const progress = duration > 0 ? Math.min(1, Math.max(0, displayPosition / duration)) : 0;
 
-  const currentChapter = chapters[currentChapterIndex];
-  const isChapterMode = mode === 'chapter' && currentChapter;
-  
-  let displayPosition: number;
-  let displayDuration: number;
-  let progress: number;
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    setBarWidth(event.nativeEvent.layout.width);
+    barXRef.current = event.nativeEvent.layout.x;
+  }, []);
 
-  if (isChapterMode) {
-    const chapterStart = currentChapter.start;
-    const chapterEnd = currentChapter.end;
-    const chapterDuration = chapterEnd - chapterStart;
-    const chapterPosition = Math.max(0, effectivePosition - chapterStart);
-    
-    displayPosition = chapterPosition;
-    displayDuration = chapterDuration;
-    progress = chapterDuration > 0 ? chapterPosition / chapterDuration : 0;
-  } else {
-    displayPosition = effectivePosition;
-    displayDuration = bookDuration;
-    progress = bookDuration > 0 ? effectivePosition / bookDuration : 0;
-  }
+  const calculatePosition = useCallback((x: number) => {
+    const clampedX = Math.max(0, Math.min(x, barWidth));
+    const percentage = clampedX / barWidth;
+    return percentage * duration;
+  }, [barWidth, duration]);
 
-  const displayProgress = isDragging ? dragProgress : progress;
-
-  const calculateProgress = (pageX: number) => {
-    const padding = theme.spacing[8];
-    const x = pageX - padding;
-    return Math.max(0, Math.min(1, x / trackWidth.current));
-  };
-
-  const handleTouchStart = (e: GestureResponderEvent) => {
-    if (displayDuration <= 0) return;
-    const prog = calculateProgress(e.nativeEvent.pageX);
-    setDragProgress(prog);
+  const handleDragStart = useCallback((x: number) => {
     setIsDragging(true);
-  };
+    setDragPosition(calculatePosition(x));
+  }, [calculatePosition]);
 
-  const handleTouchMove = (e: GestureResponderEvent) => {
-    if (!isDragging || displayDuration <= 0) return;
-    const prog = calculateProgress(e.nativeEvent.pageX);
-    setDragProgress(prog);
-  };
+  const handleDragUpdate = useCallback((x: number) => {
+    setDragPosition(calculatePosition(x));
+  }, [calculatePosition]);
 
-  const handleTouchEnd = async () => {
-    if (!isDragging || displayDuration <= 0) return;
+  const handleDragEnd = useCallback((x: number) => {
+    const finalPosition = calculatePosition(x);
     setIsDragging(false);
-    
-    let newPosition: number;
-    if (isChapterMode) {
-      const chapterDuration = currentChapter.end - currentChapter.start;
-      newPosition = currentChapter.start + (dragProgress * chapterDuration);
-    } else {
-      newPosition = dragProgress * bookDuration;
-    }
-    
-    newPosition = Math.max(0, Math.min(newPosition, bookDuration));
-    
-    // Lock position to prevent snap-back
-    setLockedPosition(newPosition);
-    setSeekLock(true);
-    
-    try {
-      await seekTo(newPosition);
-    } catch (error) {
-      console.error('Failed to seek:', error);
-    }
-    
-    // Release lock after audio catches up
-    setTimeout(() => setSeekLock(false), 500);
-  };
+    seekTo(finalPosition);
+  }, [calculatePosition, seekTo]);
 
-  const handleLayout = (e: any) => {
-    trackWidth.current = e.nativeEvent.layout.width;
-  };
+  const handleTap = useCallback((x: number) => {
+    const newPosition = calculatePosition(x);
+    seekTo(newPosition);
+  }, [calculatePosition, seekTo]);
 
-  const currentTime = isDragging ? dragProgress * displayDuration : displayPosition;
+  const panGesture = Gesture.Pan()
+    .onStart((e) => {
+      runOnJS(handleDragStart)(e.x);
+    })
+    .onUpdate((e) => {
+      runOnJS(handleDragUpdate)(e.x);
+    })
+    .onEnd((e) => {
+      runOnJS(handleDragEnd)(e.x);
+    });
+
+  const tapGesture = Gesture.Tap()
+    .onEnd((e) => {
+      runOnJS(handleTap)(e.x);
+    });
+
+  const composed = Gesture.Exclusive(panGesture, tapGesture);
 
   return (
     <View style={styles.container}>
-      <View style={styles.timeContainer}>
-        <Text style={[styles.timeText, { color: textColor }]}>
-          {formatTime(currentTime)}
-        </Text>
-        <Text style={[styles.timeText, { color: textColor }]}>
-          {formatTime(displayDuration)}
-        </Text>
-      </View>
-
-      <View
-        style={styles.touchArea}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={handleTouchStart}
-        onResponderMove={handleTouchMove}
-        onResponderRelease={handleTouchEnd}
-        onResponderTerminate={handleTouchEnd}
-      >
-        <View 
-          style={[styles.progressTrack, { backgroundColor: trackColor }]}
+      <GestureDetector gesture={composed}>
+        <Animated.View 
+          style={styles.trackContainer}
           onLayout={handleLayout}
         >
-          <View 
-            style={[
-              styles.progressFill, 
-              { 
-                width: `${displayProgress * 100}%`, 
-                backgroundColor: fillColor 
-              }
-            ]} 
-          />
-          <View 
-            style={[
-              styles.thumb, 
-              { left: `${displayProgress * 100}%` }
-            ]} 
-          />
-        </View>
+          <View style={[styles.track, { backgroundColor: trackColor }]}>
+            <View 
+              style={[
+                styles.fill, 
+                { 
+                  backgroundColor: fillColor,
+                  width: `${progress * 100}%`,
+                }
+              ]} 
+            />
+            <View 
+              style={[
+                styles.thumb,
+                {
+                  backgroundColor: fillColor,
+                  left: `${progress * 100}%`,
+                  transform: [{ translateX: -6 }],
+                }
+              ]}
+            />
+          </View>
+        </Animated.View>
+      </GestureDetector>
+      
+      <View style={styles.timeRow}>
+        <Text style={[styles.timeText, { color: textColor }]}>
+          {formatTime(displayPosition)}
+        </Text>
+        <Text style={[styles.timeText, { color: textColor }]}>
+          {formatTime(duration)}
+        </Text>
       </View>
     </View>
   );
@@ -176,41 +136,36 @@ export function ProgressBar({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: theme.spacing[8],
-    paddingVertical: theme.spacing[2],
+    width: '100%',
+    paddingHorizontal: 20,
   },
-  timeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing[2],
+  trackContainer: {
+    height: 30,
+    justifyContent: 'center',
   },
-  timeText: {
-    ...theme.textStyles.caption,
-  },
-  touchArea: {
-    paddingVertical: theme.spacing[3],
-  },
-  progressTrack: {
+  track: {
     height: 4,
-    borderRadius: theme.radius.small,
-    position: 'relative',
+    borderRadius: 2,
+    overflow: 'visible',
   },
-  progressFill: {
+  fill: {
     height: '100%',
-    borderRadius: theme.radius.small,
+    borderRadius: 2,
   },
   thumb: {
     position: 'absolute',
-    top: -6,
-    marginLeft: -8,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 4,
+    top: -4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  timeText: {
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
 });

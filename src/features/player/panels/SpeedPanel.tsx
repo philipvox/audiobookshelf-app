@@ -1,12 +1,10 @@
 /**
  * src/features/player/panels/SpeedPanel.tsx
- * Speed control panel with Liquid Glass slider
  */
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { LiquidGlassSlider } from '../components/liquid-glass/LiquidGlassSlider';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Slider from '@react-native-community/slider';
 
 interface SpeedPanelColors {
   text: string;
@@ -30,15 +28,6 @@ const DEFAULT_COLORS: SpeedPanelColors = {
 };
 
 const SPEED_PRESETS = [0.75, 1, 1.25, 1.5, 2];
-const SPEED_LABELS = [
-  { value: 0.75, label: '0.75x' },
-  { value: 1, label: '1x' },
-  { value: 1.25, label: '1.25x' },
-  { value: 1.5, label: '1.5x' },
-  { value: 2, label: '2x' },
-];
-
-const SNAP_THRESHOLD = 0.08;
 
 export function SpeedPanel({ 
   currentSpeed = 1, 
@@ -46,25 +35,22 @@ export function SpeedPanel({
   onClose, 
   colors = DEFAULT_COLORS 
 }: SpeedPanelProps) {
-  const [tempSpeed, setTempSpeed] = useState(currentSpeed);
-  const tint = colors.isDark ? 'dark' : 'light';
+  const [tempSpeed, setTempSpeed] = React.useState(currentSpeed);
+  
+  const isLight = !colors.isDark;
+  const textColor = colors.text;
+  const secondaryColor = colors.textSecondary;
+  const buttonBg = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)';
+  const activeButtonBg = isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.95)';
+  const activeButtonText = colors.surface;
+  const thumbColor = isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)';
 
-  useEffect(() => {
+  React.useEffect(() => {
     setTempSpeed(currentSpeed);
   }, [currentSpeed]);
 
   const handleSliderChange = (value: number) => {
-    for (const preset of SPEED_PRESETS) {
-      if (Math.abs(value - preset) < SNAP_THRESHOLD) {
-        setTempSpeed(preset);
-        return;
-      }
-    }
     setTempSpeed(Math.round(value * 20) / 20);
-  };
-
-  const handlePresetPress = (preset: number) => {
-    setTempSpeed(preset);
   };
 
   const handleApply = () => {
@@ -72,111 +58,69 @@ export function SpeedPanel({
     onClose();
   };
 
-  const handleCancel = () => {
-    onClose();
-  };
-
-  const formatSpeed = (speed: number) => {
-    if (speed == null) return '1x';
-    return speed % 1 === 0 ? `${speed}x` : `${speed.toFixed(2)}x`;
-  };
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
-          PLAYBACK SPEED
-        </Text>
-        <Pressable onPress={onClose} hitSlop={12}>
-          <Ionicons name="close" size={24} color={colors.textSecondary} />
-        </Pressable>
-      </View>
-
-      <Text style={[styles.speedValue, { color: colors.text }]}>
-        {formatSpeed(tempSpeed)}
+      <Text style={[styles.label, { color: secondaryColor }]}>PLAYBACK SPEED</Text>
+      <Text style={[styles.valueText, { color: textColor }]}>
+        {tempSpeed.toFixed(2)}x
       </Text>
 
       <View style={styles.sliderContainer}>
-        <LiquidGlassSlider
+        <Slider
+          style={styles.slider}
           value={tempSpeed}
           onValueChange={handleSliderChange}
           minimumValue={0.75}
           maximumValue={2}
           step={0.05}
-          tint={tint}
-          labels={SPEED_LABELS}
+          minimumTrackTintColor={textColor}
+          maximumTrackTintColor={secondaryColor}
+          thumbTintColor={thumbColor}
         />
+        <View style={styles.sliderLabels}>
+          {SPEED_PRESETS.map((speed) => (
+            <Text key={speed} style={[styles.sliderLabel, { color: secondaryColor }]}>
+              {speed}x
+            </Text>
+          ))}
+        </View>
       </View>
 
-      <View style={styles.presetsRow}>
-        {SPEED_PRESETS.map((preset) => {
-          const isSelected = Math.abs(tempSpeed - preset) < 0.01;
+      <View style={styles.presetRow}>
+        {SPEED_PRESETS.map((speed) => {
+          const isActive = Math.abs(tempSpeed - speed) < 0.01;
           return (
             <TouchableOpacity
-              key={preset}
+              key={speed}
               style={[
                 styles.presetButton,
-                {
-                  backgroundColor: isSelected
-                    ? colors.text
-                    : colors.isDark
-                    ? 'rgba(255,255,255,0.12)'
-                    : 'rgba(0,0,0,0.08)',
-                },
+                { backgroundColor: isActive ? activeButtonBg : buttonBg }
               ]}
-              onPress={() => handlePresetPress(preset)}
-              activeOpacity={0.7}
+              onPress={() => setTempSpeed(speed)}
             >
-              <Text
-                style={[
-                  styles.presetText,
-                  {
-                    color: isSelected ? colors.surface : colors.text,
-                  },
-                ]}
-              >
-                {preset === 1 ? '1x' : `${preset}x`}
+              <Text style={[
+                styles.presetText,
+                { color: isActive ? activeButtonText : textColor }
+              ]}>
+                {speed}x
               </Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      <View style={styles.actionsRow}>
+      <View style={styles.applyContainer}>
         <TouchableOpacity
-          style={[
-            styles.actionButton,
-            styles.cancelButton,
-            {
-              backgroundColor: colors.isDark
-                ? 'rgba(255,255,255,0.12)'
-                : 'rgba(0,0,0,0.08)',
-              transform: [{ rotate: '3deg' }],
-            },
-          ]}
-          onPress={handleCancel}
-          activeOpacity={0.7}
+          style={[styles.cancelButton, { backgroundColor: buttonBg }]}
+          onPress={onClose}
         >
-          <Text style={[styles.actionText, { color: colors.text }]}>
-            Cancel
-          </Text>
+          <Text style={[styles.cancelButtonText, { color: textColor }]}>Cancel</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
-          style={[
-            styles.actionButton,
-            styles.applyButton,
-            {
-              backgroundColor: colors.text,
-              transform: [{ rotate: '-5deg' }],
-            },
-          ]}
+          style={[styles.applyButton, { backgroundColor: activeButtonBg }]}
           onPress={handleApply}
-          activeOpacity={0.7}
         >
-          <Text style={[styles.actionText, { color: colors.surface }]}>
-            Apply
-          </Text>
+          <Text style={[styles.applyButtonText, { color: activeButtonText }]}>Apply</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -185,60 +129,77 @@ export function SpeedPanel({
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingTop: 16,
+    flex: 1,
+    marginHorizontal: -8,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  headerLabel: {
+  label: {
     fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
-  speedValue: {
+  valueText: {
     fontSize: 56,
     fontWeight: '700',
-    marginBottom: 24,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 16,
+    marginLeft: -4,
   },
   sliderContainer: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  presetsRow: {
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderLabels: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingHorizontal: 10,
+  },
+  sliderLabel: {
+    fontSize: 11,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 24,
   },
   presetButton: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   presetText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
-  actionsRow: {
+  applyContainer: {
+    marginTop: -10,
     flexDirection: 'row',
-    gap: 16,
-  },
-  actionButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 100,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 10,
   },
   cancelButton: {
-    flex: 0,
+    paddingVertical: 26,
+    paddingHorizontal: 40,
+    borderRadius: 100,
+  },
+  cancelButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
   },
   applyButton: {
-    flex: 1,
-    alignItems: 'center',
+    paddingVertical: 50,
+    paddingHorizontal: 37,
+    borderRadius: 100,
+    transform: [{ rotate: '-5deg' }],
   },
-  actionText: {
-    fontSize: 17,
-    fontWeight: '600',
+  applyButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
   },
 });
