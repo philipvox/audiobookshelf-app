@@ -73,7 +73,7 @@ const TRACK_HEIGHT = 4;
 const CONTAINER_HEIGHT = THUMB_HEIGHT + 20;
 
 // Magnification settings
-const MAGNIFY_SCALE = 2.5;
+const MAGNIFY_SCALE = 2;
 const MAGNIFIED_TRACK_HEIGHT = TRACK_HEIGHT * MAGNIFY_SCALE;
 
 const SPRING_CONFIG = {
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: THUMB_HEIGHT / 2,
     overflow: 'hidden',
-    paddingTop: THUMB_HEIGHT * 0.3, // Position track slightly above center
+    justifyContent: 'center', // Center track vertically
   },
   solidPill: {
     position: 'absolute',
@@ -329,11 +329,6 @@ const styles = StyleSheet.create({
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
     borderRadius: THUMB_HEIGHT / 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
   },
   magnifiedTrackWrapper: {
     position: 'absolute',
