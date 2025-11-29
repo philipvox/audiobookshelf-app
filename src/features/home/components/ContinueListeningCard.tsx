@@ -19,11 +19,12 @@ import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 import { getTitle } from '@/shared/utils/metadata';
 import { matchToPalette } from '@/shared/utils/colorPalette';
-// import { autoDownloadService, DownloadStatus } from '@/features/downloads/services/autoDownloadService';
+import { autoDownloadService, DownloadStatus } from '@/features/downloads';
 
 const COVER_SIZE = 40;
 const PROGRESS_SIZE = 36;
 const PROGRESS_STROKE = 3;
+const DEBOUNCE_MS = 300;
 
 interface ContinueListeningCardProps {
   book: LibraryItem & {
@@ -51,35 +52,37 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   };
 }
 
-function isColorLight(hex: string): boolean {
+function getLuminance(hex: string): number {
   const rgb = hexToRgb(hex);
-  if (!rgb) return true;
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance > 0.5;
+  if (!rgb) return 0.5;
+  const [r, g, b] = [rgb.r, rgb.g, rgb.b].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function getColorSaturation(hex: string): number {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return 0;
-  const { r, g, b } = rgb;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  if (max === 0) return 0;
-  return (max - min) / max;
+function contrastWith(bg: string, text: string): number {
+  const l1 = getLuminance(bg);
+  const l2 = getLuminance(text);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
-function pickMostSaturated(colors: (string | undefined)[]): string | null {
-  let best: string | null = null;
-  let bestSat = -1;
-  for (const c of colors) {
-    if (!c) continue;
-    const sat = getColorSaturation(c);
-    if (sat > bestSat) {
-      bestSat = sat;
-      best = c;
-    }
-  }
-  return best;
+function getAccessibleTextColor(bgColor: string, lightColor = '#FFFFFF', darkColor = '#1a1a2e'): string {
+  const lightContrast = contrastWith(bgColor, lightColor);
+  const darkContrast = contrastWith(bgColor, darkColor);
+  return lightContrast >= darkContrast ? lightColor : darkColor;
+}
+
+function darkenColor(hex: string, amount: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.max(0, Math.round(rgb.r * (1 - amount)));
+  const g = Math.max(0, Math.round(rgb.g * (1 - amount)));
+  const b = Math.max(0, Math.round(rgb.b * (1 - amount)));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
 // ========================================
@@ -87,52 +90,49 @@ function pickMostSaturated(colors: (string | undefined)[]): string | null {
 // ========================================
 
 function useDownloadStatus(bookId: string) {
-  // const [status, setStatus] = useState<DownloadStatus>(() => 
-  //   // autoDownloadService.getStatus(bookId)
-  // // );
-  // const [progress, setProgress] = useState<number>(() => 
-  //   // autoDownloadService.getProgress(bookId)
-  // );
+  const [status, setStatus] = useState<DownloadStatus>(() => 
+    autoDownloadService.getStatus(bookId)
+  );
+  const [progress, setProgress] = useState<number>(() => 
+    autoDownloadService.getProgress(bookId)
+  );
 
   useEffect(() => {
-    // Get initial state
-    // setStatus(autoDownloadService.getStatus(bookId));
-    // setProgress(autoDownloadService.getProgress(bookId));
-
-    // Subscribe to updates
-    // const unsubProgress = autoDownloadService.onProgress((id, pct) => {
-    //   if (id === bookId) setProgress(pct);
-    // });
-
-    // const unsubStatus = autoDownloadService.onStatus((id, newStatus) => {
-    //   if (id === bookId) setStatus(newStatus);
-    // });
-
+    setStatus(autoDownloadService.getStatus(bookId));
+    setProgress(autoDownloadService.getProgress(bookId));
+    
+    const unsubProgress = autoDownloadService.onProgress((id, pct) => {
+      if (id === bookId) setProgress(pct);
+    });
+    const unsubStatus = autoDownloadService.onStatus((id, newStatus) => {
+      if (id === bookId) setStatus(newStatus);
+    });
+    
     return () => {
-      // unsubProgress();
-      // unsubStatus();
+      unsubProgress();
+      unsubStatus();
     };
   }, [bookId]);
 
-  return { };
+  return { status, progress };
 }
 
 // ========================================
-// Static Progress Circle
+// Progress Circle
 // ========================================
 
 function ProgressCircle({ 
   progress, 
-  size = PROGRESS_SIZE, 
-  strokeWidth = PROGRESS_STROKE,
-  color = '#FFFFFF',
-  bgColor = 'rgba(255,255,255,0.3)',
+  size, 
+  strokeWidth, 
+  color, 
+  bgColor 
 }: { 
   progress: number; 
-  size?: number; 
-  strokeWidth?: number;
-  color?: string;
-  bgColor?: string;
+  size: number; 
+  strokeWidth: number; 
+  color: string; 
+  bgColor: string; 
 }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
@@ -141,29 +141,30 @@ function ProgressCircle({
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }], position: 'absolute' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
         <Circle
+          stroke={bgColor}
+          fill="none"
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={bgColor}
           strokeWidth={strokeWidth}
-          fill="transparent"
         />
         <Circle
+          stroke={color}
+          fill="none"
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={color}
           strokeWidth={strokeWidth}
-          fill="transparent"
-          strokeDasharray={circumference}
+          strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"
+          rotation="-90"
+          origin={`${size / 2}, ${size / 2}`}
         />
       </Svg>
-      {/* Static percentage text */}
-      <Text style={{ fontSize: 9, fontWeight: '700', color }}>
+      <Text style={{ color, fontSize: 10, fontWeight: '600' }}>
         {Math.round(clampedProgress * 100)}
       </Text>
     </View>
@@ -175,102 +176,67 @@ function ProgressCircle({
 // ========================================
 
 export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListeningCardProps) {
-  const { loadBook, isLoading: playerLoading, currentBook } = usePlayerStore();
-  const bookIds = useMyLibraryStore((state) => state.bookIds) ?? [];
-  const addBook = useMyLibraryStore((state) => state.addBook);
-  const removeBook = useMyLibraryStore((state) => state.removeBook);
-  
-  const [bgColor, setBgColor] = useState(theme.colors.neutral[200]);
-  const [isLight, setIsLight] = useState(true);
+  const [backgroundColor, setBackgroundColor] = useState('#2a2a3e');
+  const [textColor, setTextColor] = useState('#FFFFFF');
+  const [progressColor, setProgressColor] = useState(theme.colors.primary[500]);
   const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
-  
-  // Debounce
-  const lastPressRef = useRef(0);
-  const DEBOUNCE_MS = 800;
 
-  // Download status
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const lastPressRef = useRef(0);
+  
+  const { loadBook, isLoading: playerLoading, currentBook, isPlaying } = usePlayerStore();
+  const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
   const { status: downloadStatus, progress: downloadProgress } = useDownloadStatus(book.id);
 
-  const isInLibrary = bookIds.includes(book.id);
-  const coverUrl = apiClient.getItemCoverUrl(book.id);
-  const title = getTitle(book);
   const isThisBookInPlayer = currentBook?.id === book.id;
+  const isDownloading = downloadStatus === 'downloading' || downloadStatus === 'queued';
+  const isDownloaded = downloadStatus === 'completed';
   const isLoading = isWaitingForDownload || (playerLoading && isThisBookInPlayer);
-  
-  const currentTime = book.userMediaProgress?.currentTime ?? 0;
-  const duration = book.media?.duration ?? book.userMediaProgress?.duration ?? 0;
-  
-  // Calculate current chapter
-  const chapters = book.media?.chapters ?? [];
-  let chapterNumber = 1;
-  for (let i = 0; i < chapters.length; i++) {
-    const ch = chapters[i];
-    const nextCh = chapters[i + 1];
-    if (currentTime >= ch.start && (!nextCh || currentTime < nextCh.start)) {
-      chapterNumber = i + 1;
-      break;
-    }
-  }
+  const isFavorite = isInLibrary(book.id);
 
   // Extract colors from cover
+  const coverUrl = apiClient.getItemCoverUrl(book.id);
+  
   useEffect(() => {
-    let mounted = true;
-    
-    const extractColors = async () => {
-      try {
-        const result = await getColors(coverUrl, {
-          fallback: theme.colors.neutral[200],
-          cache: true,
-          key: book.id,
-        });
-        
-        if (!mounted) return;
+    if (!coverUrl) return;
 
-        let dominant = theme.colors.neutral[200];
-        
+    getColors(coverUrl, { fallback: '#2a2a3e', cache: true, key: book.id })
+      .then((result) => {
+        let primary = '#2a2a3e';
         if (result.platform === 'ios') {
-          dominant = result.detail || result.primary || result.secondary || theme.colors.neutral[200];
+          primary = result.background || result.primary || '#2a2a3e';
         } else if (result.platform === 'android') {
-          const candidates = [
-            result.vibrant,
-            result.darkVibrant, 
-            result.lightVibrant,
-            result.muted,
-            result.darkMuted,
-            result.lightMuted,
-            result.dominant,
-          ];
-          dominant = pickMostSaturated(candidates) || result.dominant || theme.colors.neutral[200];
+          primary = result.dominant || result.average || '#2a2a3e';
         }
         
-        const paletteColor = matchToPalette(dominant);
-        setBgColor(paletteColor);
-        setIsLight(isColorLight(paletteColor));
-      } catch {}
-    };
-
-    extractColors();
-    return () => { mounted = false; };
+        const mapped = matchToPalette(primary);
+        const bgColor = darkenColor(mapped.base, 0.15);
+        setBackgroundColor(bgColor);
+        setTextColor(getAccessibleTextColor(bgColor));
+        setProgressColor(mapped.accent);
+      })
+      .catch(() => {});
   }, [coverUrl, book.id]);
 
-  const textColor = isLight ? '#000000' : '#FFFFFF';
-  const secondaryColor = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)';
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  // Progress
+  const progress = book.userMediaProgress?.progress ?? 0;
+  const progressPercent = Math.round(progress * 100);
+  const title = getTitle(book);
 
-  const formatTime = (seconds: number): string => {
-    const hrs = Math.floor(seconds / 3600);
+  // Time left
+  const duration = book.userMediaProgress?.duration || book.media?.duration || 0;
+  const currentTime = book.userMediaProgress?.currentTime || 0;
+  const timeLeft = Math.max(0, duration - currentTime);
+  
+  const formatTimeLeft = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    if (hrs > 0) {
-      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (hours > 0) return `${hours}h ${mins}m left`;
+    return `${mins}m left`;
   };
 
-  // Handle play press - WAITS for download
   const handlePlay = useCallback(async () => {
-    // Debounce
     const now = Date.now();
     if (now - lastPressRef.current < DEBOUNCE_MS) return;
     lastPressRef.current = now;
@@ -278,34 +244,31 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
     if (isLoading) return;
 
     try {
-      // Check if book is downloaded
-      // const isDownloaded = autoDownloadService.isDownloaded(book.id);
-      // const isDownloading = autoDownloadService.isDownloading(book.id);
+      const downloaded = autoDownloadService.isDownloaded(book.id);
+      const downloading = autoDownloadService.isDownloading(book.id);
 
-      if (isDownloaded) {
-        // Already downloaded - play immediately
+      if (downloaded) {
         console.log('[Card] Playing downloaded book');
         const fullBook = await apiClient.getItem(book.id);
         await loadBook(fullBook);
         
-      } else if (isDownloading) {
-        // Currently downloading - wait for it
+      } else if (downloading) {
         console.log('[Card] Waiting for download...');
         setIsWaitingForDownload(true);
         
-        // const localPath = await autoDownloadService.waitForDownload(book.id);
+        const localPath = await autoDownloadService.waitForDownload(book.id);
         
         if (localPath) {
           console.log('[Card] Download complete, playing');
           const fullBook = await apiClient.getItem(book.id);
           await loadBook(fullBook);
         } else {
-          console.log('[Card] Download failed or cancelled');
+          console.log('[Card] Download failed, streaming instead');
+          const fullBook = await apiClient.getItem(book.id);
+          await loadBook(fullBook);
         }
         
       } else {
-        // Not downloaded and not downloading - shouldn't happen normally
-        // but stream anyway
         console.log('[Card] Streaming (not downloaded)');
         const fullBook = await apiClient.getItem(book.id);
         await loadBook(fullBook);
@@ -319,7 +282,6 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
   }, [book, loadBook, isLoading]);
 
   const handleCardPress = useCallback(() => {
-    // Scale animation
     Animated.sequence([
       Animated.spring(scaleAnim, { toValue: 1.02, tension: 100, friction: 8, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
@@ -328,167 +290,189 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
   }, [handlePlay, scaleAnim]);
 
   const handleHeartPress = () => {
-    if (isInLibrary) removeBook(book.id);
-    else addBook(book.id);
+    if (isFavorite) {
+      removeFromLibrary(book.id);
+    } else {
+      addToLibrary(book.id);
+    }
   };
 
-  // ========================================
-  // Render Play Button
-  // ========================================
+  // Render play button content
   const renderPlayButton = () => {
-    const isDownloading = downloadStatus === 'downloading';
-    const isQueued = downloadStatus === 'queued';
-    const isDownloaded = downloadStatus === 'completed';
-
-    // Downloading - show progress circle with percentage
     if (isDownloading || isWaitingForDownload) {
       return (
+        <ProgressCircle
+          progress={downloadProgress}
+          size={PROGRESS_SIZE}
+          strokeWidth={PROGRESS_STROKE}
+          color={progressColor}
+          bgColor={`${textColor}20`}
+        />
+      );
+    }
+
+    if (isLoading) {
+      return (
+        <View style={[styles.playIcon, { backgroundColor: progressColor }]}>
+          <Icon name="ellipsis-horizontal" size={16} color="#FFF" />
+        </View>
+      );
+    }
+
+    if (isThisBookInPlayer && isPlaying) {
+      return (
+        <View style={[styles.playIcon, { backgroundColor: progressColor }]}>
+          <Icon name="pause" size={16} color="#FFF" />
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.playButtonWrapper}>
+        <View style={[styles.playIcon, { backgroundColor: progressColor }]}>
+          <Icon name="play" size={16} color="#FFF" />
+        </View>
+        {isDownloaded && (
+          <View style={[styles.downloadBadge, { backgroundColor: '#4CAF50' }]}>
+            <Icon name="checkmark" size={8} color="#FFF" />
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }], zIndex }}>
+      <Pressable
+        style={[styles.card, { backgroundColor }, style]}
+        onPress={handleCardPress}
+        disabled={isLoading}
+      >
+        {/* Cover */}
+        <View style={styles.coverContainer}>
+          <Image source={{ uri: coverUrl }} style={styles.cover} />
+        </View>
+
+        {/* Content */}
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+            {title}
+          </Text>
+          
+          <View style={styles.progressRow}>
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBarBg, { backgroundColor: `${textColor}20` }]} />
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { width: `${progressPercent}%`, backgroundColor: progressColor }
+                ]} 
+              />
+            </View>
+            <Text style={[styles.progressText, { color: `${textColor}99` }]}>
+              {progressPercent}%
+            </Text>
+          </View>
+
+          {timeLeft > 0 && (
+            <Text style={[styles.timeLeft, { color: `${textColor}80` }]}>
+              {formatTimeLeft(timeLeft)}
+            </Text>
+          )}
+        </View>
+
+        {/* Play Button */}
         <TouchableOpacity 
           style={styles.playButton} 
           onPress={handlePlay} 
           activeOpacity={0.7}
           disabled={isWaitingForDownload}
         >
-          <ProgressCircle 
-            progress={downloadProgress} 
-            size={PROGRESS_SIZE}
-            color={textColor}
-            bgColor={secondaryColor}
+          {renderPlayButton()}
+        </TouchableOpacity>
+
+        {/* Heart */}
+        <TouchableOpacity style={styles.heartButton} onPress={handleHeartPress} activeOpacity={0.7}>
+          <Icon 
+            name={isFavorite ? 'heart' : 'heart-outline'} 
+            size={18} 
+            color={isFavorite ? '#FF6B6B' : `${textColor}60`} 
           />
         </TouchableOpacity>
-      );
-    }
-
-    // Queued - show clock
-    if (isQueued) {
-      return (
-        <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.7}>
-          <Icon name="time-outline" size={24} color={secondaryColor} set="ionicons" />
-        </TouchableOpacity>
-      );
-    }
-
-    // Downloaded or not - show play (with checkmark if downloaded)
-    return (
-      <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.7}>
-        <View style={styles.playIconContainer}>
-          <Icon name="play" size={26} color={textColor} set="ionicons" />
-          {isDownloaded && (
-            <View style={[styles.downloadBadge, { backgroundColor: textColor }]}>
-              <Icon name="checkmark" size={8} color={bgColor} set="ionicons" />
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Pressable 
-        style={[styles.card, { backgroundColor: bgColor, zIndex }, style]} 
-        onPress={handleCardPress}
-        disabled={isLoading}
-      > 
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text>
-        </View>
-        
-        <View style={styles.topRow}>
-          <View style={styles.coverContainer}>
-            <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
-          </View>
-
-          <View style={styles.chapterInfo}>
-            <Text style={[styles.chapterLabel, { color: textColor }]}>Chapter {chapterNumber}</Text>
-            <Text style={[styles.timeInfo, { color: secondaryColor }]}>
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </Text>
-          </View>
-
-          <TouchableOpacity style={styles.heartButton} onPress={handleHeartPress} activeOpacity={0.7}>
-            <Icon 
-              name={isInLibrary ? 'heart' : 'heart-outline'} 
-              size={22} 
-              color={isInLibrary ? '#FF69B4' : secondaryColor} 
-              set="ionicons" 
-            />
-          </TouchableOpacity>
-
-          {renderPlayButton()}
-        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
-export const CARD_HEIGHT = 120;
-export const CARD_OVERLAP = -5;
-
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 25,
-    paddingTop: 14,
-    paddingHorizontal: 14,
-    paddingBottom: 16,
-    marginHorizontal: 5,
-    height: CARD_HEIGHT,
-  },
-  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 5,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
   coverContainer: {
     width: COVER_SIZE,
     height: COVER_SIZE,
-    borderRadius: 5,
+    borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#000',
+    marginRight: 12,
   },
   cover: {
     width: '100%',
     height: '100%',
   },
-  chapterInfo: {
+  content: {
     flex: 1,
-    marginLeft: 12,
-  },
-  chapterLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  timeInfo: {
-    fontSize: 14,
-    fontVariant: ['tabular-nums'],
-  },
-  playButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginRight: 8,
   },
   title: {
-    fontSize: 22,
+    fontSize: 14,
     fontWeight: '600',
-    lineHeight: 22,
-    letterSpacing: -0.5,
-    flex: 1,
+    marginBottom: 6,
   },
-  heartButton: {
-    width: 44,
-    height: 44,
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBarContainer: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    marginRight: 8,
+    overflow: 'hidden',
+  },
+  progressBarBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 2,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 11,
+    fontWeight: '500',
+    minWidth: 28,
+  },
+  timeLeft: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  playButton: {
+    padding: 4,
+  },
+  playButtonWrapper: {
+    position: 'relative',
+  },
+  playIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 4,
-  },
-  playIconContainer: {
-    position: 'relative',
   },
   downloadBadge: {
     position: 'absolute',
@@ -499,5 +483,11 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#2a2a3e',
+  },
+  heartButton: {
+    padding: 8,
+    marginLeft: 4,
   },
 });

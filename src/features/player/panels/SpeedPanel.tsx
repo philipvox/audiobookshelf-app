@@ -165,6 +165,8 @@ export function SpeedPanel({
           </Text>
         </TouchableOpacity>
 
+        <View style={{ flex: 1 }} />
+
         <TouchableOpacity
           style={[styles.applyButton, { backgroundColor: activeButtonBg }]}
           onPress={handleApply}
@@ -187,14 +189,17 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
     paddingVertical: 16,
+    alignItems: 'flex-start',
   },
   valueText: {
     fontSize: 64,
     fontWeight: '700',
     marginBottom: 24,
+    alignSelf: 'flex-start',
   },
   sliderSection: {
     marginBottom: 24,
+    width: '100%',
   },
   sliderLabels: {
     flexDirection: 'row',
@@ -210,6 +215,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 24,
+    width: '100%',
   },
   presetButton: {
     flex: 1,
@@ -223,7 +229,8 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    width: '100%',
   },
   cancelButton: {
     paddingVertical: 16,
@@ -235,10 +242,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   applyButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 24,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '5deg' }],
   },
   applyButtonText: {
     fontSize: 17,

@@ -11,8 +11,11 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
+  withDelay,
   runOnJS,
   clamp,
+  interpolate,
 } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
 
@@ -103,6 +106,7 @@ export function LiquidSlider({
   const trackWidth = useSharedValue(300);
   const translateX = useSharedValue(0);
   const startX = useSharedValue(0);
+  const isFocused = useSharedValue(0); // 0 = not focused, 1 = focused
 
   const valueToPosition = (val: number, width: number): number => {
     'worklet';
@@ -133,6 +137,7 @@ export function LiquidSlider({
   const panGesture = Gesture.Pan()
     .onStart(() => {
       startX.value = translateX.value;
+      isFocused.value = withTiming(1, { duration: 150 });
       if (onSlidingStart) runOnJS(onSlidingStart)();
     })
     .onUpdate((e) => {
@@ -145,6 +150,7 @@ export function LiquidSlider({
     .onEnd(() => {
       const finalValue = positionToValue(translateX.value, trackWidth.value);
       translateX.value = withSpring(valueToPosition(finalValue, trackWidth.value), SPRING_CONFIG);
+      isFocused.value = withTiming(0, { duration: 200 });
       if (onSlidingComplete) runOnJS(onSlidingComplete)(finalValue);
     });
 
@@ -154,16 +160,32 @@ export function LiquidSlider({
       const maxX = trackWidth.value - THUMB_WIDTH / 2;
       const tapX = clamp(e.x - THUMB_WIDTH / 2, minX, maxX);
       if (onSlidingStart) runOnJS(onSlidingStart)();
+      isFocused.value = withTiming(1, { duration: 150 });
       translateX.value = withSpring(tapX, SPRING_CONFIG);
       const newValue = positionToValue(tapX, trackWidth.value);
       runOnJS(onValueChange)(newValue);
+      // Unfocus after animation completes
+      isFocused.value = withDelay(300, withTiming(0, { duration: 200 }));
       if (onSlidingComplete) runOnJS(onSlidingComplete)(newValue);
     });
 
   const gesture = Gesture.Race(panGesture, tapGesture);
 
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [
+      { translateX: translateX.value },
+      { scale: interpolate(isFocused.value, [0, 1], [1, 1.15]) },
+    ],
+  }));
+
+  // Solid pill opacity (visible when not focused)
+  const solidPillStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(isFocused.value, [0, 1], [1, 0]),
+  }));
+
+  // Glass effect opacity (visible when focused)
+  const glassEffectStyle = useAnimatedStyle(() => ({
+    opacity: isFocused.value,
   }));
 
   const filledTrackStyle = useAnimatedStyle(() => ({
@@ -183,21 +205,19 @@ export function LiquidSlider({
 
   const magnifiedFilledStyle = useAnimatedStyle(() => {
     const thumbCenter = translateX.value + THUMB_WIDTH / 2;
-    
-    // Width from far left to fill point + extra to cover pill overhang at 100%
-    // At 100%, pill extends THUMB_WIDTH/2 beyond track end, need to cover that
-    const filledEnd = thumbCenter * MAGNIFY_SCALE;
+    const filledWidth = thumbCenter * MAGNIFY_SCALE;
     return {
-      width: filledEnd + 1000 + THUMB_WIDTH, // +1000 for left offset, +THUMB_WIDTH for right overhang
+      width: Math.max(0, filledWidth),
     };
   });
 
-  // Unfilled always covers entire track area (will be under filled)
   const magnifiedUnfilledStyle = useAnimatedStyle(() => {
+    const thumbCenter = translateX.value + THUMB_WIDTH / 2;
+    const fillPoint = thumbCenter * MAGNIFY_SCALE;
     const trackEnd = trackWidth.value * MAGNIFY_SCALE;
     return {
-      width: trackEnd + 1000,
-      left: -500,
+      width: Math.max(0, trackEnd - fillPoint),
+      left: fillPoint,
     };
   });
 
@@ -219,24 +239,27 @@ export function LiquidSlider({
             {/* Shadow layer - solid pill shape that casts shadow */}
             <View style={styles.shadowLayer} />
             
-            {/* Magnified track clipped to pill shape */}
-            <View style={styles.magnifyContainer}>
+            {/* Solid pill (visible when not focused) */}
+            <Animated.View style={[styles.solidPill, { backgroundColor: trackLeftColor }, solidPillStyle]} />
+            
+            {/* Magnified track clipped to pill shape (visible when focused) */}
+            <Animated.View style={[styles.magnifyContainer, glassEffectStyle]}>
               <Animated.View style={[styles.magnifiedTrackWrapper, magnifiedTrackStyle]}>
-                {/* Magnified unfilled track - positioned at fill point */}
+                {/* Magnified unfilled track */}
                 <Animated.View style={[styles.magnifiedTrack, { backgroundColor: trackRightColor }, magnifiedUnfilledStyle]} />
                 {/* Magnified filled track */}
                 <Animated.View style={[styles.magnifiedTrackFilled, { backgroundColor: trackLeftColor }, magnifiedFilledStyle]} />
               </Animated.View>
-            </View>
+            </Animated.View>
             
-            {/* SVG glass overlay */}
-            <View style={styles.svgContainer}>
+            {/* SVG glass overlay (visible when focused) */}
+            <Animated.View style={[styles.svgContainer, glassEffectStyle]}>
               <SvgXml
                 xml={THUMB_SVG}
                 width={THUMB_WIDTH}
                 height={THUMB_HEIGHT}
               />
-            </View>
+            </Animated.View>
           </Animated.View>
         </View>
       </GestureDetector>
@@ -282,7 +305,7 @@ const styles = StyleSheet.create({
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
     borderRadius: THUMB_HEIGHT / 2,
-    backgroundColor: 'rgba(200, 200, 200, 0.3)',
+    backgroundColor: 'rgba(128, 128, 128, 0.01)', // Nearly invisible but casts shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -297,7 +320,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: THUMB_HEIGHT / 2,
     overflow: 'hidden',
-    justifyContent: 'center',
+    paddingTop: THUMB_HEIGHT * 0.3, // Position track slightly above center
+  },
+  solidPill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: THUMB_WIDTH,
+    height: THUMB_HEIGHT,
+    borderRadius: THUMB_HEIGHT / 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   magnifiedTrackWrapper: {
     position: 'absolute',
@@ -308,14 +344,12 @@ const styles = StyleSheet.create({
   magnifiedTrack: {
     position: 'absolute',
     height: MAGNIFIED_TRACK_HEIGHT,
-    borderRadius: MAGNIFIED_TRACK_HEIGHT / 2,
     zIndex: 1,
   },
   magnifiedTrackFilled: {
     position: 'absolute',
-    left: -1000,
+    left: 0,
     height: MAGNIFIED_TRACK_HEIGHT,
-    borderRadius: MAGNIFIED_TRACK_HEIGHT / 2,
     zIndex: 2,
   },
   svgContainer: {
