@@ -20,6 +20,7 @@ import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 import { getTitle } from '@/shared/utils/metadata';
 import { matchToPalette } from '@/shared/utils/colorPalette';
+import { requestWaveformPermission } from '@/features/player/components/AudioWaveform';
 
 import {
   SCREEN_HEIGHT,
@@ -101,7 +102,7 @@ export function PlayerScreen() {
   useEffect(() => {
     if (!coverUrl || !currentBook) return;
     let mounted = true;
-
+    requestWaveformPermission();
     const extractColors = async () => {
       try {
         const result = await getColors(coverUrl, {
@@ -413,13 +414,17 @@ export function PlayerScreen() {
 
               {flipMode === 'speed' && (
                 <SpeedPanel
-                  tempSpeed={tempSpeed}
-                  setTempSpeed={setTempSpeed}
-                  onApply={() => {
-                    usePlayerStore.getState().setPlaybackRate(tempSpeed);
-                    handleFlipBack();
+                  currentSpeed={playbackRate}
+                  onSpeedChange={(speed) => {
+                    usePlayerStore.getState().setPlaybackRate(speed);
                   }}
-                  isLight={isLight}
+                  onClose={handleFlipBack}
+                  colors={{
+                    text: isLight ? '#000000' : '#FFFFFF',
+                    textSecondary: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
+                    surface: cardColor,
+                    isDark: !isLight,
+                  }}
                 />
               )}
 
