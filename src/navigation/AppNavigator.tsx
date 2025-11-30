@@ -92,27 +92,24 @@ function AuthenticatedApp() {
   }
 
   return (
-    <>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="Search" component={SearchScreen} />
-          <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
-          <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
-          <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
-          <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
-          <Stack.Screen name="Preferences" component={PreferencesScreen} />
-          <Stack.Screen
-            name="PreferencesOnboarding"
-            component={PreferencesOnboardingScreen}
-            options={{ presentation: 'modal' }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="Search" component={SearchScreen} />
+        <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
+        <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
+        <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
+        <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
+        <Stack.Screen name="Preferences" component={PreferencesScreen} />
+        <Stack.Screen
+          name="PreferencesOnboarding"
+          component={PreferencesOnboardingScreen}
+          options={{ presentation: 'modal' }}
+        />
+      </Stack.Navigator>
       <MiniPlayer />
       <PlayerScreen />
-    </>
+    </NavigationContainer>
   );
 }
 
