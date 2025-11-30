@@ -94,16 +94,8 @@ config.resolver = {
 // SERIALIZER OPTIMIZATIONS
 // ============================================================================
 
-config.serializer = {
-  ...config.serializer,
-
-  // Optimize module IDs for smaller bundles
-  // Use numeric IDs in production for smaller bundle size
-  createModuleIdFactory:
-    process.env.NODE_ENV === 'production'
-      ? require('metro/src/lib/createModuleIdFactory')
-      : undefined,
-};
+// Note: Using default serializer config as custom createModuleIdFactory
+// can cause compatibility issues with Expo's Metro setup
 
 // ============================================================================
 // SERVER OPTIMIZATIONS
