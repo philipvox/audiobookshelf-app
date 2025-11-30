@@ -51,7 +51,7 @@ interface PlayerState {
   sleepTimerInterval: NodeJS.Timeout | null;
   bookmarks: Bookmark[];
 
-  loadBook: (book: LibraryItem, startPosition?: number) => Promise<void>;
+  loadBook: (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean }) => Promise<void>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   seekTo: (position: number) => Promise<void>;
@@ -177,27 +177,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   sleepTimerInterval: null,
   bookmarks: [],
 
-  loadBook: async (book: LibraryItem, startPosition?: number) => {
+  loadBook: async (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean }) => {
+    const { startPosition, autoPlay = true } = options || {};
     const { currentBook, position: prevPosition, isOffline: wasOffline, isLoading } = get();
-    
+
     // Already loading?
     if (isLoading) {
       log('Already loading a book, skipping');
       return;
     }
-    
+
     const thisLoadId = ++currentLoadId;
     const t0 = Date.now();
     const timing = (label: string) => log(`⏱ ${label}: ${Date.now() - t0}ms`);
-    
+
     log('=== loadBook ===');
-    log('Book:', book.id, '-', book.media?.metadata?.title);
+    log('Book:', book.id, '-', book.media?.metadata?.title, '- autoPlay:', autoPlay);
 
     // Same book already loaded?
     if (currentBook?.id === book.id && audioService.getIsLoaded()) {
       log('Same book already loaded');
       set({ isPlayerVisible: true });
-      if (!get().isPlaying) {
+      if (autoPlay && !get().isPlaying) {
         await get().play();
       }
       return;
@@ -320,9 +321,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Load bookmarks in BACKGROUND (don't await)
       get().loadBookmarks().catch(() => {});
 
-      set({ isLoading: false, isBuffering: true, isPlaying: true });
-      
-      log(`✓ Playback started`);
+      // Set final state - only play if autoPlay is true
+      if (autoPlay) {
+        set({ isLoading: false, isBuffering: true, isPlaying: true });
+        log(`✓ Playback started`);
+      } else {
+        set({ isLoading: false, isBuffering: false, isPlaying: false });
+        log(`✓ Book loaded (paused)`);
+      }
 
     } catch (error: any) {
       if (thisLoadId === currentLoadId) {

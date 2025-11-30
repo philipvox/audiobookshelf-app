@@ -1,6 +1,6 @@
 /**
  * src/features/library/components/BookCard.tsx
- * 
+ *
  * Card component for displaying audiobook in library grid.
  * Uses metadata utility for consistent data extraction.
  */
@@ -8,9 +8,9 @@
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { theme } from '@/shared/theme';
 import { getTitle, getAuthorName } from '@/shared/utils/metadata';
 
@@ -19,10 +19,15 @@ interface BookCardProps {
 }
 
 function BookCardComponent({ book }: BookCardProps) {
-  const navigation = useNavigation();
+  const { loadBook } = usePlayerStore();
 
-  const handlePress = () => {
-    navigation.navigate('BookDetail' as never, { bookId: book.id } as never);
+  const handlePress = async () => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false });
+    } catch {
+      await loadBook(book, { autoPlay: false });
+    }
   };
 
   const coverUrl = apiClient.getItemCoverUrl(book.id);
