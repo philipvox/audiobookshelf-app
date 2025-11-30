@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { theme } from '@/shared/theme';
 
 interface OverviewTabProps {
@@ -13,7 +13,7 @@ interface OverviewTabProps {
 
 export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const navigation = useNavigation();
+  const { loadBook } = usePlayerStore();
   
   const metadata = book.media.metadata as any;
   const description = metadata.description || '';
@@ -83,9 +83,16 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
             horizontal
             data={similarBooks}
             renderItem={({ item }) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.similarBook}
-                onPress={() => navigation.navigate('BookDetail' as never, { bookId: item.id } as never)}
+                onPress={async () => {
+                  try {
+                    const fullBook = await apiClient.getItem(item.id);
+                    await loadBook(fullBook, { autoPlay: false });
+                  } catch {
+                    await loadBook(item, { autoPlay: false });
+                  }
+                }}
               >
                 <Image
                   source={apiClient.getItemCoverUrl(item.id)}
