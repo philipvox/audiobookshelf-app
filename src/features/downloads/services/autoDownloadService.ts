@@ -152,7 +152,12 @@ class AutoDownloadService {
     try {
       const data = await AsyncStorage.getItem(MANIFEST_KEY);
       if (data) {
-        this.manifest = JSON.parse(data);
+        const parsed = JSON.parse(data);
+        // Filter out any books with invalid IDs
+        this.manifest = {
+          ...parsed,
+          books: (parsed.books || []).filter((book: any) => book && book.id),
+        };
         for (const book of this.manifest.books) {
           this.statusState.set(book.id, 'completed');
           this.progressState.set(book.id, 1);
@@ -281,7 +286,11 @@ class AutoDownloadService {
   }
 
   private queueDownload(item: LibraryItem): void {
-    const bookId = item.id;
+    const bookId = item?.id;
+    if (!bookId) {
+      console.warn('[AutoDownload] Skipping item with no id');
+      return;
+    }
     if (this.downloadQueue.includes(bookId)) return;
     
     this.downloadQueue.push(bookId);
@@ -305,6 +314,11 @@ class AutoDownloadService {
   }
 
   private async downloadBook(bookId: string): Promise<void> {
+    if (!bookId) {
+      console.warn('[AutoDownload] Skipping undefined bookId');
+      return;
+    }
+    
     if (!_fs || !_downloadsDir) {
       console.warn('[AutoDownload] FileSystem not ready');
       return;
