@@ -46,6 +46,12 @@ class AudioService {
       
       await TrackPlayer.setupPlayer({
         autoHandleInterruptions: true,
+        // Optimized buffering for audiobooks (longer content)
+        minBuffer: 60,           // 60 sec minimum buffer
+        maxBuffer: 300,          // 5 min max buffer
+        playBuffer: 10,          // Start playback after 10 sec buffer
+        backBuffer: 60,          // Keep 60 sec behind current position
+        waitForBuffer: true,     // Wait for buffer before playing
       });
 
       await TrackPlayer.updateOptions({
