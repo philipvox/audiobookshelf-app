@@ -11,6 +11,7 @@ import { apiClient } from '@/core/api';
 import { audioService, PlaybackState } from '../services/audioService';
 import { sessionService, SessionChapter } from '../services/sessionService';
 import { progressService } from '../services/progressService';
+import { backgroundSyncService } from '../services/backgroundSyncService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEBUG = __DEV__;
@@ -73,7 +74,9 @@ interface PlayerState {
 }
 
 const BOOKMARKS_KEY = 'player_bookmarks';
+const PROGRESS_SAVE_INTERVAL = 30000; // Save progress every 30 seconds
 let currentLoadId = 0;
+let lastProgressSave = 0;
 
 async function getDownloadPath(bookId: string): Promise<string | null> {
   try {
@@ -211,19 +214,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     timing('State set');
 
     try {
-      // Save progress for previous book IN BACKGROUND (don't await)
+      // Save progress for previous book using background sync service
       if (currentBook && currentBook.id !== book.id && prevPosition > 0) {
-        if (wasOffline) {
-          progressService.saveLocalOnly({
-            itemId: currentBook.id,
-            currentTime: prevPosition,
-            duration: get().duration,
-            progress: get().duration > 0 ? prevPosition / get().duration : 0,
-            isFinished: false,
-          }).catch(() => {});
-        } else {
-          sessionService.syncProgress(prevPosition);
-        }
+        const session = sessionService.getCurrentSession();
+        backgroundSyncService.saveProgress(
+          currentBook.id,
+          prevPosition,
+          get().duration,
+          session?.id
+        ).catch(() => {});
       }
 
       if (thisLoadId !== currentLoadId) return;
@@ -271,6 +270,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         sessionService.startAutoSync(() => get().position);
       }
+
+      // Initialize and start background sync service
+      await backgroundSyncService.init();
+      backgroundSyncService.start();
 
       // Update state with chapters/duration before loading audio
       set({
@@ -343,21 +346,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     await audioService.pause();
     set({ isPlaying: false });
 
-    const { currentBook, position, duration, isOffline } = get();
+    const { currentBook, position, duration } = get();
     if (!currentBook) return;
 
-    // Sync progress on pause (fire and forget)
-    if (isOffline) {
-      progressService.saveLocalOnly({
-        itemId: currentBook.id,
-        currentTime: position,
-        duration,
-        progress: duration > 0 ? position / duration : 0,
-        isFinished: false,
-      }).catch(() => {});
-    } else {
-      sessionService.syncProgress(position); // Now fire-and-forget
-    }
+    // Sync progress on pause using background sync service
+    const session = sessionService.getCurrentSession();
+    backgroundSyncService.saveProgress(
+      currentBook.id,
+      position,
+      duration,
+      session?.id
+    ).catch(() => {});
   },
 
   seekTo: async (position: number) => {
@@ -433,13 +432,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   updatePlaybackState: (state: PlaybackState) => {
-    const { duration: storeDuration, isLoading, isPlaying: wasPlaying } = get();
+    const { currentBook, duration: storeDuration, isLoading, isPlaying: wasPlaying } = get();
+    const effectiveDuration = state.duration > 0 ? state.duration : storeDuration;
 
     // Don't update isPlaying while loading
     if (isLoading) {
       set({
         position: state.position,
-        duration: state.duration > 0 ? state.duration : storeDuration,
+        duration: effectiveDuration,
         isBuffering: state.isBuffering,
       });
       return;
@@ -451,29 +451,65 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({
       isPlaying: newIsPlaying,
       position: state.position,
-      duration: state.duration > 0 ? state.duration : storeDuration,
+      duration: effectiveDuration,
       isBuffering: state.isBuffering,
     });
+
+    // Periodic progress save to SQLite (every 30 seconds during playback)
+    const now = Date.now();
+    if (currentBook && newIsPlaying && state.position > 0 && now - lastProgressSave > PROGRESS_SAVE_INTERVAL) {
+      lastProgressSave = now;
+      const session = sessionService.getCurrentSession();
+      backgroundSyncService.saveProgress(
+        currentBook.id,
+        state.position,
+        effectiveDuration,
+        session?.id
+      ).catch(() => {});
+    }
 
     // Handle track finished
     if (state.didJustFinish) {
       log('Track finished');
       set({ isPlaying: false });
+
+      // Save final progress
+      if (currentBook) {
+        const session = sessionService.getCurrentSession();
+        backgroundSyncService.saveProgress(
+          currentBook.id,
+          state.position,
+          effectiveDuration,
+          session?.id
+        ).catch(() => {});
+      }
     }
   },
 
   cleanup: async () => {
-    const { position, isOffline, sleepTimerInterval } = get();
+    const { currentBook, position, duration, sleepTimerInterval } = get();
 
     // Clear sleep timer
     if (sleepTimerInterval) {
       clearInterval(sleepTimerInterval);
     }
 
-    // Final sync
-    if (!isOffline) {
-      await sessionService.closeSession(position);
+    // Save final progress to SQLite + queue for server sync
+    if (currentBook && position > 0) {
+      const session = sessionService.getCurrentSession();
+      await backgroundSyncService.saveProgress(
+        currentBook.id,
+        position,
+        duration,
+        session?.id
+      );
     }
+
+    // Force sync all pending progress to server
+    await backgroundSyncService.forceSyncAll();
+
+    // Close session
+    await sessionService.closeSession(position);
 
     // Release audio
     await audioService.unloadAudio();
