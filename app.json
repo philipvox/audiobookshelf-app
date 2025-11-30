@@ -4,36 +4,61 @@
     "slug": "audiobookshelf-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#FAF8F5",
       "resizeMode": "contain"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.audiobookshelf.app",
+      "buildNumber": "1",
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio"
-        ]
+          "audio",
+          "fetch",
+          "remote-notification"
+        ],
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to visualize audio.",
+        "UIViewControllerBasedStatusBarAppearance": true
       },
-      "bundleIdentifier": "com.audiobookshelf.app"
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FAF8F5"
       },
       "package": "com.audiobookshelf.app",
+      "versionCode": 1,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.WAKE_LOCK"
+      ],
+      "allowBackup": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
         "projectId": "6f946d03-1d57-4474-bac2-516532b4c2f6"
       }
+    },
+    "experiments": {
+      "tsconfigPaths": true
     },
     "plugins": [
       [
@@ -42,7 +67,22 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to visualize audio."
         }
       ],
-      "react-native-audio-api"
+      "react-native-audio-api",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": false,
+            "extraProguardRules": "-keep class com.audiobookshelf.** { *; }"
+          },
+          "ios": {
+            "deploymentTarget": "15.1",
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ]
   }
 }
