@@ -102,11 +102,17 @@ export function LibraryBookCard({ book }: LibraryBookCardProps) {
   const textColor = textIsLight ? '#000000' : '#FFFFFF';
   const secondaryColor = textIsLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)';
 
-  const handlePress = () => {
+  const handlePress = async () => {
     if (isSelecting) {
       toggleSelection(book.id);
     } else {
-      navigation.navigate('BookDetail', { bookId: book.id });
+      // Open player without autoplay
+      try {
+        const fullBook = await apiClient.getItem(book.id);
+        await loadBook(fullBook, { autoPlay: false });
+      } catch {
+        await loadBook(book, { autoPlay: false });
+      }
     }
   };
 

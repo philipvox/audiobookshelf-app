@@ -1,10 +1,10 @@
 // File: src/features/library/components/HorizontalBookItem.tsx
-import React, { memo } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { theme } from '@/shared/theme';
 import { getTitle, getAuthorName } from '@/shared/utils/metadata';
 
@@ -13,10 +13,15 @@ interface HorizontalBookItemProps {
 }
 
 export function HorizontalBookItem({ book }: HorizontalBookItemProps) {
-  const navigation = useNavigation();
+  const { loadBook } = usePlayerStore();
 
-  const handlePress = () => {
-    navigation.navigate('BookDetail' as never, { bookId: book.id } as never);
+  const handlePress = async () => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false });
+    } catch {
+      await loadBook(book, { autoPlay: false });
+    }
   };
 
   const coverUrl = apiClient.getItemCoverUrl(book.id);

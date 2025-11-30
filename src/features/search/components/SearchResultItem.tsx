@@ -1,16 +1,16 @@
 /**
  * src/features/search/components/SearchResultItem.tsx
- * 
+ *
  * Search result item showing book cover, title, author.
  * Uses metadata utility for consistent data extraction.
  */
 
-import React, { memo } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { theme } from '@/shared/theme';
 import { getTitle, getAuthorName, getFormattedDuration } from '@/shared/utils/metadata';
 
@@ -19,10 +19,15 @@ interface SearchResultItemProps {
 }
 
 export function SearchResultItem({ item }: SearchResultItemProps) {
-  const navigation = useNavigation();
+  const { loadBook } = usePlayerStore();
 
-  const handlePress = () => {
-    navigation.navigate('BookDetail' as never, { bookId: item.id } as never);
+  const handlePress = async () => {
+    try {
+      const fullBook = await apiClient.getItem(item.id);
+      await loadBook(fullBook, { autoPlay: false });
+    } catch {
+      await loadBook(item, { autoPlay: false });
+    }
   };
 
   const coverUrl = apiClient.getItemCoverUrl(item.id);

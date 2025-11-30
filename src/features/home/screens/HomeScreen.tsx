@@ -140,6 +140,22 @@ export function HomeScreen() {
     }
   };
 
+  // Open player without autoplay when tapping a card
+  const handleCardPress = useCallback(async (book: any) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false });
+    } catch (err) {
+      console.error('Failed to open player:', err);
+      // Fallback to partial book data
+      try {
+        await loadBook(book, { autoPlay: false });
+      } catch (e) {
+        console.error('Fallback failed:', e);
+      }
+    }
+  }, [loadBook]);
+
   const handleJustForYou = () => {
     navigation.navigate('Recommendations');
   };
@@ -166,12 +182,12 @@ export function HomeScreen() {
             {reversedCards.map((book, reverseIndex) => {
               const zIndex = MAX_CARDS - reverseIndex;
               return (
-                <ContinueListeningCard 
-                  key={book.id} 
+                <ContinueListeningCard
+                  key={book.id}
                   book={book}
                   zIndex={zIndex}
                   onRemove={handleRemoveFromContinue}
-                  onPress={() => navigation.navigate('BookDetail', { id: book.id })}
+                  onPress={() => handleCardPress(book)}
                   style={{
                     position: 'absolute',
                     top: reverseIndex * (CARD_HEIGHT + CARD_OVERLAP),
