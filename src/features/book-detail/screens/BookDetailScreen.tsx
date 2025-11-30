@@ -73,8 +73,27 @@ export function BookDetailScreen() {
 
   const { book, isLoading, error, refetch } = useBookDetails(bookId);
   const { loadBook } = usePlayerStore();
-  const { status: downloadStatus, progress: downloadProgress } = useDownloadStatus(bookId);
+  const { status: downloadStatus } = useDownloadStatus(bookId);
 
+  // ALL HOOKS MUST BE BEFORE EARLY RETURNS
+  const handlePlay = useCallback(async () => {
+    if (!book) return;
+    try {
+      await loadBook(book);
+    } catch (err) {
+      console.error('Failed to start playback:', err);
+    }
+  }, [book, loadBook]);
+
+  const handleDownload = useCallback(() => {
+    if (!book) return;
+    if (downloadStatus === 'completed' || downloadStatus === 'downloading' || downloadStatus === 'queued') {
+      return;
+    }
+    autoDownloadService.startDownload(book);
+  }, [book, downloadStatus]);
+
+  // Early returns AFTER all hooks
   if (isLoading) {
     return <LoadingSpinner text="Loading book details..." />;
   }
@@ -83,6 +102,7 @@ export function BookDetailScreen() {
     return <ErrorView message="Failed to load book details" onRetry={refetch} />;
   }
 
+  // Derived values (not hooks, safe after early returns)
   const metadata = book.media.metadata as any;
   const title = metadata.title || 'Unknown Title';
   const author = metadata.authorName || 'Unknown Author';
@@ -91,29 +111,14 @@ export function BookDetailScreen() {
   const genres = metadata.genres || [];
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const chapters = book.media.chapters || [];
-  
+
   let duration = book.media.duration || 0;
   if (!duration && book.media.audioFiles?.length) {
     duration = book.media.audioFiles.reduce((sum: number, f: any) => sum + (f.duration || 0), 0);
   }
-  
+
   const progress = book.userMediaProgress?.progress || 0;
   const hasProgress = progress > 0 && progress < 1;
-
-  const handlePlay = async () => {
-    try {
-      await loadBook(book);
-    } catch (err) {
-      console.error('Failed to start playback:', err);
-    }
-  };
-
-  const handleDownload = useCallback(() => {
-    if (downloadStatus === 'completed' || downloadStatus === 'downloading' || downloadStatus === 'queued') {
-      return;
-    }
-    autoDownloadService.startDownload(book);
-  }, [book, downloadStatus]);
 
   const renderDownloadIcon = () => {
     if (downloadStatus === 'completed') {
