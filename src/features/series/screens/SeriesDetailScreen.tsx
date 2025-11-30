@@ -22,6 +22,7 @@ import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
+import { LibraryHeartButton } from '@/features/library/components/LibraryHeartButton';
 import { LibraryItem } from '@/core/types';
 
 type SeriesDetailRouteParams = {
@@ -220,7 +221,12 @@ export function SeriesDetailScreen() {
                   <Text style={styles.bookTitle} numberOfLines={2}>{metadata.title || 'Unknown'}</Text>
                   <Text style={styles.bookAuthor} numberOfLines={1}>{metadata.authorName || 'Unknown Author'}</Text>
                 </View>
-                <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
+                <LibraryHeartButton
+                  bookId={book.id}
+                  size="medium"
+                  variant="plain"
+                  inactiveColor="rgba(255,255,255,0.4)"
+                />
               </TouchableOpacity>
             );
           })}
