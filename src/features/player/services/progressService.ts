@@ -1,12 +1,11 @@
 /**
  * src/features/player/services/progressService.ts
- * 
- * Handles local progress storage for offline playback
+ *
+ * Handles local progress storage for offline playback using SQLite.
+ * SQLite provides faster read/write operations compared to AsyncStorage.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const PROGRESS_KEY_PREFIX = 'book_progress_';
+import { sqliteCache } from '@/core/services/sqliteCache';
 
 interface LocalProgress {
   itemId: string;
@@ -19,16 +18,16 @@ interface LocalProgress {
 
 class ProgressService {
   /**
-   * Save progress locally (for offline playback)
+   * Save progress locally (for offline playback) using SQLite
    */
   async saveLocalOnly(progress: LocalProgress): Promise<void> {
     try {
-      const key = `${PROGRESS_KEY_PREFIX}${progress.itemId}`;
-      const data = {
-        ...progress,
-        updatedAt: Date.now(),
-      };
-      await AsyncStorage.setItem(key, JSON.stringify(data));
+      await sqliteCache.setPlaybackProgress(
+        progress.itemId,
+        progress.currentTime,
+        progress.duration,
+        false // Not synced yet
+      );
     } catch (e) {
       console.warn('[ProgressService] Failed to save local progress:', e);
     }
@@ -39,13 +38,8 @@ class ProgressService {
    */
   async getLocalProgress(itemId: string): Promise<number> {
     try {
-      const key = `${PROGRESS_KEY_PREFIX}${itemId}`;
-      const data = await AsyncStorage.getItem(key);
-      if (data) {
-        const progress: LocalProgress = JSON.parse(data);
-        return progress.currentTime || 0;
-      }
-      return 0;
+      const progress = await sqliteCache.getPlaybackProgress(itemId);
+      return progress?.position || 0;
     } catch {
       return 0;
     }
@@ -56,10 +50,16 @@ class ProgressService {
    */
   async getProgressData(itemId: string): Promise<LocalProgress | null> {
     try {
-      const key = `${PROGRESS_KEY_PREFIX}${itemId}`;
-      const data = await AsyncStorage.getItem(key);
-      if (data) {
-        return JSON.parse(data);
+      const progress = await sqliteCache.getPlaybackProgress(itemId);
+      if (progress) {
+        return {
+          itemId: progress.itemId,
+          currentTime: progress.position,
+          duration: progress.duration,
+          progress: progress.duration > 0 ? progress.position / progress.duration : 0,
+          isFinished: progress.position >= progress.duration * 0.99,
+          updatedAt: progress.updatedAt,
+        };
       }
       return null;
     } catch {
@@ -69,42 +69,43 @@ class ProgressService {
 
   /**
    * Clear progress for a book
+   * Note: We just set position to 0 rather than deleting
    */
   async clearProgress(itemId: string): Promise<void> {
     try {
-      const key = `${PROGRESS_KEY_PREFIX}${itemId}`;
-      await AsyncStorage.removeItem(key);
+      await sqliteCache.setPlaybackProgress(itemId, 0, 0, true);
     } catch {
       // Ignore
     }
   }
 
   /**
-   * Get all local progress entries
+   * Get all unsynced progress entries (for background sync)
    */
-  async getAllProgress(): Promise<LocalProgress[]> {
+  async getUnsyncedProgress(): Promise<LocalProgress[]> {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const progressKeys = keys.filter(k => k.startsWith(PROGRESS_KEY_PREFIX));
-      
-      if (progressKeys.length === 0) return [];
-      
-      const entries = await AsyncStorage.multiGet(progressKeys);
-      const progress: LocalProgress[] = [];
-      
-      for (const [_, value] of entries) {
-        if (value) {
-          try {
-            progress.push(JSON.parse(value));
-          } catch {
-            // Skip invalid entries
-          }
-        }
-      }
-      
-      return progress.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      const unsycned = await sqliteCache.getUnsyncedProgress();
+      return unsycned.map(p => ({
+        itemId: p.itemId,
+        currentTime: p.position,
+        duration: p.duration,
+        progress: p.duration > 0 ? p.position / p.duration : 0,
+        isFinished: p.position >= p.duration * 0.99,
+        updatedAt: p.updatedAt,
+      }));
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Mark progress as synced (after successful server sync)
+   */
+  async markSynced(itemId: string): Promise<void> {
+    try {
+      await sqliteCache.markProgressSynced(itemId);
+    } catch {
+      // Ignore
     }
   }
 }
