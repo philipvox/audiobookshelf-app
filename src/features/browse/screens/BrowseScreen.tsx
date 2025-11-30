@@ -1,7 +1,8 @@
 /**
  * src/features/browse/screens/BrowseScreen.tsx
  *
- * Redesigned Discover/Browse screen with masonry grid layout
+ * Recommendations screen with masonry grid layout
+ * Uses reading preferences and history to generate personalized recommendations
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -13,7 +14,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,21 +21,23 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
+import { usePreferencesStore } from '@/features/recommendations';
+import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
 import { LoadingSpinner } from '@/shared/components';
+import { LibraryItem } from '@/core/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GAP = 5;
 const PADDING = 5;
 const NUM_COLUMNS = 3;
 const CARD_SIZE = (SCREEN_WIDTH - PADDING * 2 - GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
-const LARGE_CARD_SIZE = CARD_SIZE * 2 + GAP;
 const CARD_RADIUS = 5;
 
 const BG_COLOR = '#1a1a1a';
 const ACCENT = '#CCFF00';
 
-type Category = 'featured' | 'recent' | 'popular' | 'series' | 'authors';
+type Category = 'for_you' | 'recent' | 'unstarted' | 'short' | 'long';
 
 interface BookItem {
   id: string;
@@ -43,6 +45,102 @@ interface BookItem {
   title: string;
   author: string;
   size: 1 | 2;
+  score: number;
+}
+
+interface ScoredBook {
+  item: LibraryItem;
+  score: number;
+}
+
+// Score a book based on user preferences and history
+function scoreBook(
+  item: LibraryItem,
+  preferences: {
+    favoriteGenres: string[];
+    favoriteAuthors: string[];
+    favoriteNarrators: string[];
+    prefersSeries: boolean | null;
+    preferredLength: string;
+  },
+  historyAuthors: Set<string>,
+  historyGenres: Set<string>,
+  historyNarrators: Set<string>,
+  alreadyListening: Set<string>
+): number {
+  let score = 0;
+  const metadata = (item.media?.metadata as any) || {};
+  const author = metadata.authorName || '';
+  const narrator = (metadata.narratorName || '').replace(/^Narrated by\s*/i, '').trim();
+  const genres: string[] = metadata.genres || [];
+  const duration = item.media?.duration || 0;
+  const isSeries = !!metadata.seriesName;
+  const progress = item.userMediaProgress?.progress || 0;
+
+  // Skip books already in progress (they show in continue listening)
+  if (alreadyListening.has(item.id)) {
+    return -1000;
+  }
+
+  // Heavily penalize finished books
+  if (progress >= 0.95) {
+    return -500;
+  }
+
+  // Boost unstarted books slightly
+  if (progress === 0) {
+    score += 5;
+  }
+
+  // Match favorite genres (high weight)
+  for (const genre of genres) {
+    if (preferences.favoriteGenres.some(g => genre.toLowerCase().includes(g.toLowerCase()))) {
+      score += 20;
+    }
+    // Also boost if genre matches history
+    if (historyGenres.has(genre.toLowerCase())) {
+      score += 10;
+    }
+  }
+
+  // Match favorite authors (high weight)
+  if (preferences.favoriteAuthors.some(a => author.toLowerCase().includes(a.toLowerCase()))) {
+    score += 25;
+  }
+  // Boost authors from history
+  if (historyAuthors.has(author.toLowerCase())) {
+    score += 15;
+  }
+
+  // Match favorite narrators
+  if (preferences.favoriteNarrators.some(n => narrator.toLowerCase().includes(n.toLowerCase()))) {
+    score += 15;
+  }
+  if (historyNarrators.has(narrator.toLowerCase())) {
+    score += 10;
+  }
+
+  // Series preference
+  if (preferences.prefersSeries === true && isSeries) {
+    score += 10;
+  } else if (preferences.prefersSeries === false && !isSeries) {
+    score += 10;
+  }
+
+  // Length preference
+  const hours = duration / 3600;
+  if (preferences.preferredLength === 'short' && hours < 8) {
+    score += 10;
+  } else if (preferences.preferredLength === 'medium' && hours >= 8 && hours <= 20) {
+    score += 10;
+  } else if (preferences.preferredLength === 'long' && hours > 20) {
+    score += 10;
+  }
+
+  // Add some randomness to avoid same order every time
+  score += Math.random() * 5;
+
+  return score;
 }
 
 // Masonry layout computation
@@ -103,27 +201,120 @@ export function BrowseScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { loadBook } = usePlayerStore();
-  const [activeCategory, setActiveCategory] = useState<Category>('featured');
+  const [activeCategory, setActiveCategory] = useState<Category>('for_you');
 
-  // Fetch library items
+  // Get user preferences
+  const {
+    favoriteGenres,
+    favoriteAuthors,
+    favoriteNarrators,
+    prefersSeries,
+    preferredLength,
+  } = usePreferencesStore();
+
+  // Get continue listening for history context
+  const { items: continueItems } = useContinueListening();
+
+  // Fetch all library items
   const { data: libraryData, isLoading } = useQuery({
     queryKey: ['library-items-browse'],
     queryFn: () => apiClient.getLibraryItems(),
     staleTime: 5 * 60 * 1000,
   });
 
-  // Process items for masonry grid with varying sizes
-  const processedItems = useMemo(() => {
+  // Extract history context from continue listening
+  const historyContext = useMemo(() => {
+    const authors = new Set<string>();
+    const genres = new Set<string>();
+    const narrators = new Set<string>();
+    const listeningIds = new Set<string>();
+
+    for (const item of continueItems) {
+      listeningIds.add(item.id);
+      const metadata = (item.media?.metadata as any) || {};
+      if (metadata.authorName) authors.add(metadata.authorName.toLowerCase());
+      if (metadata.narratorName) {
+        const narrator = metadata.narratorName.replace(/^Narrated by\s*/i, '').trim();
+        if (narrator) narrators.add(narrator.toLowerCase());
+      }
+      for (const genre of (metadata.genres || [])) {
+        genres.add(genre.toLowerCase());
+      }
+    }
+
+    return { authors, genres, narrators, listeningIds };
+  }, [continueItems]);
+
+  // Score and sort all items based on preferences
+  const scoredItems = useMemo(() => {
     const items = libraryData?.results || [];
-    return items.slice(0, 30).map((item: any, idx: number) => ({
-      id: item.id,
-      coverUrl: apiClient.getItemCoverUrl(item.id),
-      title: item.media?.metadata?.title || 'Unknown',
-      author: item.media?.metadata?.authorName || 'Unknown',
-      // Make some items large (2x2) for visual interest
-      size: (idx % 5 === 0 || idx % 7 === 0) ? 2 : 1,
+    const preferences = { favoriteGenres, favoriteAuthors, favoriteNarrators, prefersSeries, preferredLength };
+
+    const scored: ScoredBook[] = items.map((item: LibraryItem) => ({
+      item,
+      score: scoreBook(
+        item,
+        preferences,
+        historyContext.authors,
+        historyContext.genres,
+        historyContext.narrators,
+        historyContext.listeningIds
+      ),
+    }));
+
+    // Sort by score descending
+    scored.sort((a, b) => b.score - a.score);
+
+    return scored;
+  }, [libraryData, favoriteGenres, favoriteAuthors, favoriteNarrators, prefersSeries, preferredLength, historyContext]);
+
+  // Filter based on category
+  const filteredItems = useMemo(() => {
+    let items = scoredItems.filter(s => s.score > -100); // Exclude very negative scores
+
+    switch (activeCategory) {
+      case 'for_you':
+        // Top recommendations (already sorted by score)
+        break;
+      case 'recent':
+        // Sort by added date (newest first)
+        items = [...items].sort((a, b) => (b.item.addedAt || 0) - (a.item.addedAt || 0));
+        break;
+      case 'unstarted':
+        // Only unstarted books
+        items = items.filter(s => (s.item.userMediaProgress?.progress || 0) === 0);
+        break;
+      case 'short':
+        // Books under 8 hours
+        items = items.filter(s => {
+          const hours = (s.item.media?.duration || 0) / 3600;
+          return hours > 0 && hours < 8;
+        });
+        break;
+      case 'long':
+        // Books over 15 hours
+        items = items.filter(s => {
+          const hours = (s.item.media?.duration || 0) / 3600;
+          return hours > 15;
+        });
+        break;
+    }
+
+    return items.slice(0, 40);
+  }, [scoredItems, activeCategory]);
+
+  // Process items for masonry grid
+  const processedItems = useMemo(() => {
+    return filteredItems.map((scored, idx) => ({
+      id: scored.item.id,
+      coverUrl: apiClient.getItemCoverUrl(scored.item.id),
+      title: (scored.item.media?.metadata as any)?.title || 'Unknown',
+      author: (scored.item.media?.metadata as any)?.authorName || 'Unknown',
+      // Top scored items get large cards
+      size: (idx < 3 && scored.score > 30) || idx % 7 === 0 ? 2 : 1,
+      score: scored.score,
     })) as BookItem[];
-  }, [libraryData]);
+  }, [filteredItems]);
 
   // Compute masonry layout
   const layout = useMemo(() => computeMasonryLayout(processedItems), [processedItems]);
@@ -143,18 +334,18 @@ export function BrowseScreen() {
   }, [loadBook]);
 
   const categories: { key: Category; label: string; count?: number }[] = [
-    { key: 'featured', label: 'Featured', count: processedItems.length },
+    { key: 'for_you', label: 'For You', count: filteredItems.length },
     { key: 'recent', label: 'Recent' },
-    { key: 'popular', label: 'Popular' },
-    { key: 'series', label: 'Series' },
-    { key: 'authors', label: 'Authors' },
+    { key: 'unstarted', label: 'New' },
+    { key: 'short', label: 'Quick Listens' },
+    { key: 'long', label: 'Epic' },
   ];
 
   if (isLoading) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <LoadingSpinner text="Loading..." />
+        <LoadingSpinner text="Finding recommendations..." />
       </View>
     );
   }
@@ -163,37 +354,50 @@ export function BrowseScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
 
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <Text style={styles.headerTitle}>Just for You</Text>
+        <Text style={styles.headerSubtitle}>
+          Based on your preferences & listening history
+        </Text>
+      </View>
+
       {/* Main content */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 10, paddingBottom: 80 + insets.bottom },
+          { paddingBottom: 80 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Masonry grid */}
-        <View style={[styles.grid, { height: gridHeight }]}>
-          {layout.map(({ item, x, y, w, h }) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.card, { left: x, top: y, width: w, height: h }]}
-              onPress={() => handleBookPress(item.id)}
-              activeOpacity={0.85}
-            >
-              <Image
-                source={item.coverUrl}
-                style={styles.cardImage}
-                contentFit="cover"
-                transition={200}
-              />
-              {/* Optional: Heart button for favorites */}
-              <TouchableOpacity style={styles.heartButton}>
-                <Icon name="heart-outline" size={16} color="rgba(255,255,255,0.8)" set="ionicons" />
+        {processedItems.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>📚</Text>
+            <Text style={styles.emptyTitle}>No recommendations yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Start listening to some books and we'll personalize your recommendations
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.grid, { height: gridHeight }]}>
+            {layout.map(({ item, x, y, w, h }) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.card, { left: x, top: y, width: w, height: h }]}
+                onPress={() => handleBookPress(item.id)}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={item.coverUrl}
+                  style={styles.cardImage}
+                  contentFit="cover"
+                  transition={200}
+                />
               </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom category tabs */}
@@ -223,11 +427,6 @@ export function BrowseScreen() {
           ))}
         </ScrollView>
       </View>
-
-      {/* FAB for add */}
-      <TouchableOpacity style={[styles.fab, { bottom: 80 + insets.bottom }]}>
-        <Icon name="add" size={28} color="#000000" set="ionicons" />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -236,6 +435,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG_COLOR,
+  },
+  header: {
+    paddingHorizontal: PADDING + 10,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
   },
   scrollView: {
     flex: 1,
@@ -257,16 +470,28 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heartButton: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
+  emptyState: {
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   bottomTabs: {
     position: 'absolute',
@@ -314,20 +539,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.5)',
     marginLeft: 6,
-  },
-  fab: {
-    position: 'absolute',
-    left: 16,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: ACCENT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
 });

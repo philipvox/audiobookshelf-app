@@ -157,7 +157,8 @@ export function HomeScreen() {
   }, [loadBook]);
 
   const handleJustForYou = () => {
-    navigation.navigate('Recommendations');
+    // Navigate to the Discover tab (Browse screen with recommendations)
+    navigation.navigate('DiscoverTab');
   };
 
   return (
