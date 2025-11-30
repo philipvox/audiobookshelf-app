@@ -101,7 +101,7 @@ export function ProfileScreen() {
   useEffect(() => {
     // Load download stats
     const loadStats = async () => {
-      const downloads = autoDownloadService.getDownloads();
+      const downloads = autoDownloadService.getAllDownloads();
       setDownloadCount(downloads.length);
 
       // Calculate total storage
