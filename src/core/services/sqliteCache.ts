@@ -46,6 +46,17 @@ interface SyncMetadata {
   updatedAt: number;
 }
 
+export interface ReadHistoryEntry {
+  itemId: string;
+  title: string;
+  authorName: string;
+  narratorName?: string;
+  genres: string[];
+  completedAt: number;
+  timesRead: number;
+  rating?: number;
+}
+
 class SQLiteCache {
   private db: SQLite.SQLiteDatabase | null = null;
   private isInitialized = false;
@@ -125,12 +136,26 @@ class SQLiteCache {
           updated_at INTEGER NOT NULL
         );
 
+        -- Read history for recommendations (tracks completed books)
+        CREATE TABLE IF NOT EXISTS read_history (
+          item_id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          author_name TEXT NOT NULL,
+          narrator_name TEXT,
+          genres TEXT NOT NULL DEFAULT '[]',
+          completed_at INTEGER NOT NULL,
+          times_read INTEGER NOT NULL DEFAULT 1,
+          rating INTEGER
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
         CREATE INDEX IF NOT EXISTS idx_authors_library ON authors(library_id);
         CREATE INDEX IF NOT EXISTS idx_series_library ON series(library_id);
         CREATE INDEX IF NOT EXISTS idx_progress_synced ON playback_progress(synced);
+        CREATE INDEX IF NOT EXISTS idx_read_history_completed ON read_history(completed_at);
+        CREATE INDEX IF NOT EXISTS idx_read_history_author ON read_history(author_name);
       `);
 
       this.isInitialized = true;
@@ -465,6 +490,140 @@ class SQLiteCache {
   async getLastSyncTime(libraryId: string): Promise<number | null> {
     const value = await this.getSyncMetadata(`items_${libraryId}`);
     return value ? parseInt(value, 10) : null;
+  }
+
+  // ============================================================================
+  // READ HISTORY (For Recommendations)
+  // ============================================================================
+
+  async getReadHistory(): Promise<ReadHistoryEntry[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        title: string;
+        author_name: string;
+        narrator_name: string | null;
+        genres: string;
+        completed_at: number;
+        times_read: number;
+        rating: number | null;
+      }>('SELECT * FROM read_history ORDER BY completed_at DESC');
+
+      return rows.map(r => ({
+        itemId: r.item_id,
+        title: r.title,
+        authorName: r.author_name,
+        narratorName: r.narrator_name || undefined,
+        genres: JSON.parse(r.genres),
+        completedAt: r.completed_at,
+        timesRead: r.times_read,
+        rating: r.rating || undefined,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getReadHistory error:', err);
+      return [];
+    }
+  }
+
+  async addToReadHistory(entry: Omit<ReadHistoryEntry, 'completedAt' | 'timesRead'>): Promise<void> {
+    const db = await this.ensureReady();
+    const now = Date.now();
+
+    try {
+      // Check if already exists
+      const existing = await db.getFirstAsync<{ times_read: number }>(
+        'SELECT times_read FROM read_history WHERE item_id = ?',
+        [entry.itemId]
+      );
+
+      if (existing) {
+        // Increment times_read
+        await db.runAsync(
+          'UPDATE read_history SET times_read = ?, completed_at = ?, rating = COALESCE(?, rating) WHERE item_id = ?',
+          [existing.times_read + 1, now, entry.rating || null, entry.itemId]
+        );
+      } else {
+        // Insert new entry
+        await db.runAsync(
+          `INSERT INTO read_history (item_id, title, author_name, narrator_name, genres, completed_at, times_read, rating)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+          [entry.itemId, entry.title, entry.authorName, entry.narratorName || null, JSON.stringify(entry.genres), now, entry.rating || null]
+        );
+      }
+      console.log(`[SQLiteCache] Added to read history: ${entry.title}`);
+    } catch (err) {
+      console.error('[SQLiteCache] addToReadHistory error:', err);
+    }
+  }
+
+  async updateReadHistoryRating(itemId: string, rating: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        'UPDATE read_history SET rating = ? WHERE item_id = ?',
+        [rating, itemId]
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] updateReadHistoryRating error:', err);
+    }
+  }
+
+  async removeFromReadHistory(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM read_history WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeFromReadHistory error:', err);
+    }
+  }
+
+  async getReadHistoryStats(): Promise<{
+    totalBooksRead: number;
+    favoriteAuthors: { name: string; count: number }[];
+    favoriteNarrators: { name: string; count: number }[];
+    favoriteGenres: { name: string; count: number }[];
+  }> {
+    const db = await this.ensureReady();
+    try {
+      const history = await this.getReadHistory();
+
+      // Count authors
+      const authorCounts = new Map<string, number>();
+      const narratorCounts = new Map<string, number>();
+      const genreCounts = new Map<string, number>();
+
+      for (const entry of history) {
+        // Authors
+        authorCounts.set(entry.authorName, (authorCounts.get(entry.authorName) || 0) + entry.timesRead);
+
+        // Narrators
+        if (entry.narratorName) {
+          narratorCounts.set(entry.narratorName, (narratorCounts.get(entry.narratorName) || 0) + entry.timesRead);
+        }
+
+        // Genres
+        for (const genre of entry.genres) {
+          genreCounts.set(genre, (genreCounts.get(genre) || 0) + entry.timesRead);
+        }
+      }
+
+      const sortByCount = (map: Map<string, number>) =>
+        Array.from(map.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, count]) => ({ name, count }));
+
+      return {
+        totalBooksRead: history.reduce((sum, e) => sum + e.timesRead, 0),
+        favoriteAuthors: sortByCount(authorCounts),
+        favoriteNarrators: sortByCount(narratorCounts),
+        favoriteGenres: sortByCount(genreCounts),
+      };
+    } catch (err) {
+      console.warn('[SQLiteCache] getReadHistoryStats error:', err);
+      return { totalBooksRead: 0, favoriteAuthors: [], favoriteNarrators: [], favoriteGenres: [] };
+    }
   }
 
   // ============================================================================
