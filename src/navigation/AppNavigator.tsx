@@ -10,7 +10,6 @@ import { useAuth } from '@/core/auth';
 import { LoginScreen } from '@/features/auth/screens/LoginScreen';
 import { MyLibraryScreen } from '@/features/library';
 import { HomeScreen } from '@/features/home';
-import { BookDetailScreen } from '@/features/book-detail';
 import { SearchScreen } from '@/features/search';
 import { BrowseScreen } from '@/features/browse';
 import { SeriesDetailScreen } from '@/features/series';
@@ -60,7 +59,6 @@ export function AppNavigator() {
           ) : (
             <>
               <Stack.Screen name="Main" component={MainTabs} />
-              <Stack.Screen name="BookDetail" component={BookDetailScreen} />
               <Stack.Screen name="Search" component={SearchScreen} />
               <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
               <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />

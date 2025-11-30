@@ -1,6 +1,6 @@
 /**
  * src/features/browse/components/BrowseBookCard.tsx
- * 
+ *
  * Book card for browse/discover with add to library button
  */
 
@@ -13,9 +13,9 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { useMyLibraryStore } from '@/features/library';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
@@ -29,7 +29,7 @@ interface BrowseBookCardProps {
 }
 
 export function BrowseBookCard({ book }: BrowseBookCardProps) {
-  const navigation = useNavigation<any>();
+  const { loadBook } = usePlayerStore();
   const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
 
   const coverUrl = apiClient.getItemCoverUrl(book.id);
@@ -37,8 +37,13 @@ export function BrowseBookCard({ book }: BrowseBookCardProps) {
   const author = getAuthorName(book);
   const inLibrary = isInLibrary(book.id);
 
-  const handlePress = () => {
-    navigation.navigate('BookDetail', { bookId: book.id });
+  const handlePress = async () => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false });
+    } catch {
+      await loadBook(book, { autoPlay: false });
+    }
   };
 
   const handleAddPress = () => {
