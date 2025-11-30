@@ -16,6 +16,9 @@ interface PlayerHeaderProps {
   secondaryColor: string;
   onChapterPress: () => void;
   onClose: () => void;
+  onDownloadPress?: () => void;
+  isDownloaded?: boolean;
+  isDownloading?: boolean;
 }
 
 export function PlayerHeader({
@@ -27,21 +30,37 @@ export function PlayerHeader({
   secondaryColor,
   onChapterPress,
   onClose,
+  onDownloadPress,
+  isDownloaded = false,
+  isDownloading = false,
 }: PlayerHeaderProps) {
   const titleStyle = getTitleFontSize(title);
 
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <Text 
+        {onDownloadPress && (
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={onDownloadPress}
+            activeOpacity={0.7}
+          >
+            <Icon
+              name={isDownloaded ? 'checkmark-circle' : isDownloading ? 'close-circle' : 'download-outline'}
+              size={18}
+              color={isDownloaded ? '#4CAF50' : textColor}
+            />
+          </TouchableOpacity>
+        )}
+        <Text
           style={[
-            styles.title, 
-            { 
+            styles.title,
+            {
               color: textColor,
               fontSize: titleStyle.fontSize,
               lineHeight: titleStyle.lineHeight,
             }
-          ]} 
+          ]}
           numberOfLines={2}
         >
           {title}
@@ -74,6 +93,12 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
     paddingRight: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  downloadButton: {
+    marginRight: 6,
+    marginTop: 2,
   },
   headerCenter: {
     alignItems: 'flex-end',

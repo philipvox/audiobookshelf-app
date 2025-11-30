@@ -297,6 +297,19 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
     }
   };
 
+  const handleDownloadPress = async () => {
+    if (isDownloaded) {
+      // Remove download if already downloaded
+      await autoDownloadService.removeDownload(book.id);
+    } else if (isDownloading) {
+      // Cancel download if currently downloading
+      await autoDownloadService.cancelDownload(book.id);
+    } else {
+      // Start download - queue it through syncWithContinueListening
+      await autoDownloadService.syncWithContinueListening([book]);
+    }
+  };
+
   // Render play button content
   const renderPlayButton = () => {
     if (isDownloading || isWaitingForDownload) {
@@ -355,9 +368,23 @@ export function ContinueListeningCard({ book, style, zIndex = 1 }: ContinueListe
 
         {/* Content */}
         <View style={styles.content}>
-          <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={styles.titleRow}>
+            {/* Download Icon */}
+            <TouchableOpacity
+              style={styles.downloadButton}
+              onPress={handleDownloadPress}
+              activeOpacity={0.7}
+            >
+              <Icon
+                name={isDownloaded ? 'checkmark-circle' : isDownloading ? 'close-circle' : 'download-outline'}
+                size={16}
+                color={isDownloaded ? '#4CAF50' : textColor}
+              />
+            </TouchableOpacity>
+            <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+              {title}
+            </Text>
+          </View>
           
           <View style={styles.progressRow}>
             <View style={styles.progressBarContainer}>
@@ -428,10 +455,19 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  downloadButton: {
+    marginRight: 6,
+    padding: 2,
+  },
   title: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 6,
+    flex: 1,
   },
   progressRow: {
     flexDirection: 'row',

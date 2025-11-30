@@ -69,11 +69,12 @@ export function HomeScreen() {
   // Track last synced items to avoid redundant syncs
   const lastSyncedRef = useRef<string>('');
 
-  useEffect(() => {
-    if (continueListeningItems?.length) {
-      autoDownloadService.syncWithContinueListening(continueListeningItems);
-    }
-  }, [continueListeningItems]);
+  // Auto-download disabled - users can manually download via the download icon
+  // useEffect(() => {
+  //   if (continueListeningItems?.length) {
+  //     autoDownloadService.syncWithContinueListening(continueListeningItems);
+  //   }
+  // }, [continueListeningItems]);
 
   const visibleCards = continueListeningItems.slice(0, MAX_CARDS);
   

@@ -20,6 +20,7 @@ import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 import { getTitle } from '@/shared/utils/metadata';
 import { matchToPalette } from '@/shared/utils/colorPalette';
+import { autoDownloadService, DownloadStatus } from '@/features/downloads';
 
 import {
   SCREEN_HEIGHT,
@@ -96,6 +97,29 @@ export function PlayerScreen() {
   } = usePlayerStore();
 
   const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : '';
+
+  // Download status
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('none');
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+
+  useEffect(() => {
+    if (!currentBook) return;
+
+    setDownloadStatus(autoDownloadService.getStatus(currentBook.id));
+    setDownloadProgress(autoDownloadService.getProgress(currentBook.id));
+
+    const unsubProgress = autoDownloadService.onProgress((id, pct) => {
+      if (id === currentBook.id) setDownloadProgress(pct);
+    });
+    const unsubStatus = autoDownloadService.onStatus((id, newStatus) => {
+      if (id === currentBook.id) setDownloadStatus(newStatus);
+    });
+
+    return () => {
+      unsubProgress();
+      unsubStatus();
+    };
+  }, [currentBook?.id]);
 
   // Color extraction
   useEffect(() => {
@@ -351,6 +375,21 @@ export function PlayerScreen() {
     await seekTo(chapterStart + percent * chapterDuration);
   };
 
+  const handleDownloadPress = async () => {
+    if (!currentBook) return;
+
+    const isDownloaded = downloadStatus === 'completed';
+    const isDownloading = downloadStatus === 'downloading' || downloadStatus === 'queued';
+
+    if (isDownloaded) {
+      await autoDownloadService.removeDownload(currentBook.id);
+    } else if (isDownloading) {
+      await autoDownloadService.cancelDownload(currentBook.id);
+    } else {
+      await autoDownloadService.syncWithContinueListening([currentBook]);
+    }
+  };
+
   // Flip animations
   const frontOpacity = flipAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
   const backOpacity = flipAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
@@ -371,6 +410,9 @@ export function PlayerScreen() {
             secondaryColor={secondaryColor}
             onChapterPress={() => handleFlip('chapters')}
             onClose={handleClose}
+            onDownloadPress={handleDownloadPress}
+            isDownloaded={downloadStatus === 'completed'}
+            isDownloading={downloadStatus === 'downloading' || downloadStatus === 'queued'}
           />
 
           {/* Flippable Cover */}
