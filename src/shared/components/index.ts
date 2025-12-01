@@ -11,6 +11,7 @@ export { EmptyState } from './EmptyState';
 export { SplashScreen } from './SplashScreen';
 export { FilterSortBar } from './FilterSortBar';
 export type { SortOption } from './FilterSortBar';
+export { SkeuomorphicButton } from './SkeuomorphicButton';
 
 // Skeleton loading components
 export {

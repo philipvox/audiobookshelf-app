@@ -7,3 +7,5 @@ export { AudioWaveform } from './AudioWaveform';
 export { PlayerHeader } from './PlayerHeader';
 export { PlayerControls } from './PlayerControls';
 export { PlayerProgress } from './PlayerProgress';
+export { WaveformProgress } from './WaveformProgress';
+export { QuickActionsRow } from './QuickActionsRow';
