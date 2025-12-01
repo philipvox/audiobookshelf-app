@@ -22,7 +22,7 @@ import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
-import { MiniPlayer, PlayerScreen, audioService } from '@/features/player';
+import { MiniPlayer, PlayerScreen } from '@/features/player';
 import { SplashScreen } from '@/shared/components/SplashScreen';
 import { FloatingTabBar } from './components/FloatingTabBar';
 
@@ -74,7 +74,9 @@ function AuthenticatedApp() {
 
   // Pre-initialize audio service at app startup for faster playback
   useEffect(() => {
-    audioService.ensureSetup().catch((err) => {
+    // Lazy import to avoid circular dependency
+    const { audioService } = require('@/features/player/services/audioService');
+    audioService?.ensureSetup?.().catch((err: any) => {
       console.warn('[AppNavigator] Audio service pre-init failed:', err);
     });
   }, []);
