@@ -484,6 +484,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // Handle track finished
     if (state.didJustFinish) {
       log('Track finished');
+
+      // Check if there's a next chapter to auto-advance to
+      const { chapters, position } = get();
+      const currentChapterIndex = findChapterIndex(chapters, position);
+
+      if (currentChapterIndex < chapters.length - 1) {
+        // There's a next chapter - auto-advance and continue playing
+        log(`Auto-advancing from chapter ${currentChapterIndex + 1} to ${currentChapterIndex + 2}`);
+        const nextChapter = chapters[currentChapterIndex + 1];
+        audioService.seekTo(nextChapter.start).then(() => {
+          set({ position: nextChapter.start });
+          audioService.play().catch((err) => {
+            logError('Failed to resume playback after chapter advance:', err);
+          });
+        }).catch((err) => {
+          logError('Failed to seek to next chapter:', err);
+        });
+        return; // Don't mark as finished or save final progress - we're continuing
+      }
+
+      // No more chapters - this is the end of the book
+      log('Book finished - no more chapters');
       set({ isPlaying: false });
 
       // Save final progress
