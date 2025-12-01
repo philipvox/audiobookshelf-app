@@ -296,11 +296,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // Load audio with metadata
       timing('Before loadAudio');
-      await audioService.loadAudio(streamUrl, resumePosition, {
-        title,
-        artist: author,
-        artwork: coverUrl,
-      });
+      await audioService.loadAudio(
+        streamUrl,
+        resumePosition,
+        {
+          title,
+          artist: author,
+          artwork: coverUrl,
+        },
+        autoPlay
+      );
       timing('After loadAudio');
 
       if (thisLoadId !== currentLoadId) {
