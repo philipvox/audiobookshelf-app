@@ -145,9 +145,10 @@ class AudioService {
   }
 
   async loadAudio(
-    url: string, 
+    url: string,
     startPositionSec: number = 0,
-    metadata?: { title?: string; artist?: string; artwork?: string }
+    metadata?: { title?: string; artist?: string; artwork?: string },
+    autoPlay: boolean = true
   ): Promise<void> {
     const thisLoadId = ++this.loadId;
     const t0 = Date.now();
@@ -206,8 +207,12 @@ class AudioService {
         return;
       }
 
-      t('Playing...');
-      await TrackPlayer.play();
+      if (autoPlay) {
+        t('Playing...');
+        await TrackPlayer.play();
+      } else {
+        t('Ready (paused)');
+      }
       t('Done');
     } catch (error) {
       if (this.loadId === thisLoadId) {
