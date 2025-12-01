@@ -55,27 +55,26 @@ interface SkeuomorphicButtonProps {
 /**
  * Get radial gradient configurations based on light position.
  * Values derived from exact SVG gradientTransform attributes.
- * All values normalized from 128x136 viewBox.
  */
 function getRadialConfig(position: LightPosition, width: number, height: number) {
+  // From SVG: paint2_radial translates to bottom-right, paint3_radial to top-left area
   switch (position) {
     case 'left':
-      // Rewind button - light from upper-right
-      // SVG: translate(0.191415, 136) for radial1, translate(121.691, 0) for radial2
+      // Light from upper-right (rewind button position)
       return {
-        radial1: { cx: width * 0.0015, cy: height * 1.0 },
-        radial2: { cx: width * 0.95, cy: 0 },
+        radial1: { cx: width * 0.95, cy: height * 0.95 },
+        radial2: { cx: width * 0.7, cy: -height * 0.15 },
       };
     case 'center':
-      // Forward button - light from above
-      // SVG: translate(127, 136) for radial1, translate(63.8086, -8.5) for radial2
+      // Light from above (center button position)
       return {
-        radial1: { cx: width * 0.99, cy: height * 1.0 },
-        radial2: { cx: width * 0.5, cy: -height * 0.063 },
+        radial1: { cx: width * 0.95, cy: height * 0.95 },
+        radial2: { cx: width * 0.5, cy: -height * 0.15 },
       };
     case 'right':
-      // Play button - light from upper-left
+      // Light from upper-left (play button - matches exact SVG)
       // SVG: translate(127, 136) for radial1, translate(37, -26.5) for radial2
+      // Normalized to 128x136 viewBox
       return {
         radial1: { cx: width * 0.99, cy: height * 1.0 },
         radial2: { cx: width * 0.29, cy: -height * 0.195 },
