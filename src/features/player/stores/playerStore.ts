@@ -8,12 +8,14 @@
 import { create } from 'zustand';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { audioService, PlaybackState } from '../services/audioService';
 import { sessionService, SessionChapter } from '../services/sessionService';
 import { progressService } from '../services/progressService';
 import { backgroundSyncService } from '../services/backgroundSyncService';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Import audioService directly (not from barrel) to avoid circular dependency
+import { audioService, PlaybackState } from '@/features/player/services/audioService';
 
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => {
@@ -477,6 +479,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     // Periodic progress save to SQLite (every 30 seconds during playback)
     const now = Date.now();
+    
     if (currentBook && newIsPlaying && state.position > 0 && now - lastProgressSave > PROGRESS_SAVE_INTERVAL) {
       lastProgressSave = now;
       const session = sessionService.getCurrentSession();
@@ -488,94 +491,56 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       ).catch(() => {});
     }
 
-    // Handle track finished - guard against multiple rapid triggers
-    // Also check cooldown to prevent rapid re-triggering after seeking
-    const advanceTime = Date.now();
-    const timeSinceLastAdvance = advanceTime - lastChapterAdvanceTime;
-
-    if (state.didJustFinish && !isHandlingTrackFinish && timeSinceLastAdvance > CHAPTER_ADVANCE_COOLDOWN) {
-      const { chapters, position: currentPos } = get();
+    // Handle track finished (didJustFinish from audioService)
+    // This ONLY fires when the audio FILE ends (State.Ended)
+    // For single-file audiobooks, this means the WHOLE BOOK ended
+    // For multi-file books, this means current chapter file ended
+    if (state.didJustFinish && !isHandlingTrackFinish) {
+      const timeSinceLastAdvance = now - lastChapterAdvanceTime;
       
-      // Use the actual position from state (where playback ended), not stored position
-      const endPosition = state.position;
-      const currentChapterIndex = findChapterIndex(chapters, endPosition);
-      const currentChapter = chapters[currentChapterIndex];
-      
-      // SAFETY CHECK: Don't trigger if we're at the START of a chapter (just seeked there)
-      // This prevents the infinite loop after auto-advance
-      if (currentChapter && endPosition < currentChapter.start + 2) {
-        log('Ignoring didJustFinish - position is at chapter start (just seeked)');
+      if (timeSinceLastAdvance < CHAPTER_ADVANCE_COOLDOWN) {
+        log('Ignoring didJustFinish - cooldown active');
         return;
       }
       
-      // SAFETY CHECK: Only trigger if we're actually near the END of a chapter
-      const nextChapter = chapters[currentChapterIndex + 1];
-      const chapterEnd = nextChapter?.start || currentChapter?.end || effectiveDuration;
-      const isNearChapterEnd = endPosition >= chapterEnd - 3;
-      
-      if (!isNearChapterEnd && endPosition < effectiveDuration - 3) {
-        log('Ignoring didJustFinish - not near chapter end, position:', endPosition, 'chapterEnd:', chapterEnd);
-        return;
-      }
-
       isHandlingTrackFinish = true;
-      log('Track finished at position:', endPosition);
+      const endPosition = state.position;
+      log('Audio file ended at position:', endPosition.toFixed(1));
 
-      if (chapters.length > 0 && currentChapterIndex < chapters.length - 1) {
-        // There's a next chapter - auto-advance and continue playing
-        const targetChapter = chapters[currentChapterIndex + 1];
-        log(`Auto-advancing from chapter ${currentChapterIndex + 1} to ${currentChapterIndex + 2} (seeking to ${targetChapter.start}s)`);
+      // Check if this is truly the end of the book
+      // (position near total duration means book is done)
+      const isNearEnd = effectiveDuration > 0 && endPosition >= effectiveDuration - 5;
+      
+      if (isNearEnd) {
+        log('Book finished - reached end of audio');
+        set({ isPlaying: false });
 
-        // Record advance time before attempting
-        lastChapterAdvanceTime = Date.now();
+        if (currentBook) {
+          const session = sessionService.getCurrentSession();
+          backgroundSyncService.saveProgress(
+            currentBook.id,
+            state.position,
+            effectiveDuration,
+            session?.id
+          ).catch(() => {});
 
-        // Seek to next chapter and resume playback
-        audioService.seekTo(targetChapter.start).then(() => {
-          set({ position: targetChapter.start, isPlaying: true });
-          return audioService.play();
-        }).then(() => {
-          log('Successfully advanced to next chapter');
-          // Delay resetting the guard to prevent rapid re-triggers
-          setTimeout(() => {
-            isHandlingTrackFinish = false;
-          }, 1000);
-        }).catch((err) => {
-          logError('Failed to advance to next chapter:', err);
-          isHandlingTrackFinish = false;
-        });
-        return; // Don't mark as finished or save final progress - we're continuing
-      }
-
-      // No more chapters - this is the end of the book
-      log('Book finished - no more chapters');
-      set({ isPlaying: false });
-
-      // Save final progress
-      if (currentBook) {
-        const session = sessionService.getCurrentSession();
-        backgroundSyncService.saveProgress(
-          currentBook.id,
-          state.position,
-          effectiveDuration,
-          session?.id
-        ).catch(() => {});
-
-        // Add to read history for recommendations
-        const metadata = currentBook.media?.metadata as any;
-        if (metadata) {
-          sqliteCache.addToReadHistory({
-            itemId: currentBook.id,
-            title: metadata.title || 'Unknown Title',
-            authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-            narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
-            genres: metadata.genres || [],
-          }).catch((err) => {
-            logError('Failed to add to read history:', err);
-          });
+          const metadata = currentBook.media?.metadata as any;
+          if (metadata) {
+            sqliteCache.addToReadHistory({
+              itemId: currentBook.id,
+              title: metadata.title || 'Unknown Title',
+              authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+              narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+              genres: metadata.genres || [],
+            }).catch(() => {});
+          }
         }
+      } else {
+        // This shouldn't happen for single-file books
+        // But if it does, just log it
+        log('Unexpected didJustFinish - not at end of book');
       }
 
-      // Reset guard after handling book finish
       isHandlingTrackFinish = false;
     }
   },
