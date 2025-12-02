@@ -4,6 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 
 interface ItemsInProgressResponse {
@@ -21,7 +22,7 @@ interface ItemsInProgressResponse {
 
 export function useContinueListening() {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['itemsInProgress'],
+    queryKey: queryKeys.user.inProgress(),
     queryFn: async () => {
       const response = await apiClient.get<ItemsInProgressResponse>('/api/me/items-in-progress');
       // console.log('[ContinueListening] Raw count:', response?.libraryItems?.length);

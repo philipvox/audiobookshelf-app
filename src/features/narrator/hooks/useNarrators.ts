@@ -2,6 +2,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 import { SortOption } from '@/shared/components/FilterSortBar';
 
@@ -76,7 +77,7 @@ export function useNarrators(
   const { sortBy = 'name-asc', searchQuery = '' } = options;
 
   const { data, isLoading, error, refetch } = useQuery<NarratorInfo[]>({
-    queryKey: ['narrators', libraryId],
+    queryKey: queryKeys.narrators.list(libraryId),
     queryFn: async () => {
       const items: LibraryItem[] = [];
       let page = 0;

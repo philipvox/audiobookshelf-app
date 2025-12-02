@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 
 interface UseLibraryItemsOptions {
@@ -34,7 +35,7 @@ export function useLibraryItems(
     refetch,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ['library', libraryId, 'items', { limit, sort, filter }],
+    queryKey: queryKeys.library.itemsFiltered(libraryId, { limit, sort, filter }),
     queryFn: ({ pageParam = 0 }) =>
       apiClient.getLibraryItems(libraryId, {
         limit,

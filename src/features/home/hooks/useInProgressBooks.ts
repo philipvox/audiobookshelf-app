@@ -4,11 +4,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 
 export function useInProgressBooks() {
   return useQuery({
-    queryKey: ['in-progress-books'],
+    queryKey: queryKeys.user.inProgress(),
     queryFn: async (): Promise<LibraryItem[]> => {
       const items = await apiClient.getItemsInProgress();
       
