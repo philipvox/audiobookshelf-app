@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 
 export function useLibraryPrefetch(libraryId: string | undefined) {
@@ -12,7 +13,7 @@ export function useLibraryPrefetch(libraryId: string | undefined) {
     const prefetchAll = async () => {
       // Prefetch all library items (used by narrators + search)
       queryClient.prefetchQuery({
-        queryKey: ['allLibraryItems', libraryId],
+        queryKey: queryKeys.library.allItems(libraryId),
         queryFn: async () => {
           const allItems: LibraryItem[] = [];
           let page = 0;
@@ -32,21 +33,21 @@ export function useLibraryPrefetch(libraryId: string | undefined) {
 
       // Prefetch series
       queryClient.prefetchQuery({
-        queryKey: ['series', libraryId],
+        queryKey: queryKeys.series.list(libraryId),
         queryFn: () => apiClient.getLibrarySeries(libraryId),
         staleTime: 10 * 60 * 1000,
       });
 
       // Prefetch authors
       queryClient.prefetchQuery({
-        queryKey: ['authors', libraryId],
+        queryKey: queryKeys.authors.list(libraryId),
         queryFn: () => apiClient.getLibraryAuthors(libraryId),
         staleTime: 10 * 60 * 1000,
       });
 
       // Prefetch collections
       queryClient.prefetchQuery({
-        queryKey: ['collections'],
+        queryKey: queryKeys.collections.all,
         queryFn: () => apiClient.getCollections(),
         staleTime: 10 * 60 * 1000,
       });

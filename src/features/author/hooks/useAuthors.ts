@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { AuthorInfo } from '../services/authorAdapter';
 import { SortOption } from '@/shared/components/FilterSortBar';
 
@@ -13,7 +14,7 @@ export function useAuthors(libraryId: string, options: UseAuthorsOptions = {}) {
   const { sortBy = 'name-asc', searchQuery = '' } = options;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['authors', libraryId],
+    queryKey: queryKeys.authors.list(libraryId),
     queryFn: () => apiClient.getLibraryAuthors(libraryId),
     enabled: !!libraryId,
     staleTime: 10 * 60 * 1000,

@@ -7,6 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { prefetchService } from '@/core/services/prefetchService';
 import { LibraryItem } from '@/core/types';
 
@@ -38,7 +39,7 @@ export function useAllLibraryItems(libraryId: string): UseAllLibraryItemsResult 
   }, [libraryId, cachedItems.length]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['allLibraryItems', libraryId],
+    queryKey: queryKeys.library.allItems(libraryId),
     queryFn: async () => {
       // Check prefetch cache first
       const cached = prefetchService.getCachedItems();

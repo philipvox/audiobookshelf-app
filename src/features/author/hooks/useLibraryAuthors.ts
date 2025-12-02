@@ -6,6 +6,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { Author } from '@/core/types';
 
 interface UseLibraryAuthorsResult {
@@ -17,7 +18,7 @@ interface UseLibraryAuthorsResult {
 
 export function useLibraryAuthors(libraryId: string): UseLibraryAuthorsResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['library', libraryId, 'authors'],
+    queryKey: queryKeys.authors.list(libraryId),
     queryFn: async () => {
       const result = await apiClient.getLibraryAuthors(libraryId);
       return result;
