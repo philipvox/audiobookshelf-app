@@ -6,6 +6,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { Series } from '@/core/types';
 
 interface UseLibrarySeriesResult {
@@ -20,7 +21,7 @@ interface UseLibrarySeriesResult {
  */
 export function useLibrarySeries(libraryId: string): UseLibrarySeriesResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['library', libraryId, 'series'],
+    queryKey: queryKeys.series.list(libraryId),
     queryFn: () => apiClient.getLibrarySeries(libraryId),
     staleTime: 5 * 60 * 1000,
     enabled: !!libraryId,

@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { prefetchService } from '@/core/services/prefetchService';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { LibraryItem } from '@/core/types';
@@ -57,17 +58,17 @@ export function useAppBootstrap(libraryId: string | undefined): BootstrapResult 
         // Fetch essential data from network
         const [seriesData, authorsData, collectionsData] = await Promise.all([
           queryClient.fetchQuery({
-            queryKey: ['series', libraryId],
+            queryKey: queryKeys.series.list(libraryId),
             queryFn: () => apiClient.getLibrarySeries(libraryId),
             staleTime,
           }),
           queryClient.fetchQuery({
-            queryKey: ['authors', libraryId],
+            queryKey: queryKeys.authors.list(libraryId),
             queryFn: () => apiClient.getLibraryAuthors(libraryId),
             staleTime,
           }),
           queryClient.fetchQuery({
-            queryKey: ['collections'],
+            queryKey: queryKeys.collections.all,
             queryFn: () => apiClient.getCollections(),
             staleTime,
           }),
@@ -118,7 +119,7 @@ export function useAppBootstrap(libraryId: string | undefined): BootstrapResult 
             });
 
             const narratorsArray = Array.from(narratorMap.values());
-            queryClient.setQueryData(['narrators', libraryId], narratorsArray);
+            queryClient.setQueryData(queryKeys.narrators.list(libraryId), narratorsArray);
 
             // Cache narrators to SQLite
             await sqliteCache.setNarrators(

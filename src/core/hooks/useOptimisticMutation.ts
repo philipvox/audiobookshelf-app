@@ -7,6 +7,7 @@
  */
 
 import { useMutation, useQueryClient, QueryKey, MutationOptions } from '@tanstack/react-query';
+import { queryKeys } from '@/core/queryClient';
 
 interface OptimisticMutationOptions<TData, TVariables, TContext> {
   // The mutation function that calls the API
@@ -107,13 +108,13 @@ export function useOptimisticProgress(itemId: string) {
 
     onMutate: async (variables) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['progress', itemId] });
+      await queryClient.cancelQueries({ queryKey: queryKeys.user.progress(itemId) });
 
       // Snapshot previous
-      const previousProgress = queryClient.getQueryData(['progress', itemId]);
+      const previousProgress = queryClient.getQueryData(queryKeys.user.progress(itemId));
 
       // Optimistically update
-      queryClient.setQueryData(['progress', itemId], {
+      queryClient.setQueryData(queryKeys.user.progress(itemId), {
         itemId,
         currentTime: variables.position,
         duration: variables.duration,
@@ -127,7 +128,7 @@ export function useOptimisticProgress(itemId: string) {
     onError: (_error, _variables, context) => {
       // Rollback on error
       if (context?.previousProgress) {
-        queryClient.setQueryData(['progress', itemId], context.previousProgress);
+        queryClient.setQueryData(queryKeys.user.progress(itemId), context.previousProgress);
       }
     },
   });
@@ -148,12 +149,12 @@ export function useOptimisticCollection() {
     },
 
     onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: ['collections'] });
+      await queryClient.cancelQueries({ queryKey: queryKeys.collections.all });
 
-      const previousCollections = queryClient.getQueryData(['collections']);
+      const previousCollections = queryClient.getQueryData(queryKeys.collections.all);
 
       // Optimistically add item to collection
-      queryClient.setQueryData(['collections'], (old: any[] | undefined) => {
+      queryClient.setQueryData(queryKeys.collections.all, (old: any[] | undefined) => {
         if (!old) return old;
         return old.map((collection) => {
           if (collection.id === variables.collectionId) {
@@ -171,12 +172,12 @@ export function useOptimisticCollection() {
 
     onError: (_error, _variables, context) => {
       if (context?.previousCollections) {
-        queryClient.setQueryData(['collections'], context.previousCollections);
+        queryClient.setQueryData(queryKeys.collections.all, context.previousCollections);
       }
     },
 
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections.all });
     },
   });
 
@@ -189,12 +190,12 @@ export function useOptimisticCollection() {
     },
 
     onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: ['collections'] });
+      await queryClient.cancelQueries({ queryKey: queryKeys.collections.all });
 
-      const previousCollections = queryClient.getQueryData(['collections']);
+      const previousCollections = queryClient.getQueryData(queryKeys.collections.all);
 
       // Optimistically remove item from collection
-      queryClient.setQueryData(['collections'], (old: any[] | undefined) => {
+      queryClient.setQueryData(queryKeys.collections.all, (old: any[] | undefined) => {
         if (!old) return old;
         return old.map((collection) => {
           if (collection.id === variables.collectionId) {
@@ -212,12 +213,12 @@ export function useOptimisticCollection() {
 
     onError: (_error, _variables, context) => {
       if (context?.previousCollections) {
-        queryClient.setQueryData(['collections'], context.previousCollections);
+        queryClient.setQueryData(queryKeys.collections.all, context.previousCollections);
       }
     },
 
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections.all });
     },
   });
 

@@ -7,6 +7,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 
 interface UseBookDetailsResult {
@@ -23,7 +24,7 @@ interface UseBookDetailsResult {
  */
 export function useBookDetails(bookId: string): UseBookDetailsResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['book', bookId],
+    queryKey: queryKeys.book.detail(bookId),
     queryFn: () => apiClient.getItem(bookId, 'progress'),
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!bookId, // Only fetch if bookId exists
