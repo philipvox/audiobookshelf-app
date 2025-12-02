@@ -1,0 +1,210 @@
+/**
+ * src/shared/components/DownloadButton.tsx
+ *
+ * Button to download/manage offline audio files.
+ */
+
+import React from 'react';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
+import {
+  Download,
+  CheckCircle,
+  Trash2,
+  AlertCircle,
+  Pause,
+  Play,
+} from 'lucide-react-native';
+import { useDownloadStatus } from '@/core/hooks/useDownloads';
+import { downloadManager } from '@/core/services/downloadManager';
+import { LibraryItem } from '@/core/types';
+import { theme } from '@/shared/theme';
+import Animated, {
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+
+interface DownloadButtonProps {
+  item: LibraryItem;
+  size?: 'small' | 'medium' | 'large';
+  variant?: 'icon' | 'button';
+  showProgress?: boolean;
+}
+
+const SIZES = {
+  small: { icon: 16, button: 28 },
+  medium: { icon: 20, button: 36 },
+  large: { icon: 24, button: 44 },
+};
+
+export function DownloadButton({
+  item,
+  size = 'medium',
+  variant = 'icon',
+  showProgress = true,
+}: DownloadButtonProps) {
+  const { isDownloaded, isDownloading, isPending, isPaused, hasError, progress, error } =
+    useDownloadStatus(item.id);
+
+  const { icon: iconSize, button: buttonSize } = SIZES[size];
+
+  const handlePress = async () => {
+    if (isDownloaded) {
+      // Show delete confirmation or toggle menu
+      await downloadManager.deleteDownload(item.id);
+    } else if (isDownloading) {
+      await downloadManager.pauseDownload(item.id);
+    } else if (isPaused) {
+      await downloadManager.resumeDownload(item.id);
+    } else if (hasError) {
+      // Retry download
+      await downloadManager.queueDownload(item, 10);
+    } else {
+      await downloadManager.queueDownload(item);
+    }
+  };
+
+  const getIconAndColor = () => {
+    if (isDownloaded) {
+      return {
+        icon: <CheckCircle size={iconSize} color="#4CAF50" fill="#4CAF50" />,
+        color: '#4CAF50',
+        label: 'Downloaded',
+      };
+    }
+    if (isDownloading) {
+      return {
+        icon: <Pause size={iconSize} color={theme.colors.accent.primary} />,
+        color: theme.colors.accent.primary,
+        label: `${Math.round(progress * 100)}%`,
+      };
+    }
+    if (isPending) {
+      return {
+        icon: <ActivityIndicator size="small" color={theme.colors.text.secondary} />,
+        color: theme.colors.text.secondary,
+        label: 'Queued',
+      };
+    }
+    if (isPaused) {
+      return {
+        icon: <Play size={iconSize} color="#FF9800" />,
+        color: '#FF9800',
+        label: 'Paused',
+      };
+    }
+    if (hasError) {
+      return {
+        icon: <AlertCircle size={iconSize} color="#F44336" />,
+        color: '#F44336',
+        label: 'Retry',
+      };
+    }
+    return {
+      icon: <Download size={iconSize} color={theme.colors.text.secondary} />,
+      color: theme.colors.text.secondary,
+      label: 'Download',
+    };
+  };
+
+  const config = getIconAndColor();
+
+  // Progress ring for downloading state
+  const progressStyle = useAnimatedStyle(() => {
+    return {
+      strokeDashoffset: withTiming((1 - progress) * 100, { duration: 200 }),
+    };
+  });
+
+  if (variant === 'icon') {
+    return (
+      <TouchableOpacity
+        onPress={handlePress}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={styles.iconContainer}
+      >
+        {isDownloading && showProgress ? (
+          <View style={[styles.progressContainer, { width: buttonSize, height: buttonSize }]}>
+            <View style={styles.progressBackground}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${progress * 100}%`,
+                    backgroundColor: config.color,
+                  },
+                ]}
+              />
+            </View>
+            {config.icon}
+          </View>
+        ) : (
+          config.icon
+        )}
+      </TouchableOpacity>
+    );
+  }
+
+  // Button variant
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      style={[
+        styles.button,
+        {
+          backgroundColor: isDownloaded
+            ? 'rgba(76, 175, 80, 0.15)'
+            : 'rgba(255, 255, 255, 0.1)',
+          borderColor: config.color,
+        },
+      ]}
+    >
+      {config.icon}
+      <Text style={[styles.buttonText, { color: config.color }]}>{config.label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    padding: 4,
+  },
+  progressContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  progressBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 1,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 1,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  buttonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});

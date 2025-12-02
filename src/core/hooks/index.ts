@@ -5,3 +5,13 @@ export {
   useOptimisticProgress,
   useOptimisticCollection,
 } from './useOptimisticMutation';
+
+// Offline-first hooks
+export { useSyncStatus } from './useSyncStatus';
+export type { SyncStatus } from './useSyncStatus';
+export {
+  useDownloads,
+  useDownloadStatus,
+  useDownloadProgress,
+  useIsOfflineAvailable,
+} from './useDownloads';
