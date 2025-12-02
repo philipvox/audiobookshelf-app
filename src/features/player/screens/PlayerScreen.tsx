@@ -1,8 +1,13 @@
 /**
  * src/features/player/screens/PlayerScreen.tsx
- * 
- * Full-screen player with glass morphism design.
- * Preserves all existing functionality, applies new styling.
+ *
+ * Refactored full-screen player with glass morphism design.
+ *
+ * Key changes:
+ * - Removed all local playback state (isRewinding, seekDelta, etc.)
+ * - Uses store selectors for derived state
+ * - Simplified handlers that just dispatch to store
+ * - UI-only local state for animations and panels
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -20,7 +25,18 @@ import Svg, { Defs, Rect, LinearGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { getColors } from 'react-native-image-colors';
-import { usePlayerStore } from '../stores/playerStore';
+
+// Store and selectors
+import {
+  usePlayerStore,
+  useDisplayPosition,
+  useSeekDelta,
+  useIsSeeking,
+  useSeekDirection,
+  useCurrentChapterIndex,
+  useChapterProgress,
+  useBookProgress,
+} from '../stores/playerStore';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
@@ -34,9 +50,6 @@ import {
   CARD_WIDTH,
   COVER_SIZE,
   RADIUS,
-  REWIND_STEP,
-  REWIND_INTERVAL,
-  FF_STEP,
 } from '../constants';
 import { isColorLight, pickMostSaturated, formatTime } from '../utils';
 import {
@@ -63,15 +76,13 @@ const DISPLAY_PADDING = 12;
 const ARTWORK_SIZE = DISPLAY_WIDTH - DISPLAY_PADDING * 2;
 
 // Artwork inset shadow config (plastic cover effect)
-// opacity: darkness at edge (0-1)
-// depth: how far shadow extends inward (0-1, where 0.1 = 10% of artwork size)
 const ART_SHADOW = {
   top:    { opacity: 0.6, depth: 0.12 },
   bottom: { opacity: 0.5, depth: 0.10 },
   left:   { opacity: 0.55, depth: 0.10 },
   right:  { opacity: 0.55, depth: 0.10 },
-  sheen:  { opacity: 0.08, depth: 0.05 },  // top highlight
-  border: { opacity: 0.4, width: 1 },      // frame edge
+  sheen:  { opacity: 0.08, depth: 0.05 },
+  border: { opacity: 0.4, width: 1 },
 };
 
 const PANEL_CONFIG = {
@@ -86,69 +97,96 @@ export function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
 
-  // UI state
+  // ===========================================================================
+  // STORE STATE (Single Source of Truth)
+  // ===========================================================================
+
+  const {
+    currentBook,
+    isPlayerVisible,
+    isPlaying,
+    isLoading,
+    duration: storeDuration,
+    playbackRate,
+    sleepTimer,
+    chapters: storeChapters,
+    closePlayer,
+    play,
+    pause,
+    seekTo,
+    startContinuousSeeking,
+    stopContinuousSeeking,
+    prevChapter,
+    nextChapter,
+  } = usePlayerStore();
+
+  // Derived state via selectors
+  const position = useDisplayPosition();
+  const seekDelta = useSeekDelta();
+  const isSeeking = useIsSeeking();
+  const seekDirection = useSeekDirection();
+  const chapterIndex = useCurrentChapterIndex();
+  const chapterProgress = useChapterProgress();
+  const bookProgress = useBookProgress();
+
+  // ===========================================================================
+  // UI-ONLY LOCAL STATE (animations, colors, panel mode)
+  // ===========================================================================
+
   const [cardColor, setCardColor] = useState('#F55F05');
   const [isLight, setIsLight] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [flipMode, setFlipMode] = useState<FlipMode>('details');
-  
+
   // Panel state
   const [tempSpeed, setTempSpeed] = useState(1);
   const [tempSleepMins, setTempSleepMins] = useState(15);
   const [sleepInputValue, setSleepInputValue] = useState('15');
   const [controlMode, setControlMode] = useState<'rewind' | 'chapter'>('rewind');
   const [progressMode, setProgressMode] = useState<'bar' | 'chapters'>('chapters');
-  
-  // Rewind/FF state
-  const [isRewinding, setIsRewinding] = useState(false);
-  const [isFastForwarding, setIsFastForwarding] = useState(false);
-  const [seekDelta, setSeekDelta] = useState(0);
-  
-  // Refs
+
+  // Track if we were playing before continuous seek started
+  const wasPlayingBeforeSeek = useRef(false);
+
+  // Animation refs
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const flipAnim = useRef(new Animated.Value(0)).current;
-  const rewindInterval = useRef<NodeJS.Timeout | null>(null);
-  const ffInterval = useRef<NodeJS.Timeout | null>(null);
-  const seekingPos = useRef(0);
-  const wasPlaying = useRef(false);
-  const isSeeking = useRef(false);
-  const startPosition = useRef(0);
-  // Refs for synchronous seeking state (state updates are async and cause race conditions)
-  const isRewindingRef = useRef(false);
-  const isFastForwardingRef = useRef(false);
-
-  // Store
-  const {
-    currentBook,
-    isPlayerVisible,
-    isPlaying,
-    isLoading,
-    position,
-    duration: storeDuration,
-    playbackRate,
-    sleepTimer,
-    closePlayer,
-    play,
-    pause,
-    seekTo,
-    chapters: storeChapters,
-  } = usePlayerStore();
 
   // Library store for favorites
   const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
   const isFavorite = currentBook ? isInLibrary(currentBook.id) : false;
 
-  const handleHeartPress = useCallback(() => {
-    if (!currentBook) return;
-    const currentlyFavorite = isInLibrary(currentBook.id);
-    if (currentlyFavorite) {
-      removeFromLibrary(currentBook.id);
-    } else {
-      addToLibrary(currentBook.id);
-    }
-  }, [currentBook, isInLibrary, addToLibrary, removeFromLibrary]);
-
   const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : '';
+
+  // ===========================================================================
+  // DERIVED VALUES
+  // ===========================================================================
+
+  const title = currentBook ? getTitle(currentBook) : '';
+  const chapters = storeChapters.length > 0 ? storeChapters : (currentBook?.media?.chapters || []);
+
+  let bookDuration = currentBook?.media?.duration || 0;
+  if (bookDuration <= 0 && storeDuration > 0) bookDuration = storeDuration;
+  if (bookDuration <= 0 && chapters.length > 0) {
+    bookDuration = chapters[chapters.length - 1].end || 0;
+  }
+
+  const currentChapter = chapters[chapterIndex];
+  const chapterTitle = `Chapter ${chapterIndex + 1}`;
+
+  const textColor = isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)';
+  const secondaryColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
+
+  // Check if book is finished
+  const isBookFinished = bookProgress >= 0.99;
+
+  // Determine if we're rewinding or fast-forwarding based on store state
+  const isRewinding = isSeeking && seekDirection === 'backward';
+  const isFastForwarding = isSeeking && seekDirection === 'forward';
+
+  // ===========================================================================
+  // EFFECTS (UI-only, no playback state sync!)
+  // ===========================================================================
 
   // Color extraction
   useEffect(() => {
@@ -172,7 +210,7 @@ export function PlayerScreen() {
         } else if (result.platform === 'android') {
           const candidates = [
             result.vibrant,
-            result.darkVibrant, 
+            result.darkVibrant,
             result.lightVibrant,
             result.muted,
             result.darkMuted,
@@ -207,36 +245,25 @@ export function PlayerScreen() {
     }
   }, [isPlayerVisible, currentBook?.id]);
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (rewindInterval.current) clearInterval(rewindInterval.current);
-      if (ffInterval.current) clearInterval(ffInterval.current);
-    };
-  }, []);
+  // ===========================================================================
+  // HANDLERS (just dispatch to store)
+  // ===========================================================================
 
-  // Sync seeking position (but not while actively rewinding/ff)
-  // IMPORTANT: Use refs not state - state updates are async and cause race conditions
-  // where position updates arrive before isRewinding state is true
-  useEffect(() => {
-    if (!isRewindingRef.current && !isFastForwardingRef.current) {
-      seekingPos.current = position;
+  const handleHeartPress = useCallback(() => {
+    if (!currentBook) return;
+    const currentlyFavorite = isInLibrary(currentBook.id);
+    if (currentlyFavorite) {
+      removeFromLibrary(currentBook.id);
+    } else {
+      addToLibrary(currentBook.id);
     }
-  }, [position]);
-
-  // ===========================================================================
-  // HANDLERS
-  // ===========================================================================
+  }, [currentBook, isInLibrary, addToLibrary, removeFromLibrary]);
 
   const handleClose = useCallback(() => {
-    if (rewindInterval.current) clearInterval(rewindInterval.current);
-    if (ffInterval.current) clearInterval(ffInterval.current);
-    // Clear refs first (synchronous)
-    isRewindingRef.current = false;
-    isFastForwardingRef.current = false;
-    setIsRewinding(false);
-    setIsFastForwarding(false);
-    setSeekDelta(0);
+    // Stop any ongoing seeking
+    if (isSeeking) {
+      stopContinuousSeeking();
+    }
 
     Animated.timing(slideAnim, {
       toValue: SCREEN_HEIGHT,
@@ -248,7 +275,7 @@ export function PlayerScreen() {
       setFlipMode('details');
       flipAnim.setValue(0);
     });
-  }, [closePlayer, slideAnim, flipAnim]);
+  }, [closePlayer, slideAnim, flipAnim, isSeeking, stopContinuousSeeking]);
 
   const handleNavigateToAuthor = useCallback((authorName: string) => {
     handleClose();
@@ -271,43 +298,7 @@ export function PlayerScreen() {
     }, 150);
   }, [navigation, handleClose]);
 
-  if (!isPlayerVisible || !currentBook) return null;
-
-  // Derived values
-  const title = getTitle(currentBook);
-  // Use store chapters (from session API) first, fallback to book chapters
-  const chapters = storeChapters.length > 0 ? storeChapters : (currentBook.media?.chapters || []);
-  
-  let bookDuration = currentBook.media?.duration || 0;
-  if (bookDuration <= 0 && storeDuration > 0) bookDuration = storeDuration;
-  if (bookDuration <= 0 && chapters.length > 0) {
-    bookDuration = chapters[chapters.length - 1].end || 0;
-  }
-
-  const currentChapter = chapters.find((ch, idx) => {
-    const next = chapters[idx + 1];
-    return position >= ch.start && (!next || position < next.start);
-  });
-  const chapterIndex = currentChapter ? chapters.indexOf(currentChapter) + 1 : 1;
-  const chapterTitle = `Chapter ${chapterIndex}`;
-
-  const progress = bookDuration > 0 ? position / bookDuration : 0;
-  const chapterStart = currentChapter?.start || 0;
-  const chapterEnd = currentChapter?.end || bookDuration;
-  const chapterDuration = chapterEnd - chapterStart;
-  const chapterProgress = chapterDuration > 0 
-    ? Math.max(0, Math.min(1, (position - chapterStart) / chapterDuration))
-    : 0;
-
-  const textColor = isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)';
-  const secondaryColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
-  const waveColor = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)';
-
-  // ===========================================================================
-  // OTHER HANDLERS
-  // ===========================================================================
-
-  const handleFlip = (mode: FlipMode = 'details') => {
+  const handleFlip = useCallback((mode: FlipMode = 'details') => {
     if (isFlipped && flipMode === mode) {
       setIsFlipped(false);
       Animated.timing(flipAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
@@ -320,167 +311,116 @@ export function PlayerScreen() {
       setIsFlipped(true);
       Animated.timing(flipAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     }
-  };
+  }, [isFlipped, flipMode, playbackRate, flipAnim]);
 
-  const handleFlipBack = () => {
+  const handleFlipBack = useCallback(() => {
     setIsFlipped(false);
     Animated.timing(flipAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-  };
+  }, [flipAnim]);
 
-  const handlePlayPause = async () => {
+  const handlePlayPause = useCallback(async () => {
     if (isPlaying) await pause();
     else await play();
-  };
+  }, [isPlaying, pause, play]);
 
-  const handlePrevChapter = async () => {
-    if (chapters.length === 0) return;
-    
-    let currentIdx = 0;
-    for (let i = chapters.length - 1; i >= 0; i--) {
-      if (position >= chapters[i].start) {
-        currentIdx = i;
-        break;
-      }
-    }
-    
-    const currentChapterStart = chapters[currentIdx]?.start || 0;
-    const targetIdx = (position - currentChapterStart > 3) ? currentIdx : Math.max(0, currentIdx - 1);
-    await seekTo(chapters[targetIdx].start);
-  };
-
-  const handleNextChapter = async () => {
-    if (chapters.length === 0) return;
-    
-    let currentIdx = 0;
-    for (let i = chapters.length - 1; i >= 0; i--) {
-      if (position >= chapters[i].start) {
-        currentIdx = i;
-        break;
-      }
-    }
-    
-    if (currentIdx < chapters.length - 1) {
-      await seekTo(chapters[currentIdx + 1].start);
-    }
-  };
-
-  const handleRestart = async () => {
+  const handleRestart = useCallback(async () => {
     await seekTo(0);
     play();
-  };
+  }, [seekTo, play]);
 
-  // Check if book is finished
-  const isBookFinished = progress >= 0.99;
+  // ---------------------------------------------------------------------------
+  // Continuous Seeking Handlers (Rewind/FF)
+  // ---------------------------------------------------------------------------
 
-  // Rewind handlers
-  const startRewind = async () => {
-    if (isRewinding) return;
-    // Set ref FIRST (synchronous) - prevents race condition with position updates
-    isRewindingRef.current = true;
-    setIsRewinding(true);
-    wasPlaying.current = isPlaying;
-    startPosition.current = position;
-    seekingPos.current = position;
-    isSeeking.current = false;
-    setSeekDelta(0);
-    await pause();
+  const handleRewindPressIn = useCallback(async () => {
+    wasPlayingBeforeSeek.current = isPlaying;
+    await startContinuousSeeking('backward');
+  }, [isPlaying, startContinuousSeeking]);
 
-    const doRewind = () => {
-      if (isSeeking.current) return;
-      isSeeking.current = true;
-      seekingPos.current = Math.max(0, seekingPos.current - REWIND_STEP);
-      setSeekDelta(seekingPos.current - startPosition.current);
+  const handleRewindPressOut = useCallback(async () => {
+    await stopContinuousSeeking();
+    // Resume playback if we were playing before
+    if (wasPlayingBeforeSeek.current) {
+      await play();
+    }
+  }, [stopContinuousSeeking, play]);
 
-      seekTo(seekingPos.current).finally(() => {
-        isSeeking.current = false;
-        if (seekingPos.current <= 0 && rewindInterval.current) {
-          clearInterval(rewindInterval.current);
-          rewindInterval.current = null;
-          isRewindingRef.current = false;
-          setIsRewinding(false);
-          setSeekDelta(0);
-        }
-      });
-    };
+  const handleFFPressIn = useCallback(async () => {
+    wasPlayingBeforeSeek.current = isPlaying;
+    await startContinuousSeeking('forward');
+  }, [isPlaying, startContinuousSeeking]);
 
-    doRewind();
-    rewindInterval.current = setInterval(doRewind, REWIND_INTERVAL);
-  };
+  const handleFFPressOut = useCallback(async () => {
+    await stopContinuousSeeking();
+    // Resume playback if we were playing before
+    if (wasPlayingBeforeSeek.current) {
+      await play();
+    }
+  }, [stopContinuousSeeking, play]);
 
-  const stopRewind = async () => {
-    if (rewindInterval.current) clearInterval(rewindInterval.current);
-    rewindInterval.current = null;
-    // Clear ref FIRST (synchronous)
-    isRewindingRef.current = false;
-    setIsRewinding(false);
-    setSeekDelta(0);
-    if (wasPlaying.current) await play();
-  };
+  // ---------------------------------------------------------------------------
+  // Chapter Navigation Handlers
+  // ---------------------------------------------------------------------------
 
-  const startFastForward = async () => {
-    if (isFastForwarding) return;
-    // Set ref FIRST (synchronous) - prevents race condition with position updates
-    isFastForwardingRef.current = true;
-    setIsFastForwarding(true);
-    wasPlaying.current = isPlaying;
-    startPosition.current = position;
-    seekingPos.current = position;
-    isSeeking.current = false;
-    setSeekDelta(0);
-    await pause();
+  const handlePrevChapter = useCallback(async () => {
+    await prevChapter();
+  }, [prevChapter]);
 
-    const doFF = () => {
-      if (isSeeking.current) return;
-      isSeeking.current = true;
-      seekingPos.current = Math.min(bookDuration - 1, seekingPos.current + FF_STEP);
-      setSeekDelta(seekingPos.current - startPosition.current);
+  const handleNextChapter = useCallback(async () => {
+    await nextChapter();
+  }, [nextChapter]);
 
-      seekTo(seekingPos.current).finally(() => {
-        isSeeking.current = false;
-        if (seekingPos.current >= bookDuration - 1 && ffInterval.current) {
-          clearInterval(ffInterval.current);
-          ffInterval.current = null;
-          isFastForwardingRef.current = false;
-          setIsFastForwarding(false);
-          setSeekDelta(0);
-        }
-      });
-    };
+  // ---------------------------------------------------------------------------
+  // Combined Button Handlers (based on controlMode)
+  // ---------------------------------------------------------------------------
 
-    doFF();
-    ffInterval.current = setInterval(doFF, REWIND_INTERVAL);
-  };
+  const handleLeftPressIn = useCallback(() => {
+    if (controlMode !== 'chapter') {
+      handleRewindPressIn();
+    }
+  }, [controlMode, handleRewindPressIn]);
 
-  const stopFastForward = async () => {
-    if (ffInterval.current) clearInterval(ffInterval.current);
-    ffInterval.current = null;
-    // Clear ref FIRST (synchronous)
-    isFastForwardingRef.current = false;
-    setIsFastForwarding(false);
-    setSeekDelta(0);
-    if (wasPlaying.current) await play();
-  };
+  const handleLeftPressOut = useCallback(() => {
+    if (controlMode !== 'chapter') {
+      handleRewindPressOut();
+    }
+  }, [controlMode, handleRewindPressOut]);
 
-  const handleLeftPressIn = () => { startRewind(); };
-  const handleLeftPressOut = () => { stopRewind(); };
-  const handleRightPressIn = () => { startFastForward(); };
-  const handleRightPressOut = () => { stopFastForward(); };
+  const handleLeftPress = useCallback(() => {
+    if (controlMode === 'chapter') {
+      handlePrevChapter();
+    }
+  }, [controlMode, handlePrevChapter]);
 
-  const handleProgressScrub = async (percent: number) => {
-    const newPosition = Math.max(0, Math.min(bookDuration, percent * bookDuration));
-    await seekTo(newPosition);
-  };
+  const handleRightPressIn = useCallback(() => {
+    if (controlMode !== 'chapter') {
+      handleFFPressIn();
+    }
+  }, [controlMode, handleFFPressIn]);
 
-  const handleChapterScrub = async (percent: number) => {
-    const newPosition = Math.max(chapterStart, Math.min(chapterEnd, chapterStart + percent * chapterDuration));
-    await seekTo(newPosition);
-  };
+  const handleRightPressOut = useCallback(() => {
+    if (controlMode !== 'chapter') {
+      handleFFPressOut();
+    }
+  }, [controlMode, handleFFPressOut]);
+
+  const handleRightPress = useCallback(() => {
+    if (controlMode === 'chapter') {
+      handleNextChapter();
+    }
+  }, [controlMode, handleNextChapter]);
+
+  // ===========================================================================
+  // RENDER EARLY RETURN
+  // ===========================================================================
+
+  if (!isPlayerVisible || !currentBook) return null;
 
   // Flip animations
   const frontOpacity = flipAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
   const backOpacity = flipAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
 
-  // Calculate display height (header + artwork + title + cassette + controls)
+  // Calculate display height
   const displayHeight = DISPLAY_PADDING + 28 + ARTWORK_SIZE + 8 + 52 + 8 + 80 + 8 + 24 + DISPLAY_PADDING;
 
   // ===========================================================================
@@ -512,16 +452,16 @@ export function PlayerScreen() {
                 {/* Artwork container with flip */}
                 <View style={styles.artworkContainer}>
                   {/* Front - Cover Image */}
-                  <Animated.View 
+                  <Animated.View
                     style={[styles.artworkFace, { opacity: frontOpacity }]}
                     pointerEvents={isFlipped ? 'none' : 'auto'}
                   >
                     <TouchableOpacity onPress={() => handleFlip('details')} activeOpacity={0.9}>
-                      <Image 
-                        source={coverUrl} 
-                        style={styles.artwork} 
-                        contentFit="cover" 
-                        transition={300} 
+                      <Image
+                        source={coverUrl}
+                        style={styles.artwork}
+                        contentFit="cover"
+                        transition={300}
                       />
                       {/* Inner shadow overlay - plastic cover effect */}
                       <View style={[styles.artworkInnerShadow, { borderWidth: ART_SHADOW.border.width, borderColor: `rgba(0,0,0,${ART_SHADOW.border.opacity})` }]} pointerEvents="none">
@@ -568,7 +508,7 @@ export function PlayerScreen() {
                   </Animated.View>
 
                   {/* Back - Panel */}
-                  <Animated.View 
+                  <Animated.View
                     style={[styles.artworkFace, styles.artworkBack, { opacity: backOpacity }]}
                     pointerEvents={isFlipped ? 'auto' : 'none'}
                   >
@@ -582,103 +522,103 @@ export function PlayerScreen() {
                         duration={bookDuration}
                         chaptersCount={chapters.length}
                         isLight={false}
-                      onNavigateToAuthor={handleNavigateToAuthor}
-                      onNavigateToNarrator={handleNavigateToNarrator}
-                      onNavigateToSeries={handleNavigateToSeries}
-                    />
-                  )}
+                        onNavigateToAuthor={handleNavigateToAuthor}
+                        onNavigateToNarrator={handleNavigateToNarrator}
+                        onNavigateToSeries={handleNavigateToSeries}
+                      />
+                    )}
 
-                  {flipMode === 'speed' && (
-                    <SpeedPanel
-                      tempSpeed={tempSpeed}
-                      setTempSpeed={setTempSpeed}
-                      onApply={() => {
-                        usePlayerStore.getState().setPlaybackRate(tempSpeed);
-                        handleFlipBack();
-                      }}
-                      onClose={handleFlipBack}
-                      isLight={false}
-                    />
-                  )}
+                    {flipMode === 'speed' && (
+                      <SpeedPanel
+                        tempSpeed={tempSpeed}
+                        setTempSpeed={setTempSpeed}
+                        onApply={() => {
+                          usePlayerStore.getState().setPlaybackRate(tempSpeed);
+                          handleFlipBack();
+                        }}
+                        onClose={handleFlipBack}
+                        isLight={false}
+                      />
+                    )}
 
-                  {flipMode === 'sleep' && (
-                    <SleepPanel
-                      tempSleepMins={tempSleepMins}
-                      setTempSleepMins={setTempSleepMins}
-                      sleepInputValue={sleepInputValue}
-                      setSleepInputValue={setSleepInputValue}
-                      onClear={() => {
-                        usePlayerStore.getState().clearSleepTimer?.();
-                        handleFlipBack();
-                      }}
-                      onStart={() => {
-                        if (tempSleepMins > 0) {
-                          usePlayerStore.getState().setSleepTimer?.(tempSleepMins);
-                        }
-                        handleFlipBack();
-                      }}
-                      isLight={false}
-                    />
-                  )}
+                    {flipMode === 'sleep' && (
+                      <SleepPanel
+                        tempSleepMins={tempSleepMins}
+                        setTempSleepMins={setTempSleepMins}
+                        sleepInputValue={sleepInputValue}
+                        setSleepInputValue={setSleepInputValue}
+                        onClear={() => {
+                          usePlayerStore.getState().clearSleepTimer?.();
+                          handleFlipBack();
+                        }}
+                        onStart={() => {
+                          if (tempSleepMins > 0) {
+                            usePlayerStore.getState().setSleepTimer?.(tempSleepMins);
+                          }
+                          handleFlipBack();
+                        }}
+                        isLight={false}
+                      />
+                    )}
 
-                  {flipMode === 'chapters' && (
-                    <ChaptersPanel
-                      chapters={chapters}
-                      currentChapter={currentChapter}
-                      onChapterSelect={(start) => {
-                        seekTo(start);
-                        handleFlipBack();
-                      }}
-                      onClose={handleFlipBack}
-                      isLight={false}
-                    />
-                  )}
+                    {flipMode === 'chapters' && (
+                      <ChaptersPanel
+                        chapters={chapters}
+                        currentChapter={currentChapter}
+                        onChapterSelect={(start) => {
+                          seekTo(start);
+                          handleFlipBack();
+                        }}
+                        onClose={handleFlipBack}
+                        isLight={false}
+                      />
+                    )}
 
-                  {flipMode === 'settings' && (
-                    <SettingsPanel
-                      controlMode={controlMode}
-                      progressMode={progressMode}
-                      onControlModeChange={setControlMode}
-                      onProgressModeChange={setProgressMode}
-                      onViewChapters={() => setFlipMode('chapters')}
-                      onViewDetails={() => setFlipMode('details')}
-                      isLight={false}
-                    />
-                  )}
-                </Animated.View>
-              </View>
+                    {flipMode === 'settings' && (
+                      <SettingsPanel
+                        controlMode={controlMode}
+                        progressMode={progressMode}
+                        onControlModeChange={setControlMode}
+                        onProgressModeChange={setProgressMode}
+                        onViewChapters={() => setFlipMode('chapters')}
+                        onViewDetails={() => setFlipMode('details')}
+                        isLight={false}
+                      />
+                    )}
+                  </Animated.View>
+                </View>
 
-              {/* Title row */}
-              <View style={styles.titleRow}>
-                <Text style={styles.title} numberOfLines={2}>{title}</Text>
-                <TouchableOpacity onPress={() => handleFlip('chapters')}>
-                  <Text style={styles.chapter}>{chapterTitle}</Text>
-                </TouchableOpacity>
-              </View>
+                {/* Title row */}
+                <View style={styles.titleRow}>
+                  <Text style={styles.title} numberOfLines={2}>{title}</Text>
+                  <TouchableOpacity onPress={() => handleFlip('chapters')}>
+                    <Text style={styles.chapter}>{chapterTitle}</Text>
+                  </TouchableOpacity>
+                </View>
 
-              {/* Cassette Tape Progress */}
-              <View style={styles.waveformContainer}>
-                <CassetteTape
-                  progress={progressMode === 'chapters' ? chapterProgress : progress}
-                  isPlaying={isPlaying}
-                  isRewinding={isRewinding}
-                  isFastForwarding={isFastForwarding}
-                  accentColor={cardColor}
-                  bookId={currentBook?.id}
-                  chapterIndex={chapterIndex}
-                />
-              </View>
+                {/* Cassette Tape Progress */}
+                <View style={styles.waveformContainer}>
+                  <CassetteTape
+                    progress={progressMode === 'chapters' ? chapterProgress : bookProgress}
+                    isPlaying={isPlaying}
+                    isRewinding={isRewinding}
+                    isFastForwarding={isFastForwarding}
+                    accentColor={cardColor}
+                    bookId={currentBook?.id}
+                    chapterIndex={chapterIndex}
+                  />
+                </View>
               </View>
 
               {/* Bottom controls row */}
               <View style={styles.controlsRow}>
                 <Text style={styles.time}>{formatTime(position)}</Text>
                 <TouchableOpacity style={styles.controlItem} onPress={() => handleFlip('sleep')}>
-                  <Icon 
-                    name={sleepTimer ? "moon" : "moon-outline"} 
-                    size={14} 
-                    color={sleepTimer ? cardColor : "rgba(255,255,255,0.5)"} 
-                    set="ionicons" 
+                  <Icon
+                    name={sleepTimer ? "moon" : "moon-outline"}
+                    size={14}
+                    color={sleepTimer ? cardColor : "rgba(255,255,255,0.5)"}
+                    set="ionicons"
                   />
                   {sleepTimer && sleepTimer > 0 && (
                     <Text style={[styles.controlText, { color: cardColor }]}>
@@ -687,11 +627,11 @@ export function PlayerScreen() {
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.controlItem} onPress={handleHeartPress}>
-                  <Icon 
-                    name={isFavorite ? "heart" : "heart-outline"} 
-                    size={16} 
-                    color={isFavorite ? cardColor : "rgba(255,255,255,0.5)"} 
-                    set="ionicons" 
+                  <Icon
+                    name={isFavorite ? "heart" : "heart-outline"}
+                    size={16}
+                    color={isFavorite ? cardColor : "rgba(255,255,255,0.5)"}
+                    set="ionicons"
                   />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleFlip('speed')}>
@@ -706,7 +646,7 @@ export function PlayerScreen() {
           <View style={styles.buttonRow}>
             <PlayerButton
               variant={controlMode === 'chapter' ? 'skip-back' : 'rewind'}
-              onPress={controlMode === 'chapter' ? handlePrevChapter : () => {}}
+              onPress={handleLeftPress}
               onPressIn={controlMode === 'chapter' ? undefined : handleLeftPressIn}
               onPressOut={controlMode === 'chapter' ? undefined : handleLeftPressOut}
               isActive={controlMode !== 'chapter' && isRewinding}
@@ -714,7 +654,7 @@ export function PlayerScreen() {
             />
             <PlayerButton
               variant={controlMode === 'chapter' ? 'skip-forward' : 'fastforward'}
-              onPress={controlMode === 'chapter' ? handleNextChapter : () => {}}
+              onPress={handleRightPress}
               onPressIn={controlMode === 'chapter' ? undefined : handleRightPressIn}
               onPressOut={controlMode === 'chapter' ? undefined : handleRightPressOut}
               isActive={controlMode !== 'chapter' && isFastForwarding}
