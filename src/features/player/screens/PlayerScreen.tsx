@@ -113,6 +113,9 @@ export function PlayerScreen() {
   const wasPlaying = useRef(false);
   const isSeeking = useRef(false);
   const startPosition = useRef(0);
+  // Refs for synchronous seeking state (state updates are async and cause race conditions)
+  const isRewindingRef = useRef(false);
+  const isFastForwardingRef = useRef(false);
 
   // Store
   const {
@@ -213,11 +216,13 @@ export function PlayerScreen() {
   }, []);
 
   // Sync seeking position (but not while actively rewinding/ff)
+  // IMPORTANT: Use refs not state - state updates are async and cause race conditions
+  // where position updates arrive before isRewinding state is true
   useEffect(() => {
-    if (!isRewinding && !isFastForwarding) {
+    if (!isRewindingRef.current && !isFastForwardingRef.current) {
       seekingPos.current = position;
     }
-  }, [position, isRewinding, isFastForwarding]);
+  }, [position]);
 
   // ===========================================================================
   // HANDLERS
@@ -226,6 +231,9 @@ export function PlayerScreen() {
   const handleClose = useCallback(() => {
     if (rewindInterval.current) clearInterval(rewindInterval.current);
     if (ffInterval.current) clearInterval(ffInterval.current);
+    // Clear refs first (synchronous)
+    isRewindingRef.current = false;
+    isFastForwardingRef.current = false;
     setIsRewinding(false);
     setIsFastForwarding(false);
     setSeekDelta(0);
@@ -367,6 +375,8 @@ export function PlayerScreen() {
   // Rewind handlers
   const startRewind = async () => {
     if (isRewinding) return;
+    // Set ref FIRST (synchronous) - prevents race condition with position updates
+    isRewindingRef.current = true;
     setIsRewinding(true);
     wasPlaying.current = isPlaying;
     startPosition.current = position;
@@ -374,24 +384,25 @@ export function PlayerScreen() {
     isSeeking.current = false;
     setSeekDelta(0);
     await pause();
-    
+
     const doRewind = () => {
       if (isSeeking.current) return;
       isSeeking.current = true;
       seekingPos.current = Math.max(0, seekingPos.current - REWIND_STEP);
       setSeekDelta(seekingPos.current - startPosition.current);
-      
+
       seekTo(seekingPos.current).finally(() => {
         isSeeking.current = false;
         if (seekingPos.current <= 0 && rewindInterval.current) {
           clearInterval(rewindInterval.current);
           rewindInterval.current = null;
+          isRewindingRef.current = false;
           setIsRewinding(false);
           setSeekDelta(0);
         }
       });
     };
-    
+
     doRewind();
     rewindInterval.current = setInterval(doRewind, REWIND_INTERVAL);
   };
@@ -399,6 +410,8 @@ export function PlayerScreen() {
   const stopRewind = async () => {
     if (rewindInterval.current) clearInterval(rewindInterval.current);
     rewindInterval.current = null;
+    // Clear ref FIRST (synchronous)
+    isRewindingRef.current = false;
     setIsRewinding(false);
     setSeekDelta(0);
     if (wasPlaying.current) await play();
@@ -406,6 +419,8 @@ export function PlayerScreen() {
 
   const startFastForward = async () => {
     if (isFastForwarding) return;
+    // Set ref FIRST (synchronous) - prevents race condition with position updates
+    isFastForwardingRef.current = true;
     setIsFastForwarding(true);
     wasPlaying.current = isPlaying;
     startPosition.current = position;
@@ -413,24 +428,25 @@ export function PlayerScreen() {
     isSeeking.current = false;
     setSeekDelta(0);
     await pause();
-    
+
     const doFF = () => {
       if (isSeeking.current) return;
       isSeeking.current = true;
       seekingPos.current = Math.min(bookDuration - 1, seekingPos.current + FF_STEP);
       setSeekDelta(seekingPos.current - startPosition.current);
-      
+
       seekTo(seekingPos.current).finally(() => {
         isSeeking.current = false;
         if (seekingPos.current >= bookDuration - 1 && ffInterval.current) {
           clearInterval(ffInterval.current);
           ffInterval.current = null;
+          isFastForwardingRef.current = false;
           setIsFastForwarding(false);
           setSeekDelta(0);
         }
       });
     };
-    
+
     doFF();
     ffInterval.current = setInterval(doFF, REWIND_INTERVAL);
   };
@@ -438,6 +454,8 @@ export function PlayerScreen() {
   const stopFastForward = async () => {
     if (ffInterval.current) clearInterval(ffInterval.current);
     ffInterval.current = null;
+    // Clear ref FIRST (synchronous)
+    isFastForwardingRef.current = false;
     setIsFastForwarding(false);
     setSeekDelta(0);
     if (wasPlaying.current) await play();
