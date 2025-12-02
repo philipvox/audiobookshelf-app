@@ -46,6 +46,20 @@ interface SyncMetadata {
   updatedAt: number;
 }
 
+interface FavoriteItem {
+  itemId: string;
+  addedAt: string;
+  synced: boolean;
+}
+
+interface SyncQueueItem {
+  id: number;
+  action: string;
+  payload: string;
+  createdAt: string;
+  retryCount: number;
+}
+
 export interface ReadHistoryEntry {
   itemId: string;
   title: string;
@@ -148,6 +162,22 @@ class SQLiteCache {
           rating INTEGER
         );
 
+        -- Favorites (local cache + offline support)
+        CREATE TABLE IF NOT EXISTS favorites (
+          item_id TEXT PRIMARY KEY,
+          added_at TEXT NOT NULL,
+          synced INTEGER DEFAULT 0
+        );
+
+        -- Sync queue for offline mutations
+        CREATE TABLE IF NOT EXISTS sync_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          action TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          retry_count INTEGER DEFAULT 0
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
@@ -156,6 +186,8 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_progress_synced ON playback_progress(synced);
         CREATE INDEX IF NOT EXISTS idx_read_history_completed ON read_history(completed_at);
         CREATE INDEX IF NOT EXISTS idx_read_history_author ON read_history(author_name);
+        CREATE INDEX IF NOT EXISTS idx_favorites_synced ON favorites(synced);
+        CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_count);
       `);
 
       this.isInitialized = true;
@@ -623,6 +655,169 @@ class SQLiteCache {
     } catch (err) {
       console.warn('[SQLiteCache] getReadHistoryStats error:', err);
       return { totalBooksRead: 0, favoriteAuthors: [], favoriteNarrators: [], favoriteGenres: [] };
+    }
+  }
+
+  // ============================================================================
+  // FAVORITES
+  // ============================================================================
+
+  async getFavorites(): Promise<FavoriteItem[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        added_at: string;
+        synced: number;
+      }>('SELECT item_id, added_at, synced FROM favorites ORDER BY added_at DESC');
+
+      return rows.map((r) => ({
+        itemId: r.item_id,
+        addedAt: r.added_at,
+        synced: r.synced === 1,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getFavorites error:', err);
+      return [];
+    }
+  }
+
+  async addFavorite(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        'INSERT OR REPLACE INTO favorites (item_id, added_at, synced) VALUES (?, ?, 0)',
+        [itemId, new Date().toISOString()]
+      );
+      console.log(`[SQLiteCache] Added favorite: ${itemId}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] addFavorite error:', err);
+    }
+  }
+
+  async removeFavorite(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM favorites WHERE item_id = ?', [itemId]);
+      console.log(`[SQLiteCache] Removed favorite: ${itemId}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeFavorite error:', err);
+    }
+  }
+
+  async isFavorite(itemId: string): Promise<boolean> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{ item_id: string }>(
+        'SELECT item_id FROM favorites WHERE item_id = ?',
+        [itemId]
+      );
+      return !!row;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async cacheFavorites(favorites: FavoriteItem[]): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM favorites');
+        for (const fav of favorites) {
+          await db.runAsync(
+            'INSERT INTO favorites (item_id, added_at, synced) VALUES (?, ?, 1)',
+            [fav.itemId, fav.addedAt]
+          );
+        }
+      });
+      console.log(`[SQLiteCache] Cached ${favorites.length} favorites`);
+    } catch (err) {
+      console.error('[SQLiteCache] cacheFavorites error:', err);
+    }
+  }
+
+  async getUnsyncedFavorites(): Promise<FavoriteItem[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        added_at: string;
+        synced: number;
+      }>('SELECT item_id, added_at, synced FROM favorites WHERE synced = 0');
+
+      return rows.map((r) => ({
+        itemId: r.item_id,
+        addedAt: r.added_at,
+        synced: false,
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async markFavoriteSynced(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('UPDATE favorites SET synced = 1 WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] markFavoriteSynced error:', err);
+    }
+  }
+
+  // ============================================================================
+  // SYNC QUEUE
+  // ============================================================================
+
+  async addToSyncQueue(item: Omit<SyncQueueItem, 'id'>): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        'INSERT INTO sync_queue (action, payload, created_at, retry_count) VALUES (?, ?, ?, ?)',
+        [item.action, item.payload, item.createdAt, item.retryCount]
+      );
+      console.log(`[SQLiteCache] Added to sync queue: ${item.action}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] addToSyncQueue error:', err);
+    }
+  }
+
+  async getSyncQueue(): Promise<SyncQueueItem[]> {
+    const db = await this.ensureReady();
+    try {
+      return await db.getAllAsync<SyncQueueItem>(
+        'SELECT id, action, payload, created_at as createdAt, retry_count as retryCount FROM sync_queue ORDER BY id ASC'
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] getSyncQueue error:', err);
+      return [];
+    }
+  }
+
+  async removeSyncQueueItem(id: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM sync_queue WHERE id = ?', [id]);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeSyncQueueItem error:', err);
+    }
+  }
+
+  async updateSyncQueueRetry(id: number, retryCount: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('UPDATE sync_queue SET retry_count = ? WHERE id = ?', [retryCount, id]);
+    } catch (err) {
+      console.warn('[SQLiteCache] updateSyncQueueRetry error:', err);
+    }
+  }
+
+  async clearSyncQueue(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM sync_queue');
+      console.log('[SQLiteCache] Cleared sync queue');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearSyncQueue error:', err);
     }
   }
 
