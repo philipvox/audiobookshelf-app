@@ -133,11 +133,23 @@ export const queryKeys = {
   user: {
     all: ['user'] as const,
     profile: () => [...queryKeys.user.all, 'profile'] as const,
+
+    // Progress
     progress: (itemId: string) => [...queryKeys.user.all, 'progress', itemId] as const,
     progressAll: () => [...queryKeys.user.all, 'progress'] as const,
+
+    // Favorites
     favorites: () => [...queryKeys.user.all, 'favorites'] as const,
+    isFavorite: (itemId: string) => [...queryKeys.user.all, 'favorites', itemId] as const,
+
+    // Continue Listening & History
     inProgress: () => [...queryKeys.user.all, 'inProgress'] as const,
+    continueListening: () => [...queryKeys.user.all, 'continueListening'] as const,
+    history: () => [...queryKeys.user.all, 'history'] as const,
     listening: () => [...queryKeys.user.all, 'listening'] as const,
+
+    // Stats
+    libraryStats: () => [...queryKeys.user.all, 'libraryStats'] as const,
   },
 
   // ---------------------------------------------------------------------------
