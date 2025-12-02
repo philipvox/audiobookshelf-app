@@ -58,3 +58,7 @@ export {
   createLazyScreen,
   preloadComponent,
 } from './LazyComponents';
+
+// Offline-first components
+export { SyncStatusBadge } from './SyncStatusBadge';
+export { DownloadButton } from './DownloadButton';
