@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { SeriesInfo } from '../services/seriesAdapter';
 import { SortOption } from '@/shared/components/FilterSortBar';
 
@@ -13,7 +14,7 @@ export function useSeries(libraryId: string, options: UseSeriesOptions = {}) {
   const { sortBy = 'name-asc', searchQuery = '' } = options;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['series', libraryId],
+    queryKey: queryKeys.series.list(libraryId),
     queryFn: () => apiClient.getLibrarySeries(libraryId),
     enabled: !!libraryId,
     staleTime: 10 * 60 * 1000,

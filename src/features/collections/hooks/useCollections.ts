@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { Collection } from '@/core/types';
 
 interface UseCollectionsResult {
@@ -11,7 +12,7 @@ interface UseCollectionsResult {
 
 export function useCollections(): UseCollectionsResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['collections'],
+    queryKey: queryKeys.collections.all,
     queryFn: () => apiClient.getCollections(),
     staleTime: 10 * 60 * 1000,
   });

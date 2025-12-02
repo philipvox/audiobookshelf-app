@@ -7,6 +7,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { Library } from '@/core/types';
 
 interface UseDefaultLibraryResult {
@@ -20,7 +21,7 @@ interface UseDefaultLibraryResult {
  */
 export function useDefaultLibrary(): UseDefaultLibraryResult {
   const { data: libraries, isLoading, error } = useQuery({
-    queryKey: ['libraries'],
+    queryKey: queryKeys.libraries.all,
     queryFn: () => apiClient.getLibraries(),
     staleTime: 5 * 60 * 1000, // 5 minutes - libraries don't change often
   });

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
+import { queryKeys } from '@/core/queryClient';
 import { Collection } from '@/core/types';
 
 interface UseCollectionDetailsResult {
@@ -11,7 +12,7 @@ interface UseCollectionDetailsResult {
 
 export function useCollectionDetails(collectionId: string): UseCollectionDetailsResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['collection', collectionId],
+    queryKey: queryKeys.collections.detail(collectionId),
     queryFn: () => apiClient.getCollection(collectionId),
     staleTime: 5 * 60 * 1000,
     enabled: !!collectionId,
