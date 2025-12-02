@@ -60,6 +60,26 @@ interface SyncQueueItem {
   retryCount: number;
 }
 
+interface DownloadRecord {
+  itemId: string;
+  status: 'pending' | 'downloading' | 'complete' | 'error' | 'paused';
+  progress: number;
+  filePath: string | null;
+  fileSize: number | null;
+  downloadedAt: string | null;
+  error: string | null;
+}
+
+interface SyncLogEntry {
+  id: number;
+  timestamp: string;
+  direction: 'up' | 'down';
+  entityType: string | null;
+  entityId: string | null;
+  status: 'success' | 'error' | 'conflict';
+  details: string | null;
+}
+
 export interface ReadHistoryEntry {
   itemId: string;
   title: string;
@@ -172,10 +192,50 @@ class SQLiteCache {
         -- Sync queue for offline mutations
         CREATE TABLE IF NOT EXISTS sync_queue (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT,
+          entity_id TEXT,
           action TEXT NOT NULL,
           payload TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          retry_count INTEGER DEFAULT 0
+          retry_count INTEGER DEFAULT 0,
+          last_error TEXT
+        );
+
+        -- Downloads (offline audio files)
+        CREATE TABLE IF NOT EXISTS downloads (
+          item_id TEXT PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'pending',
+          progress REAL DEFAULT 0,
+          file_path TEXT,
+          file_size INTEGER,
+          downloaded_at TEXT,
+          error TEXT
+        );
+
+        -- Download queue (ordered)
+        CREATE TABLE IF NOT EXISTS download_queue (
+          item_id TEXT PRIMARY KEY,
+          priority INTEGER DEFAULT 0,
+          added_at TEXT NOT NULL
+        );
+
+        -- Sync log (for debugging)
+        CREATE TABLE IF NOT EXISTS sync_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          entity_type TEXT,
+          entity_id TEXT,
+          status TEXT NOT NULL,
+          details TEXT
+        );
+
+        -- Cached images
+        CREATE TABLE IF NOT EXISTS image_cache (
+          url TEXT PRIMARY KEY,
+          file_path TEXT NOT NULL,
+          cached_at TEXT NOT NULL,
+          size INTEGER
         );
 
         -- Indexes for faster lookups
@@ -188,6 +248,9 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_read_history_author ON read_history(author_name);
         CREATE INDEX IF NOT EXISTS idx_favorites_synced ON favorites(synced);
         CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_count);
+        CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+        CREATE INDEX IF NOT EXISTS idx_download_queue_priority ON download_queue(priority DESC);
+        CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp DESC);
       `);
 
       this.isInitialized = true;
@@ -885,6 +948,264 @@ class SQLiteCache {
       };
     } catch (err) {
       return { itemCount: 0, authorCount: 0, seriesCount: 0, narratorCount: 0, collectionCount: 0 };
+    }
+  }
+
+  // ============================================================================
+  // DOWNLOADS
+  // ============================================================================
+
+  async getDownload(itemId: string): Promise<DownloadRecord | null> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{
+        item_id: string;
+        status: string;
+        progress: number;
+        file_path: string | null;
+        file_size: number | null;
+        downloaded_at: string | null;
+        error: string | null;
+      }>('SELECT * FROM downloads WHERE item_id = ?', [itemId]);
+
+      if (!row) return null;
+      return {
+        itemId: row.item_id,
+        status: row.status as DownloadRecord['status'],
+        progress: row.progress,
+        filePath: row.file_path,
+        fileSize: row.file_size,
+        downloadedAt: row.downloaded_at,
+        error: row.error,
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async getAllDownloads(): Promise<DownloadRecord[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        status: string;
+        progress: number;
+        file_path: string | null;
+        file_size: number | null;
+        downloaded_at: string | null;
+        error: string | null;
+      }>('SELECT * FROM downloads ORDER BY downloaded_at DESC');
+
+      return rows.map((row) => ({
+        itemId: row.item_id,
+        status: row.status as DownloadRecord['status'],
+        progress: row.progress,
+        filePath: row.file_path,
+        fileSize: row.file_size,
+        downloadedAt: row.downloaded_at,
+        error: row.error,
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async getDownloadsByStatus(status: DownloadRecord['status']): Promise<DownloadRecord[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        status: string;
+        progress: number;
+        file_path: string | null;
+        file_size: number | null;
+        downloaded_at: string | null;
+        error: string | null;
+      }>('SELECT * FROM downloads WHERE status = ?', [status]);
+
+      return rows.map((row) => ({
+        itemId: row.item_id,
+        status: row.status as DownloadRecord['status'],
+        progress: row.progress,
+        filePath: row.file_path,
+        fileSize: row.file_size,
+        downloadedAt: row.downloaded_at,
+        error: row.error,
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async setDownload(record: DownloadRecord): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO downloads (item_id, status, progress, file_path, file_size, downloaded_at, error)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          record.itemId,
+          record.status,
+          record.progress,
+          record.filePath,
+          record.fileSize,
+          record.downloadedAt,
+          record.error,
+        ]
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] setDownload error:', err);
+    }
+  }
+
+  async updateDownloadProgress(itemId: string, progress: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('UPDATE downloads SET progress = ?, status = ? WHERE item_id = ?', [
+        progress,
+        'downloading',
+        itemId,
+      ]);
+    } catch (err) {
+      console.warn('[SQLiteCache] updateDownloadProgress error:', err);
+    }
+  }
+
+  async completeDownload(itemId: string, filePath: string, fileSize: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        `UPDATE downloads SET status = 'complete', progress = 1, file_path = ?, file_size = ?, downloaded_at = ?, error = NULL
+         WHERE item_id = ?`,
+        [filePath, fileSize, new Date().toISOString(), itemId]
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] completeDownload error:', err);
+    }
+  }
+
+  async failDownload(itemId: string, error: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync("UPDATE downloads SET status = 'error', error = ? WHERE item_id = ?", [
+        error,
+        itemId,
+      ]);
+    } catch (err) {
+      console.warn('[SQLiteCache] failDownload error:', err);
+    }
+  }
+
+  async deleteDownload(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM downloads WHERE item_id = ?', [itemId]);
+      await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] deleteDownload error:', err);
+    }
+  }
+
+  async isDownloaded(itemId: string): Promise<boolean> {
+    const download = await this.getDownload(itemId);
+    return download?.status === 'complete';
+  }
+
+  // Download Queue
+  async addToDownloadQueue(itemId: string, priority = 0): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        'INSERT OR REPLACE INTO download_queue (item_id, priority, added_at) VALUES (?, ?, ?)',
+        [itemId, priority, new Date().toISOString()]
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] addToDownloadQueue error:', err);
+    }
+  }
+
+  async getNextDownload(): Promise<string | null> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{ item_id: string }>(
+        'SELECT item_id FROM download_queue ORDER BY priority DESC, added_at ASC LIMIT 1'
+      );
+      return row?.item_id || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async removeFromDownloadQueue(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeFromDownloadQueue error:', err);
+    }
+  }
+
+  async getDownloadQueueCount(): Promise<number> {
+    const db = await this.ensureReady();
+    try {
+      const result = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM download_queue'
+      );
+      return result?.count || 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  // ============================================================================
+  // SYNC LOG
+  // ============================================================================
+
+  async logSync(
+    direction: 'up' | 'down',
+    entityType: string | null,
+    entityId: string | null,
+    status: 'success' | 'error' | 'conflict',
+    details?: string
+  ): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync(
+        `INSERT INTO sync_log (timestamp, direction, entity_type, entity_id, status, details)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [new Date().toISOString(), direction, entityType, entityId, status, details || null]
+      );
+
+      // Keep only last 1000 entries
+      await db.runAsync(
+        `DELETE FROM sync_log WHERE id NOT IN (
+          SELECT id FROM sync_log ORDER BY timestamp DESC LIMIT 1000
+        )`
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] logSync error:', err);
+    }
+  }
+
+  async getSyncLog(limit = 100): Promise<SyncLogEntry[]> {
+    const db = await this.ensureReady();
+    try {
+      return await db.getAllAsync<SyncLogEntry>(
+        `SELECT id, timestamp, direction, entity_type as entityType, entity_id as entityId, status, details
+         FROM sync_log ORDER BY timestamp DESC LIMIT ?`,
+        [limit]
+      );
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async clearSyncLog(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM sync_log');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearSyncLog error:', err);
     }
   }
 }
