@@ -40,8 +40,8 @@ const DEFAULT_COLOR = '#F55F05';
 const SLIDE_DURATION = 200;
 
 // Animation durations
-const PLAYBACK_ROTATION_DURATION = 3000;
-const SEEK_ROTATION_DURATION = 200;
+const PLAYBACK_ROTATION_DURATION = 3000;  // Normal: slow spin
+const SEEK_ROTATION_DURATION = 400;       // FF/RW: ~2.5x faster than playback
 const REEL_TRANSITION_DURATION = 10;
 
 // Inset shadow config
@@ -232,32 +232,23 @@ export function CassetteTape({
     }
   }, [progress, isSeeking]);
 
-  // Continuous rotation animation for playback and seeking
+  // Continuous rotation animation - INSTANT response to seeking
   useEffect(() => {
-    // Don't interfere with spin-to-position animation
-    if (isSpinningToPosition.value) {
-      return;
-    }
-
-    // Cancel any existing rotation animation
+    // Cancel immediately - no conditions, instant stop
     cancelAnimation(rotation);
 
-    // Determine if we should be spinning
     const shouldSpin = isPlaying || isRewinding || isFastForwarding;
 
     if (shouldSpin) {
-      // Use faster rotation during seeking for visual feedback
-      const duration = isSeeking ? SEEK_ROTATION_DURATION : PLAYBACK_ROTATION_DURATION;
-      // Reverse direction when rewinding
+      // Normalize immediately
+      rotation.value = rotation.value % 360;
+
+      // Much faster rotation during seek for better visual feedback
+      const duration = (isRewinding || isFastForwarding) ? SEEK_ROTATION_DURATION : PLAYBACK_ROTATION_DURATION;
       const direction = isRewinding ? -360 : 360;
 
-      // Normalize rotation to 0-360 range to prevent accumulation issues
-      const currentRotation = rotation.value % 360;
-      rotation.value = currentRotation;
-
-      // Start fresh continuous rotation from normalized position
       rotation.value = withRepeat(
-        withTiming(currentRotation + direction, {
+        withTiming(rotation.value + direction, {
           duration,
           easing: Easing.linear,
         }),
@@ -265,13 +256,8 @@ export function CassetteTape({
         false
       );
     }
-
-    return () => {
-      if (!isSpinningToPosition.value) {
-        cancelAnimation(rotation);
-      }
-    };
-  }, [isPlaying, isRewinding, isFastForwarding, isSeeking]);
+    // Rotation stops immediately because we cancel at the top
+  }, [isPlaying, isRewinding, isFastForwarding]);
 
   const leftReelStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
