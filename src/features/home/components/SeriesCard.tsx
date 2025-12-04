@@ -1,15 +1,18 @@
 /**
  * src/features/home/components/SeriesCard.tsx
  *
- * Series card with horizontal stack of covers
- * Figma: 110x86.5px, 5 stacked covers 35x51px each, 17px offset
+ * Series card with 5 horizontal stacked covers
+ * Anima: 110x86.5px total
+ * 5 covers at left: 0, 17, 34, 51, 68 (17px offset)
+ * Each cover: 35x51px rounded-[5px] shadow-[9px_4px_2px_#00000075]
+ * Title at top:60, heart at top:66 left:89
  */
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { apiClient } from '@/core/api';
-import { COLORS, TYPOGRAPHY } from '../homeDesign';
+import { COLORS } from '../homeDesign';
 import { SeriesCardProps } from '../types';
 import { HeartIcon } from './icons';
 
@@ -17,12 +20,11 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
-  // Get cover URLs for books
+  // Get cover URLs for up to 5 books
   const coverUrls = series.books.slice(0, 5).map((book) => apiClient.getItemCoverUrl(book.id));
 
-  const coverWidth = scale(35);
-  const coverHeight = scale(51);
-  const offset = scale(17);
+  // Anima positions: left 0, 17, 34, 51, 68
+  const positions = [0, 17, 34, 51, 68];
 
   return (
     <TouchableOpacity
@@ -31,18 +33,16 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
       onLongPress={onLongPress}
       activeOpacity={0.8}
     >
-      {/* Horizontal Cover Stack */}
-      <View style={[styles.stackContainer, { height: coverHeight }]}>
-        {[0, 1, 2, 3, 4].map((index) => (
+      {/* 5 Stacked Covers */}
+      <View style={styles.stackContainer}>
+        {positions.map((left, index) => (
           <View
             key={index}
             style={[
               styles.coverWrapper,
               {
-                width: coverWidth,
-                height: coverHeight,
-                left: index * offset,
-                zIndex: 5 - index,
+                left: scale(left),
+                zIndex: 5 - index, // First cover on top
               },
             ]}
           >
@@ -60,17 +60,17 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
         ))}
       </View>
 
-      {/* Title with Heart */}
-      <View style={styles.titleRow}>
-        <Text style={styles.title} numberOfLines={2}>
-          {series.name}
-        </Text>
-        {series.isFavorite && (
-          <View style={styles.heartContainer}>
-            <HeartIcon size={scale(14)} color={COLORS.heart} filled />
-          </View>
-        )}
-      </View>
+      {/* Title at top:60, left:2 */}
+      <Text style={styles.title} numberOfLines={2}>
+        {series.name}
+      </Text>
+
+      {/* Heart icon at top:66, left:89 */}
+      {series.isFavorite && (
+        <View style={styles.heartContainer}>
+          <HeartIcon size={scale(14)} color={COLORS.heart} filled />
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -78,16 +78,26 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
 const styles = StyleSheet.create({
   container: {
     width: scale(110),
+    height: scale(86.5),
+    position: 'relative',
   },
   stackContainer: {
-    position: 'relative',
-    width: scale(103), // 35 + 4*17 = 103
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: scale(103), // 68 + 35 = 103
+    height: scale(51),
   },
   coverWrapper: {
     position: 'absolute',
-    borderRadius: 5,
+    top: 0,
+    width: scale(35),
+    height: scale(51),
+    borderRadius: scale(5),
     overflow: 'hidden',
-    shadowColor: '#000',
+    backgroundColor: '#7D7D7D',
+    // Anima shadow: 9px 4px 2px rgba(0,0,0,0.46)
+    shadowColor: '#000000',
     shadowOffset: { width: 9, height: 4 },
     shadowOpacity: 0.46,
     shadowRadius: 2,
@@ -96,29 +106,28 @@ const styles = StyleSheet.create({
   cover: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#7D7D7D',
   },
   placeholder: {
     width: '100%',
     height: '100%',
     backgroundColor: '#7D7D7D',
-    borderRadius: 5,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: scale(9),
   },
   title: {
-    flex: 1,
-    fontFamily: 'System',
+    position: 'absolute',
+    top: scale(60),
+    left: scale(2),
+    width: scale(106),
+    fontFamily: 'System', // TODO: Change to 'GothicA1' when font loaded
     fontSize: scale(12),
     fontWeight: '400',
     color: COLORS.textPrimary,
     lineHeight: scale(12.4),
   },
   heartContainer: {
-    marginLeft: scale(4),
-    marginTop: scale(2),
+    position: 'absolute',
+    top: scale(66),
+    left: scale(89),
+    width: scale(17),
+    height: scale(14),
   },
 });

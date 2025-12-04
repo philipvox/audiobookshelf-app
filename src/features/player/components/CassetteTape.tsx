@@ -27,6 +27,7 @@ import Animated, {
   cancelAnimation,
   runOnJS,
   interpolate,
+  SharedValue,
 } from 'react-native-reanimated';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -36,7 +37,7 @@ const REEL_MAX_RADIUS = 120;
 const REEL_MIN_RADIUS = 15;
 const HUB_RADIUS = 10;
 const DEFAULT_COLOR = '#F55F05';
-const SLIDE_DURATION = 250;
+const SLIDE_DURATION = 200;
 
 // Animation durations
 const PLAYBACK_ROTATION_DURATION = 2000;
@@ -341,12 +342,12 @@ export function CassetteTape({
   );
 }
 
-function AnimatedReel({ 
-  radius, 
+function AnimatedReel({
+  radius,
   linePosition,
   color,
-}: { 
-  radius: Animated.SharedValue<number>; 
+}: {
+  radius: SharedValue<number>;
   linePosition: 'top' | 'bottom';
   color: string;
 }) {

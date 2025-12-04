@@ -2,7 +2,7 @@
  * src/features/home/screens/HomeScreen.tsx
  *
  * Main home screen with Now Playing card and carousels
- * Layout based on Figma design
+ * Anima layout: 402px base width, gap-6 (24px) between sections
  */
 
 import React, { useCallback } from 'react';
@@ -122,6 +122,9 @@ export function HomeScreen() {
     }
   }, [isPlaying, play, pause]);
 
+  // Convert sleepTimer from seconds to minutes
+  const sleepTimerMinutes = sleepTimer ? Math.round(sleepTimer / 60) : null;
+
   if (isLoading && !currentBook && recentBooks.length === 0) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -150,6 +153,14 @@ export function HomeScreen() {
 
       <HomeBackground coverUrl={currentCoverUrl} />
 
+      {/* Fixed gradient overlay - part of background, doesn't scroll */}
+      <LinearGradient
+        colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0.8)', 'rgba(0, 0, 0, 1)']}
+        locations={[0, 0.6, 1]}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
+
       <ScrollView
         scrollEventThrottle={16}
         contentContainerStyle={[
@@ -176,7 +187,7 @@ export function HomeScreen() {
               progress={currentProgress}
               isPlaying={isPlaying}
               playbackSpeed={playbackRate}
-              sleepTimer={sleepTimer ? sleepTimer / 60 : null}
+              sleepTimer={sleepTimerMinutes}
               onPress={handleNowPlayingPress}
               onPlay={handlePlayPause}
               onSkipBack={skipBackward}
@@ -187,7 +198,7 @@ export function HomeScreen() {
 
         {/* Your Books Section */}
         {recentBooks.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.booksSection}>
             <SectionHeader title="Your Books" onViewAll={handleViewAllBooks} />
             <HorizontalCarousel
               data={recentBooks}
@@ -206,9 +217,9 @@ export function HomeScreen() {
           </View>
         )}
 
-        {/* Your Series Section */}
+        {/* Your Series Section - gap:20px from Anima */}
         {userSeries.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.seriesSection}>
             <SectionHeader title="Your Series" onViewAll={handleViewAllSeries} />
             <HorizontalCarousel
               data={userSeries}
@@ -226,9 +237,9 @@ export function HomeScreen() {
           </View>
         )}
 
-        {/* Your Playlists Section */}
+        {/* Your Playlists Section - gap:16px from Anima */}
         {userPlaylists.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.playlistsSection}>
             <SectionHeader title="Your Playlists" onViewAll={handleViewAllPlaylists} />
             <HorizontalCarousel
               data={userPlaylists}
@@ -273,8 +284,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: scale(10),
   },
-  section: {
+  backgroundGradient: {
+    position: 'absolute',
+    top: '45%', // Start gradient at 45% from top
+    left: 0,
+    right: 0,
+    height: '55%', // Cover remaining 55% of screen
+  },
+  booksSection: {
+    marginTop: scale(43),
+  },
+  // Anima: gap-[23px] between books and series
+  seriesSection: {
     marginTop: scale(23),
+  },
+  // Anima: gap-[16px] between series and playlists (slightly less)
+  playlistsSection: {
+    marginTop: scale(16),
   },
   bottomGradient: {
     position: 'absolute',

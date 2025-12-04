@@ -5,14 +5,17 @@
  */
 
 import React from 'react';
-import { View, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Rect, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SIDE_BUTTON_SIZE = 64;
 const PLAYER_BUTTON_SIZE = 96;
@@ -103,6 +106,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.wrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
+      {/* Bottom gradient: black 0% at top -> black 100% at bottom */}
+      <LinearGradient
+        colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 1)']}
+        style={styles.bottomGradient}
+        pointerEvents="none"
+      />
       <View style={styles.container}>
         {/* Search Button */}
         <TouchableOpacity
@@ -160,6 +169,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  bottomGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: SCREEN_WIDTH,
+    height: 180, // Height of the gradient fade
   },
   container: {
     flexDirection: 'row',

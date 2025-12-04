@@ -1,7 +1,7 @@
 /**
  * src/features/home/components/icons/PlayIcon.tsx
  *
- * Lime green play triangle icon
+ * Lime green play triangle icon - exact Anima SVG (23x27)
  */
 
 import React from 'react';
@@ -13,23 +13,27 @@ interface PlayIconProps {
   color?: string;
 }
 
-export function PlayIcon({ size = 24, color = COLORS.playButton }: PlayIconProps) {
-  // Scale factor from original viewBox (78x81) to desired size
-  const scale = size / 24;
-  const width = 78 * scale;
-  const height = 81 * scale;
+// Exact Anima play icon dimensions: 23x27
+const ORIGINAL_WIDTH = 23;
+const ORIGINAL_HEIGHT = 27;
+
+export function PlayIcon({ size = 27, color = COLORS.playButton }: PlayIconProps) {
+  // Scale based on height (27 is the original height)
+  const scale = size / ORIGINAL_HEIGHT;
+  const width = ORIGINAL_WIDTH * scale;
+  const height = size;
 
   return (
-    <Svg width={width} height={height} viewBox="0 0 78 81" fill="none">
+    <Svg width={width} height={height} viewBox="0 0 23 27" fill="none">
       <Path
-        d="M38.7003 43.493C38.7003 40.3412 42.1759 38.4276 44.8392 40.113L59.7278 49.5346C62.2092 51.1049 62.2092 54.7245 59.7278 56.2948L44.8392 65.7164C42.1759 67.4018 38.7003 65.4882 38.7003 62.3364V43.493Z"
+        d="M0 4.00645C0 0.854648 3.47562 -1.05901 6.13895 0.626383L21.0275 10.048C23.5089 11.6183 23.5089 15.2379 21.0275 16.8082L6.13895 26.2299C3.47562 27.9153 0 26.0016 0 22.8498V4.00645Z"
         fill={color}
       />
     </Svg>
   );
 }
 
-// Simple centered play triangle for use in play button
+// Simple centered play triangle for use in play button (unchanged for compatibility)
 export function PlayTriangle({ size = 24, color = COLORS.playButton }: PlayIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
