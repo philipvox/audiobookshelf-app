@@ -19,35 +19,37 @@ interface HomeBackgroundProps {
 
 export function HomeBackground({
   coverUrl,
-  blurIntensity = 80,
+  blurIntensity = 50, // Reduced from 80 for brighter background
 }: HomeBackgroundProps) {
   return (
     <View style={styles.container}>
       {/* Base color */}
       <View style={styles.baseColor} />
 
-      {/* Blurred cover image */}
+      {/* Blurred cover image - brighter */}
       {coverUrl && (
         <View style={styles.imageContainer}>
           <Image
             source={{ uri: coverUrl }}
             style={styles.image}
             resizeMode="cover"
-            blurRadius={25}
+            blurRadius={15} // Reduced from 25 for more visible colors
           />
           <BlurView intensity={blurIntensity} style={styles.blur} tint="dark" />
+          {/* Brightness overlay */}
+          <View style={styles.brightnessOverlay} />
         </View>
       )}
 
-      {/* Dark overlay gradient */}
+      {/* Lighter overlay gradient - more transparent at top */}
       <LinearGradient
         colors={[
+          'rgba(0, 0, 0, 0.1)', // More transparent at top
           'rgba(0, 0, 0, 0.3)',
-          'rgba(0, 0, 0, 0.5)',
-          'rgba(0, 0, 0, 0.8)',
+          'rgba(0, 0, 0, 0.7)',
           COLORS.background,
         ]}
-        locations={[0, 0.3, 0.7, 1]}
+        locations={[0, 0.35, 0.75, 1]}
         style={styles.gradient}
       />
     </View>
@@ -67,16 +69,21 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.65, // Taller for more visible background
     overflow: 'hidden',
   },
   image: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.65,
     transform: [{ scale: 1.1 }],
+    opacity: 0.8, // Brighter image
   },
   blur: {
     ...StyleSheet.absoluteFillObject,
+  },
+  brightnessOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', // Slight brightness boost
   },
   gradient: {
     ...StyleSheet.absoluteFillObject,

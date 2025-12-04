@@ -2,7 +2,8 @@
  * src/features/home/components/SectionHeader.tsx
  *
  * Section header with title and "View All" button
- * Figma: Bold 14px title, regular 14px View All
+ * Anima: Golos Text font, 14px, bold title, normal View All
+ * Width: 349.9px (full width minus padding)
  */
 
 import React from 'react';
@@ -32,20 +33,22 @@ export function SectionHeader({
 
 const styles = StyleSheet.create({
   container: {
+    width: scale(349.9),
+    height: scale(17),
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: scale(29),
+    marginLeft: scale(29),
     marginBottom: scale(15),
   },
   title: {
-    fontFamily: 'System',
+    fontFamily: 'System', // TODO: Change to 'GolosText' when font loaded
     fontSize: scale(14),
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   viewAll: {
-    fontFamily: 'System',
+    fontFamily: 'System', // TODO: Change to 'GolosText' when font loaded
     fontSize: scale(14),
     fontWeight: '400',
     color: COLORS.textPrimary,

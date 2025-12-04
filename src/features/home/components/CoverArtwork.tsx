@@ -1,7 +1,7 @@
 /**
  * src/features/home/components/CoverArtwork.tsx
  *
- * Cover artwork with shadow - Figma: 263x264px rounded-[8.79px]
+ * Cover artwork - Anima: 263x264px, rounded-[8.79px], shadow
  */
 
 import React from 'react';
@@ -21,19 +21,31 @@ export function CoverArtwork({
   coverUrl,
   size = scale(263),
 }: CoverArtworkProps) {
+  // Anima: 263x264 (slightly taller than wide)
+  const width = size;
+  const height = size * (264 / 263);
   const borderRadius = scale(8.79);
 
   return (
-    <View style={[styles.container, { width: size, height: size, borderRadius }]}>
+    <View 
+      style={[
+        styles.container, 
+        { 
+          width, 
+          height, 
+          borderRadius,
+        }
+      ]}
+    >
       {coverUrl ? (
         <Image
           source={{ uri: coverUrl }}
-          style={[styles.image, { width: size, height: size, borderRadius }]}
+          style={[styles.image, { width, height, borderRadius }]}
           contentFit="cover"
           transition={200}
         />
       ) : (
-        <View style={[styles.placeholder, { width: size, height: size, borderRadius }]} />
+        <View style={[styles.placeholder, { width, height, borderRadius }]} />
       )}
     </View>
   );
@@ -41,14 +53,16 @@ export function CoverArtwork({
 
 const styles = StyleSheet.create({
   container: {
-    shadowColor: '#000',
+    // Anima shadow: 0px 8px 20px rgba(0,0,0,0.45)
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.45,
     shadowRadius: 20,
     elevation: 12,
+    zIndex:100,
   },
   image: {
-    backgroundColor: COLORS.controlButtonBg,
+    backgroundColor: '#7D7D7D',
   },
   placeholder: {
     backgroundColor: '#7D7D7D',

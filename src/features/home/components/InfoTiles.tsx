@@ -1,12 +1,14 @@
 /**
  * src/features/home/components/InfoTiles.tsx
  *
- * Info tiles with black pill backgrounds
- * Left: Title + Chapter | Right: Time + Speed + Sleep Timer
+ * Info tiles with black pill backgrounds and blur shadow effect
+ * Left Pill (240x61): Title (left) | Chapter (right) - with blur shadow
+ * Right Pill (135x61): Time (top) | Speed (bottom-left) | Sleep Timer (bottom-right, red)
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { COLORS } from '../homeDesign';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -29,108 +31,165 @@ export function InfoTiles({
   sleepTimerMinutes,
   playbackSpeed = 1,
 }: InfoTilesProps) {
-  const formatSleepTimer = (minutes?: number | null): string | null => {
-    if (!minutes || minutes <= 0) return null;
+  const formatSleepTimer = (minutes?: number | null): string => {
+    if (minutes === null || minutes === undefined) return '0m';
     return `${Math.round(minutes)}m`;
   };
 
   const sleepTimerText = formatSleepTimer(sleepTimerMinutes);
-  const chapterDisplay = chapterNumber ? `Chpt.\n${chapterNumber}` : chapter;
+  
+  // Format chapter as two lines: "Chpt." and number
+  const chapterLine1 = 'Chpt.';
+  const chapterLine2 = chapterNumber?.toString() || chapter || '1';
+
+  // Format speed with 2 decimal places
+  const speedText = `${playbackSpeed.toFixed(2)}x`;
 
   return (
     <View style={styles.container}>
       {/* Left Pill: Title & Chapter */}
       <View style={styles.leftPill}>
-        <Text style={styles.title} numberOfLines={2}>
+        {/* Blur shadow layer (behind text) */}
+        <View style={styles.blurLayer} pointerEvents="none">
+          <Text style={[styles.titleText, styles.blurText]} numberOfLines={2}>
+            {title}
+          </Text>
+          <View style={styles.chapterContainer}>
+            <Text style={[styles.chapterText, styles.blurText]}>{chapterLine1}</Text>
+            <Text style={[styles.chapterText, styles.blurText]}>{chapterLine2}</Text>
+          </View>
+        </View>
+        
+        {/* Actual text layer */}
+        <Text style={styles.titleText} numberOfLines={2}>
           {title}
         </Text>
-        {chapterDisplay && (
-          <Text style={styles.chapter}>
-            {chapterDisplay}
-          </Text>
-        )}
+        <View style={styles.chapterContainer}>
+          <Text style={styles.chapterText}>{chapterLine1}</Text>
+          <Text style={styles.chapterText}>{chapterLine2}</Text>
+        </View>
       </View>
 
       {/* Right Pill: Time, Speed & Sleep Timer */}
       <View style={styles.rightPill}>
         <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
         <View style={styles.bottomRow}>
-          <Text style={styles.speedText}>{playbackSpeed.toFixed(2)}x</Text>
-          {sleepTimerText && (
-            <Text style={styles.sleepTimerText}>{sleepTimerText}</Text>
-          )}
+          <Text style={styles.speedText}>{speedText}</Text>
+          <Text style={styles.sleepTimerText}>{sleepTimerText}</Text>
         </View>
       </View>
     </View>
   );
 }
 
+// Smaller font size for mini player
+const FONT_SIZE = 16;
+const LINE_HEIGHT = 17;
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: scale(4),
+    gap: scale(6),
   },
+  // Left pill: 236x55
   leftPill: {
-    flex: 1,
+    width: scale(236),
+    height: scale(55),
+    backgroundColor: '#000000',
+    borderRadius: scale(5),
+    paddingHorizontal: scale(11),
+    paddingVertical: scale(8),
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    backgroundColor: '#000000',
-    borderRadius: 5,
-    paddingHorizontal: scale(11),
-    paddingVertical: scale(7),
-    minHeight: scale(61),
   },
-  rightPill: {
-    backgroundColor: '#000000',
-    borderRadius: 5,
+  // Blur shadow effect behind text (glow)
+  blurLayer: {
+    ...StyleSheet.absoluteFillObject,
     paddingHorizontal: scale(11),
-    paddingVertical: scale(5),
-    minHeight: scale(61),
-    alignItems: 'flex-end',
+    paddingVertical: scale(8),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    opacity: 0.6,
+  },
+  blurText: {
+    // Strong glow effect
+    textShadowColor: 'rgba(255, 255, 255, 1)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  // Right pill: 135x55
+  rightPill: {
+    width: scale(135),
+    height: scale(55),
+    backgroundColor: '#000000',
+    borderRadius: scale(5),
+    paddingHorizontal: scale(11),
+    paddingVertical: scale(6),
     justifyContent: 'space-between',
   },
-  title: {
+  titleText: {
     flex: 1,
-    fontFamily: 'Courier',
-    fontSize: scale(20),
+    fontFamily: 'PixelOperator',
+    fontSize: scale(FONT_SIZE),
     fontWeight: '400',
     color: COLORS.textPrimary,
-    lineHeight: scale(21),
+    lineHeight: scale(LINE_HEIGHT),
+    // Subtle glow on main text
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
-  chapter: {
-    fontFamily: 'Courier',
-    fontSize: scale(20),
+  chapterContainer: {
+    alignItems: 'flex-end',
+  },
+  chapterText: {
+    fontFamily: 'PixelOperator',
+    fontSize: scale(FONT_SIZE),
     fontWeight: '400',
     color: COLORS.textPrimary,
-    lineHeight: scale(21),
+    lineHeight: scale(LINE_HEIGHT),
     textAlign: 'right',
+    // Subtle glow
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   timeText: {
-    fontFamily: 'Courier',
-    fontSize: scale(20),
+    fontFamily: 'PixelOperator',
+    fontSize: scale(FONT_SIZE),
     fontWeight: '400',
     color: COLORS.textPrimary,
-    lineHeight: scale(21),
+    lineHeight: scale(LINE_HEIGHT),
+    // Subtle glow
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   bottomRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: scale(8),
   },
   speedText: {
-    fontFamily: 'Courier',
-    fontSize: scale(20),
+    fontFamily: 'PixelOperator',
+    fontSize: scale(FONT_SIZE),
     fontWeight: '400',
     color: COLORS.textPrimary,
-    lineHeight: scale(21),
+    lineHeight: scale(LINE_HEIGHT),
+    // Subtle glow
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   sleepTimerText: {
-    fontFamily: 'Courier',
-    fontSize: scale(20),
+    fontFamily: 'PixelOperator',
+    fontSize: scale(FONT_SIZE),
     fontWeight: '400',
     color: '#F12802',
-    lineHeight: scale(21),
+    lineHeight: scale(LINE_HEIGHT),
+    // Red glow for timer
+    textShadowColor: 'rgba(241, 40, 2, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
 });
