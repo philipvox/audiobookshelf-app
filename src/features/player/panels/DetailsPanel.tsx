@@ -1,5 +1,6 @@
 /**
  * src/features/player/panels/DetailsPanel.tsx
+ * Matches the Figma/Anima design with horizontal By/Read by layout
  */
 
 import React from 'react';
@@ -16,8 +17,6 @@ interface DetailsPanelProps {
   duration: number;
   chaptersCount: number;
   isLight?: boolean;
-  textColor?: string;
-  secondaryColor?: string;
 }
 
 function formatDuration(seconds: number): string {
@@ -35,12 +34,10 @@ function DetailsPanel({
   duration,
   chaptersCount,
   isLight = false,
-  textColor,
-  secondaryColor,
 }: DetailsPanelProps) {
-  const text = textColor || (isLight ? '#000000' : '#FFFFFF');
-  const secondary = secondaryColor || (isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)');
-  const chipBg = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
+  const text = isLight ? '#000000' : '#FFFFFF';
+  const secondary = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
+  const borderColor = isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)';
 
   const author = getAuthorName(book);
   const narrator = getNarratorName(book);
@@ -53,31 +50,36 @@ function DetailsPanel({
   const publishedYear = metadata.publishedYear || '';
   const language = metadata.language || 'English';
 
+  const hasAuthor = author && author !== 'Unknown Author';
+  const hasNarrator = narrator && narrator !== 'Unknown Narrator';
+
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Author & Narrator Row */}
-      <View style={styles.headerRow}>
-        {author && author !== 'Unknown Author' && (
-          <View style={styles.headerItem}>
-            <Text style={[styles.label, { color: secondary }]}>By</Text>
-            <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
-              {author}
-            </Text>
-          </View>
-        )}
-        {narrator && narrator !== 'Unknown Narrator' && (
-          <View style={styles.headerItem}>
-            <Text style={[styles.label, { color: secondary }]}>Read by</Text>
-            <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
-              {narrator}
-            </Text>
-          </View>
-        )}
-      </View>
+      {/* Author & Narrator Row - Horizontal layout */}
+      {(hasAuthor || hasNarrator) && (
+        <View style={styles.headerRow}>
+          {hasAuthor && (
+            <View style={styles.headerItem}>
+              <Text style={[styles.label, { color: secondary }]}>By</Text>
+              <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
+                {author}
+              </Text>
+            </View>
+          )}
+          {hasNarrator && (
+            <View style={styles.headerItem}>
+              <Text style={[styles.label, { color: secondary }]}>Read by</Text>
+              <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
+                {narrator}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Description */}
       {description && (
@@ -89,56 +91,47 @@ function DetailsPanel({
         </View>
       )}
 
-      {/* Genres */}
+      {/* Genres - Bordered pills */}
       {genres.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.label, { color: secondary }]}>Genres</Text>
-          <View style={styles.chipRow}>
+          <View style={styles.pillRow}>
             {genres.map((genre, idx) => (
-              <View key={idx} style={[styles.chip, { backgroundColor: chipBg }]}>
-                <Text style={[styles.chipText, { color: text }]}>{genre}</Text>
+              <View key={idx} style={[styles.pill, { borderColor }]}>
+                <Text style={[styles.pillText, { color: text }]}>{genre}</Text>
               </View>
             ))}
           </View>
         </View>
       )}
 
-      {/* Series */}
+      {/* Series - Bordered pill */}
       {series && (
         <View style={styles.section}>
           <Text style={[styles.label, { color: secondary }]}>Series</Text>
-          <View style={styles.chipRow}>
-            <View style={[styles.chip, { backgroundColor: chipBg }]}>
-              <Text style={[styles.chipText, { color: text }]}>{series}</Text>
+          <View style={styles.pillRow}>
+            <View style={[styles.pill, { borderColor }]}>
+              <Text style={[styles.pillText, { color: text }]}>{series}</Text>
             </View>
           </View>
         </View>
       )}
 
-      {/* Metadata Row */}
+      {/* Bottom Metadata Row */}
       <View style={styles.metadataRow}>
         <Text style={[styles.metadataText, { color: text }]}>
           Chapters: {chaptersCount}
         </Text>
         {publishedYear && (
-          <>
-            <Text style={[styles.metadataSeparator, { color: secondary }]}> | </Text>
-            <Text style={[styles.metadataText, { color: text }]}>{publishedYear}</Text>
-          </>
+          <Text style={[styles.metadataText, { color: text }]}>{publishedYear}</Text>
         )}
         {language && (
-          <>
-            <Text style={[styles.metadataSeparator, { color: secondary }]}> | </Text>
-            <Text style={[styles.metadataText, { color: text }]}>{language}</Text>
-          </>
+          <Text style={[styles.metadataText, { color: text }]}>{language}</Text>
         )}
         {duration > 0 && (
-          <>
-            <Text style={[styles.metadataSeparator, { color: secondary }]}> | </Text>
-            <Text style={[styles.metadataText, { color: text }]}>
-              {formatDuration(duration)}
-            </Text>
-          </>
+          <Text style={[styles.metadataText, { color: text }]}>
+            {formatDuration(duration)}
+          </Text>
         )}
       </View>
     </ScrollView>
@@ -155,57 +148,56 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 24,
+    marginBottom: 20,
+    gap: 40,
   },
   headerItem: {
-    flex: 1,
+    gap: 4,
   },
   label: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '400',
-    marginBottom: 2,
   },
   headerValue: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 20,
+    fontWeight: '400',
   },
   section: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   description: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 26,
     marginTop: 4,
+    fontWeight: '400',
   },
-  chipRow: {
+  pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 6,
+    gap: 12,
+    marginTop: 10,
   },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+  pill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '500',
+  pillText: {
+    fontSize: 16,
+    fontWeight: '400',
   },
   metadataRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 16,
+    paddingTop: 16,
   },
   metadataText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  metadataSeparator: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '400',
   },
 });
 
-export default DetailsPanel;
+export { DetailsPanel };

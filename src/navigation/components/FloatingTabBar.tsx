@@ -1,6 +1,6 @@
 /**
  * src/navigation/components/FloatingTabBar.tsx
- * 
+ *
  * Minimal 3-button floating nav: Search | Player | Home
  */
 
@@ -13,7 +13,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
-import { apiClient } from '@/core/api';
+
+// Circle play/pause buttons
+const playCircleImage = require('@/features/home/assets/play-circle.png');
+const pauseCircleImage = require('@/features/home/assets/pause-circle.png');
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -75,7 +78,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   if (isPlayerVisible) return null;
 
   const isHomeTab = state.routes[state.index]?.name === 'HomeTab';
-  const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : null;
 
   const handleSearchPress = () => {
     nav.navigate('Search');
@@ -122,31 +124,18 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           <SearchButton />
         </TouchableOpacity>
 
-        {/* Player Button */}
+        {/* Player Button - Circle play/pause */}
         <Pressable
           style={styles.playerButton}
           onPress={handlePlayerPress}
           onLongPress={handlePlayerLongPress}
           delayLongPress={300}
         >
-          {coverUrl ? (
-            <View style={styles.playerContainer}>
-              <Image
-                source={coverUrl}
-                style={styles.playerCover}
-                contentFit="cover"
-                transition={100}
-              />
-              <View style={styles.playerOverlay}>
-                {isPlaying ? <PauseIcon /> : <PlayIcon />}
-              </View>
-              <View style={styles.playerRing} />
-            </View>
-          ) : (
-            <View style={styles.emptyPlayer}>
-              <PlayIcon />
-            </View>
-          )}
+          <Image
+            source={isPlaying ? pauseCircleImage : playCircleImage}
+            style={styles.playerImage}
+            contentFit="contain"
+          />
         </Pressable>
 
         {/* Home Button */}
@@ -191,34 +180,8 @@ const styles = StyleSheet.create({
     width: PLAYER_BUTTON_SIZE,
     height: PLAYER_BUTTON_SIZE,
   },
-  playerContainer: {
+  playerImage: {
     width: PLAYER_BUTTON_SIZE,
     height: PLAYER_BUTTON_SIZE,
-    borderRadius: PLAYER_BUTTON_SIZE / 2,
-    overflow: 'hidden',
-  },
-  playerCover: {
-    width: PLAYER_BUTTON_SIZE,
-    height: PLAYER_BUTTON_SIZE,
-  },
-  playerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playerRing: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 2,
-    borderColor: 'rgba(0,0,0,0.5)',
-    borderRadius: PLAYER_BUTTON_SIZE / 2,
-  },
-  emptyPlayer: {
-    width: PLAYER_BUTTON_SIZE,
-    height: PLAYER_BUTTON_SIZE,
-    borderRadius: PLAYER_BUTTON_SIZE / 2,
-    backgroundColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
