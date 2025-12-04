@@ -1,5 +1,6 @@
 /**
  * src/features/player/panels/DetailsPanel.tsx
+ * Redesigned to match AudioDetailsSection example
  */
 
 import React from 'react';
@@ -10,8 +11,8 @@ import {
   getDescription,
   getSeriesWithSequence,
   getSeriesName,
-  getPublishedYear,
   getGenres,
+  getPublishedYear,
 } from '@/shared/utils/metadata';
 import type { LibraryItem } from '@/core/api';
 
@@ -35,10 +36,9 @@ export function DetailsPanel({
   onNavigateToSeries,
 }: DetailsPanelProps) {
   const textColor = isLight ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)';
-  const secondaryColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
+  const labelColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
   const descColor = isLight ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.85)';
-  const tagBgColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
-  const linkColor = isLight ? '#007AFF' : '#4DA3FF';
+  const borderColor = isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)';
 
   // Extract metadata using utilities
   const author = getAuthorName(book);
@@ -46,10 +46,9 @@ export function DetailsPanel({
   const description = getDescription(book);
   const series = getSeriesWithSequence(book);
   const seriesName = getSeriesName(book);
-  const publishedYear = getPublishedYear(book);
   const genres = getGenres(book);
+  const publishedYear = getPublishedYear(book);
   const metadata = (book?.media?.metadata as any) || {};
-  const publisher = metadata.publisher || null;
   const language = metadata.language || null;
 
   const handleAuthorPress = () => {
@@ -70,10 +69,12 @@ export function DetailsPanel({
     }
   };
 
-  // Check if navigation is available
   const canNavigateToAuthor = !!onNavigateToAuthor && author && author !== 'Unknown Author';
   const canNavigateToNarrator = !!onNavigateToNarrator && narrator && narrator !== 'Unknown Narrator';
   const canNavigateToSeries = !!onNavigateToSeries && !!seriesName;
+
+  const hasAuthor = author && author !== 'Unknown Author';
+  const hasNarrator = narrator && narrator !== 'Unknown Narrator';
 
   // Format duration nicely
   const formatDurationLong = (seconds: number): string => {
@@ -86,179 +87,190 @@ export function DetailsPanel({
   };
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Author */}
-      {author && author !== 'Unknown Author' && (
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: secondaryColor }]}>AUTHOR</Text>
-          {canNavigateToAuthor ? (
-            <TouchableOpacity onPress={handleAuthorPress} activeOpacity={0.7}>
-              <Text style={[styles.value, styles.link, { color: linkColor }]}>{author}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.value, { color: textColor }]}>{author}</Text>
-          )}
-        </View>
-      )}
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* By / Read by - Horizontal Layout */}
+        {(hasAuthor || hasNarrator) && (
+          <View style={styles.byRow}>
+            {hasAuthor && (
+              <View style={styles.byColumn}>
+                <Text style={[styles.label, { color: labelColor }]}>By</Text>
+                {canNavigateToAuthor ? (
+                  <TouchableOpacity onPress={handleAuthorPress} activeOpacity={0.7}>
+                    <Text style={[styles.byValue, { color: textColor }]}>{author}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={[styles.byValue, { color: textColor }]}>{author}</Text>
+                )}
+              </View>
+            )}
+            {hasNarrator && (
+              <View style={styles.byColumn}>
+                <Text style={[styles.label, { color: labelColor }]}>Read by</Text>
+                {canNavigateToNarrator ? (
+                  <TouchableOpacity onPress={handleNarratorPress} activeOpacity={0.7}>
+                    <Text style={[styles.byValue, { color: textColor }]}>{narrator}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={[styles.byValue, { color: textColor }]}>{narrator}</Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
-      {/* Narrator */}
-      {narrator && narrator !== 'Unknown Narrator' && (
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: secondaryColor }]}>NARRATOR</Text>
-          {canNavigateToNarrator ? (
-            <TouchableOpacity onPress={handleNarratorPress} activeOpacity={0.7}>
-              <Text style={[styles.value, styles.link, { color: linkColor }]}>{narrator}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.value, { color: textColor }]}>{narrator}</Text>
-          )}
-        </View>
-      )}
+        {/* Description */}
+        {description && (
+          <View style={styles.descSection}>
+            <Text style={[styles.label, { color: labelColor }]}>Desc.</Text>
+            <Text style={[styles.description, { color: descColor }]} numberOfLines={5}>
+              {description}
+            </Text>
+          </View>
+        )}
 
-      {/* Series */}
-      {series && (
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: secondaryColor }]}>SERIES</Text>
-          {canNavigateToSeries ? (
-            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
-              <Text style={[styles.value, styles.link, { color: linkColor }]}>{series}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.value, { color: textColor }]}>{series}</Text>
-          )}
-        </View>
-      )}
+        {/* Genres - Bordered Pills */}
+        {genres.length > 0 && (
+          <View style={styles.genresSection}>
+            <Text style={[styles.label, { color: labelColor }]}>Genres</Text>
+            <View style={styles.pillsRow}>
+              {genres.slice(0, 4).map((genre: string, idx: number) => (
+                <View key={idx} style={[styles.pill, { borderColor }]}>
+                  <Text style={[styles.pillText, { color: textColor }]}>{genre}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
-      {/* Publisher */}
-      {publisher && (
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: secondaryColor }]}>PUBLISHER</Text>
-          <Text style={[styles.value, { color: textColor }]}>{publisher}</Text>
-        </View>
-      )}
+        {/* Series - Bordered Pill Button */}
+        {series && (
+          <View style={styles.seriesSection}>
+            <Text style={[styles.label, { color: labelColor }]}>Series</Text>
+            {canNavigateToSeries ? (
+              <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
+                <View style={[styles.pill, { borderColor }]}>
+                  <Text style={[styles.pillText, { color: textColor }]}>{series}</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.pill, { borderColor }]}>
+                <Text style={[styles.pillText, { color: textColor }]}>{series}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
 
-      {/* Stats Row */}
-      <View style={styles.statsRow}>
+      {/* Bottom Stats Row - Fixed at bottom */}
+      <View style={[styles.statsRow, { borderTopColor: borderColor }]}>
         <View style={styles.statItem}>
-          <Text style={[styles.label, { color: secondaryColor }]}>DURATION</Text>
-          <Text style={[styles.statValue, { color: textColor }]}>
-            {formatDurationLong(duration)}
-          </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={[styles.label, { color: secondaryColor }]}>CHAPTERS</Text>
+          <Text style={[styles.statLabel, { color: labelColor }]}>Chapters:</Text>
           <Text style={[styles.statValue, { color: textColor }]}>{chaptersCount}</Text>
         </View>
         {publishedYear && (
-          <View style={styles.statItem}>
-            <Text style={[styles.label, { color: secondaryColor }]}>YEAR</Text>
-            <Text style={[styles.statValue, { color: textColor }]}>{publishedYear}</Text>
-          </View>
+          <Text style={[styles.statValue, { color: textColor }]}>{publishedYear}</Text>
         )}
+        {language && (
+          <Text style={[styles.statValue, { color: textColor }]}>{language}</Text>
+        )}
+        <Text style={[styles.statValue, { color: textColor }]}>
+          {formatDurationLong(duration)}
+        </Text>
       </View>
-
-      {/* Language */}
-      {language && (
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: secondaryColor }]}>LANGUAGE</Text>
-          <Text style={[styles.value, { color: textColor }]}>{language}</Text>
-        </View>
-      )}
-
-      {/* Genres/Tags */}
-      {genres.length > 0 && (
-        <View style={styles.tagsSection}>
-          <Text style={[styles.label, { color: secondaryColor }]}>GENRES</Text>
-          <View style={styles.tagsRow}>
-            {genres.slice(0, 4).map((genre: string, idx: number) => (
-              <View key={idx} style={[styles.tag, { backgroundColor: tagBgColor }]}>
-                <Text style={[styles.tagText, { color: textColor }]}>{genre}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Description */}
-      {description && (
-        <View style={styles.descriptionContainer}>
-          <Text style={[styles.label, { color: secondaryColor }]}>DESCRIPTION</Text>
-          <Text style={[styles.description, { color: descColor }]}>
-            {description}
-          </Text>
-        </View>
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   scroll: {
     flex: 1,
   },
   content: {
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 20,
+    paddingHorizontal: 4,
   },
-  row: {
-    marginBottom: 12,
+  // By / Read by row
+  byRow: {
+    flexDirection: 'row',
+    gap: 40,
+    marginBottom: 20,
+  },
+  byColumn: {
+    gap: 4,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    fontSize: 14,
+    fontWeight: '400',
   },
-  value: {
-    fontSize: 16,
-    fontWeight: '500',
-    lineHeight: 22,
-  },
-  link: {
-    textDecorationLine: 'underline',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 8,
-    marginBottom: 16,
-    gap: 24,
-  },
-  statItem: {
-    flex: 0,
-  },
-  statValue: {
+  byValue: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '400',
   },
-  tagsSection: {
-    marginBottom: 12,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-  },
-  tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 5,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  descriptionContainer: {
-    marginTop: 4,
+  // Description
+  descSection: {
+    marginBottom: 20,
+    gap: 4,
   },
   description: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 4,
+    fontSize: 18,
+    lineHeight: 26,
+    fontWeight: '400',
+  },
+  // Genres
+  genresSection: {
+    marginBottom: 20,
+    gap: 10,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  pill: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  pillText: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  // Series
+  seriesSection: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  // Bottom stats row
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderTopWidth: 0,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statLabel: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '400',
   },
 });
 
