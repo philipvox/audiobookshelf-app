@@ -563,14 +563,6 @@ export function PlayerScreen() {
               style={styles.controlButtonImage}
               contentFit="contain"
             />
-            {/* Seek delta overlay for rewind */}
-            {isRewinding && seekDelta !== 0 && (
-              <View style={styles.seekDeltaOverlay}>
-                <Text style={styles.seekDeltaOverlayText}>
-                  {formatSeekDelta(seekDelta)}
-                </Text>
-              </View>
-            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -584,14 +576,6 @@ export function PlayerScreen() {
               style={styles.controlButtonImage}
               contentFit="contain"
             />
-            {/* Seek delta overlay for fast forward */}
-            {isFastForwarding && seekDelta !== 0 && (
-              <View style={styles.seekDeltaOverlay}>
-                <Text style={styles.seekDeltaOverlayText}>
-                  {formatSeekDelta(seekDelta)}
-                </Text>
-              </View>
-            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -872,27 +856,6 @@ const styles = StyleSheet.create({
   playButtonImage: {
     width: '100%',
     height: '100%',
-  },
-  // Seek delta overlay on buttons
-  seekDeltaOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: scale(65),
-  },
-  seekDeltaOverlayText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(16),
-    fontWeight: '400',
-    color: '#C8FF00',
-    textShadowColor: 'rgba(200, 255, 0, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
   },
 
   // Panel area (full width, background shows through)
