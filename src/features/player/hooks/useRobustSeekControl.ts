@@ -81,6 +81,7 @@ export function useRobustSeekControl(): UseSeekControlReturn {
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const positionRef = useRef(position);
   const durationRef = useRef(duration);
+  const currentSeekPositionRef = useRef(0);
 
   // Keep refs in sync
   useEffect(() => {
@@ -488,14 +489,14 @@ export function useRobustSeekControl(): UseSeekControlReturn {
       usePlayerStore.setState({ isSeeking: true });
 
       const step = direction === 'backward' ? -REWIND_STEP : FF_STEP;
-      let currentSeekPosition = startPosition;
+      currentSeekPositionRef.current = startPosition;
 
       // Perform initial step
-      currentSeekPosition = clampPosition(currentSeekPosition + step, durationRef.current);
-      await audioService.seekTo(currentSeekPosition);
+      currentSeekPositionRef.current = clampPosition(currentSeekPositionRef.current + step, durationRef.current);
+      await audioService.seekTo(currentSeekPositionRef.current);
 
       if (isMountedRef.current) {
-        setState((prev) => ({ ...prev, seekPosition: currentSeekPosition }));
+        setState((prev) => ({ ...prev, seekPosition: currentSeekPositionRef.current }));
       }
 
       // Start interval for continuous seeking
@@ -509,18 +510,18 @@ export function useRobustSeekControl(): UseSeekControlReturn {
           return;
         }
 
-        const prevPosition = currentSeekPosition;
-        currentSeekPosition = clampPosition(currentSeekPosition + step, durationRef.current);
+        const prevPosition = currentSeekPositionRef.current;
+        currentSeekPositionRef.current = clampPosition(currentSeekPositionRef.current + step, durationRef.current);
 
         // Check for chapter crossing
         const crossing =
           chapters.length > 0 &&
-          findChapterIndex(chapters, prevPosition) !== findChapterIndex(chapters, currentSeekPosition);
+          findChapterIndex(chapters, prevPosition) !== findChapterIndex(chapters, currentSeekPositionRef.current);
 
         if (crossing) {
           const fromIndex = findChapterIndex(chapters, prevPosition);
-          const toIndex = findChapterIndex(chapters, currentSeekPosition);
-          seekLog.chapterCrossing(fromIndex, toIndex, { position: currentSeekPosition });
+          const toIndex = findChapterIndex(chapters, currentSeekPositionRef.current);
+          seekLog.chapterCrossing(fromIndex, toIndex, { position: currentSeekPositionRef.current });
 
           if (isMountedRef.current) {
             setState((prev) => ({ ...prev, isChangingChapter: true }));
@@ -534,18 +535,18 @@ export function useRobustSeekControl(): UseSeekControlReturn {
           }, 200);
         }
 
-        await audioService.seekTo(currentSeekPosition);
+        await audioService.seekTo(currentSeekPositionRef.current);
 
         if (isMountedRef.current) {
-          setState((prev) => ({ ...prev, seekPosition: currentSeekPosition }));
+          setState((prev) => ({ ...prev, seekPosition: currentSeekPositionRef.current }));
         }
 
-        seekLog.continuous('tick', { position: currentSeekPosition });
+        seekLog.continuous('tick', { position: currentSeekPositionRef.current });
 
         // Stop at boundaries
         if (
-          (direction === 'backward' && currentSeekPosition <= 0) ||
-          (direction === 'forward' && currentSeekPosition >= durationRef.current)
+          (direction === 'backward' && currentSeekPositionRef.current <= 0) ||
+          (direction === 'forward' && currentSeekPositionRef.current >= durationRef.current)
         ) {
           await stopContinuousSeek();
         }
@@ -570,7 +571,8 @@ export function useRobustSeekControl(): UseSeekControlReturn {
       return;
     }
 
-    const finalPosition = state.seekPosition;
+    // Use ref for final position to avoid stale closure
+    const finalPosition = currentSeekPositionRef.current;
 
     // Confirm position
     await waitForPositionConfirmation(finalPosition);
@@ -596,7 +598,7 @@ export function useRobustSeekControl(): UseSeekControlReturn {
         seekDirection: null,
       }));
     }
-  }, [state.seekPosition, play, releaseLock, waitForPositionConfirmation]);
+  }, [play, releaseLock, waitForPositionConfirmation]);
 
   /**
    * Go to next chapter

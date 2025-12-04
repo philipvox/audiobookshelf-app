@@ -69,6 +69,9 @@ export interface UseHomeDataReturn {
   currentBook: LibraryItem | null;
   currentProgress: PlaybackProgress | null;
 
+  // Recently listened (last 3 books)
+  recentlyListened: LibraryItem[];
+
   // Carousels
   recentBooks: LibraryItem[];
   userSeries: SeriesWithBooks[];

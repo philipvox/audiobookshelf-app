@@ -104,7 +104,15 @@ export function useHomeData(): UseHomeDataReturn {
     return null;
   }, [currentBook, playerCurrentBook, position, duration]);
 
-  // Recent books (exclude current book)
+  // Recently listened - last 3 books with progress (excluding current)
+  const recentlyListened = useMemo(() => {
+    const filtered = currentBook
+      ? inProgressItems.filter((item) => item.id !== currentBook.id)
+      : inProgressItems;
+    return filtered.slice(0, 3);
+  }, [inProgressItems, currentBook]);
+
+  // Recent books (exclude current book) - for "Your Books" carousel
   const recentBooks = useMemo(() => {
     if (!currentBook) return inProgressItems;
     return inProgressItems.filter((item) => item.id !== currentBook.id);
@@ -177,6 +185,7 @@ export function useHomeData(): UseHomeDataReturn {
   return {
     currentBook,
     currentProgress,
+    recentlyListened,
     recentBooks,
     userSeries,
     userPlaylists,

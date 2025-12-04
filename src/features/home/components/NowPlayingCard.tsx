@@ -5,14 +5,16 @@
  * Layout: InfoTiles (top) -> Cover (middle) -> Controls (below cover)
  */
 
-import React, { useMemo } from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo, useRef, useCallback } from 'react';
+import { View, TouchableOpacity, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { apiClient } from '@/core/api';
 import { COLORS } from '../homeDesign';
 import { NowPlayingCardProps } from '../types';
 import { CoverArtwork } from './CoverArtwork';
 import { InfoTiles } from './InfoTiles';
 import { PlaybackControls } from './PlaybackControls';
+
+const LONG_PRESS_DELAY = 500; // ms to trigger long press
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -24,12 +26,20 @@ export function NowPlayingCard({
   playbackSpeed,
   sleepTimer,
   onPress,
+  onLongPress,
   onPlay,
   onSkipBack,
   onSkipForward,
-}: NowPlayingCardProps) {
+}: NowPlayingCardProps & { onLongPress?: () => void }) {
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const title = book.media?.metadata?.title || 'Untitled';
+
+  // Handle cover long press to open full player
+  const handleCoverLongPress = useCallback(() => {
+    if (onLongPress) {
+      onLongPress();
+    }
+  }, [onLongPress]);
 
   // Get current chapter info
   const chapters = (book.media as any)?.chapters || [];
@@ -91,10 +101,14 @@ export function NowPlayingCard({
         />
       </View>
 
-      {/* Cover Artwork */}
-      <View style={styles.coverContainer}>
+      {/* Cover Artwork - long press to open full player */}
+      <Pressable
+        style={styles.coverContainer}
+        onLongPress={handleCoverLongPress}
+        delayLongPress={LONG_PRESS_DELAY}
+      >
         <CoverArtwork coverUrl={coverUrl} size={coverSize} />
-      </View>
+      </Pressable>
 
       {/* Playback Controls - BELOW cover */}
       <View style={styles.controlsContainer}>

@@ -62,12 +62,12 @@ const CASSETTE_HEIGHT = scale(87);
 const GRAY_CONTAINER_HEIGHT = scale(188); // From Anima: 188px for cassette + info tiles
 
 // SVG Icons
-const ChevronDownIcon = ({ size = 24, color = '#C8FF00' }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+const DownloadIcon = ({ size = 24, color = '#B3B3B3' }) => (
+  <Svg width={size} height={size} viewBox="0 0 21 21" fill="none">
     <Path
-      d="M6 9L12 15L18 9"
+      d="M18.375 13.125V16.625C18.375 17.0891 18.1906 17.5342 17.8624 17.8624C17.5342 18.1906 17.0891 18.375 16.625 18.375H4.375C3.91087 18.375 3.46575 18.1906 3.13756 17.8624C2.80937 17.5342 2.625 17.0891 2.625 16.625V13.125M6.125 8.75L10.5 13.125M10.5 13.125L14.875 8.75M10.5 13.125V2.625"
       stroke={color}
-      strokeWidth={2}
+      strokeWidth={1.97}
       strokeLinecap="round"
       strokeLinejoin="round"
     />
@@ -86,6 +86,18 @@ const HeartIcon = ({ size = 24, color = '#34C759', filled = false }) => (
 );
 
 type PanelMode = 'none' | 'details' | 'speed' | 'sleep' | 'progress';
+
+// Format seek delta for display
+const formatSeekDelta = (seconds: number): string => {
+  const absSeconds = Math.abs(seconds);
+  const sign = seconds >= 0 ? '+' : '-';
+  if (absSeconds < 60) {
+    return `${sign}${Math.round(absSeconds)}s`;
+  }
+  const mins = Math.floor(absSeconds / 60);
+  const secs = Math.round(absSeconds % 60);
+  return secs > 0 ? `${sign}${mins}m ${secs}s` : `${sign}${mins}m`;
+};
 
 export function PlayerScreen() {
   const insets = useSafeAreaInsets();
@@ -114,6 +126,7 @@ export function PlayerScreen() {
     isSeeking,
     seekDirection,
     seekPosition,
+    seekDelta,
     startContinuousSeek,
     stopContinuousSeek,
     cancelSeek,
@@ -359,8 +372,8 @@ export function PlayerScreen() {
       <View style={[styles.content, { paddingTop: insets.top + scale(10) }]}>
         {/* Top icons row */}
         <View style={styles.topRow}>
-          <TouchableOpacity style={styles.topIcon} onPress={handleClose}>
-            <ChevronDownIcon size={scale(24)} color={accentColor} />
+          <TouchableOpacity style={styles.topIcon} onPress={() => { /* TODO: Download functionality */ }}>
+            <DownloadIcon size={scale(24)} color={accentColor} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.topIcon} onPress={handleHeartPress}>
             <HeartIcon size={scale(18)} color="#34C759" filled={isFavorite} />
@@ -383,13 +396,15 @@ export function PlayerScreen() {
             />
           </TouchableOpacity>
         ) : (
-          /* Panel content replaces cover */
+          /* Panel content - full width, background shows through */
           <View style={styles.panelArea}>
             <TouchableOpacity
               style={styles.panelCloseArea}
               onPress={() => setPanelMode('none')}
               activeOpacity={1}
-            />
+            >
+              <Text style={styles.closeX}>✕</Text>
+            </TouchableOpacity>
             <View style={styles.panelInner}>
               {panelMode === 'details' && (
                 <DetailsPanel
@@ -397,9 +412,6 @@ export function PlayerScreen() {
                   duration={bookDuration}
                   chaptersCount={chapters.length}
                   isLight={false}
-                  onNavigateToAuthor={() => {}}
-                  onNavigateToNarrator={() => {}}
-                  onNavigateToSeries={() => {}}
                 />
               )}
               {panelMode === 'speed' && (
@@ -490,8 +502,39 @@ export function PlayerScreen() {
 
             {/* Right pill - Time, Speed, Sleep */}
             <View style={styles.rightPill}>
-              <TouchableOpacity onPress={handleTimePress}>
-                <Text style={styles.timeText}>{timeRemaining}</Text>
+              <TouchableOpacity onPress={handleTimePress} style={styles.timeRow}>
+                {/* Show seek delta when seeking, otherwise show time remaining */}
+                {isSeeking && seekDelta !== 0 ? (
+                  <Text style={[styles.timeText, styles.seekDeltaText]}>
+                    {formatSeekDelta(seekDelta)}
+                  </Text>
+                ) : (
+                  <Text style={styles.timeText}>{timeRemaining}</Text>
+                )}
+                {/* 8-bit play icon - only show when playing */}
+                {isPlaying && !isSeeking && (
+                  <View style={styles.pixelPlayIcon}>
+                    <View style={styles.pixelRow}>
+                      <View style={styles.pixel} />
+                    </View>
+                    <View style={styles.pixelRow}>
+                      <View style={styles.pixel} />
+                      <View style={styles.pixel} />
+                    </View>
+                    <View style={styles.pixelRow}>
+                      <View style={styles.pixel} />
+                      <View style={styles.pixel} />
+                      <View style={styles.pixel} />
+                    </View>
+                    <View style={styles.pixelRow}>
+                      <View style={styles.pixel} />
+                      <View style={styles.pixel} />
+                    </View>
+                    <View style={styles.pixelRow}>
+                      <View style={styles.pixel} />
+                    </View>
+                  </View>
+                )}
               </TouchableOpacity>
               <View style={styles.bottomRow}>
                 <TouchableOpacity onPress={handleSpeedPress}>
@@ -520,6 +563,14 @@ export function PlayerScreen() {
               style={styles.controlButtonImage}
               contentFit="contain"
             />
+            {/* Seek delta overlay for rewind */}
+            {isRewinding && seekDelta !== 0 && (
+              <View style={styles.seekDeltaOverlay}>
+                <Text style={styles.seekDeltaOverlayText}>
+                  {formatSeekDelta(seekDelta)}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -533,6 +584,14 @@ export function PlayerScreen() {
               style={styles.controlButtonImage}
               contentFit="contain"
             />
+            {/* Seek delta overlay for fast forward */}
+            {isFastForwarding && seekDelta !== 0 && (
+              <View style={styles.seekDeltaOverlay}>
+                <Text style={styles.seekDeltaOverlayText}>
+                  {formatSeekDelta(seekDelta)}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -703,9 +762,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
     lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowColor: 'rgba(255, 255, 255, 1)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    textShadowRadius: 8,
   },
   chapterContainer: {
     alignItems: 'flex-end',
@@ -717,9 +776,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     lineHeight: scale(LINE_HEIGHT),
     textAlign: 'right',
-    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowColor: 'rgba(255, 255, 255, 1)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    textShadowRadius: 8,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   timeText: {
     fontFamily: 'PixelOperator',
@@ -727,9 +791,33 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
     lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowColor: 'rgba(255, 255, 255, 1)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    textShadowRadius: 8,
+  },
+  seekDeltaText: {
+    color: '#C8FF00',
+    textShadowColor: 'rgba(200, 255, 0, 1)',
+  },
+  // 8-bit pixel play icon - smaller version
+  pixelPlayIcon: {
+    width: scale(6),
+    height: scale(9),
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    marginLeft: scale(4),
+  },
+  pixelRow: {
+    flexDirection: 'row',
+  },
+  pixel: {
+    width: scale(2),
+    height: scale(2),
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
   },
   bottomRow: {
     flexDirection: 'row',
@@ -742,9 +830,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
     lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowColor: 'rgba(255, 255, 255, 1)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    textShadowRadius: 8,
   },
   sleepTimerText: {
     fontFamily: 'PixelOperator',
@@ -752,9 +840,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#F12802',
     lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(241, 40, 2, 0.5)',
+    textShadowColor: 'rgba(241, 40, 2, 1)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    textShadowRadius: 8,
   },
 
   // Controls - below the gray container
@@ -785,15 +873,33 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // Seek delta overlay on buttons
+  seekDeltaOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: scale(65),
+  },
+  seekDeltaOverlayText: {
+    fontFamily: 'PixelOperator',
+    fontSize: scale(16),
+    fontWeight: '400',
+    color: '#C8FF00',
+    textShadowColor: 'rgba(200, 255, 0, 1)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+  },
 
-  // Panel area (replaces cover)
+  // Panel area (full width, background shows through)
   panelArea: {
-    width: COVER_SIZE,
+    width: SCREEN_WIDTH - scale(32),
     height: COVER_SIZE,
-    marginBottom: scale(20),
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    borderRadius: scale(9),
-    overflow: 'hidden',
+    marginBottom: scale(40),
   },
   panelCloseArea: {
     position: 'absolute',
@@ -802,10 +908,18 @@ const styles = StyleSheet.create({
     width: scale(40),
     height: scale(40),
     zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeX: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 20,
+    fontWeight: '300',
   },
   panelInner: {
     flex: 1,
-    padding: scale(16),
+    paddingTop: scale(8),
+    paddingHorizontal: scale(4),
   },
 
   // Progress panel

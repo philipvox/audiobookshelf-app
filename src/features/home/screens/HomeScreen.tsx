@@ -34,6 +34,7 @@ import { HorizontalCarousel } from '../components/HorizontalCarousel';
 import { BookCard } from '../components/BookCard';
 import { SeriesCard } from '../components/SeriesCard';
 import { PlaylistCard } from '../components/PlaylistCard';
+import { RecentlyListenedItem } from '../components/RecentlyListenedItem';
 
 // Design constants
 import { COLORS, LAYOUT } from '../homeDesign';
@@ -51,6 +52,7 @@ export function HomeScreen() {
   const {
     currentBook,
     currentProgress,
+    recentlyListened,
     recentBooks,
     userSeries,
     userPlaylists,
@@ -189,10 +191,26 @@ export function HomeScreen() {
               playbackSpeed={playbackRate}
               sleepTimer={sleepTimerMinutes}
               onPress={handleNowPlayingPress}
+              onLongPress={openPlayer}
               onPlay={handlePlayPause}
               onSkipBack={skipBackward}
               onSkipForward={skipForward}
             />
+          </View>
+        )}
+
+        {/* Recently Listened Section - List view */}
+        {recentlyListened.length > 0 && (
+          <View style={styles.recentlyListenedSection}>
+            <SectionHeader title="Recently Listened" />
+            {recentlyListened.map((book) => (
+              <RecentlyListenedItem
+                key={book.id}
+                book={book}
+                onPress={() => handleBookPress(book)}
+                isFavorite={true}
+              />
+            ))}
           </View>
         )}
 
@@ -291,8 +309,11 @@ const styles = StyleSheet.create({
     right: 0,
     height: '55%', // Cover remaining 55% of screen
   },
+  recentlyListenedSection: {
+    marginTop: scale(30),
+  },
   booksSection: {
-    marginTop: scale(43),
+    marginTop: scale(24),
   },
   // Anima: gap-[23px] between books and series
   seriesSection: {
