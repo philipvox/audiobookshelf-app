@@ -13,7 +13,12 @@ import { useLibraryCache } from '@/core/cache';
 import { useDefaultLibrary } from '@/features/library';
 import { LoginScreen } from '@/features/auth/screens/LoginScreen';
 import { MyLibraryScreen } from '@/features/library';
+import { SeriesListScreen } from '@/features/library/screens/SeriesListScreen';
+import { AuthorsListScreen } from '@/features/library/screens/AuthorsListScreen';
+import { GenresListScreen } from '@/features/library/screens/GenresListScreen';
+import { GenreDetailScreen } from '@/features/library/screens/GenreDetailScreen';
 import { HomeScreen } from '@/features/home';
+import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
 import { SearchScreen } from '@/features/search';
 import { BrowseScreen } from '@/features/browse';
 import { SeriesDetailScreen } from '@/features/series';
@@ -35,7 +40,7 @@ const ACCENT = '#CCFF00';
 function MainTabs() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <FloatingTabBar {...props} />}
+      tabBar={() => null}
       screenOptions={{
         headerShown: false,
         tabBarStyle: { display: 'none' },
@@ -105,17 +110,23 @@ function AuthenticatedApp() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Search" component={SearchScreen} />
+        <Stack.Screen name="SeriesList" component={SeriesListScreen} />
+        <Stack.Screen name="AuthorsList" component={AuthorsListScreen} />
+        <Stack.Screen name="GenresList" component={GenresListScreen} />
+        <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
         <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
         <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
         <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
         <Stack.Screen name="Preferences" component={PreferencesScreen} />
+        <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         <Stack.Screen
           name="PreferencesOnboarding"
           component={PreferencesOnboardingScreen}
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
+      <FloatingTabBar />
       <MiniPlayer />
       <PlayerScreen />
     </NavigationContainer>

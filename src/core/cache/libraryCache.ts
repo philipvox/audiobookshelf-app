@@ -21,9 +21,12 @@ interface CachedLibrary {
 }
 
 interface AuthorInfo {
+  id?: string;  // Author ID from API (if available)
   name: string;
   bookCount: number;
   books: LibraryItem[];
+  imagePath?: string;  // Author image path from API
+  description?: string;  // Author description from API
 }
 
 interface NarratorInfo {
@@ -49,7 +52,9 @@ interface LibraryCacheState {
   isLoaded: boolean;
   isLoading: boolean;
   lastUpdated: number | null;
+  lastRefreshed: number | null;  // Timestamp of last manual refresh (for cache busting)
   error: string | null;
+  currentLibraryId: string | null;
 
   // Derived data (computed once on load)
   authors: Map<string, AuthorInfo>;
@@ -60,7 +65,7 @@ interface LibraryCacheState {
 
   // Actions
   loadCache: (libraryId: string, forceRefresh?: boolean) => Promise<void>;
-  refreshCache: (libraryId: string) => Promise<void>;
+  refreshCache: (libraryId?: string) => Promise<void>;
   getItem: (id: string) => LibraryItem | undefined;
   getAuthor: (name: string) => AuthorInfo | undefined;
   getNarrator: (name: string) => NarratorInfo | undefined;
@@ -185,7 +190,9 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   isLoaded: false,
   isLoading: false,
   lastUpdated: null,
+  lastRefreshed: null,
   error: null,
+  currentLibraryId: null,
   authors: new Map(),
   narrators: new Map(),
   series: new Map(),
@@ -211,11 +218,43 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
           if (parsed.libraryId === libraryId && age < CACHE_TTL_MS) {
             console.log(`[LibraryCache] Using cached data (${Math.round(age / 1000 / 60)} min old)`);
             const indexes = buildIndexes(parsed.items);
+
+            // Fetch authors from API in background to get accurate book counts
+            apiClient.getLibraryAuthors(libraryId).then((apiAuthors) => {
+              if (apiAuthors && apiAuthors.length > 0) {
+                console.log(`[LibraryCache] Merging ${apiAuthors.length} authors from API (background)`);
+                for (const apiAuthor of apiAuthors) {
+                  const key = apiAuthor.name.toLowerCase();
+                  const existing = indexes.authors.get(key);
+                  if (existing) {
+                    existing.id = apiAuthor.id;
+                    existing.bookCount = (apiAuthor as any).numBooks || existing.bookCount;
+                    existing.imagePath = apiAuthor.imagePath;
+                    existing.description = apiAuthor.description;
+                  } else {
+                    indexes.authors.set(key, {
+                      id: apiAuthor.id,
+                      name: apiAuthor.name,
+                      bookCount: (apiAuthor as any).numBooks || 0,
+                      books: [],
+                      imagePath: apiAuthor.imagePath,
+                      description: apiAuthor.description,
+                    });
+                  }
+                }
+                // Update state with merged authors
+                set({ authors: indexes.authors });
+              }
+            }).catch(() => {
+              // Silently fail - will use local counts
+            });
+
             set({
               items: parsed.items,
               isLoaded: true,
               isLoading: false,
               lastUpdated: parsed.timestamp,
+              currentLibraryId: libraryId,
               ...indexes,
             });
             return;
@@ -223,13 +262,42 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         }
       }
 
-      // Fetch fresh data from API
+      // Fetch fresh data from API - items and authors in parallel
       console.log('[LibraryCache] Fetching fresh library data for library:', libraryId);
-      const response = await apiClient.getLibraryItems(libraryId, { limit: 1000 });
-      const items = response?.results || [];
+      const [itemsResponse, apiAuthors] = await Promise.all([
+        apiClient.getLibraryItems(libraryId, { limit: 100000 }),  // Large limit to fetch all books
+        apiClient.getLibraryAuthors(libraryId).catch(() => [] as any[]),
+      ]);
+      const items = itemsResponse?.results || [];
 
-      // Build indexes
+      // Build indexes from items
       const indexes = buildIndexes(items);
+
+      // Merge API author data (which has accurate book counts) with local data
+      if (apiAuthors && apiAuthors.length > 0) {
+        console.log(`[LibraryCache] Merging ${apiAuthors.length} authors from API`);
+        for (const apiAuthor of apiAuthors) {
+          const key = apiAuthor.name.toLowerCase();
+          const existing = indexes.authors.get(key);
+          if (existing) {
+            // Update with API data (which has correct book count)
+            existing.id = apiAuthor.id;
+            existing.bookCount = apiAuthor.numBooks || existing.bookCount;
+            existing.imagePath = apiAuthor.imagePath;
+            existing.description = apiAuthor.description;
+          } else {
+            // Author exists in API but we don't have any of their books cached
+            indexes.authors.set(key, {
+              id: apiAuthor.id,
+              name: apiAuthor.name,
+              bookCount: apiAuthor.numBooks || 0,
+              books: [],
+              imagePath: apiAuthor.imagePath,
+              description: apiAuthor.description,
+            });
+          }
+        }
+      }
 
       // Save to AsyncStorage
       const cacheData: CachedLibrary = {
@@ -239,13 +307,14 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       };
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
 
-      console.log(`[LibraryCache] Cached ${items.length} items`);
+      console.log(`[LibraryCache] Cached ${items.length} items, ${indexes.authors.size} authors`);
 
       set({
         items,
         isLoaded: true,
         isLoading: false,
         lastUpdated: Date.now(),
+        currentLibraryId: libraryId,
         ...indexes,
       });
     } catch (error: any) {
@@ -257,8 +326,17 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     }
   },
 
-  refreshCache: async (libraryId: string) => {
-    await get().loadCache(libraryId, true);
+  refreshCache: async (libraryId?: string) => {
+    const id = libraryId || get().currentLibraryId;
+    if (!id) {
+      console.error('[LibraryCache] No library ID available for refresh');
+      return;
+    }
+    console.log('[LibraryCache] Refreshing cache for library:', id);
+    await get().loadCache(id, true);
+    // Set lastRefreshed to bust image caches
+    set({ lastRefreshed: Date.now() });
+    console.log('[LibraryCache] Cache refresh complete, image caches will be busted');
   },
 
   getItem: (id: string) => {

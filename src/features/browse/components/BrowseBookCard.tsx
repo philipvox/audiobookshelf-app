@@ -15,9 +15,9 @@ import {
 } from 'react-native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { useCoverUrl } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
-import { useMyLibraryStore } from '@/features/library';
-import { Icon } from '@/shared/components/Icon';
+import { HeartButton } from '@/shared/components';
 import { theme } from '@/shared/theme';
 import { getTitle, getAuthorName } from '@/shared/utils/metadata';
 
@@ -30,12 +30,10 @@ interface BrowseBookCardProps {
 
 export function BrowseBookCard({ book }: BrowseBookCardProps) {
   const { loadBook } = usePlayerStore();
-  const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
 
-  const coverUrl = apiClient.getItemCoverUrl(book.id);
+  const coverUrl = useCoverUrl(book.id);
   const title = getTitle(book);
   const author = getAuthorName(book);
-  const inLibrary = isInLibrary(book.id);
 
   const handlePress = async () => {
     try {
@@ -46,33 +44,16 @@ export function BrowseBookCard({ book }: BrowseBookCardProps) {
     }
   };
 
-  const handleAddPress = () => {
-    if (inLibrary) {
-      removeFromLibrary(book.id);
-    } else {
-      addToLibrary(book.id);
-    }
-  };
-
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress} activeOpacity={0.7}>
       <View style={styles.coverContainer}>
         <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
         
-        // Update the icon in the add button:
-
-        <TouchableOpacity 
+        <HeartButton
+          bookId={book.id}
+          size={16}
           style={styles.addButton}
-          onPress={handleAddPress}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Icon 
-            name={inLibrary ? "heart" : "heart-outline"} 
-            size={16} 
-            color={inLibrary ? "#EF4444" : theme.colors.text.secondary} 
-            set="ionicons" 
-          />
-        </TouchableOpacity>
+        />
       </View>
 
       <Text style={styles.title} numberOfLines={1}>{title}</Text>

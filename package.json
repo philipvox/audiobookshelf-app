@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "postinstall": "bash scripts/apply-patches.sh",
+    "postinstall": "patch-package",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -73,6 +73,7 @@
     "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "babel-preset-expo": "^54.0.7",
+    "patch-package": "^8.0.0",
     "eslint": "^9.39.1",
     "prettier": "^3.6.2",
     "react-native-bundle-visualizer": "^3.1.3",

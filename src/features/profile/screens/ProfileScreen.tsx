@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@/core/auth';
 import { autoDownloadService } from '@/features/downloads';
+import { useLibraryCache } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
 
 // Dark theme colors
@@ -94,6 +95,10 @@ export function ProfileScreen() {
   // Download stats from autoDownloadService
   const [downloadCount, setDownloadCount] = useState(0);
   const [totalStorage, setTotalStorage] = useState(0);
+  const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+
+  // Library cache
+  const { refreshCache } = useLibraryCache();
 
   // Safe access to preferences store
   const hasCompletedOnboarding = usePreferencesStore?.()?.hasCompletedOnboarding ?? false;
@@ -137,6 +142,20 @@ export function ProfileScreen() {
 
   const handlePreferencesPress = () => {
     navigation.navigate('Preferences');
+  };
+
+  const handleRefreshLibrary = async () => {
+    if (isRefreshingCache) return;
+
+    setIsRefreshingCache(true);
+    try {
+      await refreshCache();
+      Alert.alert('Success', 'Library cache refreshed successfully');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to refresh library cache');
+    } finally {
+      setIsRefreshingCache(false);
+    }
   };
 
   const initials = user?.username
@@ -198,6 +217,13 @@ export function ProfileScreen() {
             showChevron
           />
           <SettingsRow icon="folder-outline" label="Storage Used" value={formatBytes(totalStorage)} />
+          <SettingsRow
+            icon="refresh-outline"
+            label="Refresh Library Cache"
+            value={isRefreshingCache ? 'Refreshing...' : ''}
+            onPress={handleRefreshLibrary}
+            showChevron={!isRefreshingCache}
+          />
         </View>
 
         <View style={styles.card}>
@@ -205,6 +231,17 @@ export function ProfileScreen() {
           <SettingsRow icon="speedometer-outline" label="Default Speed" value="1.0x" />
           <SettingsRow icon="time-outline" label="Skip Forward" value="30s" />
           <SettingsRow icon="time-outline" label="Skip Back" value="15s" />
+        </View>
+
+        {/* Developer/Test Section */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Developer</Text>
+          <SettingsRow
+            icon="musical-notes-outline"
+            label="Test Cassette Player"
+            onPress={() => navigation.navigate('CassetteTest')}
+            showChevron
+          />
         </View>
 
         <View style={styles.logoutSection}>

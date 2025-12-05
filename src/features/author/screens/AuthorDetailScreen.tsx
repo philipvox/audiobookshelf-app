@@ -15,14 +15,13 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { LibraryHeartButton } from '@/features/library/components/LibraryHeartButton';
+import { BookListItem } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 
 type AuthorDetailRouteParams = {
@@ -36,14 +35,16 @@ const ACCENT = '#CCFF00';
 const CARD_RADIUS = 5;
 const AVATAR_SIZE = SCREEN_WIDTH * 0.3;
 
-type SortType = 'title-asc' | 'title-desc' | 'recent';
+type SortType = 'title' | 'recent' | 'published';
+type SortDirection = 'asc' | 'desc';
 
 export function AuthorDetailScreen() {
   const route = useRoute<RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>>();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { authorName } = route.params;
-  const [sortBy, setSortBy] = useState<SortType>('title-asc');
+  const [sortBy, setSortBy] = useState<SortType>('title');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const { getAuthor, isLoaded } = useLibraryCache();
   const { loadBook } = usePlayerStore();
@@ -57,25 +58,38 @@ export function AuthorDetailScreen() {
   const sortedBooks = useMemo(() => {
     if (!authorInfo?.books) return [];
     const sorted = [...authorInfo.books];
+    const direction = sortDirection === 'asc' ? 1 : -1;
+
     switch (sortBy) {
-      case 'title-asc':
+      case 'title':
         return sorted.sort((a, b) =>
-          ((a.media?.metadata as any)?.title || '').localeCompare(
+          direction * ((a.media?.metadata as any)?.title || '').localeCompare(
             (b.media?.metadata as any)?.title || ''
           )
         );
-      case 'title-desc':
-        return sorted.sort((a, b) =>
-          ((b.media?.metadata as any)?.title || '').localeCompare(
-            (a.media?.metadata as any)?.title || ''
-          )
-        );
       case 'recent':
-        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return sorted.sort((a, b) => direction * ((a.addedAt || 0) - (b.addedAt || 0)));
+      case 'published':
+        return sorted.sort((a, b) => {
+          const aYear = parseInt((a.media?.metadata as any)?.publishedYear || '0', 10);
+          const bYear = parseInt((b.media?.metadata as any)?.publishedYear || '0', 10);
+          return direction * (aYear - bYear);
+        });
       default:
         return sorted;
     }
-  }, [authorInfo?.books, sortBy]);
+  }, [authorInfo?.books, sortBy, sortDirection]);
+
+  const handleSortPress = (type: SortType) => {
+    if (sortBy === type) {
+      // Toggle direction if same sort type
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Switch to new sort type with default direction
+      setSortBy(type);
+      setSortDirection('asc');
+    }
+  };
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -88,13 +102,20 @@ export function AuthorDetailScreen() {
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false });
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
     } catch {
-      await loadBook(book, { autoPlay: false });
+      await loadBook(book, { autoPlay: false, showPlayer: false });
     }
   }, [loadBook]);
 
-  const getMetadata = (item: LibraryItem) => (item.media?.metadata as any) || {};
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
 
   // Generate initials
   const initials = authorName
@@ -171,25 +192,42 @@ export function AuthorDetailScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.sortButtons}>
               <TouchableOpacity
-                style={[styles.sortButton, sortBy === 'title-asc' && styles.sortButtonActive]}
-                onPress={() => setSortBy('title-asc')}
+                style={[styles.sortButton, sortBy === 'title' && styles.sortButtonActive]}
+                onPress={() => handleSortPress('title')}
               >
-                <Icon name="arrow-up" size={14} color={sortBy === 'title-asc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-                <Text style={[styles.sortButtonText, sortBy === 'title-asc' && styles.sortButtonTextActive]}>A-Z</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sortButton, sortBy === 'title-desc' && styles.sortButtonActive]}
-                onPress={() => setSortBy('title-desc')}
-              >
-                <Icon name="arrow-down" size={14} color={sortBy === 'title-desc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-                <Text style={[styles.sortButtonText, sortBy === 'title-desc' && styles.sortButtonTextActive]}>Z-A</Text>
+                <Icon
+                  name={sortBy === 'title' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
+                  size={14}
+                  color={sortBy === 'title' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
+                <Text style={[styles.sortButtonText, sortBy === 'title' && styles.sortButtonTextActive]}>
+                  {sortBy === 'title' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Title'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.sortButton, sortBy === 'recent' && styles.sortButtonActive]}
-                onPress={() => setSortBy('recent')}
+                onPress={() => handleSortPress('recent')}
               >
-                <Icon name="time-outline" size={14} color={sortBy === 'recent' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
+                <Icon
+                  name={sortBy === 'recent' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'time-outline'}
+                  size={14}
+                  color={sortBy === 'recent' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
                 <Text style={[styles.sortButtonText, sortBy === 'recent' && styles.sortButtonTextActive]}>Recent</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortButton, sortBy === 'published' && styles.sortButtonActive]}
+                onPress={() => handleSortPress('published')}
+              >
+                <Icon
+                  name={sortBy === 'published' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'calendar-outline'}
+                  size={14}
+                  color={sortBy === 'published' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
+                <Text style={[styles.sortButtonText, sortBy === 'published' && styles.sortButtonTextActive]}>Published</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -197,41 +235,16 @@ export function AuthorDetailScreen() {
 
         {/* Book List */}
         <View style={styles.bookList}>
-          {sortedBooks.map((book) => {
-            const metadata = getMetadata(book);
-            return (
-              <TouchableOpacity
-                key={book.id}
-                style={styles.bookItem}
-                onPress={() => handleBookPress(book)}
-                activeOpacity={0.7}
-              >
-                <Image
-                  source={apiClient.getItemCoverUrl(book.id)}
-                  style={styles.bookCover}
-                  contentFit="cover"
-                  transition={150}
-                />
-                <View style={styles.bookInfo}>
-                  <Text style={styles.bookTitle} numberOfLines={2}>{metadata.title || 'Unknown'}</Text>
-                  {metadata.narratorName && (
-                    <Text style={styles.bookNarrator} numberOfLines={1}>
-                      Narrated by {metadata.narratorName.replace(/^Narrated by\s*/i, '')}
-                    </Text>
-                  )}
-                  {metadata.seriesName && (
-                    <Text style={styles.bookSeries} numberOfLines={1}>{metadata.seriesName}</Text>
-                  )}
-                </View>
-                <LibraryHeartButton
-                  bookId={book.id}
-                  size="medium"
-                  variant="plain"
-                  inactiveColor="rgba(255,255,255,0.4)"
-                />
-              </TouchableOpacity>
-            );
-          })}
+          {sortedBooks.map((book) => (
+            <BookListItem
+              key={book.id}
+              book={book}
+              onPress={() => handleBookPress(book)}
+              onPlayPress={() => handlePlayBook(book)}
+              showProgress={true}
+              showSwipe={true}
+            />
+          ))}
         </View>
       </ScrollView>
     </View>
@@ -360,40 +373,6 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   bookList: {
-    paddingHorizontal: 16,
-  },
-  bookItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_COLOR,
-    borderRadius: CARD_RADIUS,
-    padding: 12,
-    marginBottom: 8,
-  },
-  bookCover: {
-    width: 60,
-    height: 60,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: '#333',
-  },
-  bookInfo: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  bookTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  bookNarrator: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  bookSeries: {
-    fontSize: 12,
-    color: ACCENT,
-    marginTop: 2,
+    // BookListItem has its own padding
   },
 });

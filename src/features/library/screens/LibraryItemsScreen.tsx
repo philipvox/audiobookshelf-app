@@ -12,15 +12,14 @@ import {
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryPrefetch } from '@/core/hooks';
-import { BookCard } from '../components/BookCard';
 import { useDefaultLibrary } from '../hooks/useDefaultLibrary';
 import { useLibraryItems } from '../hooks/useLibraryItems';
 import { TopNavBar } from '@/navigation/components/TopNavBar';
-import { LoadingSpinner, ErrorView, EmptyState } from '@/shared/components';
+import { LoadingSpinner, ErrorView, EmptyState, BookListItem } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 import { theme } from '@/shared/theme';
-
-const NUM_COLUMNS = 3;
+import { usePlayerStore } from '@/features/player';
+import { apiClient } from '@/core/api';
 
 export function LibraryItemsScreen() {
   const insets = useSafeAreaInsets();
@@ -28,14 +27,37 @@ export function LibraryItemsScreen() {
   const { items, isLoading: isLoadingItems, error: itemsError, refetch, isRefetching } = useLibraryItems(library?.id || '', {
     limit: 50,
   });
+  const { loadBook } = usePlayerStore();
 
   useLibraryPrefetch(library?.id);
 
+  const handleBookPress = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: false, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
+
   const renderItem = useCallback(({ item }: { item: LibraryItem }) => (
-    <View style={styles.itemWrapper}>
-      <BookCard book={item} />
-    </View>
-  ), []);
+    <BookListItem
+      book={item}
+      onPress={() => handleBookPress(item)}
+      onPlayPress={() => handlePlayBook(item)}
+      showProgress={true}
+      showSwipe={false}
+    />
+  ), [handleBookPress, handlePlayBook]);
 
   const keyExtractor = useCallback((item: LibraryItem) => item.id, []);
 
@@ -81,8 +103,7 @@ export function LibraryItemsScreen() {
         data={items}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        numColumns={NUM_COLUMNS}
-        estimatedItemSize={180}
+        estimatedItemSize={70}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -99,13 +120,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.primary,
   },
   listContent: {
-    paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[3],
     paddingBottom: 120,
-  },
-  itemWrapper: {
-    flex: 1,
-    paddingHorizontal: theme.spacing[1],
-    paddingBottom: theme.spacing[4],
   },
 });

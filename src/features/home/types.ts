@@ -141,8 +141,8 @@ export interface NowPlayingCardProps {
   sleepTimer: number | null;
   onPress: () => void;
   onPlay: () => void;
-  onSkipBack: () => void;
-  onSkipForward: () => void;
+  onSkipBack?: () => void;
+  onSkipForward?: () => void;
 }
 
 /**

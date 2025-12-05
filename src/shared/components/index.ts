@@ -102,3 +102,17 @@ export {
 // =============================================================================
 export { SyncStatusBadge } from './SyncStatusBadge';
 export { DownloadButton } from './DownloadButton';
+
+// =============================================================================
+// INTERACTIVE BUTTONS
+// =============================================================================
+export { HeartButton, HeartIcon } from './HeartButton';
+export type { HeartButtonProps } from './HeartButton';
+export { SeriesHeartButton } from './SeriesHeartButton';
+export type { SeriesHeartButtonProps } from './SeriesHeartButton';
+
+// =============================================================================
+// LIST ITEMS
+// =============================================================================
+export { BookListItem } from './BookListItem';
+export type { BookListItemProps } from './BookListItem';

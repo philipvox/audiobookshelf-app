@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../homeDesign';
 
@@ -21,7 +21,24 @@ interface InfoTilesProps {
   timeRemaining?: string;
   sleepTimerMinutes?: number | null;
   playbackSpeed?: number;
+  onSpeedPress?: () => void;
+  onSleepPress?: () => void;
+  isSeeking?: boolean;
+  seekDelta?: number;
+  seekDirection?: 'forward' | 'backward' | null;
 }
+
+// Format seek delta for display (same as PlayerScreen)
+const formatSeekDelta = (seconds: number): string => {
+  const absSeconds = Math.abs(seconds);
+  const sign = seconds >= 0 ? '+' : '-';
+  if (absSeconds < 60) {
+    return `${sign}${Math.round(absSeconds)}s`;
+  }
+  const mins = Math.floor(absSeconds / 60);
+  const secs = Math.round(absSeconds % 60);
+  return secs > 0 ? `${sign}${mins}m ${secs}s` : `${sign}${mins}m`;
+};
 
 export function InfoTiles({
   title,
@@ -30,10 +47,22 @@ export function InfoTiles({
   timeRemaining,
   sleepTimerMinutes,
   playbackSpeed = 1,
+  onSpeedPress,
+  onSleepPress,
+  isSeeking,
+  seekDelta,
+  seekDirection,
 }: InfoTilesProps) {
   const formatSleepTimer = (minutes?: number | null): string => {
-    if (minutes === null || minutes === undefined) return '0m';
-    return `${Math.round(minutes)}m`;
+    if (minutes === null || minutes === undefined || minutes === 0) return '0m';
+    // If value seems to be in seconds (> 120), convert it
+    const mins = minutes > 120 ? Math.round(minutes / 60) : Math.round(minutes);
+    if (mins >= 60) {
+      const hours = Math.floor(mins / 60);
+      const remainingMins = mins % 60;
+      return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+    }
+    return `${mins}m`;
   };
 
   const sleepTimerText = formatSleepTimer(sleepTimerMinutes);
@@ -72,10 +101,21 @@ export function InfoTiles({
 
       {/* Right Pill: Time, Speed & Sleep Timer */}
       <View style={styles.rightPill}>
-        <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
+        {/* Show seek delta when seeking, otherwise show time remaining */}
+        {isSeeking && seekDelta !== undefined && seekDelta !== 0 ? (
+          <Text style={[styles.timeText, styles.seekDeltaText]}>
+            {formatSeekDelta(seekDelta)}
+          </Text>
+        ) : (
+          <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
+        )}
         <View style={styles.bottomRow}>
-          <Text style={styles.speedText}>{speedText}</Text>
-          <Text style={styles.sleepTimerText}>{sleepTimerText}</Text>
+          <TouchableOpacity onPress={onSpeedPress} disabled={!onSpeedPress}>
+            <Text style={styles.speedText}>{speedText}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onSleepPress} disabled={!onSleepPress}>
+            <Text style={styles.sleepTimerText}>{sleepTimerText}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -91,12 +131,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: scale(6),
   },
-  // Left pill: 236x55
+  // Left pill: 236x55 - no background
   leftPill: {
     width: scale(236),
     height: scale(55),
-    backgroundColor: '#000000',
-    borderRadius: scale(5),
     paddingHorizontal: scale(11),
     paddingVertical: scale(8),
     flexDirection: 'row',
@@ -117,12 +155,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },
-  // Right pill: 135x55
+  // Right pill: 135x55 - no background
   rightPill: {
     width: scale(135),
     height: scale(55),
-    backgroundColor: '#000000',
-    borderRadius: scale(5),
     paddingHorizontal: scale(11),
     paddingVertical: scale(6),
     justifyContent: 'space-between',
@@ -164,6 +200,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255, 255, 255, 0.5)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
+  },
+  seekDeltaText: {
+    color: '#C8FF00', // Lime green like PlayerScreen
+    textShadowColor: 'rgba(200, 255, 0, 1)',
   },
   bottomRow: {
     flexDirection: 'row',

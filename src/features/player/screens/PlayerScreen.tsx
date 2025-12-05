@@ -2,7 +2,7 @@
  * src/features/player/screens/PlayerScreen.tsx
  *
  * Redesigned full-screen player matching Anima design.
- * Features: CassetteTape progress, panels for speed/sleep/details
+ * Features: panels for speed/sleep/details
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -32,16 +32,16 @@ import {
   useBookProgress,
 } from '../stores/playerStore';
 import { useRobustSeekControl } from '../hooks/useRobustSeekControl';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
-import { apiClient } from '@/core/api';
+import { useCoverUrl } from '@/core/cache';
+import { HeartButton } from '@/shared/components';
 import { getTitle } from '@/shared/utils/metadata';
 import { formatTime, isColorLight, pickMostSaturated } from '../utils';
 import { matchToPalette } from '@/shared/utils/colorPalette';
 import { theme } from '@/shared/theme';
 
 // Components
-import { CassetteTape } from '../components/CassetteTape';
 import { DetailsPanel, SpeedPanel, SleepPanel } from '../panels';
+import { CassetteTape } from '../components/CassetteTape';
 
 // Assets
 const playButtonImage = require('../assets/play-player.png');
@@ -58,8 +58,7 @@ const BUTTON_SIZE = scale(130); // All buttons same size
 const PLAY_BUTTON_SIZE = scale(140); // All buttons same size
 
 const BUTTON_GAP = scale(0);
-const CASSETTE_HEIGHT = scale(87);
-const GRAY_CONTAINER_HEIGHT = scale(188); // From Anima: 188px for cassette + info tiles
+const INFO_CONTAINER_HEIGHT = scale(100); // Height for info tiles only (no cassette)
 
 // SVG Icons
 const DownloadIcon = ({ size = 24, color = '#B3B3B3' }) => (
@@ -74,16 +73,6 @@ const DownloadIcon = ({ size = 24, color = '#B3B3B3' }) => (
   </Svg>
 );
 
-const HeartIcon = ({ size = 24, color = '#34C759', filled = false }) => (
-  <Svg width={size} height={size} viewBox="0 0 18 15" fill="none">
-    <Path
-      d="M15.9611 1.25119C15.5385 0.854523 15.0367 0.539863 14.4845 0.32518C13.9323 0.110498 13.3404 0 12.7426 0C12.1448 0 11.5529 0.110498 11.0007 0.32518C10.4484 0.539863 9.9467 0.854523 9.52412 1.25119L8.6471 2.07401L7.77009 1.25119C6.9165 0.450331 5.75878 0.000415111 4.55161 0.000415119C3.34445 0.000415128 2.18673 0.450331 1.33314 1.25119C0.479544 2.05204 8.99406e-09 3.13823 0 4.27081C-8.99406e-09 5.40339 0.479544 6.48958 1.33314 7.29044L8.6471 14.1525L15.9611 7.29044C16.3839 6.89396 16.7192 6.42322 16.9481 5.9051C17.1769 5.38698 17.2947 4.83164 17.2947 4.27081C17.2947 3.70998 17.1769 3.15464 16.9481 2.63652C16.7192 2.1184 16.3839 1.64766 15.9611 1.25119Z"
-      fill={filled ? color : 'none'}
-      stroke={filled ? 'none' : color}
-      strokeWidth={1.5}
-    />
-  </Svg>
-);
 
 type PanelMode = 'none' | 'details' | 'speed' | 'sleep' | 'progress';
 
@@ -139,9 +128,8 @@ export function PlayerScreen() {
 
   const displayPosition = isSeeking ? seekPosition : position;
 
-  // Library store
-  const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
-  const isFavorite = currentBook ? isInLibrary(currentBook.id) : false;
+  // Cover URL with cache busting (use empty string if no book, hook needs to be called unconditionally)
+  const coverUrl = useCoverUrl(currentBook?.id || '');
 
   // Animation
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -156,7 +144,6 @@ export function PlayerScreen() {
   const [accentColor, setAccentColor] = useState('#C8FF00');
 
   // Derived values
-  const coverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : '';
   const title = currentBook ? getTitle(currentBook) : '';
   const media = currentBook?.media as any;
   const chapters = storeChapters.length > 0 ? storeChapters : (media?.chapters || []);
@@ -168,9 +155,6 @@ export function PlayerScreen() {
   const timeRemaining = formatTime(Math.max(0, bookDuration - displayPosition));
   const sleepTimerMinutes = sleepTimer ? Math.ceil(sleepTimer / 60) : null;
 
-  // Seeking state for cassette
-  const isRewinding = isSeeking && seekDirection === 'backward';
-  const isFastForwarding = isSeeking && seekDirection === 'forward';
 
   // Pan responder for swipe down to close
   const panResponder = useRef(
@@ -267,14 +251,6 @@ export function PlayerScreen() {
     else await play();
   }, [isPlaying, pause, play]);
 
-  const handleHeartPress = useCallback(() => {
-    if (!currentBook) return;
-    if (isInLibrary(currentBook.id)) {
-      removeFromLibrary(currentBook.id);
-    } else {
-      addToLibrary(currentBook.id);
-    }
-  }, [currentBook, isInLibrary, addToLibrary, removeFromLibrary]);
 
   const handleRewindPressIn = useCallback(async () => {
     await startContinuousSeek('backward');
@@ -375,9 +351,13 @@ export function PlayerScreen() {
           <TouchableOpacity style={styles.topIcon} onPress={() => { /* TODO: Download functionality */ }}>
             <DownloadIcon size={scale(24)} color={accentColor} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.topIcon} onPress={handleHeartPress}>
-            <HeartIcon size={scale(18)} color="#34C759" filled={isFavorite} />
-          </TouchableOpacity>
+          {currentBook && (
+            <HeartButton
+              bookId={currentBook.id}
+              size={scale(18)}
+              style={styles.topIcon}
+            />
+          )}
         </View>
 
         {/* Cover area OR Panel (panels replace cover) */}
@@ -457,10 +437,10 @@ export function PlayerScreen() {
           </View>
         )}
 
-        {/* Unified Cassette + Info Container (Rectangle 21 style) */}
-        <View style={styles.cassetteInfoWrapper}>
+        {/* Info Container */}
+        <View style={styles.infoWrapper}>
           {/* Gray background container */}
-          <View style={styles.cassetteInfoBackground}>
+          <View style={styles.infoBackground}>
             {/* Border highlight */}
             <View style={styles.borderHighlight} />
           </View>
@@ -470,8 +450,8 @@ export function PlayerScreen() {
             <CassetteTape
               progress={bookProgress}
               isPlaying={isPlaying}
-              isRewinding={isRewinding}
-              isFastForwarding={isFastForwarding}
+              isRewinding={isSeeking && seekDirection === 'backward'}
+              isFastForwarding={isSeeking && seekDirection === 'forward'}
               accentColor={accentColor}
               bookId={currentBook?.id}
               chapterIndex={chapterIndex}
@@ -667,16 +647,16 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 
-  // Unified cassette + info wrapper (Rectangle 21 style)
-  cassetteInfoWrapper: {
+  // Info wrapper (Rectangle 21 style)
+  infoWrapper: {
     width: SCREEN_WIDTH - scale(20),
     paddingHorizontal: scale(10),
     paddingTop: scale(12),
     paddingBottom: scale(12),
     marginBottom: scale(-10),
-    zIndex:100,
+    zIndex: 100,
   },
-  cassetteInfoBackground: {
+  infoBackground: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#262626',
     borderRadius: scale(5),
@@ -686,7 +666,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 10,
     elevation: 8,
-
   },
   borderHighlight: {
     ...StyleSheet.absoluteFillObject,
@@ -694,12 +673,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: 'rgba(255, 255, 255, 0.5)',
   },
-
-  // Cassette
   cassetteContainer: {
-    width: '100%',
-    height: CASSETTE_HEIGHT,
-    marginBottom: scale(10),
+    alignItems: 'center',
+    marginBottom: scale(8),
   },
 
   // Info tiles

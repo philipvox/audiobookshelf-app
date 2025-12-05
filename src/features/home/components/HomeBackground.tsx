@@ -1,7 +1,7 @@
 /**
  * src/features/home/components/HomeBackground.tsx
  *
- * Background with blurred cover art
+ * Background with blurred cover art that fades to transparent at bottom
  */
 
 import React from 'react';
@@ -19,39 +19,33 @@ interface HomeBackgroundProps {
 
 export function HomeBackground({
   coverUrl,
-  blurIntensity = 50, // Reduced from 80 for brighter background
+  blurIntensity = 50,
 }: HomeBackgroundProps) {
   return (
     <View style={styles.container}>
       {/* Base color */}
       <View style={styles.baseColor} />
 
-      {/* Blurred cover image - brighter */}
+      {/* Blurred cover image */}
       {coverUrl && (
         <View style={styles.imageContainer}>
           <Image
             source={{ uri: coverUrl }}
             style={styles.image}
             resizeMode="cover"
-            blurRadius={15} // Reduced from 25 for more visible colors
+            blurRadius={15}
           />
           <BlurView intensity={blurIntensity} style={styles.blur} tint="dark" />
           {/* Brightness overlay */}
           <View style={styles.brightnessOverlay} />
+          {/* Fade to transparent gradient overlay */}
+          <LinearGradient
+            colors={['transparent', 'transparent', COLORS.background]}
+            locations={[0, 0.4, 1]}
+            style={styles.fadeGradient}
+          />
         </View>
       )}
-
-      {/* Lighter overlay gradient - more transparent at top */}
-      <LinearGradient
-        colors={[
-          'rgba(0, 0, 0, 0.1)', // More transparent at top
-          'rgba(0, 0, 0, 0.3)',
-          'rgba(0, 0, 0, 0.7)',
-          COLORS.background,
-        ]}
-        locations={[0, 0.35, 0.75, 1]}
-        style={styles.gradient}
-      />
     </View>
   );
 }
@@ -69,23 +63,23 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.65, // Taller for more visible background
+    height: SCREEN_HEIGHT * 0.65,
     overflow: 'hidden',
   },
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT * 0.65,
     transform: [{ scale: 1.1 }],
-    opacity: 0.8, // Brighter image
+    opacity: 0.8,
   },
   blur: {
     ...StyleSheet.absoluteFillObject,
   },
   brightnessOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)', // Slight brightness boost
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  gradient: {
+  fadeGradient: {
     ...StyleSheet.absoluteFillObject,
   },
 });

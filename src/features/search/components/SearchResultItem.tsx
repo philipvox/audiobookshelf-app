@@ -13,6 +13,7 @@ import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { theme } from '@/shared/theme';
 import { getTitle, getAuthorName, getFormattedDuration } from '@/shared/utils/metadata';
+import { HeartButton } from '@/shared/components';
 
 interface SearchResultItemProps {
   item: LibraryItem;
@@ -56,6 +57,8 @@ export function SearchResultItem({ item }: SearchResultItemProps) {
         </Text>
         <Text style={styles.duration}>{duration}</Text>
       </View>
+
+      <HeartButton bookId={item.id} size={18} style={styles.heartButton} />
     </TouchableOpacity>
   );
 }
@@ -108,5 +111,9 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 13,
     color: theme.colors.text.tertiary,
+  },
+  heartButton: {
+    alignSelf: 'center',
+    padding: theme.spacing[2],
   },
 });

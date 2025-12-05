@@ -95,6 +95,11 @@ interface PlayerState {
   isOffline: boolean;
 
   // ---------------------------------------------------------------------------
+  // Last Played Tracking (separate from currentBook which is "opened" book)
+  // ---------------------------------------------------------------------------
+  lastPlayedBookId: string | null;
+
+  // ---------------------------------------------------------------------------
   // Features
   // ---------------------------------------------------------------------------
   sleepTimer: number | null;
@@ -106,7 +111,7 @@ interface PlayerActions {
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
-  loadBook: (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean }) => Promise<void>;
+  loadBook: (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean; showPlayer?: boolean }) => Promise<void>;
   cleanup: () => Promise<void>;
 
   // ---------------------------------------------------------------------------
@@ -332,6 +337,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     isPlayerVisible: false,
     isOffline: false,
 
+    // Last played tracking
+    lastPlayedBookId: null,
+
     // Features
     sleepTimer: null,
     sleepTimerInterval: null,
@@ -341,8 +349,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // LIFECYCLE
     // =========================================================================
 
-    loadBook: async (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean }) => {
-      const { startPosition, autoPlay = true } = options || {};
+    loadBook: async (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean; showPlayer?: boolean }) => {
+      const { startPosition, autoPlay = true, showPlayer = true } = options || {};
       const { currentBook, position: prevPosition, isLoading } = get();
 
       if (isLoading) {
@@ -364,7 +372,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Same book already loaded?
       if (currentBook?.id === book.id && audioService.getIsLoaded()) {
         log('Same book already loaded');
-        set({ isPlayerVisible: true });
+        if (showPlayer) {
+          set({ isPlayerVisible: true });
+        }
         if (autoPlay && !get().isPlaying) {
           await get().play();
         }
@@ -374,7 +384,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Set new book immediately
       set({
         isLoading: true,
-        isPlayerVisible: true,
+        isPlayerVisible: showPlayer,
         currentBook: book,
         isPlaying: false,
         isBuffering: true,
@@ -570,7 +580,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         // Set final state
         timing('Audio loaded');
         if (autoPlay) {
-          set({ isLoading: false, isBuffering: true, isPlaying: true });
+          set({
+            isLoading: false,
+            isBuffering: true,
+            isPlaying: true,
+            lastPlayedBookId: book.id,  // Track that this book was actually played
+          });
           logSection('LOAD BOOK SUCCESS');
           log('Playback started');
         } else {
@@ -655,7 +670,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         throw new Error('No audio loaded');
       }
       await audioService.play();
-      set({ isPlaying: true });
+      const { currentBook } = get();
+      set({
+        isPlaying: true,
+        lastPlayedBookId: currentBook?.id || null,
+      });
     },
 
     pause: async () => {

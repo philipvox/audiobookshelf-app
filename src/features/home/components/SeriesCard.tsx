@@ -5,7 +5,7 @@
  * Anima: 110x86.5px total
  * 5 covers at left: 0, 17, 34, 51, 68 (17px offset)
  * Each cover: 35x51px rounded-[5px] shadow-[9px_4px_2px_#00000075]
- * Title at top:60, heart at top:66 left:89
+ * Title at top:60
  */
 
 import React from 'react';
@@ -14,7 +14,7 @@ import { Image } from 'expo-image';
 import { apiClient } from '@/core/api';
 import { COLORS } from '../homeDesign';
 import { SeriesCardProps } from '../types';
-import { HeartIcon } from './icons';
+import { SeriesHeartButton } from '@/shared/components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -60,17 +60,18 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
         ))}
       </View>
 
-      {/* Title at top:60, left:2 */}
-      <Text style={styles.title} numberOfLines={2}>
-        {series.name}
-      </Text>
-
-      {/* Heart icon at top:66, left:89 */}
-      {series.isFavorite && (
-        <View style={styles.heartContainer}>
-          <HeartIcon size={scale(14)} color={COLORS.heart} filled />
-        </View>
-      )}
+      {/* Title and heart in a row */}
+      <View style={styles.titleRow}>
+        <Text style={styles.title} numberOfLines={1}>
+          {series.name}
+        </Text>
+        <SeriesHeartButton
+          seriesName={series.name}
+          size={scale(12)}
+          activeColor={COLORS.heart}
+          inactiveColor="rgba(255,255,255,0.3)"
+        />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -78,7 +79,7 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
 const styles = StyleSheet.create({
   container: {
     width: scale(110),
-    height: scale(86.5),
+    height: scale(86),
     position: 'relative',
   },
   stackContainer: {
@@ -112,22 +113,21 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#7D7D7D',
   },
-  title: {
+  titleRow: {
     position: 'absolute',
-    top: scale(60),
-    left: scale(2),
-    width: scale(106),
-    fontFamily: 'System', // TODO: Change to 'GothicA1' when font loaded
+    top: scale(56),
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+  },
+  title: {
+    flex: 1,
+    fontFamily: 'System',
     fontSize: scale(12),
     fontWeight: '400',
     color: COLORS.textPrimary,
-    lineHeight: scale(12.4),
-  },
-  heartContainer: {
-    position: 'absolute',
-    top: scale(66),
-    left: scale(89),
-    width: scale(17),
-    height: scale(14),
+    lineHeight: scale(14),
   },
 });

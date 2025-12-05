@@ -8,4 +8,3 @@ export { PlayIcon, PlayTriangle } from './PlayIcon';
 export { PauseIcon } from './PauseIcon';
 export { SkipForwardIcon } from './SkipForwardIcon';
 export { SkipBackwardIcon } from './SkipBackwardIcon';
-export { HeartIcon } from './HeartIcon';

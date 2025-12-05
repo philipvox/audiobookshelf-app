@@ -6,3 +6,5 @@ export {
   getAllGenres,
   type FilterOptions,
 } from './libraryCache';
+
+export { useCoverUrl, getCoverUrl } from './useCoverUrl';

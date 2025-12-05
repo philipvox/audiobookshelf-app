@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCollectionDetails } from '../hooks/useCollectionDetails';
-import { BookCard } from '@/features/library/components/BookCard';
-import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
+import { LoadingSpinner, EmptyState, ErrorView, BookListItem } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
+import { usePlayerStore } from '@/features/player';
+import { apiClient } from '@/core/api';
+import { LibraryItem } from '@/core/types';
 
 type CollectionDetailRouteParams = {
   CollectionDetail: {
@@ -27,6 +29,25 @@ export function CollectionDetailScreen() {
   const navigation = useNavigation();
   const { collectionId } = route.params;
   const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
+  const { loadBook } = usePlayerStore();
+
+  const handleBookPress = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: false, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
 
   if (isLoading) {
     return <LoadingSpinner text="Loading collection..." />;
@@ -75,10 +96,16 @@ export function CollectionDetailScreen() {
       {books.length > 0 ? (
         <FlatList
           data={books}
-          renderItem={({ item }) => <BookCard book={item} />}
+          renderItem={({ item }) => (
+            <BookListItem
+              book={item}
+              onPress={() => handleBookPress(item)}
+              onPlayPress={() => handlePlayBook(item)}
+              showProgress={true}
+              showSwipe={false}
+            />
+          )}
           keyExtractor={(item) => item.id}
-          numColumns={3}
-          columnWrapperStyle={styles.row}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
@@ -135,11 +162,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   listContent: {
-    paddingHorizontal: theme.spacing[5],
     paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[32] + 60,
-  },
-  row: {
-    justifyContent: 'space-between',
   },
 });
