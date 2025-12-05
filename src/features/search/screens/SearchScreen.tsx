@@ -1,11 +1,11 @@
 /**
  * src/features/search/screens/SearchScreen.tsx
  *
- * Enhanced search screen with:
- * - Instant search from library cache
- * - Previous searches history
- * - Authors, narrators, series results
- * - Pre-search filters (expanded by default)
+ * Enhanced search screen with unified results:
+ * - 2 rows of books (6 books)
+ * - Top 3 series with stacked covers
+ * - Top 2 authors
+ * - Top 2 narrators
  */
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
@@ -23,26 +23,32 @@ import {
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { useLibraryCache, getAllGenres, getAllAuthors, getAllSeries, getAllNarrators, type FilterOptions } from '@/core/cache';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useLibraryCache, getAllGenres, getAllAuthors, getAllSeries, getAllNarrators, useCoverUrl, type FilterOptions } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
+import { HeartButton, SeriesHeartButton, BookListItem } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BG_COLOR = '#1a1a1a';
+const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
 const ACCENT = '#CCFF00';
-const GAP = 5;
+const GAP = 8;
 const CARD_RADIUS = 5;
+const PADDING = 16;
 
 const SEARCH_HISTORY_KEY = 'search_history_v1';
 const MAX_HISTORY = 10;
 
+// Series card constants - horizontal stack design
+const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
+const SERIES_COVER_SIZE = SERIES_CARD_WIDTH * 0.55;
+const MAX_VISIBLE_BOOKS = 10;
+
 type SortOption = 'title' | 'author' | 'dateAdded' | 'duration';
 type FilterTab = 'all' | 'genres' | 'authors' | 'series' | 'duration';
-type ResultTab = 'books' | 'authors' | 'narrators' | 'series';
 
 // Quick duration filters
 const DURATION_FILTERS = [
@@ -53,23 +59,81 @@ const DURATION_FILTERS = [
   { label: '20h+', min: 20, max: undefined },
 ];
 
+// Stacked series card - horizontal stack with drop shadows spanning full width
+const SeriesCard = React.memo(function SeriesCard({
+  series,
+  onPress,
+}: {
+  series: { name: string; bookCount: number; books: LibraryItem[] };
+  onPress: () => void;
+}) {
+  // Get up to MAX_VISIBLE_BOOKS book covers for the stack
+  const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
+  const title = series.name;
+  const firstBookId = series.books[0]?.id;
+  const numCovers = bookCovers.length;
+
+  // Calculate offset to spread covers across full card width
+  // Last cover should end at card edge, first cover starts at 0
+  const stackOffset = numCovers > 1
+    ? (SERIES_CARD_WIDTH - SERIES_COVER_SIZE) / (numCovers - 1)
+    : 0;
+
+  return (
+    <TouchableOpacity style={styles.seriesCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.seriesStackContainer}>
+        {/* Render stacked covers - back to front horizontally */}
+        {bookCovers.map((coverUrl, idx) => (
+          <View
+            key={idx}
+            style={[
+              styles.seriesStackCover,
+              {
+                left: idx * stackOffset,
+                zIndex: numCovers - idx,
+              },
+            ]}
+          >
+            <Image
+              source={coverUrl}
+              style={styles.seriesCoverImage}
+              contentFit="cover"
+              transition={150}
+            />
+          </View>
+        ))}
+      </View>
+      <View style={styles.seriesTitleRow}>
+        <Text style={styles.seriesTitle} numberOfLines={2}>{title}</Text>
+        <SeriesHeartButton seriesName={title} size={12} style={styles.heartButton} />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+type SearchScreenParams = {
+  genre?: string;
+};
+
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<{ Search: SearchScreenParams }, 'Search'>>();
   const inputRef = useRef<TextInput>(null);
   const { loadBook } = usePlayerStore();
 
   // Search state
   const [query, setQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(true); // Expanded by default
+  const [showFilters, setShowFilters] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState<FilterTab>('all');
-  const [activeResultTab, setActiveResultTab] = useState<ResultTab>('books');
 
   // Previous searches
   const [previousSearches, setPreviousSearches] = useState<string[]>([]);
 
-  // Filter state
-  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  // Filter state - initialize with route params if present
+  const [selectedGenres, setSelectedGenres] = useState<string[]>(() => {
+    return route.params?.genre ? [route.params.genre] : [];
+  });
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
   const [durationFilter, setDurationFilter] = useState<{ min?: number; max?: number }>({});
@@ -183,14 +247,6 @@ export function SearchScreen() {
       .slice(0, 20);
   }, [query, allSeries]);
 
-  // Result counts for tabs
-  const resultCounts = useMemo(() => ({
-    books: bookResults.length,
-    authors: authorResults.length,
-    narrators: narratorResults.length,
-    series: seriesResults.length,
-  }), [bookResults, authorResults, narratorResults, seriesResults]);
-
   // Active filter count
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -231,9 +287,20 @@ export function SearchScreen() {
     if (query.trim()) saveSearch(query.trim());
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false });
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
     } catch {
-      await loadBook(book, { autoPlay: false });
+      await loadBook(book, { autoPlay: false, showPlayer: false });
+    }
+  }, [loadBook, query]);
+
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    Keyboard.dismiss();
+    if (query.trim()) saveSearch(query.trim());
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
     }
   }, [loadBook, query]);
 
@@ -282,10 +349,12 @@ export function SearchScreen() {
     }
   };
 
-  const getMetadata = (item: LibraryItem) => (item.media?.metadata as any) || {};
-
   // Get initials for avatar
   const getInitials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  // Check if we have any results
+  const hasResults = bookResults.length > 0 || seriesResults.length > 0 ||
+    authorResults.length > 0 || narratorResults.length > 0;
 
   return (
     <View style={styles.container}>
@@ -332,7 +401,7 @@ export function SearchScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter Panel - expanded by default */}
+      {/* Filter Panel */}
       {showFilters && (
         <View style={styles.filterPanel}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs}>
@@ -446,30 +515,6 @@ export function SearchScreen() {
         </View>
       )}
 
-      {/* Result type tabs - only show when we have results */}
-      {hasActiveSearch && query.trim().length > 0 && (
-        <View style={styles.resultTabs}>
-          {(['books', 'authors', 'narrators', 'series'] as ResultTab[]).map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.resultTab, activeResultTab === tab && styles.resultTabActive]}
-              onPress={() => setActiveResultTab(tab)}
-            >
-              <Text style={[styles.resultTabText, activeResultTab === tab && styles.resultTabTextActive]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-              {resultCounts[tab] > 0 && (
-                <View style={[styles.resultTabBadge, activeResultTab === tab && styles.resultTabBadgeActive]}>
-                  <Text style={[styles.resultTabBadgeText, activeResultTab === tab && styles.resultTabBadgeTextActive]}>
-                    {resultCounts[tab]}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
       {/* Results */}
       <ScrollView
         style={styles.results}
@@ -517,17 +562,23 @@ export function SearchScreen() {
             <View style={styles.quickBrowse}>
               <Text style={styles.quickBrowseTitle}>Quick Browse</Text>
               <View style={styles.quickBrowseRow}>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => setActiveFilterTab('genres')}>
+                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('GenresList')}>
                   <Icon name="albums-outline" size={24} color={ACCENT} set="ionicons" />
                   <Text style={styles.quickBrowseItemText}>Genres</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => setActiveFilterTab('authors')}>
+                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('AuthorsList')}>
                   <Icon name="person-outline" size={24} color={ACCENT} set="ionicons" />
                   <Text style={styles.quickBrowseItemText}>Authors</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => setActiveFilterTab('series')}>
+              </View>
+              <View style={styles.quickBrowseRow}>
+                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('SeriesList')}>
                   <Icon name="library-outline" size={24} color={ACCENT} set="ionicons" />
                   <Text style={styles.quickBrowseItemText}>Series</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('NarratorList')}>
+                  <Icon name="mic-outline" size={24} color={ACCENT} set="ionicons" />
+                  <Text style={styles.quickBrowseItemText}>Narrators</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -535,139 +586,128 @@ export function SearchScreen() {
         )}
 
         {/* No results */}
-        {hasActiveSearch && activeResultTab === 'books' && bookResults.length === 0 && (
+        {hasActiveSearch && !hasResults && (
           <View style={styles.emptyState}>
             <Icon name="book-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
-            <Text style={styles.emptyTitle}>No books found</Text>
+            <Text style={styles.emptyTitle}>No results found</Text>
             <Text style={styles.emptySubtitle}>Try adjusting your search or filters</Text>
           </View>
         )}
 
-        {/* Book Results */}
-        {activeResultTab === 'books' && bookResults.length > 0 && (
-          <>
-            <Text style={styles.resultsCount}>{bookResults.length} books</Text>
-            <View style={styles.grid}>
-              {bookResults.map(book => {
-                const metadata = getMetadata(book);
-                return (
-                  <TouchableOpacity
-                    key={book.id}
-                    style={styles.bookCard}
-                    onPress={() => handleBookPress(book)}
-                    activeOpacity={0.8}
-                  >
-                    <Image
-                      source={apiClient.getItemCoverUrl(book.id)}
-                      style={styles.bookCover}
-                      contentFit="cover"
-                      transition={150}
-                    />
-                    <Text style={styles.bookTitle} numberOfLines={2}>
-                      {metadata.title || 'Unknown'}
-                    </Text>
-                    <Text style={styles.bookAuthor} numberOfLines={1}>
-                      {metadata.authorName || 'Unknown'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+        {/* Unified Results - Books Section */}
+        {hasActiveSearch && bookResults.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Books</Text>
+              {bookResults.length > 5 && (
+                <Text style={styles.sectionCount}>{bookResults.length} results</Text>
+              )}
             </View>
-          </>
-        )}
-
-        {/* Author Results */}
-        {activeResultTab === 'authors' && authorResults.length > 0 && (
-          <View style={styles.entityList}>
-            {authorResults.map(author => (
-              <TouchableOpacity
-                key={author.name}
-                style={styles.entityItem}
-                onPress={() => handleAuthorPress(author.name)}
-              >
-                <View style={[styles.entityAvatar, { backgroundColor: ACCENT }]}>
-                  <Text style={styles.entityAvatarText}>{getInitials(author.name)}</Text>
-                </View>
-                <View style={styles.entityInfo}>
-                  <Text style={styles.entityName}>{author.name}</Text>
-                  <Text style={styles.entityMeta}>{author.bookCount} books</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
-              </TouchableOpacity>
-            ))}
+            <View>
+              {bookResults.slice(0, 5).map(book => (
+                <BookListItem
+                  key={book.id}
+                  book={book}
+                  onPress={() => handleBookPress(book)}
+                  onPlayPress={() => handlePlayBook(book)}
+                  showProgress={true}
+                  showSwipe={true}
+                />
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Narrator Results */}
-        {activeResultTab === 'narrators' && narratorResults.length > 0 && (
-          <View style={styles.entityList}>
-            {narratorResults.map(narrator => (
-              <TouchableOpacity
-                key={narrator.name}
-                style={styles.entityItem}
-                onPress={() => handleNarratorPress(narrator.name)}
-              >
-                <View style={[styles.entityAvatar, { backgroundColor: '#4A90D9' }]}>
-                  <Text style={styles.entityAvatarText}>{getInitials(narrator.name)}</Text>
-                </View>
-                <View style={styles.entityInfo}>
-                  <Text style={styles.entityName}>{narrator.name}</Text>
-                  <Text style={styles.entityMeta}>{narrator.bookCount} books narrated</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
-              </TouchableOpacity>
-            ))}
+        {/* Series Section (top 3 with stacked covers) */}
+        {hasActiveSearch && seriesResults.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Series</Text>
+              {seriesResults.length > 3 && (
+                <TouchableOpacity onPress={() => navigation.navigate('SeriesList')}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.seriesRow}>
+              {seriesResults.slice(0, 3).map(series => (
+                <SeriesCard
+                  key={series.name}
+                  series={series}
+                  onPress={() => handleSeriesPress(series.name)}
+                />
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Series Results */}
-        {activeResultTab === 'series' && seriesResults.length > 0 && (
-          <View style={styles.entityList}>
-            {seriesResults.map(series => (
-              <TouchableOpacity
-                key={series.name}
-                style={styles.entityItem}
-                onPress={() => handleSeriesPress(series.name)}
-              >
-                <View style={[styles.entityAvatar, { backgroundColor: '#9B59B6' }]}>
-                  <Icon name="library" size={20} color="#FFF" set="ionicons" />
-                </View>
-                <View style={styles.entityInfo}>
-                  <Text style={styles.entityName}>{series.name}</Text>
-                  <Text style={styles.entityMeta}>{series.bookCount} books in series</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
-              </TouchableOpacity>
-            ))}
+        {/* Authors Section (top 2) */}
+        {hasActiveSearch && authorResults.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Authors</Text>
+              {authorResults.length > 2 && (
+                <TouchableOpacity onPress={() => navigation.navigate('AuthorList')}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.entityList}>
+              {authorResults.slice(0, 2).map(author => (
+                <TouchableOpacity
+                  key={author.name}
+                  style={styles.entityItem}
+                  onPress={() => handleAuthorPress(author.name)}
+                >
+                  <View style={[styles.entityAvatar, { backgroundColor: ACCENT }]}>
+                    <Text style={styles.entityAvatarText}>{getInitials(author.name)}</Text>
+                  </View>
+                  <View style={styles.entityInfo}>
+                    <Text style={styles.entityName}>{author.name}</Text>
+                    <Text style={styles.entityMeta}>{author.bookCount} books</Text>
+                  </View>
+                  <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Empty states for other tabs */}
-        {activeResultTab === 'authors' && authorResults.length === 0 && hasActiveSearch && (
-          <View style={styles.emptyState}>
-            <Icon name="person-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
-            <Text style={styles.emptyTitle}>No authors found</Text>
-          </View>
-        )}
-        {activeResultTab === 'narrators' && narratorResults.length === 0 && hasActiveSearch && (
-          <View style={styles.emptyState}>
-            <Icon name="mic-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
-            <Text style={styles.emptyTitle}>No narrators found</Text>
-          </View>
-        )}
-        {activeResultTab === 'series' && seriesResults.length === 0 && hasActiveSearch && (
-          <View style={styles.emptyState}>
-            <Icon name="library-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
-            <Text style={styles.emptyTitle}>No series found</Text>
+        {/* Narrators Section (top 2) */}
+        {hasActiveSearch && narratorResults.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Narrators</Text>
+              {narratorResults.length > 2 && (
+                <TouchableOpacity onPress={() => navigation.navigate('NarratorList')}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.entityList}>
+              {narratorResults.slice(0, 2).map(narrator => (
+                <TouchableOpacity
+                  key={narrator.name}
+                  style={styles.entityItem}
+                  onPress={() => handleNarratorPress(narrator.name)}
+                >
+                  <View style={[styles.entityAvatar, { backgroundColor: '#4A90D9' }]}>
+                    <Text style={styles.entityAvatarText}>{getInitials(narrator.name)}</Text>
+                  </View>
+                  <View style={styles.entityInfo}>
+                    <Text style={styles.entityName}>{narrator.name}</Text>
+                    <Text style={styles.entityMeta}>{narrator.bookCount} books narrated</Text>
+                  </View>
+                  <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         )}
       </ScrollView>
     </View>
   );
 }
-
-const GRID_COLUMNS = 3;
-const CARD_WIDTH = (SCREEN_WIDTH - GAP * 4) / GRID_COLUMNS;
 
 const styles = StyleSheet.create({
   container: {
@@ -843,69 +883,38 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 
-  // Result tabs
-  resultTabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: BG_COLOR,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  resultTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 6,
-    borderRadius: 14,
-  },
-  resultTabActive: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  resultTabText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  resultTabTextActive: {
-    color: '#FFFFFF',
-  },
-  resultTabBadge: {
-    marginLeft: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  resultTabBadgeActive: {
-    backgroundColor: ACCENT,
-  },
-  resultTabBadgeText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  resultTabBadgeTextActive: {
-    color: '#000',
-  },
-
   // Results
   results: {
     flex: 1,
   },
   resultsContent: {
-    paddingHorizontal: GAP,
     paddingTop: 12,
   },
-  resultsCount: {
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: PADDING,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  sectionCount: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
-    marginBottom: 12,
-    marginLeft: GAP,
+  },
+  viewAllText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
   },
   emptyStateContainer: {
-    paddingHorizontal: 12,
+    paddingHorizontal: PADDING,
   },
   emptyState: {
     alignItems: 'center',
@@ -972,7 +981,8 @@ const styles = StyleSheet.create({
   },
   quickBrowseRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
   },
   quickBrowseItem: {
     flex: 1,
@@ -980,7 +990,6 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_COLOR,
     borderRadius: CARD_RADIUS,
     paddingVertical: 16,
-    marginHorizontal: 4,
   },
   quickBrowseItemText: {
     color: 'rgba(255,255,255,0.8)',
@@ -988,37 +997,59 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Grid
-  grid: {
+  // Series row with horizontally stacked covers
+  seriesRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    paddingHorizontal: PADDING,
+    gap: GAP,
   },
-  bookCard: {
-    width: CARD_WIDTH,
-    padding: GAP,
+  seriesCard: {
+    width: SERIES_CARD_WIDTH,
   },
-  bookCover: {
-    width: '100%',
-    aspectRatio: 1,
+  seriesStackContainer: {
+    width: SERIES_CARD_WIDTH,
+    height: SERIES_COVER_SIZE,
+    marginBottom: 8,
+  },
+  seriesStackCover: {
+    position: 'absolute',
+    width: SERIES_COVER_SIZE,
+    height: SERIES_COVER_SIZE,
     borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
     backgroundColor: CARD_COLOR,
+    // Enhanced drop shadow for each cover
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  bookTitle: {
+  seriesCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  seriesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  seriesTitle: {
+    flex: 1,
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
-    lineHeight: 15,
+    fontWeight: '500',
+    lineHeight: 14,
+    paddingRight: 4,
   },
-  bookAuthor: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 2,
+  heartButton: {
+    height: 26,
+    justifyContent: 'flex-start',
+    paddingTop: 1,
   },
 
-  // Entity list (authors, narrators, series)
+  // Entity list (authors, narrators)
   entityList: {
-    paddingHorizontal: 8,
+    paddingHorizontal: PADDING,
   },
   entityItem: {
     flexDirection: 'row',

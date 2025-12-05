@@ -22,7 +22,7 @@ import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { LibraryHeartButton } from '@/features/library/components/LibraryHeartButton';
+import { HeartButton } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 
 type NarratorDetailRouteParams = {
@@ -36,14 +36,16 @@ const ACCENT = '#CCFF00';
 const CARD_RADIUS = 5;
 const AVATAR_SIZE = SCREEN_WIDTH * 0.3;
 
-type SortType = 'title-asc' | 'title-desc' | 'recent';
+type SortType = 'title' | 'recent' | 'published';
+type SortDirection = 'asc' | 'desc';
 
 export function NarratorDetailScreen() {
   const route = useRoute<RouteProp<NarratorDetailRouteParams, 'NarratorDetail'>>();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { narratorName } = route.params;
-  const [sortBy, setSortBy] = useState<SortType>('title-asc');
+  const [sortBy, setSortBy] = useState<SortType>('title');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const { getNarrator, isLoaded } = useLibraryCache();
   const { loadBook } = usePlayerStore();
@@ -57,25 +59,36 @@ export function NarratorDetailScreen() {
   const sortedBooks = useMemo(() => {
     if (!narratorInfo?.books) return [];
     const sorted = [...narratorInfo.books];
+    const direction = sortDirection === 'asc' ? 1 : -1;
+
     switch (sortBy) {
-      case 'title-asc':
+      case 'title':
         return sorted.sort((a, b) =>
-          ((a.media?.metadata as any)?.title || '').localeCompare(
+          direction * ((a.media?.metadata as any)?.title || '').localeCompare(
             (b.media?.metadata as any)?.title || ''
           )
         );
-      case 'title-desc':
-        return sorted.sort((a, b) =>
-          ((b.media?.metadata as any)?.title || '').localeCompare(
-            (a.media?.metadata as any)?.title || ''
-          )
-        );
       case 'recent':
-        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return sorted.sort((a, b) => direction * ((a.addedAt || 0) - (b.addedAt || 0)));
+      case 'published':
+        return sorted.sort((a, b) => {
+          const aYear = parseInt((a.media?.metadata as any)?.publishedYear || '0', 10);
+          const bYear = parseInt((b.media?.metadata as any)?.publishedYear || '0', 10);
+          return direction * (aYear - bYear);
+        });
       default:
         return sorted;
     }
-  }, [narratorInfo?.books, sortBy]);
+  }, [narratorInfo?.books, sortBy, sortDirection]);
+
+  const handleSortPress = (type: SortType) => {
+    if (sortBy === type) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(type);
+      setSortDirection('asc');
+    }
+  };
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -171,25 +184,42 @@ export function NarratorDetailScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.sortButtons}>
               <TouchableOpacity
-                style={[styles.sortButton, sortBy === 'title-asc' && styles.sortButtonActive]}
-                onPress={() => setSortBy('title-asc')}
+                style={[styles.sortButton, sortBy === 'title' && styles.sortButtonActive]}
+                onPress={() => handleSortPress('title')}
               >
-                <Icon name="arrow-up" size={14} color={sortBy === 'title-asc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-                <Text style={[styles.sortButtonText, sortBy === 'title-asc' && styles.sortButtonTextActive]}>A-Z</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sortButton, sortBy === 'title-desc' && styles.sortButtonActive]}
-                onPress={() => setSortBy('title-desc')}
-              >
-                <Icon name="arrow-down" size={14} color={sortBy === 'title-desc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-                <Text style={[styles.sortButtonText, sortBy === 'title-desc' && styles.sortButtonTextActive]}>Z-A</Text>
+                <Icon
+                  name={sortBy === 'title' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
+                  size={14}
+                  color={sortBy === 'title' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
+                <Text style={[styles.sortButtonText, sortBy === 'title' && styles.sortButtonTextActive]}>
+                  {sortBy === 'title' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Title'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.sortButton, sortBy === 'recent' && styles.sortButtonActive]}
-                onPress={() => setSortBy('recent')}
+                onPress={() => handleSortPress('recent')}
               >
-                <Icon name="time-outline" size={14} color={sortBy === 'recent' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
+                <Icon
+                  name={sortBy === 'recent' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'time-outline'}
+                  size={14}
+                  color={sortBy === 'recent' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
                 <Text style={[styles.sortButtonText, sortBy === 'recent' && styles.sortButtonTextActive]}>Recent</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortButton, sortBy === 'published' && styles.sortButtonActive]}
+                onPress={() => handleSortPress('published')}
+              >
+                <Icon
+                  name={sortBy === 'published' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'calendar-outline'}
+                  size={14}
+                  color={sortBy === 'published' ? '#000' : 'rgba(255,255,255,0.6)'}
+                  set="ionicons"
+                />
+                <Text style={[styles.sortButtonText, sortBy === 'published' && styles.sortButtonTextActive]}>Published</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -221,10 +251,9 @@ export function NarratorDetailScreen() {
                     <Text style={styles.bookSeries} numberOfLines={1}>{metadata.seriesName}</Text>
                   )}
                 </View>
-                <LibraryHeartButton
+                <HeartButton
                   bookId={book.id}
-                  size="medium"
-                  variant="plain"
+                  size={16}
                   inactiveColor="rgba(255,255,255,0.4)"
                 />
               </TouchableOpacity>

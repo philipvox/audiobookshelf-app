@@ -1,0 +1,17 @@
+diff --git a/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt b/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt
+index 0a4bbfa..85ac108 100644
+--- a/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt
++++ b/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt
+@@ -25,10 +25,11 @@ class GlideUrlWrapperLoader(
+         .addInterceptor(
+           Interceptor { chain ->
+             val originalResponse = chain.proceed(chain.request())
++            val body = originalResponse.body ?: return@Interceptor originalResponse
+             originalResponse
+               .newBuilder()
+               .body(
+-                ProgressResponseBody(originalResponse.body) { bytesWritten, contentLength, done ->
++                ProgressResponseBody(body) { bytesWritten, contentLength, done ->
+                   model.progressListener?.onProgress(bytesWritten, contentLength, done)
+                 }
+               )

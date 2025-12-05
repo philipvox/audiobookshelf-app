@@ -90,8 +90,12 @@ class ApiClient extends BaseApiClient {
     return this.get<LibraryItem>(url);
   }
 
-  getItemCoverUrl(itemId: string): string {
-    return `${this.getBaseURL()}${endpoints.items.cover(itemId)}`;
+  getItemCoverUrl(itemId: string, bustCache = false): string {
+    const baseUrl = `${this.getBaseURL()}${endpoints.items.cover(itemId)}`;
+    if (bustCache) {
+      return `${baseUrl}?t=${Date.now()}`;
+    }
+    return baseUrl;
   }
 
   // ==================== Progress ====================

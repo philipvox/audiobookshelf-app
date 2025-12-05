@@ -11,17 +11,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface MyLibraryState {
   // Library items (book IDs)
   libraryIds: string[];
-  
+
+  // Favorite series (series names)
+  favoriteSeriesNames: string[];
+
   // Selection mode
   isSelecting: boolean;
   selectedIds: string[];
-  
+
   // Actions
   addToLibrary: (bookId: string) => void;
   removeFromLibrary: (bookId: string) => void;
   removeMultiple: (bookIds: string[]) => void;
   isInLibrary: (bookId: string) => boolean;
-  
+
+  // Series favorites
+  addSeriesToFavorites: (seriesName: string) => void;
+  removeSeriesFromFavorites: (seriesName: string) => void;
+  isSeriesFavorite: (seriesName: string) => boolean;
+
   // Selection actions
   startSelecting: () => void;
   stopSelecting: () => void;
@@ -34,6 +42,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
   persist(
     (set, get) => ({
       libraryIds: [],
+      favoriteSeriesNames: [],
       isSelecting: false,
       selectedIds: [],
 
@@ -65,6 +74,23 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         return get().libraryIds.includes(bookId);
       },
 
+      // Series favorites
+      addSeriesToFavorites: (seriesName: string) => {
+        const { favoriteSeriesNames } = get();
+        if (!favoriteSeriesNames.includes(seriesName)) {
+          set({ favoriteSeriesNames: [...favoriteSeriesNames, seriesName] });
+        }
+      },
+
+      removeSeriesFromFavorites: (seriesName: string) => {
+        const { favoriteSeriesNames } = get();
+        set({ favoriteSeriesNames: favoriteSeriesNames.filter(name => name !== seriesName) });
+      },
+
+      isSeriesFavorite: (seriesName: string) => {
+        return get().favoriteSeriesNames.includes(seriesName);
+      },
+
       startSelecting: () => {
         set({ isSelecting: true, selectedIds: [] });
       },
@@ -93,7 +119,10 @@ export const useMyLibraryStore = create<MyLibraryState>()(
     {
       name: 'my-library-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ libraryIds: state.libraryIds }),
+      partialize: (state) => ({
+        libraryIds: state.libraryIds,
+        favoriteSeriesNames: state.favoriteSeriesNames,
+      }),
     }
   )
 );

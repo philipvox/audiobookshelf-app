@@ -4,28 +4,22 @@
  * Minimal 3-button floating nav: Search | Player | Home
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, Pressable, StyleSheet, Dimensions } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Rect, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
-
-// Circle play/pause buttons
-const playCircleImage = require('@/features/home/assets/play-circle.png');
-const pauseCircleImage = require('@/features/home/assets/pause-circle.png');
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const SIDE_BUTTON_SIZE = 64;
-const PLAYER_BUTTON_SIZE = 96;
+const BUTTON_SIZE = 64;
 const BUTTON_GAP = 32;
+const VIBRANT_GREEN = '#C8FF00'; // Vibrant green instead of iOS green
 
 // SVG Components - icons centered in circles
-const SearchButton: React.FC<{ size?: number }> = ({ size = SIDE_BUTTON_SIZE }) => (
+const SearchButton: React.FC<{ size?: number }> = ({ size = BUTTON_SIZE }) => (
   <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
     <Rect width="64" height="64" rx="32" fill="#262626" />
     <Path
@@ -38,58 +32,88 @@ const SearchButton: React.FC<{ size?: number }> = ({ size = SIDE_BUTTON_SIZE }) 
   </Svg>
 );
 
-const HomeButton: React.FC<{ size?: number; active?: boolean }> = ({ 
-  size = SIDE_BUTTON_SIZE,
-  active = false 
+const HomeButton: React.FC<{ size?: number; active?: boolean }> = ({
+  size = BUTTON_SIZE,
+  active = false
 }) => (
   <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-    <Rect width="64" height="64" rx="32" fill={active ? "#34C759" : "#262626"} />
+    <Rect width="64" height="64" rx="32" fill={active ? VIBRANT_GREEN : "#262626"} />
+    {/* House icon - centered at 32,32 with proper proportions */}
     <Path
-      d="M30 40V34H34V40M26 31L32 26L38 31V38C38 38.53 37.79 39.04 37.41 39.41C37.04 39.79 36.53 40 36 40H28C27.47 40 26.96 39.79 26.59 39.41C26.21 39.04 26 38.53 26 38V31Z"
+      d="M32 21L23 28V38C23 38.55 23.45 39 24 39H29V33H35V39H40C40.55 39 41 38.55 41 38V28L32 21Z"
       stroke={active ? "#1E1E1E" : "#808080"}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      fill="none"
     />
   </Svg>
 );
 
-const PlayIcon: React.FC = () => (
-  <Svg width={32} height={32} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M8 5.14v13.72a1 1 0 001.5.86l11-6.86a1 1 0 000-1.72l-11-6.86a1 1 0 00-1.5.86z"
-      fill="white"
-    />
+// Player button - same size as other buttons, with play/pause icon
+const PlayerButton: React.FC<{ size?: number; isPlaying?: boolean }> = ({
+  size = BUTTON_SIZE,
+  isPlaying = false
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+    <Rect width="64" height="64" rx="32" fill={VIBRANT_GREEN} />
+    {isPlaying ? (
+      <>
+        {/* Pause icon - two bars centered */}
+        <Rect x="24" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
+        <Rect x="34" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
+      </>
+    ) : (
+      /* Play icon - triangle centered */
+      <Path
+        d="M26 21v22l18-11-18-11z"
+        fill="#1E1E1E"
+      />
+    )}
   </Svg>
 );
 
-const PauseIcon: React.FC = () => (
-  <Svg width={32} height={32} viewBox="0 0 24 24" fill="none">
-    <Rect x="6" y="4" width="4" height="16" rx="1" fill="white" />
-    <Rect x="14" y="4" width="4" height="16" rx="1" fill="white" />
-  </Svg>
-);
-
-export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+// Inner component that uses navigation hooks
+function FloatingTabBarInner() {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation<any>();
+  const navigation = useNavigation<any>();
   const { currentBook, isPlaying, play, pause, isPlayerVisible } = usePlayerStore();
+  const [currentRouteName, setCurrentRouteName] = useState('HomeTab');
+
+  // Listen for navigation state changes
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('state', () => {
+      const state = navigation.getState();
+      if (state) {
+        const route = state.routes[state.index];
+        if (route.state) {
+          const nestedState = route.state as any;
+          setCurrentRouteName(nestedState.routes?.[nestedState.index]?.name || route.name);
+        } else {
+          setCurrentRouteName(route.name);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   if (isPlayerVisible) return null;
 
-  const isHomeTab = state.routes[state.index]?.name === 'HomeTab';
+  const isHomeTab = currentRouteName === 'HomeTab';
 
   const handleSearchPress = () => {
-    nav.navigate('Search');
+    navigation.navigate('Search');
   };
 
   const handleHomePress = () => {
-    navigation.navigate('HomeTab');
+    navigation.navigate('Main', { screen: 'HomeTab' });
   };
 
+  // Play button: plays/pauses audio
   const handlePlayerPress = async () => {
     if (!currentBook) {
-      navigation.navigate('LibraryTab');
+      // No book loaded, go to library to pick one
+      navigation.navigate('Main', { screen: 'LibraryTab' });
       return;
     }
     if (isPlaying) {
@@ -99,9 +123,9 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     }
   };
 
+  // Long press: open player screen
   const handlePlayerLongPress = () => {
     if (currentBook) {
-      usePlayerStore.getState().setPlayerVisible?.(true) ||
       usePlayerStore.setState({ isPlayerVisible: true });
     }
   };
@@ -117,30 +141,26 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       <View style={styles.container}>
         {/* Search Button */}
         <TouchableOpacity
-          style={styles.sideButton}
+          style={styles.button}
           onPress={handleSearchPress}
           activeOpacity={0.8}
         >
           <SearchButton />
         </TouchableOpacity>
 
-        {/* Player Button - Circle play/pause */}
+        {/* Player Button - Same size as others with SVG icon */}
         <Pressable
-          style={styles.playerButton}
+          style={styles.button}
           onPress={handlePlayerPress}
           onLongPress={handlePlayerLongPress}
           delayLongPress={300}
         >
-          <Image
-            source={isPlaying ? pauseCircleImage : playCircleImage}
-            style={styles.playerImage}
-            contentFit="contain"
-          />
+          <PlayerButton isPlaying={isPlaying} />
         </Pressable>
 
         {/* Home Button */}
         <TouchableOpacity
-          style={styles.sideButton}
+          style={styles.button}
           onPress={handleHomePress}
           activeOpacity={0.8}
         >
@@ -148,6 +168,49 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         </TouchableOpacity>
       </View>
     </View>
+  );
+}
+
+// Error boundary wrapper - catches navigation errors during initial mount
+class FloatingTabBarErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Silently catch navigation errors during initial mount
+    console.log('[FloatingTabBar] Caught error during mount:', error.message);
+  }
+
+  componentDidUpdate() {
+    // Reset error state after a short delay to try rendering again
+    if (this.state.hasError) {
+      setTimeout(() => this.setState({ hasError: false }), 100);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
+// Exported component with error boundary
+export function FloatingTabBar() {
+  return (
+    <FloatingTabBarErrorBoundary>
+      <FloatingTabBarInner />
+    </FloatingTabBarErrorBoundary>
   );
 }
 
@@ -168,20 +231,12 @@ const styles = StyleSheet.create({
   },
   container: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: BUTTON_GAP,
   },
-  sideButton: {
-    width: SIDE_BUTTON_SIZE,
-    height: SIDE_BUTTON_SIZE,
-  },
-  playerButton: {
-    width: PLAYER_BUTTON_SIZE,
-    height: PLAYER_BUTTON_SIZE,
-  },
-  playerImage: {
-    width: PLAYER_BUTTON_SIZE,
-    height: PLAYER_BUTTON_SIZE,
+  button: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
   },
 });

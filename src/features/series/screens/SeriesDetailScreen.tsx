@@ -1,7 +1,7 @@
 /**
  * src/features/series/screens/SeriesDetailScreen.tsx
  *
- * Series detail screen using library cache for instant loading.
+ * Series detail screen with stacked book covers and blurred background.
  * Dark theme matching app aesthetic.
  */
 
@@ -14,26 +14,34 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { LibraryHeartButton } from '@/features/library/components/LibraryHeartButton';
+import { SeriesHeartButton, BookListItem } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 
 type SeriesDetailRouteParams = {
   SeriesDetail: { seriesName: string };
 };
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BG_COLOR = '#1a1a1a';
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
 const ACCENT = '#CCFF00';
 const CARD_RADIUS = 5;
+
+// Stacked covers constants
+const STACK_COVER_SIZE = SCREEN_WIDTH * 0.35;
+const STACK_OFFSET = 12;
+const STACK_ROTATION = 6;
 
 type SortType = 'asc' | 'desc';
 
@@ -53,6 +61,156 @@ function getSequence(item: LibraryItem): number {
   return 999;
 }
 
+// Stacked book covers component
+function StackedCovers({ bookIds }: { bookIds: string[] }) {
+  // Take up to 3 books for the stack
+  const stackBooks = bookIds.slice(0, Math.min(3, bookIds.length));
+  const count = stackBooks.length;
+
+  if (count === 0) {
+    return (
+      <View style={stackStyles.container}>
+        <View style={[stackStyles.cover, stackStyles.placeholder]}>
+          <Text style={stackStyles.placeholderText}>📚</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={stackStyles.container}>
+      {stackBooks.map((bookId, index) => {
+        // Reverse order so first book is on top
+        const reverseIndex = count - 1 - index;
+        const rotation = (reverseIndex - Math.floor(count / 2)) * STACK_ROTATION;
+        const translateX = (reverseIndex - Math.floor(count / 2)) * STACK_OFFSET;
+        const zIndex = count - reverseIndex;
+
+        return (
+          <View
+            key={bookId}
+            style={[
+              stackStyles.coverWrapper,
+              {
+                zIndex,
+                transform: [
+                  { translateX },
+                  { rotate: `${rotation}deg` },
+                ],
+              },
+            ]}
+          >
+            <Image
+              source={apiClient.getItemCoverUrl(bookId)}
+              style={stackStyles.cover}
+              contentFit="cover"
+              transition={150}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const stackStyles = StyleSheet.create({
+  container: {
+    width: STACK_COVER_SIZE + STACK_OFFSET * 4,
+    height: STACK_COVER_SIZE * 1.1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  coverWrapper: {
+    position: 'absolute',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  cover: {
+    width: STACK_COVER_SIZE,
+    height: STACK_COVER_SIZE,
+    borderRadius: CARD_RADIUS,
+    backgroundColor: CARD_COLOR,
+  },
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 48,
+  },
+});
+
+// Background component using first book cover
+function SeriesBackground({ coverUrl }: { coverUrl: string | null }) {
+  if (!coverUrl) {
+    return (
+      <View style={bgStyles.container}>
+        <View style={bgStyles.baseColor} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={bgStyles.container}>
+      <View style={bgStyles.baseColor} />
+      <View style={bgStyles.imageContainer}>
+        <Image
+          source={coverUrl}
+          style={bgStyles.image}
+          contentFit="cover"
+          blurRadius={25}
+        />
+        <BlurView intensity={40} style={bgStyles.blur} tint="dark" />
+        <View style={bgStyles.brightnessOverlay} />
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.5)', BG_COLOR]}
+          locations={[0, 0.5, 1]}
+          style={bgStyles.fadeGradient}
+        />
+      </View>
+    </View>
+  );
+}
+
+const bgStyles = StyleSheet.create({
+  container: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  baseColor: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: BG_COLOR,
+  },
+  imageContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.5,
+    overflow: 'hidden',
+  },
+  image: {
+    position: 'absolute',
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.5,
+    transform: [{ scale: 1.2 }],
+    opacity: 0.7,
+  },
+  blur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  brightnessOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  fadeGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});
+
 export function SeriesDetailScreen() {
   const route = useRoute<RouteProp<SeriesDetailRouteParams, 'SeriesDetail'>>();
   const navigation = useNavigation();
@@ -60,8 +218,9 @@ export function SeriesDetailScreen() {
   const { seriesName } = route.params;
   const [sortOrder, setSortOrder] = useState<SortType>('asc');
 
-  const { getSeries, isLoaded } = useLibraryCache();
+  const { getSeries, isLoaded, refreshCache } = useLibraryCache();
   const { loadBook } = usePlayerStore();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get series data from cache - instant!
   const seriesInfo = useMemo(() => {
@@ -88,6 +247,15 @@ export function SeriesDetailScreen() {
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshCache();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshCache]);
+
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
@@ -97,7 +265,14 @@ export function SeriesDetailScreen() {
     }
   }, [loadBook]);
 
-  const getMetadata = (item: LibraryItem) => (item.media?.metadata as any) || {};
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
 
   // Loading/error states
   if (!isLoaded) {
@@ -131,12 +306,16 @@ export function SeriesDetailScreen() {
     );
   }
 
-  // Get cover from first book
-  const firstBookId = sortedBooks[0]?.id;
+  // Get book IDs for stacked covers and background
+  const bookIds = sortedBooks.map(b => b.id);
+  const firstBookCoverUrl = bookIds[0] ? apiClient.getItemCoverUrl(bookIds[0]) : null;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* Blurred background from first book */}
+      <SeriesBackground coverUrl={firstBookCoverUrl} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
@@ -151,23 +330,22 @@ export function SeriesDetailScreen() {
         style={styles.content}
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={ACCENT}
+            progressViewOffset={20}
+          />
+        }
       >
-        {/* Series Info */}
+        {/* Series Info with Stacked Covers */}
         <View style={styles.seriesHeader}>
-          {firstBookId && (
-            <Image
-              source={apiClient.getItemCoverUrl(firstBookId)}
-              style={styles.coverImage}
-              contentFit="cover"
-              transition={150}
-            />
-          )}
-          {!firstBookId && (
-            <View style={[styles.coverImage, styles.coverPlaceholder]}>
-              <Text style={styles.coverPlaceholderText}>📚</Text>
-            </View>
-          )}
-          <Text style={styles.seriesName}>{seriesInfo.name}</Text>
+          <StackedCovers bookIds={bookIds} />
+          <View style={styles.seriesNameRow}>
+            <Text style={styles.seriesName}>{seriesInfo.name}</Text>
+            <SeriesHeartButton seriesName={seriesInfo.name} size={24} />
+          </View>
           <Text style={styles.bookCount}>
             {seriesInfo.bookCount} {seriesInfo.bookCount === 1 ? 'book' : 'books'}
           </Text>
@@ -176,58 +354,37 @@ export function SeriesDetailScreen() {
         {/* Sort Toggle */}
         <View style={styles.sortRow}>
           <Text style={styles.sectionTitle}>Books in Series</Text>
-          <View style={styles.sortButtons}>
-            <TouchableOpacity
-              style={[styles.sortButton, sortOrder === 'asc' && styles.sortButtonActive]}
-              onPress={() => setSortOrder('asc')}
-            >
-              <Icon name="arrow-up" size={14} color={sortOrder === 'asc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-              <Text style={[styles.sortButtonText, sortOrder === 'asc' && styles.sortButtonTextActive]}>1→{sortedBooks.length}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortButton, sortOrder === 'desc' && styles.sortButtonActive]}
-              onPress={() => setSortOrder('desc')}
-            >
-              <Icon name="arrow-down" size={14} color={sortOrder === 'desc' ? '#000' : 'rgba(255,255,255,0.6)'} set="ionicons" />
-              <Text style={[styles.sortButtonText, sortOrder === 'desc' && styles.sortButtonTextActive]}>{sortedBooks.length}→1</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.sortButtonActive}
+            onPress={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+          >
+            <Icon
+              name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'}
+              size={14}
+              color="#000"
+              set="ionicons"
+            />
+            <Text style={styles.sortButtonTextActive}>
+              {sortOrder === 'asc' ? `1→${sortedBooks.length}` : `${sortedBooks.length}→1`}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Book List */}
         <View style={styles.bookList}>
           {sortedBooks.map((book, index) => {
-            const metadata = getMetadata(book);
             const sequence = getSequence(book);
             return (
-              <TouchableOpacity
+              <BookListItem
                 key={book.id}
-                style={styles.bookItem}
+                book={book}
                 onPress={() => handleBookPress(book)}
-                activeOpacity={0.7}
-              >
-                <Image
-                  source={apiClient.getItemCoverUrl(book.id)}
-                  style={styles.bookCover}
-                  contentFit="cover"
-                  transition={150}
-                />
-                <View style={styles.bookInfo}>
-                  <View style={styles.sequenceBadge}>
-                    <Text style={styles.sequenceText}>
-                      {sequence < 999 ? `#${sequence}` : `#${index + 1}`}
-                    </Text>
-                  </View>
-                  <Text style={styles.bookTitle} numberOfLines={2}>{metadata.title || 'Unknown'}</Text>
-                  <Text style={styles.bookAuthor} numberOfLines={1}>{metadata.authorName || 'Unknown Author'}</Text>
-                </View>
-                <LibraryHeartButton
-                  bookId={book.id}
-                  size="medium"
-                  variant="plain"
-                  inactiveColor="rgba(255,255,255,0.4)"
-                />
-              </TouchableOpacity>
+                onPlayPress={() => handlePlayBook(book)}
+                hideTitle={true}
+                seriesSequence={sequence < 999 ? sequence : index + 1}
+                showProgress={true}
+                showSwipe={true}
+              />
             );
           })}
         </View>
@@ -295,26 +452,17 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
   },
-  coverImage: {
-    width: SCREEN_WIDTH * 0.4,
-    aspectRatio: 1,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: CARD_COLOR,
-    marginBottom: 16,
-  },
-  coverPlaceholder: {
-    justifyContent: 'center',
+  seriesNameRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  coverPlaceholderText: {
-    fontSize: 48,
+    gap: 12,
+    marginBottom: 4,
   },
   seriesName: {
     fontSize: 22,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 4,
   },
   bookCount: {
     fontSize: 14,
@@ -332,73 +480,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  sortButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  sortButton: {
+  sortButtonActive: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: CARD_COLOR,
-  },
-  sortButtonActive: {
     backgroundColor: ACCENT,
   },
-  sortButtonText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '500',
-  },
   sortButtonTextActive: {
+    fontSize: 12,
+    fontWeight: '500',
     color: '#000',
   },
   bookList: {
-    paddingHorizontal: 16,
-  },
-  bookItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_COLOR,
-    borderRadius: CARD_RADIUS,
-    padding: 12,
-    marginBottom: 8,
-  },
-  bookCover: {
-    width: 60,
-    height: 60,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: '#333',
-  },
-  bookInfo: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  sequenceBadge: {
-    backgroundColor: ACCENT,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  sequenceText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#000',
-  },
-  bookTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  bookAuthor: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+    // BookListItem has its own padding
   },
 });

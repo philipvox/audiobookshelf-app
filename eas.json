@@ -58,11 +58,8 @@
         "NODE_ENV": "production"
       },
       "cache": {
-        "key": "production-cache-v1",
-        "cacheDefaultPaths": true,
-        "customPaths": [
-          "node_modules/.cache"
-        ]
+        "key": "production-cache-v2",
+        "disabled": false
       }
     }
   },

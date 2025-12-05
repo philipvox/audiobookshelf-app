@@ -120,8 +120,12 @@ interface PlaybackControlsProps {
   isPlaying: boolean;
   onPlay: () => void;
   onPause: () => void;
-  onSkipForward: () => void;
-  onSkipBackward: () => void;
+  onSkipForward?: () => void;
+  onSkipBackward?: () => void;
+  onSkipForwardPressIn?: () => void;
+  onSkipForwardPressOut?: () => void;
+  onSkipBackwardPressIn?: () => void;
+  onSkipBackwardPressOut?: () => void;
   disabled?: boolean;
 }
 
@@ -131,6 +135,10 @@ export function PlaybackControls({
   onPause,
   onSkipForward,
   onSkipBackward,
+  onSkipForwardPressIn,
+  onSkipForwardPressOut,
+  onSkipBackwardPressIn,
+  onSkipBackwardPressOut,
   disabled = false,
 }: PlaybackControlsProps) {
   const handlePlayPause = () => {
@@ -146,11 +154,17 @@ export function PlaybackControls({
   const buttonHeight = scale(55);
   const gap = scale(5);
 
+  // Use press handlers if provided (for continuous seek), otherwise use onPress
+  const useBackwardPressHandlers = onSkipBackwardPressIn && onSkipBackwardPressOut;
+  const useForwardPressHandlers = onSkipForwardPressIn && onSkipForwardPressOut;
+
   return (
     <View style={styles.container}>
       {/* Rewind - exact Anima SVG */}
       <TouchableOpacity
-        onPress={onSkipBackward}
+        onPress={useBackwardPressHandlers ? undefined : onSkipBackward}
+        onPressIn={useBackwardPressHandlers ? onSkipBackwardPressIn : undefined}
+        onPressOut={useBackwardPressHandlers ? onSkipBackwardPressOut : undefined}
         disabled={disabled}
         activeOpacity={0.7}
         style={styles.button}
@@ -162,7 +176,9 @@ export function PlaybackControls({
 
       {/* Fast Forward - exact Anima SVG */}
       <TouchableOpacity
-        onPress={onSkipForward}
+        onPress={useForwardPressHandlers ? undefined : onSkipForward}
+        onPressIn={useForwardPressHandlers ? onSkipForwardPressIn : undefined}
+        onPressOut={useForwardPressHandlers ? onSkipForwardPressOut : undefined}
         disabled={disabled}
         activeOpacity={0.7}
         style={styles.button}

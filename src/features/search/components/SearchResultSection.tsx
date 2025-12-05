@@ -4,7 +4,7 @@
  * Search result components with colored card design
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { Icon } from '@/shared/components/Icon';
+import { BookListItem as SharedBookListItem } from '@/shared/components';
 import { getTitle, getAuthorName } from '@/shared/utils/metadata';
 import { matchToPalette } from '@/shared/utils/colorPalette';
 import { isColorLight, pickMostSaturated } from '@/features/player/utils';
@@ -184,7 +185,7 @@ export function BookResultCard({ book }: BookResultCardProps) {
 }
 
 // ========================================
-// Book Results Row (Horizontal)
+// Book Results Row (List View)
 // ========================================
 
 interface BookResultsRowProps {
@@ -192,16 +193,39 @@ interface BookResultsRowProps {
 }
 
 export function BookResultsRow({ books }: BookResultsRowProps) {
+  const { loadBook } = usePlayerStore();
+
+  const handleBookPress = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: false, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
+
   return (
-    <ScrollView 
-      horizontal 
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.horizontalList}
-    >
+    <View style={styles.bookResultsList}>
       {books.map((book) => (
-        <BookResultCard key={book.id} book={book} />
+        <SharedBookListItem
+          key={book.id}
+          book={book}
+          onPress={() => handleBookPress(book)}
+          onPlayPress={() => handlePlayBook(book)}
+          showProgress={true}
+          showSwipe={false}
+        />
       ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -477,10 +501,37 @@ interface AllResultsListProps {
 }
 
 export function AllResultsList({ books }: AllResultsListProps) {
+  const { loadBook } = usePlayerStore();
+
+  const handleBookPress = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: false, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
+
   return (
     <View style={styles.allResultsList}>
       {books.map((book) => (
-        <BookListItem key={book.id} book={book} />
+        <SharedBookListItem
+          key={book.id}
+          book={book}
+          onPress={() => handleBookPress(book)}
+          onPlayPress={() => handlePlayBook(book)}
+          showProgress={true}
+          showSwipe={false}
+        />
       ))}
     </View>
   );
@@ -637,6 +688,10 @@ const styles = StyleSheet.create({
 
   // All results
   allResultsList: {
+    gap: 0,
+  },
+  // Book results list (vertical)
+  bookResultsList: {
     gap: 0,
   },
 });

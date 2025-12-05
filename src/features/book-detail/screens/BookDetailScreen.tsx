@@ -19,12 +19,11 @@ import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useBookDetails } from '../hooks/useBookDetails';
 import { OverviewTab } from '../components/OverviewTab';
 import { ChaptersTab } from '../components/ChaptersTab';
-import { LoadingSpinner, ErrorView } from '@/shared/components';
+import { LoadingSpinner, ErrorView, HeartButton } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
-import { apiClient } from '@/core/api';
+import { useCoverUrl } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { autoDownloadService, DownloadStatus } from '@/features/downloads';
-import { LibraryHeartButton } from '@/features/library';
 import { theme } from '@/shared/theme';
 
 type BookDetailRouteParams = {
@@ -74,6 +73,7 @@ export function BookDetailScreen() {
   const { book, isLoading, error, refetch } = useBookDetails(bookId);
   const { loadBook } = usePlayerStore();
   const { status: downloadStatus } = useDownloadStatus(bookId);
+  const coverUrl = useCoverUrl(bookId);
 
   // ALL HOOKS MUST BE BEFORE EARLY RETURNS
   const handlePlay = useCallback(async () => {
@@ -109,7 +109,6 @@ export function BookDetailScreen() {
   const rawNarrator = metadata.narratorName || '';
   const narrator = rawNarrator.replace(/^Narrated by\s*/i, '').trim() || null;
   const genres = metadata.genres || [];
-  const coverUrl = apiClient.getItemCoverUrl(book.id);
   const chapters = book.media.chapters || [];
 
   let duration = book.media.duration || 0;
@@ -157,7 +156,7 @@ export function BookDetailScreen() {
           >
             {renderDownloadIcon()}
           </TouchableOpacity>
-          <LibraryHeartButton bookId={book.id} size="large" variant="plain" />
+          <HeartButton bookId={book.id} size={24} />
         </View>
       </View>
 
