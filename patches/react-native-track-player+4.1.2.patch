@@ -1,0 +1,35 @@
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+index b2409a0..4a9edf2 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+@@ -340,7 +340,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+             } else {
+                 val context: ReactContext = context
+                 val track = musicService.tracks[index]
+-                track.setMetadata(context, Arguments.toBundle(map), musicService.ratingType)
++                track.setMetadata(context, Arguments.toBundle(map) ?: Bundle(), musicService.ratingType)
+                 musicService.updateMetadataForTrack(index, track)
+ 
+                 callback.resolve(null)
+@@ -545,7 +545,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         if (verifyServiceBoundOrReject(callback)) return@launch
+ 
+         if (index >= 0 && index < musicService.tracks.size) {
+-            callback.resolve(Arguments.fromBundle(musicService.tracks[index].originalItem))
++            callback.resolve(musicService.tracks[index].originalItem?.let { Arguments.fromBundle(it) })
+         } else {
+             callback.resolve(null)
+         }
+@@ -584,9 +584,9 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         if (verifyServiceBoundOrReject(callback)) return@launch
+         callback.resolve(
+             if (musicService.tracks.isEmpty()) null
+-            else Arguments.fromBundle(
+-                musicService.tracks[musicService.getCurrentTrackIndex()].originalItem
+-            )
++            else musicService.tracks[musicService.getCurrentTrackIndex()].originalItem?.let {
++                Arguments.fromBundle(it)
++            }
+         )
+     }
+ 
