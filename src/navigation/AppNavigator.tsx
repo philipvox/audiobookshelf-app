@@ -29,11 +29,11 @@ import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
-import { MiniPlayer, PlayerScreen } from '@/features/player';
+import { PlayerScreen } from '@/features/player';
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { downloadManager } from '@/core/services/downloadManager';
-import { FloatingTabBar } from './components/FloatingTabBar';
+import { NavigationBar } from './components/NavigationBar';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -124,9 +124,8 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
-      <MiniPlayer />
       <PlayerScreen />
-      <FloatingTabBar />
+      <NavigationBar />
     </NavigationContainer>
   );
 }

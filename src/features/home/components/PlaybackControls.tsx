@@ -104,13 +104,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: scale(24),
+    gap: scale(20),
   },
+  // NN/g: Minimum 44×44px touch targets
   button: {
-    padding: scale(8),
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   playButton: {
-    padding: scale(8),
+    minWidth: 56,
+    minHeight: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   disabled: {
     opacity: 0.5,

@@ -499,16 +499,26 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(8),
+    gap: scale(4), // Reduced gap since buttons are now larger
   },
+  // NN/g: Minimum 44×44px touch targets
   queueButton: {
-    padding: scale(8),
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   heartIndicator: {
-    padding: scale(8),
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   playButton: {
-    padding: scale(4),
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteAction: {
     backgroundColor: COLORS.deleteAction,
