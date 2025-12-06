@@ -29,7 +29,7 @@ import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
-import { PlayerScreen } from '@/features/player';
+import { SimplePlayerScreen } from '@/features/player';
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { downloadManager } from '@/core/services/downloadManager';
@@ -124,7 +124,7 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
-      <PlayerScreen />
+      <SimplePlayerScreen />
       <NavigationBar />
     </NavigationContainer>
   );
