@@ -5,6 +5,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LiquidSlider } from '../components/LiquidSlider';
+import { haptics } from '@/core/native/haptics';
 
 // =============================================================================
 // TYPES
@@ -59,9 +60,20 @@ export function SleepPanel({
   }, [setTempSleepMins, setSleepInputValue]);
 
   const handlePresetPress = useCallback((minutes: number) => {
+    haptics.selection(); // NN/g: Tactile feedback for selection
     setTempSleepMins(minutes);
     setSleepInputValue(String(minutes));
   }, [setTempSleepMins, setSleepInputValue]);
+
+  const handleClear = useCallback(() => {
+    haptics.toggle(); // NN/g: Feedback for clearing timer
+    onClear();
+  }, [onClear]);
+
+  const handleStart = useCallback(() => {
+    haptics.success(); // NN/g: Confirm timer set
+    onStart();
+  }, [onStart]);
 
   // ===========================================================================
   // HELPERS
@@ -149,7 +161,7 @@ export function SleepPanel({
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.cancelButton, { backgroundColor: buttonBg }]}
-          onPress={onClear}
+          onPress={handleClear}
           activeOpacity={0.7}
         >
           <Text style={[styles.cancelButtonText, { color: textColor }]}>
@@ -161,7 +173,7 @@ export function SleepPanel({
 
         <TouchableOpacity
           style={[styles.applyButton, { backgroundColor: activeButtonBg }]}
-          onPress={onStart}
+          onPress={handleStart}
           activeOpacity={0.7}
         >
           <Text style={[styles.applyButtonText, { color: activeButtonText }]}>

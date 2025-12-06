@@ -12,6 +12,7 @@ import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { haptics } from '@/core/native/haptics';
 
 // Default colors
 const VIBRANT_GREEN = '#C8FF00';
@@ -78,6 +79,13 @@ export function HeartButton({
 
   const handlePress = useCallback(() => {
     if (disabled) return;
+
+    // NN/g: Haptic feedback confirms action
+    if (isFavorite) {
+      haptics.toggle(); // Medium haptic for removing
+    } else {
+      haptics.success(); // Success haptic for adding to favorites
+    }
 
     // Pulse animation
     if (animated) {
