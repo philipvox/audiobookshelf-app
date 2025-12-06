@@ -29,6 +29,10 @@ interface ShimmerProps {
   style?: ViewStyle;
 }
 
+// Dark theme colors for skeleton
+const SKELETON_BG = '#2a2a2a';
+const SHIMMER_COLOR = 'rgba(255, 255, 255, 0.08)';
+
 export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps) {
   const translateX = useSharedValue(-1);
 
@@ -61,7 +65,7 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
           width,
           height,
           borderRadius,
-          backgroundColor: theme.colors.neutral[200],
+          backgroundColor: SKELETON_BG,
           overflow: 'hidden',
         },
         style,
@@ -71,7 +75,7 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
         <LinearGradient
           colors={[
             'transparent',
-            'rgba(255, 255, 255, 0.3)',
+            SHIMMER_COLOR,
             'transparent',
           ]}
           start={{ x: 0, y: 0.5 }}

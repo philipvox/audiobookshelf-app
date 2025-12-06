@@ -25,18 +25,33 @@ export function TopNavBar() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.avatarButton} onPress={handleProfilePress}>
+      <TouchableOpacity
+        style={styles.avatarButton}
+        onPress={handleProfilePress}
+        accessibilityLabel="Profile"
+        accessibilityRole="button"
+      >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.searchBar} onPress={handleSearchPress} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={styles.searchBar}
+        onPress={handleSearchPress}
+        activeOpacity={0.8}
+        accessibilityLabel="Search audiobooks"
+        accessibilityRole="search"
+      >
         <Icon name="search" size={20} color={theme.colors.text.tertiary} set="ionicons" />
         <Text style={styles.searchPlaceholder}>Search</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.notificationButton}>
+      <TouchableOpacity
+        style={styles.notificationButton}
+        accessibilityLabel="Notifications"
+        accessibilityRole="button"
+      >
         <Icon name="notifications-outline" size={24} color={theme.colors.text.primary} set="ionicons" />
       </TouchableOpacity>
     </View>
@@ -50,7 +65,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing[5],
     paddingVertical: theme.spacing[2],
   },
-  avatarButton: {},
+  // NN/g: 44px minimum touch targets
+  avatarButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatar: {
     width: 40,
     height: 40,
@@ -86,8 +107,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   notificationButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

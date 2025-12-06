@@ -152,6 +152,12 @@ class AudioService {
         this.handleTrackEnd();
       }
     });
+
+    // Listen for playback errors
+    this.player.addListener('playbackError', (error: any) => {
+      audioLog.error('Playback error:', error?.message || error);
+      audioLog.error('Error details:', JSON.stringify(error));
+    });
   }
 
   /**
@@ -403,7 +409,15 @@ class AudioService {
         this.player?.play();
         timing('Playback started');
       } else {
-        log('Ready (paused, not auto-playing)');
+        // WORKAROUND: Prime the player with play-pause to initialize buffering
+        // expo-audio has issues where calling play() later on an unprimed player
+        // gets stuck in perpetual buffering state. See expo/expo#34162
+        log('Priming player (play-pause trick)');
+        this.player?.play();
+        // Wait for playback to initialize - 500ms gives time for network buffering
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.player?.pause();
+        log('Ready (paused, primed for playback)');
       }
       timing('Load complete');
 
@@ -522,7 +536,15 @@ class AudioService {
         this.player?.play();
         timing('Playback started');
       } else {
-        log('Ready (paused, not auto-playing)');
+        // WORKAROUND: Prime the player with play-pause to initialize buffering
+        // expo-audio has issues where calling play() later on an unprimed player
+        // gets stuck in perpetual buffering state. See expo/expo#34162
+        log('Priming player (play-pause trick)');
+        this.player?.play();
+        // Wait for playback to initialize - 500ms gives time for network buffering
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.player?.pause();
+        log('Ready (paused, primed for playback)');
       }
       timing('Load complete');
     } catch (error: any) {

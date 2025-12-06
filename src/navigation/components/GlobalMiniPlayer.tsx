@@ -72,13 +72,19 @@ export function GlobalMiniPlayer({ onPress }: GlobalMiniPlayerProps) {
           <View style={[styles.progressBar, { width: `${progress}%` }]} />
         </View>
 
-        <Pressable style={styles.content} onPress={onPress}>
+        <Pressable
+          style={styles.content}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Now playing: ${title} by ${author}. Tap to open player.`}
+        >
           {/* Cover thumbnail */}
           <Image
             source={coverUrl}
             style={styles.cover}
             contentFit="cover"
             transition={150}
+            accessibilityIgnoresInvertColors
           />
 
           {/* Title and author */}
@@ -96,6 +102,8 @@ export function GlobalMiniPlayer({ onPress }: GlobalMiniPlayerProps) {
             style={styles.playButton}
             onPress={handlePlayPause}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
           >
             <Ionicons
               name={isPlaying ? 'pause' : 'play'}
