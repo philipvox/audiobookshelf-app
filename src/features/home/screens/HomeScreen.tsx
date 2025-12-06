@@ -53,6 +53,10 @@ import { SeriesWithBooks, PlaylistDisplay } from '../types';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
+// NN/g Navigation: New 5-tab bar + mini player height for proper content padding
+const TAB_BAR_HEIGHT = 56;
+const MINI_PLAYER_HEIGHT = 64;
+
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -341,7 +345,8 @@ export function HomeScreen() {
           styles.scrollContent,
           {
             paddingTop: insets.top + scale(18),
-            paddingBottom: insets.bottom + LAYOUT.tabBarHeight + scale(20),
+            // NN/g: Account for new 5-tab bar + mini player
+            paddingBottom: insets.bottom + TAB_BAR_HEIGHT + MINI_PLAYER_HEIGHT + scale(20),
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -560,19 +565,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: scale(10),
   },
+  // NN/g Content Hierarchy: Clear visual separation between sections
   recentlyListenedSection: {
-    marginTop: scale(30),
+    marginTop: scale(32),
+    paddingTop: scale(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   booksSection: {
     marginTop: scale(24),
+    paddingTop: scale(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  // Anima: gap-[23px] between books and series
+  // NN/g: Visual grouping for series section
   seriesSection: {
-    marginTop: scale(23),
+    marginTop: scale(24),
+    paddingTop: scale(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  // Anima: gap-[16px] between series and playlists (slightly less)
+  // NN/g: Visual grouping for playlists section
   playlistsSection: {
-    marginTop: scale(16),
+    marginTop: scale(24),
+    paddingTop: scale(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   bottomButtonsSection: {
     marginTop: scale(32),

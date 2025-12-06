@@ -2,8 +2,8 @@
  * src/features/home/components/SectionHeader.tsx
  *
  * Section header with title and "View All" button
- * Anima: Golos Text font, 14px, bold title, normal View All
- * Width: 349.9px (full width minus padding)
+ * NN/g UX: Clear visual hierarchy with larger, more prominent section titles
+ * Touch targets: minimum 44×44px for "View All" button
  */
 
 import React from 'react';
@@ -14,6 +14,9 @@ import { SectionHeaderProps } from '../types';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
+// NN/g: Larger section headers for clear content hierarchy
+const SECTION_PADDING = scale(20);
+
 export function SectionHeader({
   title,
   onViewAll,
@@ -23,7 +26,11 @@ export function SectionHeader({
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
       {showViewAll && onViewAll && (
-        <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          onPress={onViewAll}
+          style={styles.viewAllButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Text style={styles.viewAll}>View All</Text>
         </TouchableOpacity>
       )}
@@ -33,24 +40,29 @@ export function SectionHeader({
 
 const styles = StyleSheet.create({
   container: {
-    width: scale(349.9),
-    height: scale(17),
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginLeft: scale(29),
-    marginBottom: scale(15),
+    paddingHorizontal: SECTION_PADDING,
+    marginBottom: scale(12),
   },
   title: {
-    fontFamily: 'System', // TODO: Change to 'GolosText' when font loaded
-    fontSize: scale(14),
+    // NN/g: Larger, bolder section titles for visual hierarchy
+    fontSize: scale(18),
     fontWeight: '700',
     color: COLORS.textPrimary,
+    letterSpacing: -0.3,
+  },
+  viewAllButton: {
+    // NN/g: Minimum 44×44px touch target
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
   viewAll: {
-    fontFamily: 'System', // TODO: Change to 'GolosText' when font loaded
     fontSize: scale(14),
-    fontWeight: '400',
-    color: COLORS.textPrimary,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
 });
