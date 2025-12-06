@@ -23,6 +23,7 @@ import Animated, {
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { LibraryItem } from '@/core/types';
+import { haptics } from '@/core/native/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -136,9 +137,13 @@ export function CircularDownloadButton({
       return;
     }
 
+    // NN/g: Haptic feedback confirms action was registered
+    haptics.buttonPress();
+
     // If downloading, pause it
     if (isDownloading) {
       console.log(`[CircularDownloadButton] Action: Pause download`);
+      haptics.toggle(); // Medium haptic for pause
       await downloadManager.pauseDownload(book.id);
       return;
     }
@@ -146,6 +151,7 @@ export function CircularDownloadButton({
     // If paused, resume it
     if (isPaused) {
       console.log(`[CircularDownloadButton] Action: Resume download`);
+      haptics.toggle(); // Medium haptic for resume
       await downloadManager.resumeDownload(book.id);
       return;
     }
@@ -153,6 +159,7 @@ export function CircularDownloadButton({
     // If pending (queued), cancel it
     if (isPending) {
       console.log(`[CircularDownloadButton] Action: Cancel pending download`);
+      haptics.warning(); // Warning haptic for cancel
       await downloadManager.cancelDownload(book.id);
       return;
     }
@@ -166,6 +173,7 @@ export function CircularDownloadButton({
 
     // Not downloaded - queue it
     console.log(`[CircularDownloadButton] Action: Queue new download`);
+    haptics.success(); // Success haptic for starting download
     await downloadManager.queueDownload(book);
   };
 

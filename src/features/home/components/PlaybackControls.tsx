@@ -5,9 +5,10 @@
  * Order: Rewind | Fast Forward | Play
  */
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { haptics } from '@/core/native/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -39,14 +40,37 @@ export function PlaybackControls({
   onSkipBackwardPressOut,
   disabled = false,
 }: PlaybackControlsProps) {
-  const handlePlayPause = () => {
+  // NN/g: Haptic feedback for play/pause provides tactile confirmation
+  const handlePlayPause = useCallback(() => {
     if (isLoading) return; // Don't allow play/pause while loading
+    haptics.playbackToggle();
     if (isPlaying) {
       onPause();
     } else {
       onPlay();
     }
-  };
+  }, [isLoading, isPlaying, onPause, onPlay]);
+
+  // NN/g: Haptic feedback on skip button press
+  const handleSkipBackward = useCallback(() => {
+    haptics.skip();
+    onSkipBackward?.();
+  }, [onSkipBackward]);
+
+  const handleSkipForward = useCallback(() => {
+    haptics.skip();
+    onSkipForward?.();
+  }, [onSkipForward]);
+
+  const handleSkipBackwardPressIn = useCallback(() => {
+    haptics.buttonPress();
+    onSkipBackwardPressIn?.();
+  }, [onSkipBackwardPressIn]);
+
+  const handleSkipForwardPressIn = useCallback(() => {
+    haptics.buttonPress();
+    onSkipForwardPressIn?.();
+  }, [onSkipForwardPressIn]);
 
   const iconSize = scale(28);
   const playIconSize = scale(36);
@@ -56,8 +80,8 @@ export function PlaybackControls({
     <View style={styles.container}>
       {/* Rewind */}
       <TouchableOpacity
-        onPress={onSkipBackward}
-        onPressIn={onSkipBackwardPressIn}
+        onPress={handleSkipBackward}
+        onPressIn={handleSkipBackwardPressIn}
         onPressOut={onSkipBackwardPressOut}
         disabled={controlsDisabled}
         activeOpacity={0.7}
@@ -68,8 +92,8 @@ export function PlaybackControls({
 
       {/* Fast Forward */}
       <TouchableOpacity
-        onPress={onSkipForward}
-        onPressIn={onSkipForwardPressIn}
+        onPress={handleSkipForward}
+        onPressIn={handleSkipForwardPressIn}
         onPressOut={onSkipForwardPressOut}
         disabled={controlsDisabled}
         activeOpacity={0.7}

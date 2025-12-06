@@ -5,6 +5,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
 import { LiquidSlider } from '../components/LiquidSlider';
+import { haptics } from '@/core/native/haptics';
 
 // =============================================================================
 // TYPES
@@ -58,6 +59,7 @@ export function SpeedPanel({
   }, [setTempSpeed]);
 
   const handlePresetPress = useCallback((speed: number) => {
+    haptics.selection(); // NN/g: Tactile feedback for selection
     setTempSpeed(speed);
     setInputValue(speed.toFixed(2));
   }, [setTempSpeed]);
@@ -83,6 +85,9 @@ export function SpeedPanel({
       const stepped = Math.round(clamped / SPEED_STEP) * SPEED_STEP;
       setTempSpeed(stepped);
       setInputValue(stepped.toFixed(2));
+      haptics.success(); // NN/g: Confirm value accepted
+    } else {
+      haptics.error(); // NN/g: Invalid input feedback
     }
     setIsEditing(false);
     Keyboard.dismiss();
