@@ -554,7 +554,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           if (audioTracks.length > 1) {
             log('MULTI-FILE AUDIOBOOK');
             const baseUrl = apiClient.getBaseURL().replace(/\/+$/, '');
-            const token = (apiClient as any).getAuthToken?.() || (apiClient as any).authToken || '';
+            const token = apiClient.getAuthToken();
+
+            // Log token status for debugging (don't log the actual token for security)
+            if (!token) {
+              logError('WARNING: No auth token available for audio streaming!');
+            } else {
+              log('Auth token present, length:', token.length);
+            }
 
             audioTrackInfos = audioTracks.map((track) => {
               let trackUrl = `${baseUrl}${track.contentUrl}`;

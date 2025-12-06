@@ -31,7 +31,9 @@ export { SearchInput } from './inputs/SearchInput';
 // =============================================================================
 export { LoadingSpinner } from './LoadingSpinner';
 export { ErrorView } from './ErrorView';
+export type { ErrorType } from './ErrorView';
 export { EmptyState } from './EmptyState';
+export type { EmptyStateIcon } from './EmptyState';
 export { TabBar } from './feedback/TabBar';
 
 // =============================================================================

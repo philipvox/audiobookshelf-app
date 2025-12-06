@@ -15,14 +15,13 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { HeartButton } from '@/shared/components';
+import { BookListItem } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 
 type NarratorDetailRouteParams = {
@@ -33,7 +32,6 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#1a1a1a';
 const CARD_COLOR = '#2a2a2a';
 const ACCENT = '#CCFF00';
-const CARD_RADIUS = 5;
 const AVATAR_SIZE = SCREEN_WIDTH * 0.3;
 
 type SortType = 'title' | 'recent' | 'published';
@@ -48,7 +46,7 @@ export function NarratorDetailScreen() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const { getNarrator, isLoaded } = useLibraryCache();
-  const { viewBook } = usePlayerStore();
+  const { loadBook, viewBook, currentBook, isLoading: isPlayerLoading } = usePlayerStore();
 
   // Get narrator data from cache - instant!
   const narratorInfo = useMemo(() => {
@@ -107,7 +105,15 @@ export function NarratorDetailScreen() {
     }
   }, [viewBook]);
 
-  const getMetadata = (item: LibraryItem) => (item.media?.metadata as any) || {};
+  // Play book directly (opens player and starts playback)
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
 
   // Generate initials
   const initials = narratorName
@@ -225,40 +231,19 @@ export function NarratorDetailScreen() {
           </ScrollView>
         </View>
 
-        {/* Book List */}
+        {/* Book List - Using shared BookListItem for consistency */}
         <View style={styles.bookList}>
-          {sortedBooks.map((book) => {
-            const metadata = getMetadata(book);
-            return (
-              <TouchableOpacity
-                key={book.id}
-                style={styles.bookItem}
-                onPress={() => handleBookPress(book)}
-                activeOpacity={0.7}
-              >
-                <Image
-                  source={apiClient.getItemCoverUrl(book.id)}
-                  style={styles.bookCover}
-                  contentFit="cover"
-                  transition={150}
-                />
-                <View style={styles.bookInfo}>
-                  <Text style={styles.bookTitle} numberOfLines={2}>{metadata.title || 'Unknown'}</Text>
-                  <Text style={styles.bookAuthor} numberOfLines={1}>
-                    by {metadata.authorName || 'Unknown Author'}
-                  </Text>
-                  {metadata.seriesName && (
-                    <Text style={styles.bookSeries} numberOfLines={1}>{metadata.seriesName}</Text>
-                  )}
-                </View>
-                <HeartButton
-                  bookId={book.id}
-                  size={16}
-                  inactiveColor="rgba(255,255,255,0.4)"
-                />
-              </TouchableOpacity>
-            );
-          })}
+          {sortedBooks.map((book) => (
+            <BookListItem
+              key={book.id}
+              book={book}
+              onPress={() => handleBookPress(book)}
+              onPlayPress={() => handlePlayBook(book)}
+              showProgress={true}
+              showSwipe={true}
+              isLoadingThisBook={isPlayerLoading && currentBook?.id === book.id}
+            />
+          ))}
         </View>
       </ScrollView>
     </View>
@@ -388,39 +373,5 @@ const styles = StyleSheet.create({
   },
   bookList: {
     paddingHorizontal: 16,
-  },
-  bookItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_COLOR,
-    borderRadius: CARD_RADIUS,
-    padding: 12,
-    marginBottom: 8,
-  },
-  bookCover: {
-    width: 60,
-    height: 60,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: '#333',
-  },
-  bookInfo: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  bookTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  bookAuthor: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  bookSeries: {
-    fontSize: 12,
-    color: ACCENT,
-    marginTop: 2,
   },
 });
