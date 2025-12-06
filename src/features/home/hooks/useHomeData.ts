@@ -20,6 +20,7 @@ import {
   SeriesWithBooks,
   PlaylistDisplay,
 } from '../types';
+import { autoDownloadService } from '@/features/downloads/services/autoDownloadService';
 
 /**
  * Main hook for home screen data
@@ -31,10 +32,8 @@ export function useHomeData(): UseHomeDataReturn {
   // Get player state for current book
   const {
     currentBook: playerCurrentBook,
-    lastPlayedBookId,
     position,
     duration,
-    isPlaying,
   } = usePlayerStore();
 
   // Get library IDs and favorite series from store (reactive)
@@ -188,31 +187,17 @@ export function useHomeData(): UseHomeDataReturn {
     setLibraryBooks(allBooks);
   }, [libraryIds]);
 
-  // Current book is the most recently PLAYED book (not just opened)
-  // Only books that were actually played (play button pressed) are shown here
+  // Current book - prefer player's loaded book to avoid UI flicker
+  // The player always has the authoritative "current" book when audio is loaded
   const currentBook = useMemo(() => {
-    // If player is actively playing, show that book
-    if (isPlaying && playerCurrentBook) {
+    // If player has a book loaded (playing or paused), always show it
+    if (playerCurrentBook) {
       return playerCurrentBook;
     }
 
-    // If we have a lastPlayedBookId from this session, show that book
-    if (lastPlayedBookId) {
-      // Check if it matches the player's current book (has full data)
-      if (playerCurrentBook?.id === lastPlayedBookId) {
-        return playerCurrentBook;
-      }
-      // Otherwise find it in inProgressItems
-      const lastPlayedBook = inProgressItems.find(item => item.id === lastPlayedBookId);
-      if (lastPlayedBook) {
-        return lastPlayedBook;
-      }
-    }
-
-    // No book was played this session - show nothing or fall back to server's most recent
-    // Using server's most recent as initial state on app open
+    // Fallback: show most recent from server
     return inProgressItems[0] || null;
-  }, [isPlaying, playerCurrentBook, lastPlayedBookId, inProgressItems]);
+  }, [playerCurrentBook, inProgressItems]);
 
   // Current progress
   const currentProgress: PlaybackProgress | null = useMemo(() => {
@@ -244,13 +229,29 @@ export function useHomeData(): UseHomeDataReturn {
     return null;
   }, [currentBook, playerCurrentBook, position, duration]);
 
-  // Recently listened - last 3 books with progress (excluding current)
+  // Recently listened - now playing at top, then last few books with progress
   const recentlyListened = useMemo(() => {
-    const filtered = currentBook
+    // Start with books other than current
+    const others = currentBook
       ? inProgressItems.filter((item) => item.id !== currentBook.id)
       : inProgressItems;
-    return filtered.slice(0, 3);
+
+    // If there's a current book, put it first, then add 2 more
+    if (currentBook) {
+      return [currentBook, ...others.slice(0, 2)];
+    }
+
+    // No current book, just return top 3
+    return others.slice(0, 3);
   }, [inProgressItems, currentBook]);
+
+  // Auto-download top 3 most recently listened books (Audible-style)
+  useEffect(() => {
+    if (recentlyListened.length > 0) {
+      console.log('[useHomeData] Triggering auto-download sync for', recentlyListened.length, 'books');
+      autoDownloadService.syncWithContinueListening(recentlyListened);
+    }
+  }, [recentlyListened]);
 
   // Your Books - from library store (live updates when adding/removing)
   // Exclude current book from the list

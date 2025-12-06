@@ -39,7 +39,10 @@ import { PlaylistCard } from '../components/PlaylistCard';
 import { SpeedPanel } from '@/features/player/panels/SpeedPanel';
 import { SleepPanel } from '@/features/player/panels/SleepPanel';
 import { DetailsPanel } from '@/features/player/panels/DetailsPanel';
+import { ChaptersPanel } from '@/features/player/panels/ChaptersPanel';
+import { ProgressPanel } from '@/features/player/panels/ProgressPanel';
 import { BookListItem } from '@/shared/components';
+import { QueuePreview } from '@/features/queue';
 
 // Design constants
 import { COLORS, LAYOUT } from '../homeDesign';
@@ -69,9 +72,11 @@ export function HomeScreen() {
   const {
     currentBook: playerCurrentBook,
     isPlaying,
+    isLoading: isPlayerLoading,
     playbackRate,
     sleepTimer,
     loadBook,
+    viewBook,
     play,
     pause,
     setPlaybackRate,
@@ -92,7 +97,7 @@ export function HomeScreen() {
   } = useRobustSeekControl();
 
   // Panel state
-  type PanelMode = 'none' | 'speed' | 'sleep' | 'details';
+  type PanelMode = 'none' | 'speed' | 'sleep' | 'details' | 'chapters' | 'progress';
   const [panelMode, setPanelMode] = useState<PanelMode>('none');
   const [tempSpeed, setTempSpeed] = useState(playbackRate);
   const [tempSleepMins, setTempSleepMins] = useState(30);
@@ -124,16 +129,17 @@ export function HomeScreen() {
     prefetchBook();
   }, [currentBook?.id, playerCurrentBook?.id, loadBook]);
 
+  // Open player screen to view a book (without stopping current playback)
   const handleBookPress = useCallback(
     async (book: LibraryItem) => {
       try {
         const fullBook = await apiClient.getItem(book.id);
-        await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+        await viewBook(fullBook);
       } catch {
-        await loadBook(book, { autoPlay: false, showPlayer: false });
+        await viewBook(book);
       }
     },
-    [loadBook]
+    [viewBook]
   );
 
   // Play a book from list view (starts playback without opening player)
@@ -229,9 +235,26 @@ export function HomeScreen() {
     setPanelMode('none');
   }, [clearSleepTimer]);
 
-  // Cover tap shows details panel
-  const handleCoverPress = useCallback(() => {
-    setPanelMode(panelMode === 'details' ? 'none' : 'details');
+  // Cover tap opens player directly (no details on home)
+  const handleCoverPress = useCallback(async () => {
+    if (currentBook) {
+      try {
+        const fullBook = await apiClient.getItem(currentBook.id);
+        await viewBook(fullBook);
+      } catch {
+        await viewBook(currentBook);
+      }
+    }
+  }, [currentBook, viewBook]);
+
+  // Chapter tap opens chapters panel
+  const handleChapterPress = useCallback(() => {
+    setPanelMode(panelMode === 'chapters' ? 'none' : 'chapters');
+  }, [panelMode]);
+
+  // Time tap opens progress panel
+  const handleTimePress = useCallback(() => {
+    setPanelMode(panelMode === 'progress' ? 'none' : 'progress');
   }, [panelMode]);
 
   // Download button (placeholder for now)
@@ -253,10 +276,12 @@ export function HomeScreen() {
     }
   }, [currentBook, loadBook]);
 
-  // Long press cover opens player
-  const openPlayer = useCallback(async () => {
+  // Chapter selection from panel
+  const handleChapterSelect = useCallback(async (start: number) => {
     await ensureBookLoaded();
-    usePlayerStore.setState({ isPlayerVisible: true });
+    const { seekTo } = usePlayerStore.getState();
+    seekTo?.(start);
+    setPanelMode('none');
   }, [ensureBookLoaded]);
 
   // Skip handlers - press and hold for continuous seek (same as PlayerScreen)
@@ -335,6 +360,7 @@ export function HomeScreen() {
               book={currentBook}
               progress={currentProgress}
               isPlaying={isPlaying}
+              isLoading={isPlayerLoading}
               playbackSpeed={playbackRate}
               sleepTimer={sleepTimerMinutes}
               onPress={handleNowPlayingPress}
@@ -348,7 +374,8 @@ export function HomeScreen() {
               onSleepPress={handleSleepPress}
               onDownloadPress={handleDownloadPress}
               onClosePanel={() => setPanelMode('none')}
-              onLongPress={openPlayer}
+              onChapterPress={handleChapterPress}
+              onTimePress={handleTimePress}
               isSeeking={isSeeking}
               seekDelta={seekDelta}
               seekDirection={seekDirection}
@@ -379,11 +406,35 @@ export function HomeScreen() {
                     chaptersCount={(currentBook.media as any)?.chapters?.length || 0}
                     isLight={false}
                   />
+                ) : panelMode === 'chapters' ? (
+                  <ChaptersPanel
+                    chapters={(currentBook.media as any)?.chapters || []}
+                    currentChapter={
+                      ((currentBook.media as any)?.chapters || []).find((ch: any, i: number, arr: any[]) => {
+                        const currentTime = currentProgress?.currentTime || 0;
+                        const nextChapter = arr[i + 1];
+                        const chapterEnd = nextChapter?.start || (currentProgress?.duration || 0);
+                        return currentTime >= ch.start && currentTime < chapterEnd;
+                      })
+                    }
+                    onChapterSelect={handleChapterSelect}
+                    onClose={() => setPanelMode('none')}
+                    isLight={false}
+                  />
+                ) : panelMode === 'progress' ? (
+                  <ProgressPanel
+                    isLight={false}
+                    onViewChapters={() => setPanelMode('chapters')}
+                    onViewDetails={() => setPanelMode('details')}
+                  />
                 ) : null
               }
             />
           </View>
         )}
+
+        {/* Queue Preview - compact indicator on home */}
+        <QueuePreview variant="compact" />
 
         {/* Recently Listened Section - List view */}
         {recentlyListened.length > 0 && (

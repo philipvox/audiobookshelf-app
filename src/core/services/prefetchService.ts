@@ -172,6 +172,30 @@ class PrefetchService {
     }
   }
 
+  /**
+   * Prefetch covers for items most likely to be seen first.
+   * Call this during app initialization for instant image display.
+   * Priority: current book, recently listened, first visible items.
+   */
+  async prefetchCriticalCovers(items: LibraryItem[]): Promise<void> {
+    // Only prefetch first 20 covers - these are immediately visible
+    const criticalUrls = items
+      .slice(0, 20)
+      .map(item => apiClient.getItemCoverUrl(item.id))
+      .filter((url): url is string => !!url);
+
+    if (criticalUrls.length === 0) return;
+
+    const startTime = Date.now();
+    try {
+      await Image.prefetch(criticalUrls);
+      const elapsed = Date.now() - startTime;
+      console.log(`[Prefetch] Critical covers ready: ${criticalUrls.length} in ${elapsed}ms`);
+    } catch (err) {
+      console.warn('[Prefetch] Critical cover prefetch error:', err);
+    }
+  }
+
   getCachedItems(): LibraryItem[] {
     return this.cachedItems;
   }

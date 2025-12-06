@@ -5,12 +5,14 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, TouchableOpacity, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, TouchableOpacity, Pressable, StyleSheet, Dimensions, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import Svg, { Rect, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
+import { useCoverUrl } from '@/core/cache';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -50,35 +52,91 @@ const HomeButton: React.FC<{ size?: number; active?: boolean }> = ({
   </Svg>
 );
 
-// Player button - same size as other buttons, with play/pause icon
-const PlayerButton: React.FC<{ size?: number; isPlaying?: boolean }> = ({
+// Player button - shows blurred cover of currently playing book
+const PlayerButton: React.FC<{
+  size?: number;
+  isPlaying?: boolean;
+  coverUrl?: string | null;
+}> = ({
   size = BUTTON_SIZE,
-  isPlaying = false
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-    <Rect width="64" height="64" rx="32" fill={VIBRANT_GREEN} />
-    {isPlaying ? (
-      <>
-        {/* Pause icon - two bars centered */}
-        <Rect x="24" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
-        <Rect x="34" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
-      </>
-    ) : (
-      /* Play icon - triangle centered */
-      <Path
-        d="M26 21v22l18-11-18-11z"
-        fill="#1E1E1E"
-      />
-    )}
-  </Svg>
-);
+  isPlaying = false,
+  coverUrl,
+}) => {
+  // If we have a cover, show blurred image with play/pause overlay
+  if (coverUrl) {
+    return (
+      <View style={[playerButtonStyles.container, { width: size, height: size, borderRadius: size / 2 }]}>
+        <Image
+          source={{ uri: coverUrl }}
+          style={[playerButtonStyles.coverImage, { width: size, height: size, borderRadius: size / 2 }]}
+          blurRadius={3}
+        />
+        <BlurView
+          intensity={15}
+          style={[playerButtonStyles.blurOverlay, { borderRadius: size / 2 }]}
+          tint="dark"
+        />
+        <View style={playerButtonStyles.iconOverlay}>
+          <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
+            {isPlaying ? (
+              <>
+                {/* Pause icon */}
+                <Rect x="7" y="5" width="5" height="18" rx="1" fill="white" />
+                <Rect x="16" y="5" width="5" height="18" rx="1" fill="white" />
+              </>
+            ) : (
+              /* Play icon */
+              <Path d="M8 4v20l16-10L8 4z" fill="white" />
+            )}
+          </Svg>
+        </View>
+      </View>
+    );
+  }
+
+  // Fallback: green button with play/pause
+  return (
+    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      <Rect width="64" height="64" rx="32" fill={VIBRANT_GREEN} />
+      {isPlaying ? (
+        <>
+          <Rect x="24" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
+          <Rect x="34" y="22" width="6" height="20" rx="1" fill="#1E1E1E" />
+        </>
+      ) : (
+        <Path d="M26 21v22l18-11-18-11z" fill="#1E1E1E" />
+      )}
+    </Svg>
+  );
+};
+
+const playerButtonStyles = StyleSheet.create({
+  container: {
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  coverImage: {
+    position: 'absolute',
+  },
+  blurOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  iconOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
 
 // Inner component that uses navigation hooks
 function FloatingTabBarInner() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { currentBook, isPlaying, play, pause, isPlayerVisible } = usePlayerStore();
+  const { currentBook, isPlaying, play, pause, isPlayerVisible, closePlayer } = usePlayerStore();
   const [currentRouteName, setCurrentRouteName] = useState('HomeTab');
+
+  // Get cover URL for currently playing book
+  const coverUrl = useCoverUrl(currentBook?.id || '');
 
   // Listen for navigation state changes
   useEffect(() => {
@@ -97,15 +155,19 @@ function FloatingTabBarInner() {
     return unsubscribe;
   }, [navigation]);
 
-  if (isPlayerVisible) return null;
-
   const isHomeTab = currentRouteName === 'HomeTab';
 
   const handleSearchPress = () => {
+    if (isPlayerVisible) {
+      closePlayer();
+    }
     navigation.navigate('Search');
   };
 
   const handleHomePress = () => {
+    if (isPlayerVisible) {
+      closePlayer();
+    }
     navigation.navigate('Main', { screen: 'HomeTab' });
   };
 
@@ -148,14 +210,14 @@ function FloatingTabBarInner() {
           <SearchButton />
         </TouchableOpacity>
 
-        {/* Player Button - Same size as others with SVG icon */}
+        {/* Player Button - Blurred cover or green fallback */}
         <Pressable
           style={styles.button}
           onPress={handlePlayerPress}
           onLongPress={handlePlayerLongPress}
           delayLongPress={300}
         >
-          <PlayerButton isPlaying={isPlaying} />
+          <PlayerButton isPlaying={isPlaying} coverUrl={coverUrl} />
         </Pressable>
 
         {/* Home Button */}
@@ -221,6 +283,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999,
   },
   bottomGradient: {
     position: 'absolute',

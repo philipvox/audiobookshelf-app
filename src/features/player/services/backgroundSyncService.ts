@@ -183,16 +183,31 @@ class BackgroundSyncService {
     log(`  Retry count: ${item.retryCount}/${this.MAX_RETRIES}`);
 
     try {
+      let syncedViaSession = false;
+
       // Try session sync first (more accurate)
       if (item.sessionId) {
-        audioLog.network('POST', `/api/session/${item.sessionId}/sync`);
-        await apiClient.post(`/api/session/${item.sessionId}/sync`, {
-          currentTime: item.position,
-          timeListened: 0,
-        });
-        log('  Session sync successful');
-      } else {
-        // Fallback: update item progress directly
+        try {
+          audioLog.network('POST', `/api/session/${item.sessionId}/sync`);
+          await apiClient.post(`/api/session/${item.sessionId}/sync`, {
+            currentTime: item.position,
+            timeListened: 0,
+          });
+          log('  Session sync successful');
+          syncedViaSession = true;
+        } catch (sessionError: any) {
+          // Session gone (404) or other error - fallback to direct progress
+          if (sessionError.message === 'Resource not found') {
+            log('  Session expired (404), falling back to direct progress update');
+          } else {
+            log(`  Session sync failed (${sessionError.message}), falling back`);
+          }
+          // Fall through to direct progress update
+        }
+      }
+
+      // Direct progress update (fallback or primary if no session)
+      if (!syncedViaSession) {
         audioLog.network('PATCH', `/api/me/progress/${item.itemId}`);
         await apiClient.patch(`/api/me/progress/${item.itemId}`, {
           currentTime: item.position,
@@ -209,7 +224,7 @@ class BackgroundSyncService {
       log(`  Synced: ${item.itemId} @ ${formatDuration(item.position)}`);
       return true;
     } catch (error: any) {
-      // Handle failure
+      // Handle failure (network errors, etc.)
       item.retryCount++;
       item.lastAttempt = Date.now();
 

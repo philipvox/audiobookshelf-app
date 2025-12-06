@@ -1,6 +1,7 @@
 /**
  * src/features/player/components/ProgressBar.tsx
  * Scrubable progress bar for player
+ * Supports both full book progress and chapter-based progress modes
  */
 
 import React, { useState, useRef, useCallback } from 'react';
@@ -8,7 +9,7 @@ import { View, Text, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import Animated from 'react-native-reanimated';
-import { usePlayerStore } from '../stores/playerStore';
+import { usePlayerStore, useCurrentChapter } from '../stores/playerStore';
 
 function formatTime(seconds: number): string {
   if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00';
@@ -26,21 +27,37 @@ interface ProgressBarProps {
   textColor?: string;
   trackColor?: string;
   fillColor?: string;
+  mode?: 'bar' | 'chapters';  // 'bar' = full book, 'chapters' = current chapter
 }
 
-export function ProgressBar({ 
+export function ProgressBar({
   textColor = '#999',
   trackColor = 'rgba(255,255,255,0.2)',
   fillColor = '#fff',
+  mode = 'bar',
 }: ProgressBarProps) {
-  const { position, duration, seekTo } = usePlayerStore();
+  const { position, duration, seekTo, progressMode, isSeeking, seekPosition } = usePlayerStore();
+  const currentChapter = useCurrentChapter();
+
+  // Use mode prop if provided, otherwise use store progressMode
+  const effectiveMode = mode !== 'bar' ? mode : progressMode;
   const [isDragging, setIsDragging] = useState(false);
   const [dragPosition, setDragPosition] = useState(0);
   const [barWidth, setBarWidth] = useState(300);
   const barXRef = useRef(0);
 
-  const displayPosition = isDragging ? dragPosition : position;
-  const progress = duration > 0 ? Math.min(1, Math.max(0, displayPosition / duration)) : 0;
+  // Calculate display values based on mode
+  const isChapterMode = effectiveMode === 'chapters' && currentChapter;
+  const chapterStart = currentChapter?.start || 0;
+  const chapterEnd = currentChapter?.end || duration;
+  const chapterDuration = chapterEnd - chapterStart;
+
+  // Use seekPosition when seeking (via rewind/ff buttons), dragPosition when dragging progress bar
+  // This ensures chapter info updates correctly during continuous seeking
+  const displayPosition = isDragging ? dragPosition : (isSeeking ? seekPosition : position);
+  const effectiveDuration = isChapterMode ? chapterDuration : duration;
+  const effectivePosition = isChapterMode ? Math.max(0, displayPosition - chapterStart) : displayPosition;
+  const progress = effectiveDuration > 0 ? Math.min(1, Math.max(0, effectivePosition / effectiveDuration)) : 0;
 
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     setBarWidth(event.nativeEvent.layout.width);
@@ -50,8 +67,12 @@ export function ProgressBar({
   const calculatePosition = useCallback((x: number) => {
     const clampedX = Math.max(0, Math.min(x, barWidth));
     const percentage = clampedX / barWidth;
+    // In chapter mode, calculate position within chapter bounds
+    if (isChapterMode) {
+      return chapterStart + (percentage * chapterDuration);
+    }
     return percentage * duration;
-  }, [barWidth, duration]);
+  }, [barWidth, duration, isChapterMode, chapterStart, chapterDuration]);
 
   const handleDragStart = useCallback((x: number) => {
     setIsDragging(true);
@@ -124,10 +145,10 @@ export function ProgressBar({
       
       <View style={styles.timeRow}>
         <Text style={[styles.timeText, { color: textColor }]}>
-          {formatTime(displayPosition)}
+          {formatTime(effectivePosition)}
         </Text>
         <Text style={[styles.timeText, { color: textColor }]}>
-          {formatTime(duration)}
+          {isChapterMode && currentChapter?.title ? currentChapter.title : formatTime(effectiveDuration)}
         </Text>
       </View>
     </View>

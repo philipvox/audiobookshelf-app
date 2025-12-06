@@ -24,10 +24,19 @@ interface AuthContextType {
 }
 
 /**
+ * Initial session data (from AppInitializer)
+ */
+interface InitialSession {
+  user: User | null;
+  serverUrl: string | null;
+}
+
+/**
  * Auth provider props
  */
 interface AuthProviderProps {
   children: ReactNode;
+  initialSession?: InitialSession;
 }
 
 // Create context with undefined default (will be set by provider)
@@ -37,18 +46,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * Authentication provider component
  * Wraps the app and provides auth state to all children
  */
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [serverUrl, setServerUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export function AuthProvider({ children, initialSession }: AuthProviderProps) {
+  // If initialSession provided, use it directly (skip redundant restore)
+  const [user, setUser] = useState<User | null>(initialSession?.user ?? null);
+  const [serverUrl, setServerUrl] = useState<string | null>(initialSession?.serverUrl ?? null);
+  // Not loading if we have initial session (AppInitializer already did the work)
+  const [isLoading, setIsLoading] = useState(!initialSession);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Attempt to restore session on mount
+   * Attempt to restore session on mount (only if no initial session provided)
    */
   useEffect(() => {
-    restoreSession();
-  }, []);
+    if (!initialSession) {
+      restoreSession();
+    }
+  }, [initialSession]);
 
   /**
    * Restore session from stored credentials

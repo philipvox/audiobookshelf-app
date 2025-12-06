@@ -41,7 +41,7 @@ export function GenreDetailScreen() {
   const route = useRoute<RouteProp<{ GenreDetail: GenreDetailParams }, 'GenreDetail'>>();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
-  const { loadBook } = usePlayerStore();
+  const { loadBook, viewBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
 
   const genreName = route.params?.genreName || '';
 
@@ -114,11 +114,11 @@ export function GenreDetailScreen() {
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false, showPlayer: false });
+      await viewBook(book);
     }
-  }, [loadBook]);
+  }, [viewBook]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     try {
@@ -259,6 +259,7 @@ export function GenreDetailScreen() {
             onPlayPress={() => handlePlayBook(book)}
             showProgress={true}
             showSwipe={false}
+            isLoadingThisBook={isPlayerLoading && currentBook?.id === book.id}
           />
         ))}
 

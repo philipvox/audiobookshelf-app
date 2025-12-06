@@ -120,7 +120,7 @@ export function SearchScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ Search: SearchScreenParams }, 'Search'>>();
   const inputRef = useRef<TextInput>(null);
-  const { loadBook } = usePlayerStore();
+  const { loadBook, viewBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
 
   // Search state
   const [query, setQuery] = useState('');
@@ -287,11 +287,11 @@ export function SearchScreen() {
     if (query.trim()) saveSearch(query.trim());
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false, showPlayer: false });
+      await viewBook(book);
     }
-  }, [loadBook, query]);
+  }, [viewBook, query]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     Keyboard.dismiss();
@@ -612,6 +612,7 @@ export function SearchScreen() {
                   onPlayPress={() => handlePlayBook(book)}
                   showProgress={true}
                   showSwipe={true}
+                  isLoadingThisBook={isPlayerLoading && currentBook?.id === book.id}
                 />
               ))}
             </View>

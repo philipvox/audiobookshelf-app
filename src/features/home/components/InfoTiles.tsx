@@ -23,10 +23,63 @@ interface InfoTilesProps {
   playbackSpeed?: number;
   onSpeedPress?: () => void;
   onSleepPress?: () => void;
+  onChapterPress?: () => void;
+  onTimePress?: () => void;
   isSeeking?: boolean;
   seekDelta?: number;
   seekDirection?: 'forward' | 'backward' | null;
+  isPlaying?: boolean;
 }
+
+// 8-bit pixel play icon component
+function PixelPlayIcon() {
+  const pixelSize = scale(3);
+  return (
+    <View style={pixelPlayStyles.container}>
+      {/* Row 1: 1 pixel */}
+      <View style={pixelPlayStyles.row}>
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+      </View>
+      {/* Row 2: 2 pixels */}
+      <View style={pixelPlayStyles.row}>
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+      </View>
+      {/* Row 3: 3 pixels */}
+      <View style={pixelPlayStyles.row}>
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+      </View>
+      {/* Row 4: 2 pixels */}
+      <View style={pixelPlayStyles.row}>
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+      </View>
+      {/* Row 5: 1 pixel */}
+      <View style={pixelPlayStyles.row}>
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+      </View>
+    </View>
+  );
+}
+
+const pixelPlayStyles = StyleSheet.create({
+  container: {
+    marginLeft: scale(6),
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  pixel: {
+    backgroundColor: '#FFFFFF',
+    // Glow effect
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 2,
+  },
+});
 
 // Format seek delta for display (same as PlayerScreen)
 const formatSeekDelta = (seconds: number): string => {
@@ -49,12 +102,15 @@ export function InfoTiles({
   playbackSpeed = 1,
   onSpeedPress,
   onSleepPress,
+  onChapterPress,
+  onTimePress,
   isSeeking,
   seekDelta,
   seekDirection,
+  isPlaying = false,
 }: InfoTilesProps) {
   const formatSleepTimer = (minutes?: number | null): string => {
-    if (minutes === null || minutes === undefined || minutes === 0) return '0m';
+    if (minutes === null || minutes === undefined || minutes === 0) return '∞';
     // If value seems to be in seconds (> 120), convert it
     const mins = minutes > 120 ? Math.round(minutes / 60) : Math.round(minutes);
     if (mins >= 60) {
@@ -93,22 +149,35 @@ export function InfoTiles({
         <Text style={styles.titleText} numberOfLines={2}>
           {title}
         </Text>
-        <View style={styles.chapterContainer}>
+        <TouchableOpacity
+          style={styles.chapterContainer}
+          onPress={onChapterPress}
+          disabled={!onChapterPress}
+          activeOpacity={0.7}
+        >
           <Text style={styles.chapterText}>{chapterLine1}</Text>
           <Text style={styles.chapterText}>{chapterLine2}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Right Pill: Time, Speed & Sleep Timer */}
       <View style={styles.rightPill}>
         {/* Show seek delta when seeking, otherwise show time remaining */}
-        {isSeeking && seekDelta !== undefined && seekDelta !== 0 ? (
-          <Text style={[styles.timeText, styles.seekDeltaText]}>
-            {formatSeekDelta(seekDelta)}
-          </Text>
-        ) : (
-          <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
-        )}
+        <TouchableOpacity
+          style={styles.timeRow}
+          onPress={onTimePress}
+          disabled={!onTimePress}
+          activeOpacity={0.7}
+        >
+          {isSeeking && seekDelta !== undefined && seekDelta !== 0 ? (
+            <Text style={[styles.timeText, styles.seekDeltaText]}>
+              {formatSeekDelta(seekDelta)}
+            </Text>
+          ) : (
+            <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
+          )}
+          {isPlaying && !isSeeking && <PixelPlayIcon />}
+        </TouchableOpacity>
         <View style={styles.bottomRow}>
           <TouchableOpacity onPress={onSpeedPress} disabled={!onSpeedPress}>
             <Text style={styles.speedText}>{speedText}</Text>
@@ -189,6 +258,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255, 255, 255, 0.5)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   timeText: {
     fontFamily: 'PixelOperator',

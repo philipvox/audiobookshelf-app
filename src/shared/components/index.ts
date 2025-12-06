@@ -102,6 +102,7 @@ export {
 // =============================================================================
 export { SyncStatusBadge } from './SyncStatusBadge';
 export { DownloadButton } from './DownloadButton';
+export { CircularDownloadButton } from './CircularDownloadButton';
 
 // =============================================================================
 // INTERACTIVE BUTTONS

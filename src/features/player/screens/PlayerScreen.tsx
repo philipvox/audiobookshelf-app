@@ -1,26 +1,23 @@
 /**
  * src/features/player/screens/PlayerScreen.tsx
  *
- * Redesigned full-screen player matching Anima design.
- * Features: panels for speed/sleep/details
+ * Full-screen player using unified PlayerModule component.
+ * Features: blurred background, panels for speed/sleep/details/chapters
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
-  TouchableOpacity,
   StyleSheet,
   StatusBar,
   Animated,
-  Text,
   Dimensions,
   PanResponder,
+  ScrollView,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { Image as RNImage } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getColors } from 'react-native-image-colors';
 
@@ -28,65 +25,26 @@ import { getColors } from 'react-native-image-colors';
 import {
   usePlayerStore,
   useCurrentChapterIndex,
-  useChapterProgress,
   useBookProgress,
+  useViewingBook,
+  usePlayingBook,
+  useIsViewingDifferentBook,
 } from '../stores/playerStore';
 import { useRobustSeekControl } from '../hooks/useRobustSeekControl';
 import { useCoverUrl } from '@/core/cache';
-import { HeartButton } from '@/shared/components';
 import { getTitle } from '@/shared/utils/metadata';
-import { formatTime, isColorLight, pickMostSaturated } from '../utils';
+import { pickMostSaturated } from '../utils';
 import { matchToPalette } from '@/shared/utils/colorPalette';
-import { theme } from '@/shared/theme';
 
 // Components
-import { DetailsPanel, SpeedPanel, SleepPanel } from '../panels';
-import { CassetteTape } from '../components/CassetteTape';
-
-// Assets
-const playButtonImage = require('../assets/play-player.png');
-const pauseButtonImage = require('../assets/pause-player.png');
-const rewindButtonImage = require('../assets/rewind-player.png');
-const fastforwardButtonImage = require('../assets/fastforward-player.png');
+import { PlayerModule } from '../components/PlayerModule';
+import { DetailsPanel, SpeedPanel, SleepPanel, ChaptersPanel, ProgressPanel } from '../panels';
+import { QueuePreview } from '@/features/queue';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-// Design constants from Anima
-const COVER_SIZE = scale(285);
-const BUTTON_SIZE = scale(130); // All buttons same size
-const PLAY_BUTTON_SIZE = scale(140); // All buttons same size
-
-const BUTTON_GAP = scale(0);
-const INFO_CONTAINER_HEIGHT = scale(100); // Height for info tiles only (no cassette)
-
-// SVG Icons
-const DownloadIcon = ({ size = 24, color = '#B3B3B3' }) => (
-  <Svg width={size} height={size} viewBox="0 0 21 21" fill="none">
-    <Path
-      d="M18.375 13.125V16.625C18.375 17.0891 18.1906 17.5342 17.8624 17.8624C17.5342 18.1906 17.0891 18.375 16.625 18.375H4.375C3.91087 18.375 3.46575 18.1906 3.13756 17.8624C2.80937 17.5342 2.625 17.0891 2.625 16.625V13.125M6.125 8.75L10.5 13.125M10.5 13.125L14.875 8.75M10.5 13.125V2.625"
-      stroke={color}
-      strokeWidth={1.97}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-
-type PanelMode = 'none' | 'details' | 'speed' | 'sleep' | 'progress';
-
-// Format seek delta for display
-const formatSeekDelta = (seconds: number): string => {
-  const absSeconds = Math.abs(seconds);
-  const sign = seconds >= 0 ? '+' : '-';
-  if (absSeconds < 60) {
-    return `${sign}${Math.round(absSeconds)}s`;
-  }
-  const mins = Math.floor(absSeconds / 60);
-  const secs = Math.round(absSeconds % 60);
-  return secs > 0 ? `${sign}${mins}m ${secs}s` : `${sign}${mins}m`;
-};
+type PanelMode = 'none' | 'details' | 'speed' | 'sleep' | 'chapters' | 'progress';
 
 export function PlayerScreen() {
   const insets = useSafeAreaInsets();
@@ -102,13 +60,30 @@ export function PlayerScreen() {
     playbackRate,
     sleepTimer,
     chapters: storeChapters,
+    viewingChapters,
     closePlayer,
     play,
     pause,
     setPlaybackRate,
     setSleepTimer,
     clearSleepTimer,
+    playViewingBook,
+    seekTo,
+    controlMode,
+    progressMode,
+    setControlMode,
+    setProgressMode,
+    nextChapter,
+    prevChapter,
   } = usePlayerStore();
+
+  // Viewing vs Playing book
+  const viewingBook = useViewingBook();
+  const playingBook = usePlayingBook();
+  const isViewingDifferent = useIsViewingDifferentBook();
+
+  // Use viewingBook for display, fallback to currentBook
+  const displayBook = viewingBook || currentBook;
 
   // Seek control
   const {
@@ -123,13 +98,12 @@ export function PlayerScreen() {
 
   // Selectors
   const chapterIndex = useCurrentChapterIndex();
-  const chapterProgress = useChapterProgress();
   const bookProgress = useBookProgress();
 
   const displayPosition = isSeeking ? seekPosition : position;
 
-  // Cover URL with cache busting (use empty string if no book, hook needs to be called unconditionally)
-  const coverUrl = useCoverUrl(currentBook?.id || '');
+  // Cover URL
+  const coverUrl = useCoverUrl(displayBook?.id || '');
 
   // Animation
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -144,17 +118,22 @@ export function PlayerScreen() {
   const [accentColor, setAccentColor] = useState('#C8FF00');
 
   // Derived values
-  const title = currentBook ? getTitle(currentBook) : '';
-  const media = currentBook?.media as any;
-  const chapters = storeChapters.length > 0 ? storeChapters : (media?.chapters || []);
-  const chapterNumber = chapterIndex + 1;
+  const media = displayBook?.media as any;
+  const chapters = viewingChapters.length > 0 ? viewingChapters : (storeChapters.length > 0 ? storeChapters : (media?.chapters || []));
 
   let bookDuration = media?.duration || 0;
   if (bookDuration <= 0 && storeDuration > 0) bookDuration = storeDuration;
 
-  const timeRemaining = formatTime(Math.max(0, bookDuration - displayPosition));
   const sleepTimerMinutes = sleepTimer ? Math.ceil(sleepTimer / 60) : null;
 
+  // Progress for PlayerModule
+  const playerProgress = displayBook ? {
+    currentTime: displayPosition,
+    duration: bookDuration,
+    progress: bookProgress,
+    isFinished: false,
+    lastUpdate: Date.now(),
+  } : null;
 
   // Pan responder for swipe down to close
   const panResponder = useRef(
@@ -183,7 +162,7 @@ export function PlayerScreen() {
 
   // Color extraction
   useEffect(() => {
-    if (!coverUrl || !currentBook) return;
+    if (!coverUrl || !displayBook) return;
     let mounted = true;
 
     const extractColors = async () => {
@@ -191,7 +170,7 @@ export function PlayerScreen() {
         const result = await getColors(coverUrl, {
           fallback: '#C8FF00',
           cache: true,
-          key: currentBook.id,
+          key: displayBook.id,
         });
 
         if (!mounted) return;
@@ -220,11 +199,11 @@ export function PlayerScreen() {
 
     extractColors();
     return () => { mounted = false; };
-  }, [coverUrl, currentBook?.id]);
+  }, [coverUrl, displayBook?.id]);
 
   // Slide animation
   useEffect(() => {
-    if (isPlayerVisible && currentBook) {
+    if (isPlayerVisible && displayBook) {
       slideAnim.setValue(SCREEN_HEIGHT);
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -233,7 +212,7 @@ export function PlayerScreen() {
         useNativeDriver: true,
       }).start();
     }
-  }, [isPlayerVisible, currentBook?.id]);
+  }, [isPlayerVisible, displayBook?.id]);
 
   // Handlers
   const handleClose = useCallback(() => {
@@ -247,26 +226,47 @@ export function PlayerScreen() {
   }, [closePlayer, slideAnim, isSeeking, cancelSeek]);
 
   const handlePlayPause = useCallback(async () => {
+    if (isViewingDifferent) {
+      await playViewingBook();
+      return;
+    }
     if (isPlaying) await pause();
     else await play();
-  }, [isPlaying, pause, play]);
-
+  }, [isPlaying, pause, play, isViewingDifferent, playViewingBook]);
 
   const handleRewindPressIn = useCallback(async () => {
-    await startContinuousSeek('backward');
-  }, [startContinuousSeek]);
+    if (controlMode === 'chapter') {
+      // Chapter mode: immediate chapter skip on press
+      await prevChapter();
+    } else {
+      // Rewind mode: continuous time skip
+      await startContinuousSeek('backward');
+    }
+  }, [controlMode, startContinuousSeek, prevChapter]);
 
   const handleRewindPressOut = useCallback(async () => {
-    await stopContinuousSeek();
-  }, [stopContinuousSeek]);
+    if (controlMode === 'rewind') {
+      await stopContinuousSeek();
+    }
+    // Chapter mode doesn't need press out handling
+  }, [controlMode, stopContinuousSeek]);
 
   const handleFFPressIn = useCallback(async () => {
-    await startContinuousSeek('forward');
-  }, [startContinuousSeek]);
+    if (controlMode === 'chapter') {
+      // Chapter mode: immediate chapter skip on press
+      await nextChapter();
+    } else {
+      // Rewind mode: continuous time skip
+      await startContinuousSeek('forward');
+    }
+  }, [controlMode, startContinuousSeek, nextChapter]);
 
   const handleFFPressOut = useCallback(async () => {
-    await stopContinuousSeek();
-  }, [stopContinuousSeek]);
+    if (controlMode === 'rewind') {
+      await stopContinuousSeek();
+    }
+    // Chapter mode doesn't need press out handling
+  }, [controlMode, stopContinuousSeek]);
 
   const handleSpeedPress = useCallback(() => {
     setTempSpeed(playbackRate);
@@ -279,6 +279,10 @@ export function PlayerScreen() {
 
   const handleCoverPress = useCallback(() => {
     setPanelMode(panelMode === 'details' ? 'none' : 'details');
+  }, [panelMode]);
+
+  const handleChapterPress = useCallback(() => {
+    setPanelMode(panelMode === 'chapters' ? 'none' : 'chapters');
   }, [panelMode]);
 
   const handleTimePress = useCallback(() => {
@@ -302,7 +306,78 @@ export function PlayerScreen() {
     setPanelMode('none');
   }, [clearSleepTimer]);
 
-  if (!isPlayerVisible || !currentBook) return null;
+  const handleChapterSelect = useCallback((chapterStart: number) => {
+    seekTo?.(chapterStart);
+    setPanelMode('none');
+  }, [seekTo]);
+
+  const handleClosePanel = useCallback(() => {
+    setPanelMode('none');
+  }, []);
+
+  // Render panel content
+  const renderPanelContent = () => {
+    switch (panelMode) {
+      case 'details':
+        return (
+          <DetailsPanel
+            book={displayBook!}
+            duration={bookDuration}
+            chaptersCount={chapters.length}
+            isLight={false}
+            onClose={handleClose}
+          />
+        );
+      case 'speed':
+        return (
+          <SpeedPanel
+            tempSpeed={tempSpeed}
+            setTempSpeed={setTempSpeed}
+            onApply={handleApplySpeed}
+            onClose={handleClosePanel}
+            isLight={false}
+          />
+        );
+      case 'sleep':
+        return (
+          <SleepPanel
+            tempSleepMins={tempSleepMins}
+            setTempSleepMins={setTempSleepMins}
+            sleepInputValue={sleepInputValue}
+            setSleepInputValue={setSleepInputValue}
+            onClear={handleClearSleep}
+            onStart={handleStartSleep}
+            isLight={false}
+          />
+        );
+      case 'chapters':
+        return (
+          <ChaptersPanel
+            chapters={chapters}
+            currentChapter={chapters[chapterIndex]}
+            onChapterSelect={handleChapterSelect}
+            onClose={handleClosePanel}
+            isLight={false}
+          />
+        );
+      case 'progress':
+        return (
+          <ProgressPanel
+            isLight={false}
+            controlMode={controlMode}
+            progressMode={progressMode}
+            onControlModeChange={setControlMode}
+            onProgressModeChange={setProgressMode}
+            onViewChapters={() => setPanelMode('chapters')}
+            onViewDetails={() => setPanelMode('details')}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  if (!isPlayerVisible || !displayBook) return null;
 
   return (
     <Animated.View
@@ -311,12 +386,9 @@ export function PlayerScreen() {
     >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      {/* Background - Same style as HomeBackground */}
+      {/* Background - Blurred cover + gradient */}
       <View style={StyleSheet.absoluteFill}>
-        {/* Base color */}
         <View style={styles.baseColor} />
-
-        {/* Blurred cover image */}
         {coverUrl && (
           <View style={styles.imageContainer}>
             <RNImage
@@ -326,12 +398,9 @@ export function PlayerScreen() {
               blurRadius={15}
             />
             <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="dark" />
-            {/* Brightness overlay */}
             <View style={styles.brightnessOverlay} />
           </View>
         )}
-
-        {/* Gradient overlay to black at bottom */}
         <LinearGradient
           colors={[
             'rgba(0, 0, 0, 0.1)',
@@ -345,238 +414,54 @@ export function PlayerScreen() {
       </View>
 
       {/* Main content */}
-      <View style={[styles.content, { paddingTop: insets.top + scale(10) }]}>
-        {/* Top icons row */}
-        <View style={styles.topRow}>
-          <TouchableOpacity style={styles.topIcon} onPress={() => { /* TODO: Download functionality */ }}>
-            <DownloadIcon size={scale(24)} color={accentColor} />
-          </TouchableOpacity>
-          {currentBook && (
-            <HeartButton
-              bookId={currentBook.id}
-              size={scale(18)}
-              style={styles.topIcon}
-            />
-          )}
-        </View>
+      <ScrollView
+        style={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContentContainer,
+          { paddingTop: insets.top + scale(40), paddingBottom: insets.bottom + scale(100) }
+        ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <PlayerModule
+          book={displayBook}
+          progress={playerProgress}
+          isPlaying={isPlaying && !isViewingDifferent}
+          isLoading={isLoading}
+          playbackSpeed={playbackRate}
+          sleepTimer={sleepTimerMinutes}
+          onCoverPress={handleCoverPress}
+          onPlay={handlePlayPause}
+          onSkipBack={handleRewindPressOut}
+          onSkipForward={handleFFPressOut}
+          onSkipBackPressIn={handleRewindPressIn}
+          onSkipBackPressOut={handleRewindPressOut}
+          onSkipForwardPressIn={handleFFPressIn}
+          onSkipForwardPressOut={handleFFPressOut}
+          onSpeedPress={handleSpeedPress}
+          onSleepPress={handleSleepPress}
+          onChapterPress={handleChapterPress}
+          onTimePress={handleTimePress}
+          isSeeking={isSeeking}
+          seekDelta={seekDelta}
+          seekDirection={seekDirection}
+          panelMode={panelMode}
+          panelContent={renderPanelContent()}
+          onClosePanel={handleClosePanel}
+          variant="fullscreen"
+        />
 
-        {/* Cover area OR Panel (panels replace cover) */}
-        {panelMode === 'none' ? (
-          /* Cover artwork - tappable for details */
-          <TouchableOpacity
-            style={styles.coverContainer}
-            onPress={handleCoverPress}
-            activeOpacity={0.9}
-          >
-            <Image
-              source={coverUrl}
-              style={styles.coverImage}
-              contentFit="cover"
-              transition={200}
-            />
-          </TouchableOpacity>
-        ) : (
-          /* Panel content - full width, background shows through */
-          <View style={styles.panelArea}>
-            <TouchableOpacity
-              style={styles.panelCloseArea}
-              onPress={() => setPanelMode('none')}
-              activeOpacity={1}
-            >
-              <Text style={styles.closeX}>✕</Text>
-            </TouchableOpacity>
-            <View style={styles.panelInner}>
-              {panelMode === 'details' && (
-                <DetailsPanel
-                  book={currentBook}
-                  duration={bookDuration}
-                  chaptersCount={chapters.length}
-                  isLight={false}
-                />
-              )}
-              {panelMode === 'speed' && (
-                <SpeedPanel
-                  tempSpeed={tempSpeed}
-                  setTempSpeed={setTempSpeed}
-                  onApply={handleApplySpeed}
-                  onClose={() => setPanelMode('none')}
-                  isLight={false}
-                />
-              )}
-              {panelMode === 'sleep' && (
-                <SleepPanel
-                  tempSleepMins={tempSleepMins}
-                  setTempSleepMins={setTempSleepMins}
-                  sleepInputValue={sleepInputValue}
-                  setSleepInputValue={setSleepInputValue}
-                  onClear={handleClearSleep}
-                  onStart={handleStartSleep}
-                  isLight={false}
-                />
-              )}
-              {panelMode === 'progress' && (
-                <View style={styles.progressPanel}>
-                  <Text style={styles.progressTitle}>Progress</Text>
-                  <View style={styles.progressBarContainer}>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          { width: `${bookProgress * 100}%`, backgroundColor: accentColor }
-                        ]}
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.progressTimes}>
-                    <Text style={styles.progressTimeText}>{formatTime(displayPosition)}</Text>
-                    <Text style={styles.progressTimeText}>{formatTime(bookDuration)}</Text>
-                  </View>
-                </View>
-              )}
-            </View>
+        {/* Queue preview - shows when panel not open */}
+        {panelMode === 'none' && (
+          <View style={styles.queueSection}>
+            <QueuePreview variant="full" />
           </View>
         )}
+      </ScrollView>
 
-        {/* Info Container */}
-        <View style={styles.infoWrapper}>
-          {/* Gray background container */}
-          <View style={styles.infoBackground}>
-            {/* Border highlight */}
-            <View style={styles.borderHighlight} />
-          </View>
-
-          {/* Cassette Tape Progress */}
-          <View style={styles.cassetteContainer}>
-            <CassetteTape
-              progress={bookProgress}
-              isPlaying={isPlaying}
-              isRewinding={isSeeking && seekDirection === 'backward'}
-              isFastForwarding={isSeeking && seekDirection === 'forward'}
-              accentColor={accentColor}
-              bookId={currentBook?.id}
-              chapterIndex={chapterIndex}
-            />
-          </View>
-
-          {/* Info Tiles */}
-          <View style={styles.infoTilesContainer}>
-            {/* Left pill - Title & Chapter */}
-            <View style={styles.leftPill}>
-              <View style={styles.blurLayer} pointerEvents="none">
-                <Text style={[styles.titleText, styles.blurText]} numberOfLines={2}>
-                  {title}
-                </Text>
-                <View style={styles.chapterContainer}>
-                  <Text style={[styles.chapterText, styles.blurText]}>Chpt.</Text>
-                  <Text style={[styles.chapterText, styles.blurText]}>{chapterNumber}</Text>
-                </View>
-              </View>
-              <Text style={styles.titleText} numberOfLines={2}>
-                {title}
-              </Text>
-              <View style={styles.chapterContainer}>
-                <Text style={styles.chapterText}>Chpt.</Text>
-                <Text style={styles.chapterText}>{chapterNumber}</Text>
-              </View>
-            </View>
-
-            {/* Right pill - Time, Speed, Sleep */}
-            <View style={styles.rightPill}>
-              <TouchableOpacity onPress={handleTimePress} style={styles.timeRow}>
-                {/* Show seek delta when seeking, otherwise show time remaining */}
-                {isSeeking && seekDelta !== 0 ? (
-                  <Text style={[styles.timeText, styles.seekDeltaText]}>
-                    {formatSeekDelta(seekDelta)}
-                  </Text>
-                ) : (
-                  <Text style={styles.timeText}>{timeRemaining}</Text>
-                )}
-                {/* 8-bit play icon - only show when playing */}
-                {isPlaying && !isSeeking && (
-                  <View style={styles.pixelPlayIcon}>
-                    <View style={styles.pixelRow}>
-                      <View style={styles.pixel} />
-                    </View>
-                    <View style={styles.pixelRow}>
-                      <View style={styles.pixel} />
-                      <View style={styles.pixel} />
-                    </View>
-                    <View style={styles.pixelRow}>
-                      <View style={styles.pixel} />
-                      <View style={styles.pixel} />
-                      <View style={styles.pixel} />
-                    </View>
-                    <View style={styles.pixelRow}>
-                      <View style={styles.pixel} />
-                      <View style={styles.pixel} />
-                    </View>
-                    <View style={styles.pixelRow}>
-                      <View style={styles.pixel} />
-                    </View>
-                  </View>
-                )}
-              </TouchableOpacity>
-              <View style={styles.bottomRow}>
-                <TouchableOpacity onPress={handleSpeedPress}>
-                  <Text style={styles.speedText}>{playbackRate.toFixed(2)}x</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleSleepPress}>
-                  <Text style={styles.sleepTimerText}>
-                    {sleepTimerMinutes ? `${sleepTimerMinutes}m` : '∞'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Playback controls - below the gray container, all in a row */}
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPressIn={handleRewindPressIn}
-            onPressOut={handleRewindPressOut}
-            activeOpacity={0.8}
-          >
-            <Image
-              source={rewindButtonImage}
-              style={styles.controlButtonImage}
-              contentFit="contain"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPressIn={handleFFPressIn}
-            onPressOut={handleFFPressOut}
-            activeOpacity={0.8}
-          >
-            <Image
-              source={fastforwardButtonImage}
-              style={styles.controlButtonImage}
-              contentFit="contain"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.playButton}
-            onPress={handlePlayPause}
-            activeOpacity={0.8}
-          >
-            <Image
-              source={isPlaying ? pauseButtonImage : playButtonImage}
-              style={styles.playButtonImage}
-              contentFit="contain"
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
     </Animated.View>
   );
 }
-
-const FONT_SIZE = 20;
-const LINE_HEIGHT = 21;
 
 const styles = StyleSheet.create({
   container: {
@@ -592,16 +477,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   imageContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.65,
+    ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
   backgroundImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.65,
+    height: SCREEN_HEIGHT,
     transform: [{ scale: 1.1 }],
     opacity: 0.8,
   },
@@ -609,302 +490,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  content: {
+  scrollContent: {
     flex: 1,
+  },
+  scrollContentContainer: {
     alignItems: 'center',
   },
-
-  // Top row
-  topRow: {
-    width: SCREEN_WIDTH,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(32),
-    marginBottom: scale(20),
-  },
-  topIcon: {
-    width: scale(32),
-    height: scale(32),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Cover
-  coverContainer: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
-    borderRadius: scale(9),
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 10,
-    marginBottom: scale(40),
-  },
-  coverImage: {
+  queueSection: {
     width: '100%',
-    height: '100%',
-  },
-
-  // Info wrapper (Rectangle 21 style)
-  infoWrapper: {
-    width: SCREEN_WIDTH - scale(20),
-    paddingHorizontal: scale(10),
-    paddingTop: scale(12),
-    paddingBottom: scale(12),
-    marginBottom: scale(-10),
-    zIndex: 100,
-  },
-  infoBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#262626',
-    borderRadius: scale(5),
-    // Subtle gradients for depth effect
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  borderHighlight: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: scale(5),
-    borderWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  cassetteContainer: {
-    alignItems: 'center',
-    marginBottom: scale(8),
-  },
-
-  // Info tiles
-  infoTilesContainer: {
-    flexDirection: 'row',
-    gap: scale(7),
-  },
-  leftPill: {
-    flex: 1,
-    height: scale(61),
-    backgroundColor: '#000000',
-    borderRadius: scale(5),
-    paddingHorizontal: scale(11),
-    paddingVertical: scale(7),
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  blurLayer: {
-    ...StyleSheet.absoluteFillObject,
-    paddingHorizontal: scale(11),
-    paddingVertical: scale(7),
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    opacity: 0.6,
-  },
-  blurText: {
-    textShadowColor: 'rgba(255, 255, 255, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  rightPill: {
-    width: scale(135),
-    height: scale(61),
-    backgroundColor: '#000000',
-    borderRadius: scale(5),
-    paddingHorizontal: scale(11),
-    paddingVertical: scale(6),
-    justifyContent: 'space-between',
-  },
-  titleText: {
-    flex: 1,
-    fontFamily: 'PixelOperator',
-    fontSize: scale(FONT_SIZE),
-    fontWeight: '400',
-    color: '#FFFFFF',
-    lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  chapterContainer: {
-    alignItems: 'flex-end',
-  },
-  chapterText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(FONT_SIZE),
-    fontWeight: '400',
-    color: '#FFFFFF',
-    lineHeight: scale(LINE_HEIGHT),
-    textAlign: 'right',
-    textShadowColor: 'rgba(255, 255, 255, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timeText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(FONT_SIZE),
-    fontWeight: '400',
-    color: '#FFFFFF',
-    lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  seekDeltaText: {
-    color: '#C8FF00',
-    textShadowColor: 'rgba(200, 255, 0, 1)',
-  },
-  // 8-bit pixel play icon - smaller version
-  pixelPlayIcon: {
-    width: scale(6),
-    height: scale(9),
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    marginLeft: scale(4),
-  },
-  pixelRow: {
-    flexDirection: 'row',
-  },
-  pixel: {
-    width: scale(2),
-    height: scale(2),
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#FFFFFF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  speedText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(FONT_SIZE),
-    fontWeight: '400',
-    color: '#FFFFFF',
-    lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(255, 255, 255, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  sleepTimerText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(FONT_SIZE),
-    fontWeight: '400',
-    color: '#F12802',
-    lineHeight: scale(LINE_HEIGHT),
-    textShadowColor: 'rgba(241, 40, 2, 1)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-
-  // Controls - below the gray container
-  controlsContainer: {
-    width: SCREEN_WIDTH + scale(100),
-    flexDirection: 'row',
-    alignItems: 'center',
-    // justifyContent: 'flex-start',
-    marginLeft: scale(130),
-    gap: BUTTON_GAP,
-  },
-  controlButton: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
-    marginLeft: scale(-3),
-  },
-  controlButtonImage: {
-    width: '100%',
-    height: '100%',
-  },
-  playButton: {
-    width: PLAY_BUTTON_SIZE,
-    height: PLAY_BUTTON_SIZE,
-    marginLeft: scale(-20),
-    marginTop: scale(-7),
-  },
-  playButtonImage: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Panel area (full width, background shows through)
-  panelArea: {
-    width: SCREEN_WIDTH - scale(32),
-    height: COVER_SIZE,
-    marginBottom: scale(40),
-  },
-  panelCloseArea: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: scale(40),
-    height: scale(40),
-    zIndex: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeX: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 20,
-    fontWeight: '300',
-  },
-  panelInner: {
-    flex: 1,
-    paddingTop: scale(8),
-    paddingHorizontal: scale(4),
-  },
-
-  // Progress panel
-  progressPanel: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  progressTitle: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(24),
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: scale(20),
-  },
-  progressBarContainer: {
-    paddingHorizontal: scale(10),
-    marginBottom: scale(12),
-  },
-  progressBarBg: {
-    height: scale(8),
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: scale(4),
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#C8FF00',
-    borderRadius: scale(4),
-  },
-  progressTimes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(10),
-  },
-  progressTimeText: {
-    fontFamily: 'PixelOperator',
-    fontSize: scale(16),
-    color: '#FFFFFF',
-  },
-
-  // Old panel styles (can be removed later)
-  panelContent: {
-    width: SCREEN_WIDTH - scale(40),
-    maxHeight: SCREEN_HEIGHT * 0.6,
-    backgroundColor: '#1a1a1a',
-    borderRadius: scale(12),
-    padding: scale(16),
+    marginTop: scale(24),
   },
 });

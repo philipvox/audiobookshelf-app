@@ -209,7 +209,17 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     try {
       // Try to load from AsyncStorage first
       if (!forceRefresh) {
-        const cached = await AsyncStorage.getItem(CACHE_KEY);
+        let cached: string | null = null;
+        try {
+          cached = await AsyncStorage.getItem(CACHE_KEY);
+        } catch (cacheReadError: any) {
+          // Handle "Row too big" error on Android - cache is corrupted/too large
+          console.warn('[LibraryCache] Cache read failed (likely too large), clearing:', cacheReadError.message);
+          try {
+            await AsyncStorage.removeItem(CACHE_KEY);
+          } catch {}
+          // Continue to fetch fresh data
+        }
         if (cached) {
           const parsed: CachedLibrary = JSON.parse(cached);
           const age = Date.now() - parsed.timestamp;
@@ -299,13 +309,23 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         }
       }
 
-      // Save to AsyncStorage
+      // Save to AsyncStorage (skip if data is too large to prevent CursorWindow errors)
       const cacheData: CachedLibrary = {
         items,
         timestamp: Date.now(),
         libraryId,
       };
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      const cacheJson = JSON.stringify(cacheData);
+      // Android CursorWindow limit is 2MB, stay well under to be safe
+      if (cacheJson.length < 1.5 * 1024 * 1024) {
+        try {
+          await AsyncStorage.setItem(CACHE_KEY, cacheJson);
+        } catch (writeError: any) {
+          console.warn('[LibraryCache] Failed to save cache (too large?):', writeError.message);
+        }
+      } else {
+        console.warn(`[LibraryCache] Cache too large to persist (${(cacheJson.length / 1024 / 1024).toFixed(1)}MB), using in-memory only`);
+      }
 
       console.log(`[LibraryCache] Cached ${items.length} items, ${indexes.authors.size} authors`);
 
@@ -516,4 +536,69 @@ export function getAllSeries(): SeriesInfo[] {
 
 export function getAllGenres(): string[] {
   return useLibraryCache.getState().genres;
+}
+
+/**
+ * Get the next book in a series based on the current book
+ * Returns null if the book is not in a series or there's no next book
+ */
+export function getNextBookInSeries(currentBook: LibraryItem): LibraryItem | null {
+  const metadata = (currentBook.media?.metadata as any) || {};
+  const seriesName = metadata.seriesName || '';
+
+  console.log('[getNextBookInSeries] Input seriesName:', seriesName);
+
+  if (!seriesName) {
+    console.log('[getNextBookInSeries] No series name, returning null');
+    return null;
+  }
+
+  // Extract current sequence number
+  const seqMatch = seriesName.match(/#([\d.]+)/);
+  if (!seqMatch) {
+    console.log('[getNextBookInSeries] No sequence number found in:', seriesName);
+    return null;
+  }
+  const currentSeq = parseFloat(seqMatch[1]);
+  console.log('[getNextBookInSeries] Current sequence:', currentSeq);
+
+  // Get the series from cache
+  const cleanSeriesName = seriesName.replace(/\s*#[\d.]+$/, '').trim();
+  console.log('[getNextBookInSeries] Clean series name:', cleanSeriesName);
+
+  const seriesInfo = useLibraryCache.getState().getSeries(cleanSeriesName);
+  console.log('[getNextBookInSeries] Series info:', seriesInfo ? `${seriesInfo.books.length} books` : 'null');
+
+  if (!seriesInfo || seriesInfo.books.length === 0) {
+    console.log('[getNextBookInSeries] No series info found');
+    return null;
+  }
+
+  // Find the current book's index in the sorted series
+  const currentIndex = seriesInfo.books.findIndex(book => book.id === currentBook.id);
+  console.log('[getNextBookInSeries] Current index:', currentIndex, 'of', seriesInfo.books.length);
+
+  // Return the next book if it exists
+  if (currentIndex >= 0 && currentIndex < seriesInfo.books.length - 1) {
+    const nextBook = seriesInfo.books[currentIndex + 1];
+    console.log('[getNextBookInSeries] Found next book by index:', (nextBook.media?.metadata as any)?.title);
+    return nextBook;
+  }
+
+  // Fallback: find next by sequence number if book wasn't found by ID
+  for (const book of seriesInfo.books) {
+    const bookMetadata = (book.media?.metadata as any) || {};
+    const bookSeriesName = bookMetadata.seriesName || '';
+    const bookSeqMatch = bookSeriesName.match(/#([\d.]+)/);
+    if (bookSeqMatch) {
+      const bookSeq = parseFloat(bookSeqMatch[1]);
+      if (bookSeq > currentSeq) {
+        console.log('[getNextBookInSeries] Found next book by sequence:', bookMetadata.title);
+        return book;
+      }
+    }
+  }
+
+  console.log('[getNextBookInSeries] No next book found');
+  return null;
 }

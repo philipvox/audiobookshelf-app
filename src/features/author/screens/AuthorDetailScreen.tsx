@@ -47,7 +47,7 @@ export function AuthorDetailScreen() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const { getAuthor, isLoaded } = useLibraryCache();
-  const { loadBook } = usePlayerStore();
+  const { loadBook, viewBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
 
   // Get author data from cache - instant!
   const authorInfo = useMemo(() => {
@@ -102,11 +102,11 @@ export function AuthorDetailScreen() {
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false, showPlayer: false });
+      await viewBook(book);
     }
-  }, [loadBook]);
+  }, [viewBook]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     try {
@@ -243,6 +243,7 @@ export function AuthorDetailScreen() {
               onPlayPress={() => handlePlayBook(book)}
               showProgress={true}
               showSwipe={true}
+              isLoadingThisBook={isPlayerLoading && currentBook?.id === book.id}
             />
           ))}
         </View>

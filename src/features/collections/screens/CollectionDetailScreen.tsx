@@ -29,16 +29,16 @@ export function CollectionDetailScreen() {
   const navigation = useNavigation();
   const { collectionId } = route.params;
   const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
-  const { loadBook } = usePlayerStore();
+  const { loadBook, viewBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
 
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false, showPlayer: false });
+      await viewBook(book);
     }
-  }, [loadBook]);
+  }, [viewBook]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     try {
@@ -103,6 +103,7 @@ export function CollectionDetailScreen() {
               onPlayPress={() => handlePlayBook(item)}
               showProgress={true}
               showSwipe={false}
+              isLoadingThisBook={isPlayerLoading && currentBook?.id === item.id}
             />
           )}
           keyExtractor={(item) => item.id}
