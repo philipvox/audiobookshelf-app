@@ -66,7 +66,7 @@ export function MyLibraryScreen() {
 
   // Use pre-cached library data
   const { items: cachedItems, isLoaded } = useLibraryCache();
-  const { loadBook, currentBook: playerCurrentBook } = usePlayerStore();
+  const { loadBook, viewBook, currentBook: playerCurrentBook, isLoading: isPlayerLoading } = usePlayerStore();
 
   const {
     libraryIds,
@@ -178,11 +178,11 @@ export function MyLibraryScreen() {
 
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false, showPlayer: false });
+      await viewBook(fullBook);
     } catch (err) {
-      await loadBook(book, { autoPlay: false, showPlayer: false });
+      await viewBook(book);
     }
-  }, [isSelecting, toggleSelection, loadBook]);
+  }, [isSelecting, toggleSelection, viewBook]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     try {
@@ -361,6 +361,7 @@ export function MyLibraryScreen() {
                   onPlayPress={() => handlePlayBook(book)}
                   showProgress={true}
                   showSwipe={false}
+                  isLoadingThisBook={isPlayerLoading && playerCurrentBook?.id === book.id}
                 />
               ))}
             </View>
@@ -385,6 +386,7 @@ export function MyLibraryScreen() {
                   onPlayPress={() => handlePlayBook(book)}
                   showProgress={true}
                   showSwipe={false}
+                  isLoadingThisBook={isPlayerLoading && playerCurrentBook?.id === book.id}
                 />
               ))}
             </View>

@@ -7,13 +7,16 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#FAF8F5",
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#1a1a1a",
       "resizeMode": "contain"
     },
     "updates": {
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "ON_LOAD",
+      "url": "https://u.expo.dev/6f946d03-1d57-4474-bac2-516532b4c2f6"
     },
+    "runtimeVersion": "1.0.0",
     "assetBundlePatterns": [
       "assets/**/*"
     ],
@@ -43,6 +46,7 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.WAKE_LOCK"
       ],
       "allowBackup": false,
@@ -61,6 +65,7 @@
       "tsconfigPaths": true
     },
     "plugins": [
+      "expo-splash-screen",
       [
         "expo-audio",
         {
@@ -71,7 +76,7 @@
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "2.0.21",
+            "kotlinVersion": "2.1.20",
             "enableProguardInReleaseBuilds": false,
             "enableShrinkResourcesInReleaseBuilds": false,
             "useLegacyPackaging": false

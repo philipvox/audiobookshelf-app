@@ -72,7 +72,7 @@ const Spindle = memo(({ size }: { size: number }) => (
   </Svg>
 ));
 
-export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
+export const CassetteCover: React.FC<CassetteCoverProps> = ({
   coverUrl,
   progress = 0,
   isPlaying = false,
@@ -86,18 +86,9 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
 
   const s = (size: number) => size * scale;
 
-  // Animated progress for smooth spool size transitions
-  const progressAnim = useRef(new Animated.Value(progress)).current;
-
-  // Animate progress changes
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: progress,
-      duration: 300,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false, // Can't use native driver for layout properties
-    }).start();
-  }, [progress]);
+  // Spool sizes directly from real progress - always shows actual playback position
+  const leftSize = MAX_SPOOL - (progress * (MAX_SPOOL - MIN_SPOOL));
+  const rightSize = MIN_SPOOL + (progress * (MAX_SPOOL - MIN_SPOOL));
 
   // Spindle rotation animation
   const spinAnim = useRef(new Animated.Value(0)).current;
@@ -108,31 +99,38 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
   const spinSpeed = isFastForward || isRewinding ? 200 : 1500;
   const spinDirection = isRewinding ? -1 : 1;
 
-  useEffect(() => {
-    if (shouldSpin) {
-      spinAnim.setValue(0);
-      spinAnimationRef.current = Animated.loop(
-        Animated.timing(spinAnim, {
-          toValue: spinDirection,
-          duration: spinSpeed,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      spinAnimationRef.current.start();
-    } else {
-      if (spinAnimationRef.current) {
-        spinAnimationRef.current.stop();
-        spinAnimationRef.current = null;
-      }
+  // Helper to start/restart the spin animation
+  const startSpinAnimation = () => {
+    // Always stop existing animation first
+    if (spinAnimationRef.current) {
+      spinAnimationRef.current.stop();
+      spinAnimationRef.current = null;
     }
+
+    if (!shouldSpin) return;
+
+    spinAnim.setValue(0);
+    spinAnimationRef.current = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: spinDirection,
+        duration: spinSpeed,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    spinAnimationRef.current.start();
+  };
+
+  // Restart animation when any spin-related prop changes
+  useEffect(() => {
+    startSpinAnimation();
 
     return () => {
       if (spinAnimationRef.current) {
         spinAnimationRef.current.stop();
       }
     };
-  }, [shouldSpin, spinSpeed, spinDirection]);
+  }, [isPlaying, isFastForward, isRewinding]);
 
   const spinInterpolate = spinAnim.interpolate({
     inputRange: [-1, 0, 1],
@@ -140,36 +138,6 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
   });
 
   const spindleSize = useMemo(() => s(SPINDLE_SIZE), [scale]);
-
-  // Animated spool sizes - interpolate from progress
-  const leftSizeAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s(MAX_SPOOL), s(MIN_SPOOL)],
-  });
-  const rightSizeAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s(MIN_SPOOL), s(MAX_SPOOL)],
-  });
-
-  // Animated positions (centered within spindle container)
-  const leftOffsetAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s((SPINDLE_SIZE - MAX_SPOOL) / 2), s((SPINDLE_SIZE - MIN_SPOOL) / 2)],
-  });
-  const rightOffsetAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s((SPINDLE_SIZE - MIN_SPOOL) / 2), s((SPINDLE_SIZE - MAX_SPOOL) / 2)],
-  });
-
-  // Animated border radius
-  const leftRadiusAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s(MAX_SPOOL / 2), s(MIN_SPOOL / 2)],
-  });
-  const rightRadiusAnim = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [s(MIN_SPOOL / 2), s(MAX_SPOOL / 2)],
-  });
 
   return (
     <View style={[styles.container, { width, height }]}>
@@ -219,15 +187,15 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
             height: s(SPINDLE_SIZE),
           }
         ]}>
-          <Animated.View
+          <View
             style={[
               styles.tapeSpool,
               {
-                width: leftSizeAnim,
-                height: leftSizeAnim,
-                borderRadius: leftRadiusAnim,
-                left: leftOffsetAnim,
-                top: leftOffsetAnim,
+                width: s(leftSize),
+                height: s(leftSize),
+                borderRadius: s(leftSize / 2),
+                left: s((SPINDLE_SIZE - leftSize) / 2),
+                top: s((SPINDLE_SIZE - leftSize) / 2),
               },
             ]}
           />
@@ -255,15 +223,15 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
             height: s(SPINDLE_SIZE),
           }
         ]}>
-          <Animated.View
+          <View
             style={[
               styles.tapeSpool,
               {
-                width: rightSizeAnim,
-                height: rightSizeAnim,
-                borderRadius: rightRadiusAnim,
-                left: rightOffsetAnim,
-                top: rightOffsetAnim,
+                width: s(rightSize),
+                height: s(rightSize),
+                borderRadius: s(rightSize / 2),
+                left: s((SPINDLE_SIZE - rightSize) / 2),
+                top: s((SPINDLE_SIZE - rightSize) / 2),
               },
             ]}
           />
@@ -380,7 +348,7 @@ export const CassetteCover: React.FC<CassetteCoverProps> = memo(({
       </View>
     </View>
   );
-});
+};
 
 const styles = StyleSheet.create({
   container: {

@@ -219,7 +219,7 @@ export function SeriesDetailScreen() {
   const [sortOrder, setSortOrder] = useState<SortType>('asc');
 
   const { getSeries, isLoaded, refreshCache } = useLibraryCache();
-  const { loadBook } = usePlayerStore();
+  const { loadBook, viewBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get series data from cache - instant!
@@ -259,11 +259,11 @@ export function SeriesDetailScreen() {
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false });
+      await viewBook(book);
     }
-  }, [loadBook]);
+  }, [viewBook]);
 
   const handlePlayBook = useCallback(async (book: LibraryItem) => {
     try {
@@ -384,6 +384,7 @@ export function SeriesDetailScreen() {
                 seriesSequence={sequence < 999 ? sequence : index + 1}
                 showProgress={true}
                 showSwipe={true}
+                isLoadingThisBook={isPlayerLoading && currentBook?.id === book.id}
               />
             );
           })}

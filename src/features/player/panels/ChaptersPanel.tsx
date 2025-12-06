@@ -1,11 +1,15 @@
 /**
  * src/features/player/panels/ChaptersPanel.tsx
+ * Shows all chapters in a scrollable list (not virtualized)
  */
 
 import React, { useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { Icon } from '@/shared/components/Icon';
 import { formatTime } from '../utils';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 // =============================================================================
 // TYPES
@@ -26,24 +30,18 @@ interface ChaptersPanelProps {
 }
 
 // =============================================================================
-// CONSTANTS
-// =============================================================================
-
-const ITEM_HEIGHT = 56;
-
-// =============================================================================
 // COMPONENT
 // =============================================================================
 
-export function ChaptersPanel({ 
-  chapters, 
-  currentChapter, 
+export function ChaptersPanel({
+  chapters,
+  currentChapter,
   onChapterSelect,
   onClose,
   isLight,
 }: ChaptersPanelProps) {
-  const listRef = useRef<FlatList>(null);
-  
+  const scrollRef = useRef<ScrollView>(null);
+
   const textColor = isLight ? '#000000' : '#FFFFFF';
   const secondaryColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
   const buttonBg = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)';
@@ -51,17 +49,16 @@ export function ChaptersPanel({
   const activeButtonText = isLight ? '#FFFFFF' : '#000000';
   const activeBg = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)';
 
-  // Auto-scroll to current chapter
+  // Auto-scroll to current chapter on mount
   useEffect(() => {
-    if (currentChapter && listRef.current) {
+    if (currentChapter && scrollRef.current) {
       const index = chapters.findIndex(c => c === currentChapter);
       if (index > 0) {
+        // Approximate scroll position based on item height
+        const itemHeight = scale(56);
+        const scrollPosition = Math.max(0, (index * itemHeight) - (itemHeight * 2));
         setTimeout(() => {
-          listRef.current?.scrollToIndex({ 
-            index, 
-            animated: false,
-            viewPosition: 0.3,
-          });
+          scrollRef.current?.scrollTo({ y: scrollPosition, animated: false });
         }, 100);
       }
     }
@@ -92,51 +89,6 @@ export function ChaptersPanel({
   // RENDER
   // ===========================================================================
 
-  const renderChapter = ({ item, index }: { item: Chapter; index: number }) => {
-    const isCurrentChapter = currentChapter === item;
-    
-    return (
-      <TouchableOpacity
-        style={[
-          styles.chapterItem,
-          { backgroundColor: isCurrentChapter ? activeBg : 'transparent' }
-        ]}
-        onPress={() => onChapterSelect(item.start)}
-        activeOpacity={0.7}
-      >
-        <View style={[
-          styles.chapterNumber,
-          { backgroundColor: isCurrentChapter ? activeButtonBg : buttonBg }
-        ]}>
-          <Text style={[
-            styles.chapterNumberText,
-            { color: isCurrentChapter ? activeButtonText : secondaryColor }
-          ]}>
-            {index + 1}
-          </Text>
-        </View>
-        <View style={styles.chapterInfo}>
-          <Text 
-            style={[
-              styles.chapterName, 
-              { color: textColor },
-              isCurrentChapter && styles.chapterNameActive
-            ]} 
-            numberOfLines={1}
-          >
-            {getDisplayTitle(item.title, index)}
-          </Text>
-          <Text style={[styles.chapterTime, { color: secondaryColor }]}>
-            {formatTime(item.start)} • {formatDuration(item.start, item.end)}
-          </Text>
-        </View>
-        {isCurrentChapter && (
-          <Icon name="volume-high" size={18} color={textColor} set="ionicons" />
-        )}
-      </TouchableOpacity>
-    );
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -147,29 +99,60 @@ export function ChaptersPanel({
         </Text>
       </View>
 
-      {/* Chapter List */}
-      <FlatList
-        ref={listRef}
-        data={chapters}
-        renderItem={renderChapter}
-        keyExtractor={(_, index) => index.toString()}
+      {/* Chapter List - ScrollView with all chapters rendered */}
+      <ScrollView
+        ref={scrollRef}
         style={styles.list}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        getItemLayout={(_, index) => ({
-          length: ITEM_HEIGHT,
-          offset: ITEM_HEIGHT * index,
-          index,
+        nestedScrollEnabled={true}
+      >
+        {chapters.map((chapter, index) => {
+          const isCurrentChapter = currentChapter === chapter;
+
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.chapterItem,
+                { backgroundColor: isCurrentChapter ? activeBg : 'transparent' }
+              ]}
+              onPress={() => onChapterSelect(chapter.start)}
+              activeOpacity={0.7}
+            >
+              <View style={[
+                styles.chapterNumber,
+                { backgroundColor: isCurrentChapter ? activeButtonBg : buttonBg }
+              ]}>
+                <Text style={[
+                  styles.chapterNumberText,
+                  { color: isCurrentChapter ? activeButtonText : secondaryColor }
+                ]}>
+                  {index + 1}
+                </Text>
+              </View>
+              <View style={styles.chapterInfo}>
+                <Text
+                  style={[
+                    styles.chapterName,
+                    { color: textColor },
+                    isCurrentChapter && styles.chapterNameActive
+                  ]}
+                  numberOfLines={1}
+                >
+                  {getDisplayTitle(chapter.title, index)}
+                </Text>
+                <Text style={[styles.chapterTime, { color: secondaryColor }]}>
+                  {formatTime(chapter.start)} • {formatDuration(chapter.start, chapter.end)}
+                </Text>
+              </View>
+              {isCurrentChapter && (
+                <Icon name="volume-high" size={18} color={textColor} set="ionicons" />
+              )}
+            </TouchableOpacity>
+          );
         })}
-        onScrollToIndexFailed={(info) => {
-          setTimeout(() => {
-            listRef.current?.scrollToIndex({ 
-              index: info.index, 
-              animated: false 
-            });
-          }, 100);
-        }}
-      />
+      </ScrollView>
 
       {/* Close Button */}
       <View style={styles.footer}>
@@ -194,71 +177,71 @@ export function ChaptersPanel({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: scale(10),
   },
   header: {
-    marginBottom: 16,
+    marginBottom: scale(16),
   },
   title: {
-    fontSize: 32,
+    fontSize: scale(32),
     fontWeight: '700',
   },
   subtitle: {
-    fontSize: 15,
-    marginTop: 4,
+    fontSize: scale(15),
+    marginTop: scale(4),
   },
   list: {
     flex: 1,
   },
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: scale(16),
   },
   chapterItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: ITEM_HEIGHT,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 4,
-    gap: 12,
+    height: scale(56),
+    paddingHorizontal: scale(12),
+    borderRadius: scale(12),
+    marginBottom: scale(4),
+    gap: scale(12),
   },
   chapterNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     alignItems: 'center',
     justifyContent: 'center',
   },
   chapterNumberText: {
-    fontSize: 13,
+    fontSize: scale(13),
     fontWeight: '600',
   },
   chapterInfo: {
     flex: 1,
   },
   chapterName: {
-    fontSize: 15,
+    fontSize: scale(15),
     fontWeight: '500',
-    marginBottom: 2,
+    marginBottom: scale(2),
   },
   chapterNameActive: {
     fontWeight: '600',
   },
   chapterTime: {
-    fontSize: 13,
+    fontSize: scale(13),
     fontVariant: ['tabular-nums'],
   },
   footer: {
-    paddingVertical: 16,
+    paddingVertical: scale(16),
     alignItems: 'center',
   },
   closeButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    borderRadius: 24,
+    paddingVertical: scale(16),
+    paddingHorizontal: scale(48),
+    borderRadius: scale(24),
   },
   closeButtonText: {
-    fontSize: 17,
+    fontSize: scale(17),
     fontWeight: '600',
   },
 });

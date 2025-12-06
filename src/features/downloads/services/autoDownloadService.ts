@@ -419,7 +419,7 @@ class AutoDownloadService {
         downloadedAt: Date.now(),
         lastPlayedAt: Date.now(),
         fileSize,
-        duration: book.media?.duration || 0,
+        duration: (book.media as any)?.duration || 0,
       };
 
       this.manifest.books.push(downloadedBook);

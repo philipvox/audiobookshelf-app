@@ -1,13 +1,15 @@
 /**
  * src/navigation/AppNavigator.tsx
+ *
+ * Optimized navigation - no blocking loading states.
+ * Shows UI immediately with cached data, loads fresh data in background.
  */
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/core/auth';
 import { useLibraryCache } from '@/core/cache';
 import { useDefaultLibrary } from '@/features/library';
@@ -28,14 +30,13 @@ import { CollectionDetailScreen } from '@/features/collections';
 import { ProfileScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MiniPlayer, PlayerScreen } from '@/features/player';
-import { SplashScreen } from '@/shared/components/SplashScreen';
+import { QueueScreen, useQueueStore } from '@/features/queue';
+import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
+import { downloadManager } from '@/core/services/downloadManager';
 import { FloatingTabBar } from './components/FloatingTabBar';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-
-const BG_COLOR = '#1a1a1a';
-const ACCENT = '#CCFF00';
 
 function MainTabs() {
   return (
@@ -55,27 +56,11 @@ function MainTabs() {
   );
 }
 
-// Loading screen while caching library
-function CacheLoadingScreen({ progress }: { progress: string }) {
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View style={[styles.cacheLoading, { paddingTop: insets.top }]}>
-      <View style={styles.cacheContent}>
-        <Text style={styles.cacheEmoji}>📚</Text>
-        <Text style={styles.cacheTitle}>Loading Library</Text>
-        <Text style={styles.cacheSubtitle}>{progress}</Text>
-        <ActivityIndicator size="large" color={ACCENT} style={styles.cacheSpinner} />
-      </View>
-    </View>
-  );
-}
-
-// Wrapper that loads cache before showing main content
+// Wrapper that loads cache in background - no blocking loading states
 function AuthenticatedApp() {
   const { library } = useDefaultLibrary();
-  const { loadCache, isLoaded, isLoading, items, error } = useLibraryCache();
-  const [cacheProgress, setCacheProgress] = useState('Connecting...');
+  const { loadCache } = useLibraryCache();
+  const initQueue = useQueueStore((state) => state.init);
 
   // Pre-initialize audio service at app startup for faster playback
   useEffect(() => {
@@ -84,27 +69,38 @@ function AuthenticatedApp() {
     audioService?.ensureSetup?.().catch((err: any) => {
       console.warn('[AppNavigator] Audio service pre-init failed:', err);
     });
+
+    // Load player settings (control mode, progress mode, playback rate)
+    const { usePlayerStore } = require('@/features/player/stores/playerStore');
+    usePlayerStore.getState().loadPlayerSettings?.().catch((err: any) => {
+      console.warn('[AppNavigator] Player settings load failed:', err);
+    });
   }, []);
 
+  // Initialize queue store
+  useEffect(() => {
+    initQueue().catch((err: any) => {
+      console.warn('[AppNavigator] Queue init failed:', err);
+    });
+  }, [initQueue]);
+
+  // Initialize download manager (resumes paused downloads, starts queue processing)
+  useEffect(() => {
+    downloadManager.init().catch((err: any) => {
+      console.warn('[AppNavigator] Download manager init failed:', err);
+    });
+  }, []);
+
+  // Load cache in background - don't block UI
   useEffect(() => {
     if (library?.id) {
-      setCacheProgress('Loading your audiobooks...');
-      loadCache(library.id).then(() => {
-        setCacheProgress('Ready!');
+      loadCache(library.id).catch((err) => {
+        console.warn('[AppNavigator] Background cache load failed:', err);
       });
     }
   }, [library?.id, loadCache]);
 
-  // Show loading while cache is loading
-  if (!isLoaded && isLoading) {
-    return <CacheLoadingScreen progress={cacheProgress} />;
-  }
-
-  // If cache failed but we can still proceed
-  if (error && !isLoaded) {
-    console.warn('[AppNavigator] Cache error, proceeding anyway:', error);
-  }
-
+  // Render immediately - HomeScreen handles empty state gracefully
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -119,6 +115,8 @@ function AuthenticatedApp() {
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
         <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
         <Stack.Screen name="Preferences" component={PreferencesScreen} />
+        <Stack.Screen name="QueueScreen" component={QueueScreen} />
+        <Stack.Screen name="Downloads" component={DownloadsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         <Stack.Screen
           name="PreferencesOnboarding"
@@ -126,9 +124,9 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
-      <FloatingTabBar />
       <MiniPlayer />
       <PlayerScreen />
+      <FloatingTabBar />
     </NavigationContainer>
   );
 }
@@ -136,9 +134,8 @@ function AuthenticatedApp() {
 export function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
-    return <SplashScreen />;
-  }
+  // No loading state - App.tsx handles splash screen via AnimatedSplash
+  // isLoading should be false when using initialSession from AppInitializer
 
   if (!isAuthenticated) {
     return (
@@ -153,34 +150,5 @@ export function AppNavigator() {
   return <AuthenticatedApp />;
 }
 
-const styles = StyleSheet.create({
-  cacheLoading: {
-    flex: 1,
-    backgroundColor: BG_COLOR,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cacheContent: {
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  cacheEmoji: {
-    fontSize: 64,
-    marginBottom: 24,
-  },
-  cacheTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  cacheSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  cacheSpinner: {
-    marginTop: 8,
-  },
-});
+// Styles removed - no longer using CacheLoadingScreen
+const styles = StyleSheet.create({});

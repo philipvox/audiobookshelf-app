@@ -48,7 +48,7 @@ export function NarratorDetailScreen() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const { getNarrator, isLoaded } = useLibraryCache();
-  const { loadBook } = usePlayerStore();
+  const { viewBook } = usePlayerStore();
 
   // Get narrator data from cache - instant!
   const narratorInfo = useMemo(() => {
@@ -101,11 +101,11 @@ export function NarratorDetailScreen() {
   const handleBookPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: false });
+      await viewBook(fullBook);
     } catch {
-      await loadBook(book, { autoPlay: false });
+      await viewBook(book);
     }
-  }, [loadBook]);
+  }, [viewBook]);
 
   const getMetadata = (item: LibraryItem) => (item.media?.metadata as any) || {};
 

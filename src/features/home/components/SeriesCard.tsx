@@ -8,16 +8,44 @@
  * Title at top:60
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { Image } from 'expo-image';
+import Svg, { Path } from 'react-native-svg';
 import { apiClient } from '@/core/api';
 import { COLORS } from '../homeDesign';
 import { SeriesCardProps } from '../types';
 import { SeriesHeartButton } from '@/shared/components';
+import { useQueueStore } from '@/features/queue';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
+// Queue Plus icon SVG
+const QueuePlusIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 5v14M5 12h14"
+      stroke={color}
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+// Queue Checkmark icon SVG
+const QueueCheckIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M20 6L9 17l-5-5"
+      stroke={color}
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
 
 export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
   // Get cover URLs for up to 5 books
@@ -25,6 +53,27 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
 
   // Anima positions: left 0, 17, 34, 51, 68
   const positions = [0, 17, 34, 51, 68];
+
+  // Queue state - check if all books are in queue
+  const queue = useQueueStore((state) => state.queue);
+  const addBooksToQueue = useQueueStore((state) => state.addBooksToQueue);
+  const removeFromQueue = useQueueStore((state) => state.removeFromQueue);
+
+  // Check if any book from the series is in the queue
+  const seriesInQueue = useMemo(() => {
+    const queueBookIds = new Set(queue.map((item) => item.bookId));
+    return series.books.some((book) => queueBookIds.has(book.id));
+  }, [queue, series.books]);
+
+  const handleQueueToggle = useCallback(() => {
+    if (seriesInQueue) {
+      // Remove all series books from queue
+      series.books.forEach((book) => removeFromQueue(book.id));
+    } else {
+      // Add all series books to queue
+      addBooksToQueue(series.books);
+    }
+  }, [seriesInQueue, series.books, addBooksToQueue, removeFromQueue]);
 
   return (
     <TouchableOpacity
@@ -60,11 +109,18 @@ export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
         ))}
       </View>
 
-      {/* Title and heart in a row */}
+      {/* Title and buttons in a row */}
       <View style={styles.titleRow}>
         <Text style={styles.title} numberOfLines={1}>
           {series.name}
         </Text>
+        <Pressable style={styles.queueButton} onPress={handleQueueToggle}>
+          {seriesInQueue ? (
+            <QueueCheckIcon size={scale(12)} color={COLORS.heart} />
+          ) : (
+            <QueuePlusIcon size={scale(12)} color="rgba(255,255,255,0.3)" />
+          )}
+        </Pressable>
         <SeriesHeartButton
           seriesName={series.name}
           size={scale(12)}
@@ -121,6 +177,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(4),
+  },
+  queueButton: {
+    padding: scale(2),
   },
   title: {
     flex: 1,

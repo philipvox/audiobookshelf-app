@@ -14,39 +14,51 @@ const DEBUG = __DEV__;
 
 // Track timing for performance analysis
 const timings: Map<string, number> = new Map();
+let lastLogTime = Date.now();
+const appStartTime = Date.now();
+
+// Get timestamp prefix showing ms since app start and ms since last log
+const getTimestamp = (): string => {
+  const now = Date.now();
+  const sinceStart = now - appStartTime;
+  const sinceLastLog = now - lastLogTime;
+  lastLogTime = now;
+  return `+${sinceLastLog}ms`;
+};
 
 /**
  * Audio debug logging utilities
  * Each category logs with a distinct prefix for easy filtering
+ * Timestamps show ms since last log to help identify slow operations
  */
 export const audioLog = {
   // Player Store - UI state and book loading
   store: (msg: string, ...args: any[]) =>
-    DEBUG && console.log(`[Store] ${msg}`, ...args),
+    DEBUG && console.log(`[Store ${getTimestamp()}] ${msg}`, ...args),
 
   // Audio Service - TrackPlayer operations
   audio: (msg: string, ...args: any[]) =>
-    DEBUG && console.log(`[Audio] ${msg}`, ...args),
+    DEBUG && console.log(`[Audio ${getTimestamp()}] ${msg}`, ...args),
 
   // Session/API - Server communication
   session: (msg: string, ...args: any[]) =>
-    DEBUG && console.log(`[Session] ${msg}`, ...args),
+    DEBUG && console.log(`[Session ${getTimestamp()}] ${msg}`, ...args),
 
   // Progress - Local storage
   progress: (msg: string, ...args: any[]) =>
-    DEBUG && console.log(`[Progress] ${msg}`, ...args),
+    DEBUG && console.log(`[Progress ${getTimestamp()}] ${msg}`, ...args),
 
   // Background Sync - Server sync
   sync: (msg: string, ...args: any[]) =>
-    DEBUG && console.log(`[Sync] ${msg}`, ...args),
+    DEBUG && console.log(`[Sync ${getTimestamp()}] ${msg}`, ...args),
 
   // Errors (always log, even in production)
   error: (msg: string, ...args: any[]) =>
-    console.error(`[Audio Error] ${msg}`, ...args),
+    console.error(`[Audio Error ${getTimestamp()}] ${msg}`, ...args),
 
   // Warnings (always log)
   warn: (msg: string, ...args: any[]) =>
-    console.warn(`[Audio Warn] ${msg}`, ...args),
+    console.warn(`[Audio Warn ${getTimestamp()}] ${msg}`, ...args),
 
   // Timing - measure operation duration
   timing: (label: string, startTime: number) =>
@@ -54,11 +66,11 @@ export const audioLog = {
 
   // State transitions
   state: (from: string, to: string, context?: string) =>
-    DEBUG && console.log(`[State] ${from} -> ${to}${context ? ` (${context})` : ''}`),
+    DEBUG && console.log(`[State ${getTimestamp()}] ${from} -> ${to}${context ? ` (${context})` : ''}`),
 
   // Network requests
   network: (method: string, url: string, status?: number) =>
-    DEBUG && console.log(`[Network] ${method} ${url}${status !== undefined ? ` -> ${status}` : ''}`),
+    DEBUG && console.log(`[Network ${getTimestamp()}] ${method} ${url}${status !== undefined ? ` -> ${status}` : ''}`),
 };
 
 /**
@@ -103,7 +115,7 @@ export function createTimer(operationName: string): (label: string) => void {
  */
 export function logSection(title: string): void {
   if (DEBUG) {
-    console.log(`\n========== ${title} ==========`);
+    console.log(`\n========== ${title} [${getTimestamp()}] ==========`);
   }
 }
 

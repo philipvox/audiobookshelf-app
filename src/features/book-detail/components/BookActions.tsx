@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
+import { useDownloadStatus } from '@/core/hooks/useDownloads';
+import { downloadManager } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
 import { theme } from '@/shared/theme';
 
@@ -15,6 +17,16 @@ export function BookActions({ book }: BookActionsProps) {
   const progress = book.userMediaProgress?.progress || 0;
   const hasProgress = progress > 0 && progress < 1;
 
+  // Download status
+  const {
+    isDownloaded,
+    isDownloading,
+    isPending,
+    isPaused,
+    hasError,
+    progress: downloadProgress,
+  } = useDownloadStatus(book.id);
+
   const handlePlay = async () => {
     try {
       await loadBook(book);
@@ -24,9 +36,83 @@ export function BookActions({ book }: BookActionsProps) {
     }
   };
 
-  const handleDownload = () => {
-    Alert.alert('Coming Soon', 'Offline downloads will be available in a future update.');
+  const handleDownload = async () => {
+    if (isDownloaded) {
+      Alert.alert(
+        'Remove Download',
+        'Remove this book from offline storage?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => downloadManager.deleteDownload(book.id),
+          },
+        ]
+      );
+    } else if (isDownloading) {
+      await downloadManager.pauseDownload(book.id);
+    } else if (isPaused) {
+      await downloadManager.resumeDownload(book.id);
+    } else if (hasError) {
+      // Retry with high priority
+      await downloadManager.queueDownload(book, 10);
+    } else {
+      await downloadManager.queueDownload(book);
+    }
   };
+
+  // Get download button state
+  const getDownloadButtonState = () => {
+    if (isDownloaded) {
+      return {
+        icon: 'checkmark-circle' as const,
+        text: 'Downloaded',
+        color: '#4CAF50',
+        bgColor: 'rgba(76, 175, 80, 0.15)',
+      };
+    }
+    if (isDownloading) {
+      return {
+        icon: 'pause' as const,
+        text: `${Math.round(downloadProgress * 100)}%`,
+        color: theme.colors.primary[500],
+        bgColor: theme.colors.primary[50],
+      };
+    }
+    if (isPending) {
+      return {
+        icon: 'time-outline' as const,
+        text: 'Queued',
+        color: theme.colors.text.secondary,
+        bgColor: theme.colors.neutral[100],
+      };
+    }
+    if (isPaused) {
+      return {
+        icon: 'play' as const,
+        text: 'Paused',
+        color: '#FF9800',
+        bgColor: 'rgba(255, 152, 0, 0.15)',
+      };
+    }
+    if (hasError) {
+      return {
+        icon: 'alert-circle-outline' as const,
+        text: 'Retry',
+        color: '#F44336',
+        bgColor: 'rgba(244, 67, 54, 0.15)',
+      };
+    }
+    return {
+      icon: 'download-outline' as const,
+      text: 'Download',
+      color: theme.colors.text.secondary,
+      bgColor: theme.colors.neutral[100],
+    };
+  };
+
+  const downloadState = getDownloadButtonState();
 
   const handleMarkFinished = () => {
     Alert.alert('Coming Soon', 'Mark as finished will be fully implemented soon.');
@@ -42,9 +128,19 @@ export function BookActions({ book }: BookActionsProps) {
       </TouchableOpacity>
 
       <View style={styles.secondaryRow}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={handleDownload} activeOpacity={0.7}>
-          <Icon name="download-outline" size={18} color={theme.colors.text.secondary} set="ionicons" />
-          <Text style={styles.secondaryButtonText}>Download</Text>
+        <TouchableOpacity
+          style={[styles.secondaryButton, { backgroundColor: downloadState.bgColor }]}
+          onPress={handleDownload}
+          activeOpacity={0.7}
+        >
+          {isPending ? (
+            <ActivityIndicator size="small" color={downloadState.color} />
+          ) : (
+            <Icon name={downloadState.icon} size={18} color={downloadState.color} set="ionicons" />
+          )}
+          <Text style={[styles.secondaryButtonText, { color: downloadState.color }]}>
+            {downloadState.text}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity 

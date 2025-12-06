@@ -80,6 +80,14 @@ interface SyncLogEntry {
   details: string | null;
 }
 
+export interface QueueItem {
+  id: string;
+  bookId: string;
+  bookData: string; // JSON serialized LibraryItem
+  position: number;
+  addedAt: number;
+}
+
 export interface ReadHistoryEntry {
   itemId: string;
   title: string;
@@ -238,6 +246,15 @@ class SQLiteCache {
           size INTEGER
         );
 
+        -- Playback queue (ordered list of books to play next)
+        CREATE TABLE IF NOT EXISTS playback_queue (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          book_data TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          added_at INTEGER NOT NULL
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
@@ -251,6 +268,7 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
         CREATE INDEX IF NOT EXISTS idx_download_queue_priority ON download_queue(priority DESC);
         CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_playback_queue_position ON playback_queue(position ASC);
       `);
 
       this.isInitialized = true;
@@ -1206,6 +1224,180 @@ class SQLiteCache {
       await db.runAsync('DELETE FROM sync_log');
     } catch (err) {
       console.warn('[SQLiteCache] clearSyncLog error:', err);
+    }
+  }
+
+  // ============================================================================
+  // PLAYBACK QUEUE
+  // ============================================================================
+
+  async getQueue(): Promise<QueueItem[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        id: string;
+        book_id: string;
+        book_data: string;
+        position: number;
+        added_at: number;
+      }>('SELECT * FROM playback_queue ORDER BY position ASC');
+
+      return rows.map((r) => ({
+        id: r.id,
+        bookId: r.book_id,
+        bookData: r.book_data,
+        position: r.position,
+        addedAt: r.added_at,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getQueue error:', err);
+      return [];
+    }
+  }
+
+  async addToQueue(bookId: string, bookData: string): Promise<string> {
+    const db = await this.ensureReady();
+    const id = `queue_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const now = Date.now();
+
+    try {
+      // Get max position
+      const result = await db.getFirstAsync<{ maxPos: number | null }>(
+        'SELECT MAX(position) as maxPos FROM playback_queue'
+      );
+      const nextPosition = (result?.maxPos ?? -1) + 1;
+
+      await db.runAsync(
+        'INSERT INTO playback_queue (id, book_id, book_data, position, added_at) VALUES (?, ?, ?, ?, ?)',
+        [id, bookId, bookData, nextPosition, now]
+      );
+      console.log(`[SQLiteCache] Added to queue: ${bookId} at position ${nextPosition}`);
+      return id;
+    } catch (err) {
+      console.warn('[SQLiteCache] addToQueue error:', err);
+      throw err;
+    }
+  }
+
+  async removeFromQueue(bookId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      // Get the position of the item being removed
+      const item = await db.getFirstAsync<{ position: number }>(
+        'SELECT position FROM playback_queue WHERE book_id = ?',
+        [bookId]
+      );
+
+      if (item) {
+        // Remove the item
+        await db.runAsync('DELETE FROM playback_queue WHERE book_id = ?', [bookId]);
+
+        // Reorder remaining items to fill the gap
+        await db.runAsync(
+          'UPDATE playback_queue SET position = position - 1 WHERE position > ?',
+          [item.position]
+        );
+        console.log(`[SQLiteCache] Removed from queue: ${bookId}`);
+      }
+    } catch (err) {
+      console.warn('[SQLiteCache] removeFromQueue error:', err);
+    }
+  }
+
+  async isInQueue(bookId: string): Promise<boolean> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{ book_id: string }>(
+        'SELECT book_id FROM playback_queue WHERE book_id = ?',
+        [bookId]
+      );
+      return !!row;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async getNextInQueue(): Promise<QueueItem | null> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{
+        id: string;
+        book_id: string;
+        book_data: string;
+        position: number;
+        added_at: number;
+      }>('SELECT * FROM playback_queue ORDER BY position ASC LIMIT 1');
+
+      if (!row) return null;
+      return {
+        id: row.id,
+        bookId: row.book_id,
+        bookData: row.book_data,
+        position: row.position,
+        addedAt: row.added_at,
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async clearQueue(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM playback_queue');
+      console.log('[SQLiteCache] Cleared playback queue');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearQueue error:', err);
+    }
+  }
+
+  async reorderQueue(fromPosition: number, toPosition: number): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.withTransactionAsync(async () => {
+        // Get the item being moved
+        const item = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM playback_queue WHERE position = ?',
+          [fromPosition]
+        );
+
+        if (!item) return;
+
+        if (fromPosition < toPosition) {
+          // Moving down: shift items up
+          await db.runAsync(
+            'UPDATE playback_queue SET position = position - 1 WHERE position > ? AND position <= ?',
+            [fromPosition, toPosition]
+          );
+        } else {
+          // Moving up: shift items down
+          await db.runAsync(
+            'UPDATE playback_queue SET position = position + 1 WHERE position >= ? AND position < ?',
+            [toPosition, fromPosition]
+          );
+        }
+
+        // Set the moved item's new position
+        await db.runAsync(
+          'UPDATE playback_queue SET position = ? WHERE id = ?',
+          [toPosition, item.id]
+        );
+      });
+      console.log(`[SQLiteCache] Reordered queue: ${fromPosition} -> ${toPosition}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] reorderQueue error:', err);
+    }
+  }
+
+  async getQueueCount(): Promise<number> {
+    const db = await this.ensureReady();
+    try {
+      const result = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM playback_queue'
+      );
+      return result?.count || 0;
+    } catch (err) {
+      return 0;
     }
   }
 }

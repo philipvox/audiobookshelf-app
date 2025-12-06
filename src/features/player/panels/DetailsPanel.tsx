@@ -1,14 +1,17 @@
 /**
  * src/features/player/panels/DetailsPanel.tsx
  * Matches the Figma/Anima design with horizontal By/Read by layout
+ * Links to author, narrator, series, and genre detail screens
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import {
   getAuthorName,
   getNarratorName,
   getDescription,
+  getSeriesName,
   getSeriesWithSequence,
 } from '@/shared/utils/metadata';
 
@@ -17,6 +20,7 @@ interface DetailsPanelProps {
   duration: number;
   chaptersCount: number;
   isLight?: boolean;
+  onClose?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -34,7 +38,9 @@ function DetailsPanel({
   duration,
   chaptersCount,
   isLight = false,
+  onClose,
 }: DetailsPanelProps) {
+  const navigation = useNavigation();
   const text = isLight ? '#000000' : '#FFFFFF';
   const secondary = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
   const borderColor = isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)';
@@ -43,6 +49,7 @@ function DetailsPanel({
   const narrator = getNarratorName(book);
   const description = getDescription(book);
   const series = getSeriesWithSequence(book);
+  const seriesName = getSeriesName(book);
 
   // Extract metadata
   const metadata = book?.media?.metadata || book?.mediaMetadata || {};
@@ -53,66 +60,106 @@ function DetailsPanel({
   const hasAuthor = author && author !== 'Unknown Author';
   const hasNarrator = narrator && narrator !== 'Unknown Narrator';
 
+  // Navigation handlers - close player first then navigate
+  const handleAuthorPress = () => {
+    onClose?.();
+    setTimeout(() => {
+      navigation.navigate('AuthorDetail' as never, { authorName: author } as never);
+    }, 300);
+  };
+
+  const handleNarratorPress = () => {
+    onClose?.();
+    setTimeout(() => {
+      navigation.navigate('NarratorDetail' as never, { narratorName: narrator } as never);
+    }, 300);
+  };
+
+  const handleSeriesPress = () => {
+    if (!seriesName) return;
+    onClose?.();
+    setTimeout(() => {
+      navigation.navigate('SeriesDetail' as never, { seriesName } as never);
+    }, 300);
+  };
+
+  const handleGenrePress = (genre: string) => {
+    onClose?.();
+    setTimeout(() => {
+      navigation.navigate('GenreDetail' as never, { genreName: genre } as never);
+    }, 300);
+  };
+
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={true}
     >
       {/* Author & Narrator Row - Horizontal layout */}
       {(hasAuthor || hasNarrator) && (
         <View style={styles.headerRow}>
           {hasAuthor && (
-            <View style={styles.headerItem}>
+            <TouchableOpacity style={styles.headerItem} onPress={handleAuthorPress} activeOpacity={0.7}>
               <Text style={[styles.label, { color: secondary }]}>By</Text>
-              <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
+              <Text style={[styles.headerValue, styles.linkText, { color: text }]} numberOfLines={1}>
                 {author}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
           {hasNarrator && (
-            <View style={styles.headerItem}>
+            <TouchableOpacity style={styles.headerItem} onPress={handleNarratorPress} activeOpacity={0.7}>
               <Text style={[styles.label, { color: secondary }]}>Read by</Text>
-              <Text style={[styles.headerValue, { color: text }]} numberOfLines={1}>
+              <Text style={[styles.headerValue, styles.linkText, { color: text }]} numberOfLines={1}>
                 {narrator}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
       )}
 
-      {/* Description */}
+      {/* Description - Full text */}
       {description && (
         <View style={styles.section}>
           <Text style={[styles.label, { color: secondary }]}>Desc.</Text>
-          <Text style={[styles.description, { color: text }]} numberOfLines={5}>
+          <Text style={[styles.description, { color: text }]}>
             {description}
           </Text>
         </View>
       )}
 
-      {/* Genres - Bordered pills */}
+      {/* Genres - Bordered pills, touchable */}
       {genres.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.label, { color: secondary }]}>Genres</Text>
           <View style={styles.pillRow}>
             {genres.map((genre, idx) => (
-              <View key={idx} style={[styles.pill, { borderColor }]}>
+              <TouchableOpacity
+                key={idx}
+                style={[styles.pill, { borderColor }]}
+                onPress={() => handleGenrePress(genre)}
+                activeOpacity={0.7}
+              >
                 <Text style={[styles.pillText, { color: text }]}>{genre}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
       )}
 
-      {/* Series - Bordered pill */}
+      {/* Series - Bordered pill, touchable */}
       {series && (
         <View style={styles.section}>
           <Text style={[styles.label, { color: secondary }]}>Series</Text>
           <View style={styles.pillRow}>
-            <View style={[styles.pill, { borderColor }]}>
+            <TouchableOpacity
+              style={[styles.pill, { borderColor }]}
+              onPress={handleSeriesPress}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.pillText, { color: text }]}>{series}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -161,6 +208,9 @@ const styles = StyleSheet.create({
   headerValue: {
     fontSize: 20,
     fontWeight: '400',
+  },
+  linkText: {
+    textDecorationLine: 'underline',
   },
   section: {
     marginBottom: 20,

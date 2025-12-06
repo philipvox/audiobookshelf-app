@@ -13,6 +13,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { Alert } from 'react-native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { sessionService, SessionChapter } from '../services/sessionService';
@@ -67,8 +68,10 @@ interface PlayerState {
   // ---------------------------------------------------------------------------
   // Content
   // ---------------------------------------------------------------------------
-  currentBook: LibraryItem | null;
-  chapters: Chapter[];
+  currentBook: LibraryItem | null;  // The book whose audio is loaded/playing
+  viewingBook: LibraryItem | null;  // The book shown in PlayerScreen (can differ from currentBook)
+  viewingChapters: Chapter[];       // Chapters for the viewing book
+  chapters: Chapter[];              // Chapters for the playing book
 
   // ---------------------------------------------------------------------------
   // Playback State (from audioService)
@@ -105,6 +108,12 @@ interface PlayerState {
   sleepTimer: number | null;
   sleepTimerInterval: NodeJS.Timeout | null;
   bookmarks: Bookmark[];
+
+  // ---------------------------------------------------------------------------
+  // Player Settings (persisted)
+  // ---------------------------------------------------------------------------
+  controlMode: 'rewind' | 'chapter';  // Skip buttons mode: time skip or chapter skip
+  progressMode: 'bar' | 'chapters';   // Progress display: full book or chapter-based
 }
 
 interface PlayerActions {
@@ -113,6 +122,25 @@ interface PlayerActions {
   // ---------------------------------------------------------------------------
   loadBook: (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean; showPlayer?: boolean }) => Promise<void>;
   cleanup: () => Promise<void>;
+
+  // ---------------------------------------------------------------------------
+  // View Book (open player without stopping playback)
+  // ---------------------------------------------------------------------------
+  /**
+   * Opens PlayerScreen for a book without affecting current playback.
+   * The viewed book can be different from the playing book.
+   */
+  viewBook: (book: LibraryItem) => Promise<void>;
+
+  /**
+   * Starts playing the currently viewed book (replaces current playback).
+   */
+  playViewingBook: () => Promise<void>;
+
+  /**
+   * Check if viewing a different book than what's playing.
+   */
+  isViewingDifferentBook: () => boolean;
 
   // ---------------------------------------------------------------------------
   // Playback Control
@@ -186,6 +214,9 @@ interface PlayerActions {
   setPlaybackRate: (rate: number) => Promise<void>;
   setSleepTimer: (minutes: number) => void;
   clearSleepTimer: () => void;
+  setControlMode: (mode: 'rewind' | 'chapter') => void;
+  setProgressMode: (mode: 'bar' | 'chapters') => void;
+  loadPlayerSettings: () => Promise<void>;
 
   // ---------------------------------------------------------------------------
   // UI
@@ -220,8 +251,12 @@ const PREV_CHAPTER_THRESHOLD = 3;     // Seconds before going to prev vs restart
 
 let currentLoadId = 0;
 let lastProgressSave = 0;
-let isHandlingTrackFinish = false;
+let lastFinishedBookId: string | null = null; // Track which book we've already handled finish for
 let seekInterval: NodeJS.Timeout | null = null;
+let lastLoadTime = 0;
+let lastBookFinishTime = 0;
+const LOAD_DEBOUNCE_MS = 300;
+const TRANSITION_GUARD_MS = 500; // Prevent queue races during book transitions
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -229,27 +264,52 @@ let seekInterval: NodeJS.Timeout | null = null;
 
 async function getDownloadPath(bookId: string): Promise<string | null> {
   try {
-    const { autoDownloadService } = await import('@/features/downloads');
-
-    if (autoDownloadService.isDownloading(bookId)) {
-      log('Book still downloading');
-      return null;
-    }
-
-    const localPath = autoDownloadService.getLocalPath(bookId);
-    if (!localPath) return null;
-
     const FileSystem = await import('expo-file-system/legacy');
-    const info = await FileSystem.getInfoAsync(localPath);
 
-    if (!info.exists || ((info as any).size || 0) < 10000) {
-      log('Downloaded file missing or corrupt, cleaning up');
-      await autoDownloadService.removeDownload(bookId);
-      return null;
+    // Check autoDownloadService first (for auto-downloaded top 3 books)
+    try {
+      const { autoDownloadService } = await import('@/features/downloads');
+
+      if (autoDownloadService.isDownloading(bookId)) {
+        log('Book still downloading via autoDownloadService');
+        return null;
+      }
+
+      const autoPath = autoDownloadService.getLocalPath(bookId);
+      if (autoPath) {
+        const info = await FileSystem.getInfoAsync(autoPath);
+        if (info.exists && ((info as any).size || 0) > 10000) {
+          log('Found offline file via autoDownloadService');
+          autoDownloadService.updateLastPlayed(bookId);
+          return autoPath;
+        } else {
+          log('Auto-downloaded file missing or corrupt, cleaning up');
+          await autoDownloadService.removeDownload(bookId);
+        }
+      }
+    } catch (autoErr) {
+      log('autoDownloadService check failed:', autoErr);
     }
 
-    autoDownloadService.updateLastPlayed(bookId);
-    return localPath;
+    // Check downloadManager for manually downloaded books
+    try {
+      const { downloadManager } = await import('@/core/services/downloadManager');
+
+      const isDownloaded = await downloadManager.isDownloaded(bookId);
+      if (isDownloaded) {
+        const manualPath = downloadManager.getLocalPath(bookId);
+        // downloadManager stores files in a directory, check for any audio files
+        const dirInfo = await FileSystem.getInfoAsync(manualPath);
+        if (dirInfo.exists && dirInfo.isDirectory) {
+          log('Found offline directory via downloadManager');
+          return manualPath;
+        }
+      }
+    } catch (dlErr) {
+      log('downloadManager check failed:', dlErr);
+    }
+
+    return null;
   } catch (error) {
     logError('Failed to verify download:', error);
     return null;
@@ -317,6 +377,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     // Content
     currentBook: null,
+    viewingBook: null,
+    viewingChapters: [],
     chapters: [],
 
     // Playback
@@ -345,6 +407,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     sleepTimerInterval: null,
     bookmarks: [],
 
+    // Player settings (persisted)
+    controlMode: 'rewind',
+    progressMode: 'bar',
+
     // =========================================================================
     // LIFECYCLE
     // =========================================================================
@@ -353,16 +419,28 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const { startPosition, autoPlay = true, showPlayer = true } = options || {};
       const { currentBook, position: prevPosition, isLoading } = get();
 
-      if (isLoading) {
-        log('Already loading a book, skipping');
+      // Debounce rapid load requests (prevent double-taps)
+      const now = Date.now();
+      if (now - lastLoadTime < LOAD_DEBOUNCE_MS && currentBook?.id !== book.id) {
+        log('Debouncing rapid load request, ignoring');
         return;
       }
+      lastLoadTime = now;
 
+      // If already loading a different book, cancel the old load and stop any playback
+      if (isLoading) {
+        log('Cancelling previous load, unloading audio');
+        await audioService.unloadAudio();
+      }
+
+      // Increment load ID to invalidate any in-progress loads
       const thisLoadId = ++currentLoadId;
       const timing = createTimer('loadBook');
 
-      // Reset track finish guards
-      isHandlingTrackFinish = false;
+      // Reset track finish guard for new book
+      if (currentBook?.id !== book.id) {
+        lastFinishedBookId = null;
+      }
 
       logSection('LOAD BOOK START');
       log('Book ID:', book.id);
@@ -381,11 +459,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         return;
       }
 
-      // Set new book immediately
+      // Set new book immediately (also sync viewingBook)
       set({
         isLoading: true,
         isPlayerVisible: showPlayer,
         currentBook: book,
+        viewingBook: book,  // Sync viewing book when loading
         isPlaying: false,
         isBuffering: true,
         // Reset seeking state
@@ -410,12 +489,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
         if (thisLoadId !== currentLoadId) return;
 
-        // Check for offline download
-        timing('Before getDownloadPath');
-        const localPath = await getDownloadPath(book.id);
-        timing('After getDownloadPath');
-        const isOffline = !!localPath;
+        // OPTIMIZATION: Run download check and session start in PARALLEL
+        // This saves ~500ms by not waiting for download check before starting session
+        timing('Before parallel fetch');
+        const [localPath, session] = await Promise.all([
+          getDownloadPath(book.id),
+          sessionService.startSession(book.id).catch((err) => {
+            // Session may fail if offline - that's OK
+            log('Session start failed (may be offline):', err.message);
+            return null;
+          }),
+        ]);
+        timing('After parallel fetch');
 
+        if (thisLoadId !== currentLoadId) return;
+
+        const isOffline = !!localPath;
         let streamUrl: string = '';
         let chapters: Chapter[] = [];
         let resumePosition = startPosition ?? 0;
@@ -423,7 +512,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         let audioTrackInfos: AudioTrackInfo[] = [];
 
         if (isOffline && localPath) {
-          // OFFLINE PLAYBACK
+          // OFFLINE PLAYBACK - use local file
           streamUrl = localPath;
           chapters = extractChaptersFromBook(book);
           log('OFFLINE PLAYBACK MODE');
@@ -439,15 +528,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               resumePosition = localProgress;
             }
           }
-        } else {
-          // ONLINE PLAYBACK
+        } else if (session) {
+          // ONLINE PLAYBACK - use session data
           log('ONLINE PLAYBACK MODE');
-          timing('Before session start');
-
-          const session = await sessionService.startSession(book.id);
-          timing('After session start');
-
-          if (thisLoadId !== currentLoadId) return;
 
           log('Session response:');
           log('  Session ID:', session.id);
@@ -499,11 +582,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           }
 
           sessionService.startAutoSync(() => get().position);
+        } else {
+          // Neither offline nor session available
+          throw new Error('Cannot play: no local file and session failed');
         }
 
-        // Initialize and start background sync service
-        await backgroundSyncService.init();
-        backgroundSyncService.start();
+        // Initialize and start background sync service (NON-BLOCKING)
+        backgroundSyncService.init().then(() => backgroundSyncService.start()).catch(() => {});
 
         // Log chapters and duration sources
         if (chapters.length > 0) {
@@ -524,6 +609,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
         set({
           chapters,
+          viewingChapters: chapters,  // Sync viewing chapters
           duration: totalDuration,
           position: resumePosition,
           isOffline,
@@ -547,18 +633,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         timing('Before loadAudio');
 
         if (audioTrackInfos.length > 0) {
+          // Pass known duration to skip duration calculation
           await audioService.loadTracks(
             audioTrackInfos,
             resumePosition,
             { title, artist: author, artwork: coverUrl },
-            autoPlay
+            autoPlay,
+            totalDuration > 0 ? totalDuration : undefined
           );
         } else {
+          // Pass known duration to skip waiting for duration detection
           await audioService.loadAudio(
             streamUrl,
             resumePosition,
             { title, artist: author, artwork: coverUrl },
-            autoPlay
+            autoPlay,
+            totalDuration > 0 ? totalDuration : undefined
           );
         }
         timing('After loadAudio');
@@ -594,14 +684,51 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           log('Book loaded (paused)');
         }
 
+        // Check if we should auto-add next series book to queue
+        // Only do this when actually PLAYING (not just viewing a book)
+        if (autoPlay) {
+          (async () => {
+            try {
+              const { useQueueStore } = await import('@/features/queue/stores/queueStore');
+              const queueStore = useQueueStore.getState();
+
+              // Ensure queue is initialized
+              if (!queueStore.isInitialized) {
+                console.log('[PlayerStore] Initializing queue store...');
+                await queueStore.init();
+              }
+
+              // Skip series check if a book just finished (prevents race condition)
+              const timeSinceLastFinish = Date.now() - lastBookFinishTime;
+              const shouldCheckSeries = timeSinceLastFinish > TRANSITION_GUARD_MS && queueStore.autoplayEnabled;
+
+              console.log('[PlayerStore] Checking series book, autoplay:', queueStore.autoplayEnabled, 'timeSinceFinish:', timeSinceLastFinish);
+              if (shouldCheckSeries) {
+                await queueStore.checkAndAddSeriesBook(book);
+              } else if (timeSinceLastFinish <= TRANSITION_GUARD_MS) {
+                console.log('[PlayerStore] Skipping series check - book just finished, avoiding race');
+              }
+            } catch (err) {
+              console.error('[PlayerStore] Queue series check error:', err);
+            }
+          })();
+        }
+
       } catch (error: any) {
         if (thisLoadId === currentLoadId) {
           logSection('LOAD BOOK FAILED');
           logError('Error:', error.message);
           logError('Stack:', error.stack);
-          set({ isLoading: false });
+          set({ isLoading: false, isBuffering: false });
+
+          // Show user-friendly error
+          Alert.alert(
+            'Playback Error',
+            'Could not load this book. Please check your connection and try again.',
+            [{ text: 'OK' }]
+          );
         }
-        throw error;
+        // Don't re-throw - handle gracefully
       }
     },
 
@@ -609,7 +736,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const { currentBook, position, duration, sleepTimerInterval } = get();
 
       // Reset guards
-      isHandlingTrackFinish = false;
+      lastFinishedBookId = null;
 
       // Clear seeking interval
       if (seekInterval) {
@@ -644,6 +771,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       set({
         currentBook: null,
+        viewingBook: null,
+        viewingChapters: [],
         chapters: [],
         isPlaying: false,
         position: 0,
@@ -658,6 +787,49 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         seekStartPosition: 0,
         seekDirection: null,
       });
+    },
+
+    // =========================================================================
+    // VIEW BOOK (open player without stopping playback)
+    // =========================================================================
+
+    viewBook: async (book: LibraryItem) => {
+      log('viewBook:', book.id, book.media?.metadata?.title);
+
+      // Extract chapters from the book for viewing
+      const viewingChapters = extractChaptersFromBook(book);
+
+      // Set viewing book and open player
+      set({
+        viewingBook: book,
+        viewingChapters,
+        isPlayerVisible: true,
+      });
+
+      // If no book is currently playing, also set as current book (without loading audio)
+      const { currentBook } = get();
+      if (!currentBook) {
+        set({ currentBook: book, chapters: viewingChapters });
+      }
+    },
+
+    playViewingBook: async () => {
+      const { viewingBook } = get();
+      if (!viewingBook) {
+        logError('playViewingBook: no viewing book');
+        return;
+      }
+
+      log('playViewingBook:', viewingBook.id);
+
+      // Load the viewing book as the playing book with autoPlay
+      await get().loadBook(viewingBook, { autoPlay: true, showPlayer: true });
+    },
+
+    isViewingDifferentBook: () => {
+      const { currentBook, viewingBook } = get();
+      if (!viewingBook || !currentBook) return false;
+      return viewingBook.id !== currentBook.id;
     },
 
     // =========================================================================
@@ -962,6 +1134,34 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       set({ sleepTimer: null, sleepTimerInterval: null });
     },
 
+    setControlMode: (mode: 'rewind' | 'chapter') => {
+      set({ controlMode: mode });
+      AsyncStorage.setItem('playerControlMode', mode).catch(() => {});
+    },
+
+    setProgressMode: (mode: 'bar' | 'chapters') => {
+      set({ progressMode: mode });
+      AsyncStorage.setItem('playerProgressMode', mode).catch(() => {});
+    },
+
+    loadPlayerSettings: async () => {
+      try {
+        const [controlMode, progressMode, playbackRate] = await Promise.all([
+          AsyncStorage.getItem('playerControlMode'),
+          AsyncStorage.getItem('playerProgressMode'),
+          AsyncStorage.getItem('playbackRate'),
+        ]);
+
+        set({
+          controlMode: (controlMode as 'rewind' | 'chapter') || 'rewind',
+          progressMode: (progressMode as 'bar' | 'chapters') || 'bar',
+          playbackRate: playbackRate ? parseFloat(playbackRate) : 1.0,
+        });
+      } catch {
+        // Use defaults
+      }
+    },
+
     // =========================================================================
     // UI
     // =========================================================================
@@ -988,8 +1188,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isSeeking,  // THE KEY: Check if we're seeking
       } = get();
 
-      const displayDuration = state.duration > 0 ? state.duration : storeDuration;
+      // CRITICAL: Never let audio service's track duration overwrite the total book duration
+      // storeDuration is set during loadBook and represents the FULL book duration
+      // state.duration is just the current track's duration (can be much smaller)
       const totalBookDuration = storeDuration > 0 ? storeDuration : state.duration;
+      // Only update store duration if audio service reports a LARGER value (shouldn't happen normally)
+      const shouldUpdateDuration = state.duration > storeDuration;
+      const displayDuration = totalBookDuration;
 
       // Log significant state changes
       const positionDiff = Math.abs(state.position - prevPosition);
@@ -1020,13 +1225,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           const newIsPlaying = state.isBuffering ? wasPlaying : state.isPlaying;
           set({
             isPlaying: newIsPlaying,
-            duration: displayDuration,
+            ...(shouldUpdateDuration && { duration: displayDuration }),
             isBuffering: state.isBuffering,
             // DO NOT update position - we're seeking
           });
         } else {
           set({
-            duration: displayDuration,
+            ...(shouldUpdateDuration && { duration: displayDuration }),
             isBuffering: state.isBuffering,
           });
         }
@@ -1037,7 +1242,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (isLoading) {
         set({
           position: state.position,
-          duration: displayDuration,
+          ...(shouldUpdateDuration && { duration: displayDuration }),
           isBuffering: state.isBuffering,
         });
         return;
@@ -1049,7 +1254,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       set({
         isPlaying: newIsPlaying,
         position: state.position,
-        duration: displayDuration,
+        ...(shouldUpdateDuration && { duration: displayDuration }),
         isBuffering: state.isBuffering,
       });
 
@@ -1067,9 +1272,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         ).catch(() => {});
       }
 
-      // Handle track finished
-      if (state.didJustFinish && !isHandlingTrackFinish) {
-        isHandlingTrackFinish = true;
+      // Handle track finished - only once per book
+      const alreadyHandledFinish = currentBook && lastFinishedBookId === currentBook.id;
+      if (state.didJustFinish && !alreadyHandledFinish) {
         const endPosition = state.position;
 
         logSection('TRACK FINISHED EVENT');
@@ -1078,35 +1283,53 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
         const isNearEnd = totalBookDuration > 0 && endPosition >= totalBookDuration - 5;
 
-        if (isNearEnd) {
+        if (isNearEnd && currentBook) {
+          // Mark this book as finished to prevent duplicate handling
+          lastFinishedBookId = currentBook.id;
+          lastBookFinishTime = Date.now();
+
           log('BOOK FINISHED - reached end of audio');
           set({ isPlaying: false });
 
-          if (currentBook) {
-            const session = sessionService.getCurrentSession();
-            backgroundSyncService.saveProgress(
-              currentBook.id,
-              state.position,
-              totalBookDuration,
-              session?.id
-            ).catch(() => {});
+          const session = sessionService.getCurrentSession();
+          backgroundSyncService.saveProgress(
+            currentBook.id,
+            state.position,
+            totalBookDuration,
+            session?.id
+          ).catch(() => {});
 
-            const metadata = currentBook.media?.metadata as any;
-            if (metadata) {
-              sqliteCache.addToReadHistory({
-                itemId: currentBook.id,
-                title: metadata.title || 'Unknown Title',
-                authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-                narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
-                genres: metadata.genres || [],
-              }).catch(() => {});
-            }
+          const metadata = currentBook.media?.metadata as any;
+          if (metadata) {
+            sqliteCache.addToReadHistory({
+              itemId: currentBook.id,
+              title: metadata.title || 'Unknown Title',
+              authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+              narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+              genres: metadata.genres || [],
+            }).catch(() => {});
           }
-        } else {
+
+          // Check queue for next book (late import to avoid circular dependency)
+          (async () => {
+            try {
+              const { useQueueStore } = await import('@/features/queue/stores/queueStore');
+              const queueStore = useQueueStore.getState();
+              if (queueStore.queue.length > 0) {
+                log('Queue has items - playing next book');
+                const nextBook = await queueStore.playNext();
+                if (nextBook) {
+                  log('Loading next book from queue:', nextBook.id);
+                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+                }
+              }
+            } catch (err) {
+              log('Queue check failed:', err);
+            }
+          })();
+        } else if (!isNearEnd) {
           log('NOT at book end - this may be a stream segment end');
         }
-
-        isHandlingTrackFinish = false;
       }
     },
 
@@ -1232,3 +1455,24 @@ export const useIsSeeking = () =>
  */
 export const useSeekDirection = () =>
   usePlayerStore((s) => s.seekDirection);
+
+/**
+ * Returns true if viewing a different book than what's playing.
+ */
+export const useIsViewingDifferentBook = () =>
+  usePlayerStore((s) => {
+    if (!s.viewingBook || !s.currentBook) return false;
+    return s.viewingBook.id !== s.currentBook.id;
+  });
+
+/**
+ * Returns the viewing book (shown in PlayerScreen).
+ */
+export const useViewingBook = () =>
+  usePlayerStore((s) => s.viewingBook);
+
+/**
+ * Returns the playing book (audio loaded).
+ */
+export const usePlayingBook = () =>
+  usePlayerStore((s) => s.currentBook);

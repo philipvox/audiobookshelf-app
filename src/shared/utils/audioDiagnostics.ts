@@ -12,9 +12,8 @@
  *   <Button title="Diagnose Audio" onPress={runAudioDiagnostics} />
  */
 
-import TrackPlayer, { State } from 'react-native-track-player';
 import * as FileSystem from 'expo-file-system';
-import { getStateName, formatDuration, formatBytes } from './audioDebug';
+import { formatDuration, formatBytes } from './audioDebug';
 
 /**
  * Comprehensive audio diagnostics
@@ -24,8 +23,8 @@ export async function runAudioDiagnostics(): Promise<void> {
   console.log('\n========== AUDIO DIAGNOSTICS ==========');
   console.log(`Timestamp: ${new Date().toISOString()}`);
 
-  // 1. TrackPlayer State
-  await diagnoseTrackPlayer();
+  // 1. Audio Service State
+  await diagnoseAudioService();
 
   // 2. Player Store State
   diagnosePlayerStore();
@@ -49,46 +48,25 @@ export async function runAudioDiagnostics(): Promise<void> {
 }
 
 /**
- * Diagnose TrackPlayer state
+ * Diagnose Audio Service state (expo-audio)
  */
-async function diagnoseTrackPlayer(): Promise<void> {
-  console.log('\n--- TrackPlayer ---');
+async function diagnoseAudioService(): Promise<void> {
+  console.log('\n--- Audio Service (expo-audio) ---');
 
   try {
-    const state = await TrackPlayer.getPlaybackState();
-    const progress = await TrackPlayer.getProgress();
-    const queue = await TrackPlayer.getQueue();
-    const rate = await TrackPlayer.getRate();
-    const activeIndex = await TrackPlayer.getActiveTrackIndex();
-    const volume = await TrackPlayer.getVolume();
+    const { audioService } = require('@/features/player/services/audioService');
 
-    console.log(`  State: ${getStateName(state.state)} (${state.state})`);
-    console.log(`  Position: ${formatDuration(progress.position)} (${progress.position.toFixed(1)}s)`);
-    console.log(`  Duration: ${formatDuration(progress.duration)} (${progress.duration.toFixed(1)}s)`);
-    console.log(`  Buffered: ${formatDuration(progress.buffered)} (${progress.buffered.toFixed(1)}s)`);
-    console.log(`  Rate: ${rate}x`);
-    console.log(`  Volume: ${(volume * 100).toFixed(0)}%`);
-    console.log(`  Queue length: ${queue.length}`);
-    console.log(`  Active track index: ${activeIndex}`);
+    const isLoaded = audioService.getIsLoaded();
+    const currentUrl = audioService.getCurrentUrl();
+    const position = await audioService.getPosition();
+    const duration = await audioService.getDuration();
 
-    if (queue.length > 0 && activeIndex !== undefined) {
-      const currentTrack = queue[activeIndex];
-      console.log(`  Current track:`);
-      console.log(`    ID: ${currentTrack.id}`);
-      console.log(`    Title: ${currentTrack.title}`);
-      console.log(`    URL: ${currentTrack.url?.substring(0, 80)}...`);
-    }
-
-    // Log all tracks if multi-file
-    if (queue.length > 1) {
-      console.log(`  All tracks in queue:`);
-      queue.forEach((track, i) => {
-        const marker = i === activeIndex ? '>' : ' ';
-        console.log(`   ${marker}${i}: ${track.title || track.id}`);
-      });
-    }
+    console.log(`  Loaded: ${isLoaded}`);
+    console.log(`  Position: ${formatDuration(position)} (${position.toFixed(1)}s)`);
+    console.log(`  Duration: ${formatDuration(duration)} (${duration.toFixed(1)}s)`);
+    console.log(`  Current URL: ${currentUrl?.substring(0, 80) || 'none'}...`);
   } catch (e: any) {
-    console.log(`  Error: TrackPlayer not initialized - ${e.message}`);
+    console.log(`  Error: ${e.message}`);
   }
 }
 
@@ -295,12 +273,10 @@ function diagnoseDownloads(): void {
  * Useful for programmatic checks
  */
 export async function getAudioStatus(): Promise<{
-  trackPlayer: {
-    initialized: boolean;
-    state?: string;
+  audioService: {
+    loaded: boolean;
     position?: number;
     duration?: number;
-    isPlaying?: boolean;
   };
   playerStore: {
     hasBook: boolean;
@@ -320,25 +296,22 @@ export async function getAudioStatus(): Promise<{
   };
 }> {
   const result: any = {
-    trackPlayer: { initialized: false },
+    audioService: { loaded: false },
     playerStore: { hasBook: false, isPlaying: false, isLoading: false, position: 0, duration: 0 },
     session: { active: false },
     sync: { running: false, queueSize: 0 },
   };
 
-  // TrackPlayer
+  // Audio Service
   try {
-    const state = await TrackPlayer.getPlaybackState();
-    const progress = await TrackPlayer.getProgress();
-    result.trackPlayer = {
-      initialized: true,
-      state: getStateName(state.state),
-      position: progress.position,
-      duration: progress.duration,
-      isPlaying: state.state === State.Playing,
+    const { audioService } = require('@/features/player/services/audioService');
+    result.audioService = {
+      loaded: audioService.getIsLoaded(),
+      position: await audioService.getPosition(),
+      duration: await audioService.getDuration(),
     };
   } catch {
-    result.trackPlayer.initialized = false;
+    result.audioService.loaded = false;
   }
 
   // PlayerStore
@@ -408,50 +381,5 @@ export async function testStreamUrl(): Promise<void> {
     }
   } catch (e: any) {
     console.log(`  ERROR: ${e.message}`);
-  }
-}
-
-/**
- * Monitor playback state changes in real-time
- * Call stopPlaybackMonitor() to stop
- */
-let playbackMonitorInterval: NodeJS.Timeout | null = null;
-let lastMonitoredState: number | null = null;
-
-export function startPlaybackMonitor(): void {
-  if (playbackMonitorInterval) {
-    console.log('[Monitor] Already running');
-    return;
-  }
-
-  console.log('[Monitor] Starting playback monitor...');
-  lastMonitoredState = null;
-
-  playbackMonitorInterval = setInterval(async () => {
-    try {
-      const state = await TrackPlayer.getPlaybackState();
-      const progress = await TrackPlayer.getProgress();
-
-      // Only log state changes
-      if (state.state !== lastMonitoredState) {
-        console.log(`[Monitor] State: ${getStateName(lastMonitoredState || 0)} -> ${getStateName(state.state)}`);
-        lastMonitoredState = state.state;
-      }
-
-      // Log position every 10 seconds
-      if (Math.floor(progress.position) % 10 === 0) {
-        console.log(`[Monitor] Position: ${formatDuration(progress.position)} / ${formatDuration(progress.duration)}`);
-      }
-    } catch {
-      // Ignore errors
-    }
-  }, 1000);
-}
-
-export function stopPlaybackMonitor(): void {
-  if (playbackMonitorInterval) {
-    clearInterval(playbackMonitorInterval);
-    playbackMonitorInterval = null;
-    console.log('[Monitor] Stopped');
   }
 }

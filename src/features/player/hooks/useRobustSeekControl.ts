@@ -30,7 +30,7 @@ import { REWIND_STEP, REWIND_INTERVAL, FF_STEP } from '../constants';
 // Configuration
 const POSITION_CONFIRM_TOLERANCE = 1; // seconds
 const POSITION_CONFIRM_TIMEOUT = 3000; // ms
-const LOCK_TIMEOUT = 10000; // ms - auto-release lock if stuck
+const LOCK_TIMEOUT = 3000; // ms - auto-release lock if stuck (reduced for snappier UI)
 const DEBOUNCE_DELAY = 50; // ms - for rapid seek requests
 const PREV_CHAPTER_THRESHOLD = 3; // seconds before going to prev vs restart
 
@@ -495,9 +495,11 @@ export function useRobustSeekControl(): UseSeekControlReturn {
       currentSeekPositionRef.current = clampPosition(currentSeekPositionRef.current + step, durationRef.current);
       await audioService.seekTo(currentSeekPositionRef.current);
 
+      // Update both local state AND player store for real-time UI updates
       if (isMountedRef.current) {
         setState((prev) => ({ ...prev, seekPosition: currentSeekPositionRef.current }));
       }
+      usePlayerStore.setState({ position: currentSeekPositionRef.current });
 
       // Start interval for continuous seeking
       continuousSeekIntervalRef.current = setInterval(async () => {
@@ -537,9 +539,11 @@ export function useRobustSeekControl(): UseSeekControlReturn {
 
         await audioService.seekTo(currentSeekPositionRef.current);
 
+        // Update both local state AND player store position for real-time UI updates
         if (isMountedRef.current) {
           setState((prev) => ({ ...prev, seekPosition: currentSeekPositionRef.current }));
         }
+        usePlayerStore.setState({ position: currentSeekPositionRef.current });
 
         seekLog.continuous('tick', { position: currentSeekPositionRef.current });
 

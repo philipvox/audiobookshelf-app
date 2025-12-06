@@ -14,25 +14,7 @@ const config = getDefaultConfig(__dirname);
 // WEB PLATFORM SHIMS
 // ============================================================================
 
-// Store the original resolver
-const originalResolveRequest = config.resolver.resolveRequest;
-
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // On web, redirect react-native-track-player to our stub
-  if (platform === 'web' && moduleName === 'react-native-track-player') {
-    return {
-      filePath: path.resolve(__dirname, 'src/shims/react-native-track-player.web.ts'),
-      type: 'sourceFile',
-    };
-  }
-
-  // Use default resolver for everything else
-  if (originalResolveRequest) {
-    return originalResolveRequest(context, moduleName, platform);
-  }
-
-  return context.resolveRequest(context, moduleName, platform);
-};
+// No custom shims needed - expo-audio handles web platform natively
 
 // ============================================================================
 // TRANSFORMER OPTIMIZATIONS

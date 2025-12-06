@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS } from '../homeDesign';
 
@@ -15,11 +15,13 @@ const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 interface CoverArtworkProps {
   coverUrl?: string;
   size?: number;
+  seriesSequence?: number | string;  // Series number to show in top-right corner
 }
 
 export function CoverArtwork({
   coverUrl,
   size = scale(263),
+  seriesSequence,
 }: CoverArtworkProps) {
   // Anima: 263x264 (slightly taller than wide)
   const width = size;
@@ -27,12 +29,12 @@ export function CoverArtwork({
   const borderRadius = scale(8.79);
 
   return (
-    <View 
+    <View
       style={[
-        styles.container, 
-        { 
-          width, 
-          height, 
+        styles.container,
+        {
+          width,
+          height,
           borderRadius,
         }
       ]}
@@ -47,6 +49,13 @@ export function CoverArtwork({
       ) : (
         <View style={[styles.placeholder, { width, height, borderRadius }]} />
       )}
+
+      {/* Series sequence badge */}
+      {seriesSequence !== undefined && (
+        <View style={styles.seriesBadge}>
+          <Text style={styles.seriesText}>#{seriesSequence}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -59,12 +68,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 20,
     elevation: 12,
-    zIndex:100,
+    zIndex: 100,
+    position: 'relative',
   },
   image: {
     backgroundColor: '#7D7D7D',
   },
   placeholder: {
     backgroundColor: '#7D7D7D',
+  },
+  seriesBadge: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+    backgroundColor: '#CCFF00',
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
+  },
+  seriesText: {
+    fontSize: scale(14),
+    fontWeight: '700',
+    color: '#000000',
   },
 });

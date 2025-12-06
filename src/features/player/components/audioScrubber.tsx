@@ -2,7 +2,7 @@
  * src/features/player/components/AudioScrubber.tsx
  *
  * Audio scrubber hook for seek-based scrubbing.
- * Uses standard seek operations via react-native-track-player.
+ * Uses standard seek operations via audioService (expo-audio).
  */
 
 import { useCallback, useState, useRef } from 'react';

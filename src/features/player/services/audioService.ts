@@ -1,22 +1,22 @@
 /**
  * src/features/player/services/audioService.ts
  *
- * Audio playback using react-native-track-player
+ * Audio playback using expo-audio (compatible with New Architecture)
  */
 
-import TrackPlayer, {
-  State,
-  Capability,
-  AppKilledPlaybackBehavior,
-  RepeatMode,
-} from 'react-native-track-player';
+import {
+  createAudioPlayer,
+  AudioPlayer,
+  AudioStatus,
+  setAudioModeAsync,
+} from 'expo-audio';
+import { Platform } from 'react-native';
 
 import {
   audioLog,
   createTimer,
   logSection,
   validateUrl,
-  getStateName,
   formatDuration,
 } from '@/shared/utils/audioDebug';
 
@@ -41,16 +41,31 @@ const DEBUG = __DEV__;
 const log = (...args: any[]) => audioLog.audio(args.join(' '));
 
 class AudioService {
+  private player: AudioPlayer | null = null;
+  private preloadPlayer: AudioPlayer | null = null; // Pre-buffer next track
+  private preloadedTrackIndex: number = -1; // Index of preloaded track
   private isSetup = false;
   private statusCallback: StatusCallback | null = null;
   private currentUrl: string | null = null;
   private isLoaded = false;
   private progressInterval: NodeJS.Timeout | null = null;
   private setupPromise: Promise<void> | null = null;
-  private setupAttempts = 0;
   private loadId = 0; // Track load requests to cancel stale ones
   private tracks: AudioTrackInfo[] = []; // All tracks for multi-file books
+  private currentTrackIndex = 0; // Current track in multi-file mode
   private totalDuration = 0; // Total duration across all tracks
+  private metadata: { title?: string; artist?: string; artwork?: string } = {};
+  private pendingSeekAfterLoad: number | null = null;
+  private autoPlayAfterLoad = true;
+  private hasReachedEnd = false; // Prevent repeated end handling
+
+  // Dynamic polling rates for better performance
+  private readonly POLL_RATE_PLAYING = 250;  // More responsive when playing
+  private readonly POLL_RATE_PAUSED = 2000;  // Save battery when paused
+  private currentPollRate = 500;
+
+  // Pre-buffer threshold (seconds before track end to start preloading)
+  private readonly PRELOAD_THRESHOLD = 30;
 
   constructor() {
     // Pre-warm on construction - don't await, let it run in background
@@ -91,68 +106,149 @@ class AudioService {
   private async setup(): Promise<void> {
     if (this.isSetup) return;
 
-    this.setupAttempts++;
-    const attempt = this.setupAttempts;
-    const timing = createTimer('TrackPlayer.setup');
+    const timing = createTimer('expo-audio.setup');
 
     try {
-      logSection(`TRACKPLAYER SETUP (attempt ${attempt})`);
-
+      logSection('EXPO-AUDIO SETUP');
       timing('Start');
-      await TrackPlayer.setupPlayer({
-        autoHandleInterruptions: true,
-        // Optimized buffering for audiobooks (longer content)
-        minBuffer: 60,           // 60 sec minimum buffer
-        maxBuffer: 300,          // 5 min max buffer
-        playBuffer: 10,          // Start playback after 10 sec buffer
-        backBuffer: 60,          // Keep 60 sec behind current position
-        waitForBuffer: true,     // Wait for buffer before playing
+
+      // Configure audio mode for background playback
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        shouldRouteThroughEarpiece: false,
       });
-      timing('setupPlayer done');
+      timing('setAudioModeAsync done');
 
-      log('Buffer config: minBuffer=60s, maxBuffer=300s, playBuffer=10s, backBuffer=60s');
+      // Create the audio player
+      this.player = createAudioPlayer({ uri: '' });
+      timing('createAudioPlayer done');
 
-      await TrackPlayer.updateOptions({
-        capabilities: [
-          Capability.Play,
-          Capability.Pause,
-          Capability.SeekTo,
-          Capability.SkipToNext,
-          Capability.SkipToPrevious,
-          Capability.JumpForward,
-          Capability.JumpBackward,
-        ],
-        compactCapabilities: [
-          Capability.Play,
-          Capability.Pause,
-          Capability.SeekTo,
-        ],
-        forwardJumpInterval: 30,
-        backwardJumpInterval: 30,
-        progressUpdateEventInterval: 1,
-        android: {
-          appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
-        },
-      });
-      timing('updateOptions done');
+      // Create preload player for seamless track transitions
+      this.preloadPlayer = createAudioPlayer({ uri: '' });
+      timing('preloadPlayer created');
 
-      await TrackPlayer.setRepeatMode(RepeatMode.Off);
-      timing('setRepeatMode done');
+      // Set up event listeners
+      this.setupEventListeners();
+      timing('event listeners done');
 
       this.isSetup = true;
-      log('TrackPlayer ready');
+      log('expo-audio ready');
     } catch (error: any) {
-      if (error.message?.includes('already been initialized')) {
-        this.isSetup = true;
-        log('TrackPlayer already initialized (reusing)');
-      } else {
-        audioLog.error('Setup failed:', error.message);
-        audioLog.error('Stack:', error.stack);
-        // Clear the promise so ensureSetup can retry
-        this.setupPromise = null;
-        throw error;
-      }
+      audioLog.error('Setup failed:', error.message);
+      audioLog.error('Stack:', error.stack);
+      this.setupPromise = null;
+      throw error;
     }
+  }
+
+  private setupEventListeners(): void {
+    if (!this.player) return;
+
+    // Listen for playback status updates
+    this.player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+      // Handle track end - only once per load, and only if still loaded
+      if (status.didJustFinish && !this.hasReachedEnd && this.isLoaded) {
+        this.handleTrackEnd();
+      }
+    });
+  }
+
+  /**
+   * Pre-buffer the next track for seamless transitions.
+   * Called when approaching the end of the current track.
+   */
+  private async preloadNextTrack(): Promise<void> {
+    const nextIndex = this.currentTrackIndex + 1;
+
+    // Don't preload if already preloaded or no more tracks
+    if (nextIndex >= this.tracks.length) return;
+    if (this.preloadedTrackIndex === nextIndex) return;
+    if (!this.preloadPlayer) return;
+
+    const nextTrack = this.tracks[nextIndex];
+    log(`Pre-buffering track ${nextIndex}: ${nextTrack.title}`);
+
+    try {
+      this.preloadPlayer.replace({ uri: nextTrack.url });
+      this.preloadedTrackIndex = nextIndex;
+    } catch (err: any) {
+      audioLog.warn('Preload failed:', err.message);
+    }
+  }
+
+  private async handleTrackEnd(): Promise<void> {
+    // Don't handle if already unloaded or not properly loaded
+    if (!this.isLoaded) {
+      log('handleTrackEnd called but not loaded - ignoring');
+      return;
+    }
+
+    log(`handleTrackEnd: tracks=${this.tracks.length}, currentIndex=${this.currentTrackIndex}`);
+
+    // Check if there are more tracks in the queue
+    if (this.tracks.length > 0 && this.currentTrackIndex < this.tracks.length - 1) {
+      // Play next track
+      this.currentTrackIndex++;
+      const nextTrack = this.tracks[this.currentTrackIndex];
+      log(`Auto-advancing to track ${this.currentTrackIndex}: ${nextTrack.title}`);
+
+      // Use preloaded player if available for seamless transition
+      if (this.preloadedTrackIndex === this.currentTrackIndex && this.preloadPlayer) {
+        log('Using pre-buffered track for seamless transition');
+        // Swap players
+        const temp = this.player;
+        this.player = this.preloadPlayer;
+        this.preloadPlayer = temp;
+
+        // Start playback immediately
+        this.player?.play();
+
+        // Reset preload state and start preloading next-next track
+        this.preloadedTrackIndex = -1;
+        this.preloadNextTrack();
+      } else {
+        // Fallback: load directly (may have brief gap)
+        if (this.player) {
+          this.player.replace({ uri: nextTrack.url });
+          this.player.play();
+        }
+      }
+    } else if (this.tracks.length === 0) {
+      // Single-track mode - track finished means book finished
+      this.hasReachedEnd = true;
+      log('Single track finished - book complete');
+      this.statusCallback?.({
+        isPlaying: false,
+        position: this.totalDuration,
+        duration: this.totalDuration,
+        isBuffering: false,
+        didJustFinish: true,
+      });
+    } else {
+      // Last track in multi-track mode finished
+      this.hasReachedEnd = true;
+      log(`Last track (${this.currentTrackIndex + 1}/${this.tracks.length}) finished - book complete`);
+      this.statusCallback?.({
+        isPlaying: false,
+        position: this.totalDuration,
+        duration: this.totalDuration,
+        isBuffering: false,
+        didJustFinish: true,
+      });
+    }
+  }
+
+
+  private getGlobalPositionSync(): number {
+    if (!this.player) return 0;
+
+    // For multi-track: add track's startOffset to get global position
+    if (this.tracks.length > 0 && this.currentTrackIndex < this.tracks.length) {
+      return this.tracks[this.currentTrackIndex].startOffset + this.player.currentTime;
+    }
+
+    return this.player.currentTime;
   }
 
   getIsLoaded(): boolean {
@@ -173,81 +269,52 @@ class AudioService {
     }
   }
 
-  /**
-   * Calculate global position across all tracks
-   */
-  private async getGlobalPosition(): Promise<{ position: number; duration: number }> {
-    const trackIndex = await TrackPlayer.getActiveTrackIndex();
-    const progress = await TrackPlayer.getProgress();
-
-    // For multi-track: add track's startOffset to get global position
-    if (this.tracks.length > 0 && trackIndex !== undefined && trackIndex < this.tracks.length) {
-      const globalPosition = this.tracks[trackIndex].startOffset + progress.position;
-      return { position: globalPosition, duration: this.totalDuration };
-    }
-
-    // Single track or no track info
-    return { position: progress.position, duration: progress.duration || this.totalDuration };
-  }
-
-  private lastLoggedState: number | null = null;
-  private lastLoggedPosition: number = 0;
-
   private startProgressUpdates(): void {
     this.stopProgressUpdates();
 
-    this.progressInterval = setInterval(async () => {
-      if (!this.isLoaded) return;
+    const updateProgress = () => {
+      if (!this.isLoaded || !this.player) return;
 
       try {
-        const { position, duration } = await this.getGlobalPosition();
-        const playbackState = await TrackPlayer.getPlaybackState();
-        const queue = await TrackPlayer.getQueue();
-        const trackIndex = await TrackPlayer.getActiveTrackIndex();
+        const position = this.getGlobalPositionSync();
+        const isPlaying = this.player.playing;
+        const isBuffering = this.player.isBuffering;
 
-        const isPlaying = playbackState.state === State.Playing;
-        const isBuffering = playbackState.state === State.Buffering || playbackState.state === State.Loading;
-
-        // Log state changes
-        if (this.lastLoggedState !== playbackState.state) {
-          audioLog.state(
-            getStateName(this.lastLoggedState ?? 0),
-            getStateName(playbackState.state),
-            `track ${trackIndex}/${queue.length}`
-          );
-          this.lastLoggedState = playbackState.state;
+        // Dynamic polling: faster when playing, slower when paused
+        const targetRate = isPlaying ? this.POLL_RATE_PLAYING : this.POLL_RATE_PAUSED;
+        if (targetRate !== this.currentPollRate) {
+          this.currentPollRate = targetRate;
+          this.stopProgressUpdates();
+          this.progressInterval = setInterval(updateProgress, this.currentPollRate);
         }
 
-        // Log position every 30 seconds
-        if (Math.floor(position) % 30 === 0 && Math.abs(position - this.lastLoggedPosition) >= 1 && isPlaying) {
-          audioLog.progress(`${formatDuration(position)} / ${formatDuration(duration)} (buffered: ${formatDuration((await TrackPlayer.getProgress()).buffered)})`);
-          this.lastLoggedPosition = position;
-        }
-
-        // Only report didJustFinish when the LAST track in queue ends
-        const isLastTrack = trackIndex === undefined || trackIndex >= queue.length - 1;
-        const didJustFinish = playbackState.state === State.Ended && isLastTrack;
-
-        if (didJustFinish) {
-          log('didJustFinish triggered - State.Ended on last track');
-          log(`  trackIndex: ${trackIndex}, queue length: ${queue.length}`);
-          log(`  position: ${position.toFixed(1)}s, duration: ${duration.toFixed(1)}s`);
+        // Trigger preload when approaching end of current track
+        if (isPlaying && this.tracks.length > 1) {
+          const currentTrack = this.tracks[this.currentTrackIndex];
+          if (currentTrack) {
+            const positionInTrack = position - currentTrack.startOffset;
+            const timeRemaining = currentTrack.duration - positionInTrack;
+            if (timeRemaining > 0 && timeRemaining < this.PRELOAD_THRESHOLD) {
+              this.preloadNextTrack();
+            }
+          }
         }
 
         this.statusCallback?.({
           isPlaying,
           position,
-          duration,
+          duration: this.totalDuration || this.player.duration,
           isBuffering,
-          didJustFinish,
+          didJustFinish: false,
         });
       } catch (e: any) {
-        // Log errors that might indicate issues
         if (e.message && !e.message.includes('not initialized')) {
           audioLog.error('Progress update error:', e.message);
         }
       }
-    }, 500);
+    };
+
+    this.progressInterval = setInterval(updateProgress, this.currentPollRate);
   }
 
   private stopProgressUpdates(): void {
@@ -261,7 +328,8 @@ class AudioService {
     url: string,
     startPositionSec: number = 0,
     metadata?: { title?: string; artist?: string; artwork?: string },
-    autoPlay: boolean = true
+    autoPlay: boolean = true,
+    knownDuration?: number  // Pass duration from session to skip waiting
   ): Promise<void> {
     const thisLoadId = ++this.loadId;
     const timing = createTimer('loadAudio');
@@ -270,7 +338,7 @@ class AudioService {
     log('URL:', url.substring(0, 100) + (url.length > 100 ? '...' : ''));
     log('Start position:', startPositionSec.toFixed(1) + 's');
     log('AutoPlay:', autoPlay);
-    log('Metadata:', JSON.stringify(metadata));
+    log('Known duration:', knownDuration ? formatDuration(knownDuration) : 'none');
 
     // Validate URL
     if (!validateUrl(url, 'loadAudio')) {
@@ -278,52 +346,50 @@ class AudioService {
       throw new Error('Invalid audio URL');
     }
 
-    // Ensure setup is done first (will retry if previous setup failed)
+    // Ensure setup is done first
     timing('Ensuring setup');
     await this.ensureSetup();
     timing('Setup ready');
 
-    // Check if cancelled
     if (this.loadId !== thisLoadId) {
       log('Cancelled - newer load started');
       return;
     }
 
     try {
-      timing('Resetting');
-      await TrackPlayer.reset();
+      this.metadata = metadata || {};
+      this.tracks = [];
+      this.currentTrackIndex = 0;
+      this.hasReachedEnd = false; // Reset end flag for new load
+      // Use known duration immediately if provided
+      this.totalDuration = knownDuration || 0;
+
+      timing('Loading audio');
+      if (this.player) {
+        this.player.replace({ uri: url });
+      }
 
       if (this.loadId !== thisLoadId) {
-        log('Cancelled after reset');
+        log('Cancelled after load');
         return;
       }
-      timing('Reset done');
-
-      timing('Adding track');
-      await TrackPlayer.add({
-        id: 'current-track',
-        url: url,
-        title: metadata?.title || 'Audiobook',
-        artist: metadata?.artist || 'Author',
-        artwork: metadata?.artwork,
-      });
-
-      if (this.loadId !== thisLoadId) {
-        log('Cancelled after add');
-        return;
-      }
-      timing('Track added');
+      timing('Audio loaded');
 
       this.currentUrl = url;
       this.isLoaded = true;
-      // Reset for single track mode
-      this.tracks = [];
-      this.totalDuration = 0;
 
+      // Skip waiting if we have known duration - start playback immediately!
+      if (!knownDuration) {
+        // Only wait if we don't know the duration (rare case)
+        await this.waitForDuration(2000); // Reduced from 5s to 2s
+        this.totalDuration = this.player?.duration || 0;
+      }
+
+      // Seek and play in parallel with duration detection
       if (startPositionSec > 0) {
         log(`Seeking to ${formatDuration(startPositionSec)}`);
         timing('Seeking');
-        await TrackPlayer.seekTo(startPositionSec);
+        this.player?.seekTo(startPositionSec);
         timing('Seek done');
       }
 
@@ -334,12 +400,21 @@ class AudioService {
 
       if (autoPlay) {
         timing('Starting playback');
-        await TrackPlayer.play();
+        this.player?.play();
         timing('Playback started');
       } else {
         log('Ready (paused, not auto-playing)');
       }
       timing('Load complete');
+
+      // Update duration from player in background if we used knownDuration
+      if (knownDuration && this.player) {
+        setTimeout(() => {
+          if (this.player && this.player.duration > 0) {
+            this.totalDuration = this.player.duration;
+          }
+        }, 1000);
+      }
     } catch (error: any) {
       if (this.loadId === thisLoadId) {
         audioLog.error('Load failed:', error.message);
@@ -350,6 +425,17 @@ class AudioService {
     }
   }
 
+  private async waitForDuration(maxWaitMs: number = 5000): Promise<void> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWaitMs) {
+      if (this.player && this.player.duration > 0) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    log('Warning: Duration not available after waiting');
+  }
+
   /**
    * Load multiple audio tracks (for multi-file audiobooks)
    * Adds all tracks to the queue and seeks to the correct position
@@ -358,7 +444,8 @@ class AudioService {
     tracks: AudioTrackInfo[],
     startPositionSec: number = 0,
     metadata?: { title?: string; artist?: string; artwork?: string },
-    autoPlay: boolean = true
+    autoPlay: boolean = true,
+    knownTotalDuration?: number  // Pass total duration to skip calculation
   ): Promise<void> {
     const thisLoadId = ++this.loadId;
     const timing = createTimer('loadTracks');
@@ -368,56 +455,71 @@ class AudioService {
     log(`Start position: ${formatDuration(startPositionSec)} (${startPositionSec.toFixed(1)}s)`);
     log('AutoPlay:', autoPlay);
 
-    // Log track details
-    tracks.forEach((track, i) => {
-      log(`  Track ${i}: offset=${formatDuration(track.startOffset)}, duration=${formatDuration(track.duration)}`);
-    });
+    // Log track details (only first and last to save time)
+    if (tracks.length <= 3) {
+      tracks.forEach((track, i) => {
+        log(`  Track ${i}: offset=${formatDuration(track.startOffset)}, duration=${formatDuration(track.duration)}`);
+      });
+    } else {
+      log(`  Track 0: offset=${formatDuration(tracks[0].startOffset)}, duration=${formatDuration(tracks[0].duration)}`);
+      log(`  ... ${tracks.length - 2} more tracks ...`);
+      log(`  Track ${tracks.length - 1}: offset=${formatDuration(tracks[tracks.length - 1].startOffset)}, duration=${formatDuration(tracks[tracks.length - 1].duration)}`);
+    }
 
     await this.ensureSetup();
     if (this.loadId !== thisLoadId) return;
 
     try {
-      timing('Resetting');
-      await TrackPlayer.reset();
-      if (this.loadId !== thisLoadId) return;
-      timing('Reset done');
-
-      // Store track info for position calculations
+      this.metadata = metadata || {};
       this.tracks = tracks;
-      this.totalDuration = tracks.reduce((sum, t) => sum + t.duration, 0);
+      this.hasReachedEnd = false; // Reset end flag for new load
+      // Use known duration or calculate from tracks
+      this.totalDuration = knownTotalDuration || tracks.reduce((sum, t) => sum + t.duration, 0);
       log(`Total duration: ${formatDuration(this.totalDuration)}`);
 
-      // Add all tracks to queue
-      timing('Adding tracks to queue');
-      const queueTracks = tracks.map((track, index) => ({
-        id: `track-${index}`,
-        url: track.url,
-        title: track.title || metadata?.title || 'Audiobook',
-        artist: metadata?.artist || 'Author',
-        artwork: metadata?.artwork,
-        duration: track.duration,
-      }));
+      // Find which track contains the start position
+      let targetTrackIndex = 0;
+      let positionInTrack = startPositionSec;
 
-      await TrackPlayer.add(queueTracks);
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (startPositionSec >= track.startOffset && startPositionSec < track.startOffset + track.duration) {
+          targetTrackIndex = i;
+          positionInTrack = startPositionSec - track.startOffset;
+          break;
+        }
+        if (i === tracks.length - 1) {
+          targetTrackIndex = i;
+          positionInTrack = Math.min(startPositionSec - track.startOffset, track.duration);
+        }
+      }
+
+      this.currentTrackIndex = targetTrackIndex;
+      const firstTrack = tracks[targetTrackIndex];
+      log(`Starting with track ${targetTrackIndex}, position ${formatDuration(positionInTrack)}`);
+
+      timing('Loading first track');
+      if (this.player) {
+        this.player.replace({ uri: firstTrack.url });
+      }
       if (this.loadId !== thisLoadId) return;
-      timing('All tracks added');
-      log(`Queue now has ${queueTracks.length} tracks`);
+      timing('First track loaded');
 
-      this.currentUrl = tracks[0]?.url || null;
+      this.currentUrl = firstTrack.url;
       this.isLoaded = true;
 
-      // Seek to correct track and position
-      if (startPositionSec > 0) {
-        log(`Seeking to global position ${formatDuration(startPositionSec)}`);
+      // Seek within track if needed
+      if (positionInTrack > 0) {
+        log(`Seeking within track to ${formatDuration(positionInTrack)}`);
         timing('Seeking');
-        await this.seekToGlobal(startPositionSec);
+        this.player?.seekTo(positionInTrack);
         timing('Seek done');
       }
       if (this.loadId !== thisLoadId) return;
 
       if (autoPlay) {
         timing('Starting playback');
-        await TrackPlayer.play();
+        this.player?.play();
         timing('Playback started');
       } else {
         log('Ready (paused, not auto-playing)');
@@ -438,9 +540,11 @@ class AudioService {
    * Finds the correct track and seeks within it
    */
   async seekToGlobal(globalPositionSec: number): Promise<void> {
+    if (!this.player) return;
+
     if (this.tracks.length === 0) {
       // Single track mode - just seek directly
-      await TrackPlayer.seekTo(globalPositionSec);
+      this.player.seekTo(globalPositionSec);
       return;
     }
 
@@ -462,59 +566,110 @@ class AudioService {
       }
     }
 
-    log(`⏩ Global seek ${globalPositionSec.toFixed(1)}s → track ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
+    // If seeking to very near the end of a track, move to start of next track instead
+    // This prevents immediate track-end events
+    const track = this.tracks[targetTrackIndex];
+    const trackDuration = track.duration;
+    const nearEndThreshold = 0.5; // Within 0.5 seconds of track end
 
-    const currentIndex = await TrackPlayer.getActiveTrackIndex();
-    if (currentIndex !== targetTrackIndex) {
-      await TrackPlayer.skip(targetTrackIndex);
+    if (positionInTrack >= trackDuration - nearEndThreshold && targetTrackIndex < this.tracks.length - 1) {
+      // Move to start of next track instead
+      targetTrackIndex++;
+      positionInTrack = 0;
+      log(`⏩ Global seek ${globalPositionSec.toFixed(1)}s → adjusted to track ${targetTrackIndex} start (was near end of previous)`);
+    } else {
+      log(`⏩ Global seek ${globalPositionSec.toFixed(1)}s → track ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
     }
-    await TrackPlayer.seekTo(positionInTrack);
+
+    // If we need to change tracks
+    if (targetTrackIndex !== this.currentTrackIndex) {
+      const wasPlaying = this.player.playing;
+      this.currentTrackIndex = targetTrackIndex;
+      const newTrack = this.tracks[targetTrackIndex];
+
+      this.player.replace({ uri: newTrack.url });
+
+      // Wait a moment for the new track to load
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      this.player.seekTo(positionInTrack);
+
+      if (wasPlaying) {
+        this.player.play();
+      }
+    } else {
+      this.player.seekTo(positionInTrack);
+    }
   }
 
   async play(): Promise<void> {
     log('▶ Play');
-    await TrackPlayer.play();
+    this.player?.play();
   }
 
   async pause(): Promise<void> {
     log('⏸ Pause');
-    await TrackPlayer.pause();
+    this.player?.pause();
   }
 
   async seekTo(positionSec: number): Promise<void> {
+    // Reset end flag on seek (allows replay after seeking backward)
+    this.hasReachedEnd = false;
+
     // Use global seek if we have multiple tracks
     if (this.tracks.length > 0) {
       await this.seekToGlobal(positionSec);
     } else {
       log(`⏩ Seek to ${positionSec.toFixed(1)}s`);
-      await TrackPlayer.seekTo(positionSec);
+      this.player?.seekTo(positionSec);
     }
   }
 
   async setPlaybackRate(rate: number): Promise<void> {
     log(`Speed: ${rate}x`);
-    await TrackPlayer.setRate(rate);
+    if (!this.player) return;
+
+    // Android needs pitch correction enabled separately
+    if (Platform.OS === 'android') {
+      this.player.shouldCorrectPitch = true;
+      this.player.setPlaybackRate(rate);
+    } else {
+      // iOS supports pitch correction quality parameter
+      this.player.setPlaybackRate(rate, 'high');
+    }
   }
 
   async getPosition(): Promise<number> {
-    const { position } = await this.getGlobalPosition();
-    return position;
+    return this.getGlobalPositionSync();
   }
 
   async getDuration(): Promise<number> {
     if (this.totalDuration > 0) return this.totalDuration;
-    const progress = await TrackPlayer.getProgress();
-    return progress.duration;
+    return this.player?.duration || 0;
   }
 
   async unloadAudio(): Promise<void> {
     this.loadId++; // Cancel any pending loads
     this.stopProgressUpdates();
-    await TrackPlayer.reset();
+
+    if (this.player) {
+      this.player.pause();
+      this.player.replace({ uri: '' });
+    }
+
+    // Clean up preload player
+    if (this.preloadPlayer) {
+      this.preloadPlayer.replace({ uri: '' });
+    }
+
     this.currentUrl = null;
     this.isLoaded = false;
     this.tracks = [];
+    this.currentTrackIndex = 0;
     this.totalDuration = 0;
+    this.preloadedTrackIndex = -1;
+    this.currentPollRate = 500; // Reset poll rate
+    this.hasReachedEnd = false; // Reset end flag
   }
 }
 

@@ -71,6 +71,9 @@ export function useDownloadStatus(itemId: string) {
 
     // Get initial status
     downloadManager.getDownloadStatus(itemId).then((s) => {
+      if (s) {
+        console.log(`[useDownloadStatus] Initial status for ${itemId}: ${s.status}, progress: ${(s.progress * 100).toFixed(1)}%`);
+      }
       setStatus(s);
       setIsLoading(false);
     });
@@ -78,6 +81,9 @@ export function useDownloadStatus(itemId: string) {
     // Subscribe to updates
     const unsubscribe = downloadManager.subscribe((tasks) => {
       const task = tasks.find((t) => t.itemId === itemId);
+      if (task && (task.status !== status?.status || Math.abs(task.progress - (status?.progress || 0)) > 0.05)) {
+        console.log(`[useDownloadStatus] Status update for ${itemId}: ${task.status}, progress: ${(task.progress * 100).toFixed(1)}%`);
+      }
       setStatus(task || null);
     });
 
@@ -93,6 +99,8 @@ export function useDownloadStatus(itemId: string) {
     isPaused: status?.status === 'paused',
     hasError: status?.status === 'error',
     progress: status?.progress || 0,
+    bytesDownloaded: status?.bytesDownloaded || 0,
+    totalBytes: status?.totalBytes || 0,
     error: status?.error,
   };
 }
