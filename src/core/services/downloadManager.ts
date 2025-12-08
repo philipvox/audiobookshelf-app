@@ -451,17 +451,26 @@ class DownloadManager {
 
         this.activeDownloads.set(itemId, download);
 
-        // Create a timeout promise
-        const timeoutMs = 5 * 60 * 1000; // 5 minutes per file
-        log(`Starting download with ${timeoutMs / 1000}s timeout...`);
+        // Create a timeout promise - 15 minutes for uncached files
+        // The server may need to fetch from origin first
+        const timeoutMs = 15 * 60 * 1000; // 15 minutes per file
+        log(`Starting download with ${timeoutMs / 1000}s timeout (waiting for server cache)...`);
 
         const startTime = Date.now();
+
+        // Log a message every 30 seconds if still waiting
+        const waitingInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          log(`Still waiting for download to start... (${elapsed}s elapsed, server may be caching from origin)`);
+        }, 30000);
+
         const downloadPromise = download.downloadAsync();
         const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('Download timed out')), timeoutMs);
+          setTimeout(() => reject(new Error('Download timed out after 15 minutes - server may be unreachable or file too large')), timeoutMs);
         });
 
         const result = await Promise.race([downloadPromise, timeoutPromise]);
+        clearInterval(waitingInterval);
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (!result) {
@@ -473,6 +482,7 @@ class DownloadManager {
 
         return result;
       } catch (error) {
+        clearInterval(waitingInterval);
         lastError = error instanceof Error ? error : new Error('Download failed');
         logWarn(`Attempt ${attempt + 1} failed: ${lastError.message}`);
 
