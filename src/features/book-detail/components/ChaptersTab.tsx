@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BookChapter } from '@/core/types';
+import { BookChapter, LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 
 // Design constants matching HomeScreen
@@ -12,6 +12,7 @@ interface ChaptersTabProps {
   chapters: BookChapter[];
   currentPosition?: number;
   bookId?: string;
+  book?: LibraryItem; // Full book object for loading
 }
 
 function formatDuration(seconds: number): string {
@@ -25,8 +26,8 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function ChaptersTab({ chapters, currentPosition = 0, bookId }: ChaptersTabProps) {
-  const { seekTo, currentBook } = usePlayerStore();
+export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: ChaptersTabProps) {
+  const { seekTo, currentBook, loadBook, play } = usePlayerStore();
 
   if (!chapters || chapters.length === 0) {
     return (
@@ -42,15 +43,24 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId }: ChaptersT
   );
 
   const handleChapterPress = async (chapter: BookChapter) => {
-    // Only seek if this book is currently loaded in player
-    if (currentBook?.id === bookId) {
-      try {
+    try {
+      // If this book is currently loaded in player, just seek
+      if (currentBook?.id === bookId) {
         await seekTo(chapter.start);
-      } catch (error) {
-        console.error('Failed to seek to chapter:', error);
+        // Also start playing if paused
+        await play();
+      } else if (book) {
+        // Book not loaded - load it and start from this chapter
+        await loadBook(book, {
+          startPosition: chapter.start,
+          autoPlay: true,
+          showPlayer: false  // Stay on detail screen
+        });
+      } else {
+        console.log('Cannot play chapter - book data not available');
       }
-    } else {
-      console.log('Book not loaded in player, chapter:', chapter.title);
+    } catch (error) {
+      console.error('Failed to play chapter:', error);
     }
   };
 

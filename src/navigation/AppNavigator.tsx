@@ -33,7 +33,9 @@ import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recom
 import { SimplePlayerScreen } from '@/features/player';
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
+import { StatsScreen } from '@/features/stats';
 import { downloadManager } from '@/core/services/downloadManager';
+import { networkMonitor } from '@/core/services/networkMonitor';
 import { NavigationBar } from './components/NavigationBar';
 
 const Stack = createNativeStackNavigator();
@@ -85,11 +87,22 @@ function AuthenticatedApp() {
     });
   }, [initQueue]);
 
+  // Initialize network monitor first (download manager depends on it)
+  useEffect(() => {
+    networkMonitor.init().catch((err: any) => {
+      console.warn('[AppNavigator] Network monitor init failed:', err);
+    });
+  }, []);
+
   // Initialize download manager (resumes paused downloads, starts queue processing)
   useEffect(() => {
-    downloadManager.init().catch((err: any) => {
-      console.warn('[AppNavigator] Download manager init failed:', err);
-    });
+    // Small delay to ensure network monitor is ready
+    const timer = setTimeout(() => {
+      downloadManager.init().catch((err: any) => {
+        console.warn('[AppNavigator] Download manager init failed:', err);
+      });
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   // Load cache in background - don't block UI
@@ -119,6 +132,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="Preferences" component={PreferencesScreen} />
         <Stack.Screen name="QueueScreen" component={QueueScreen} />
         <Stack.Screen name="Downloads" component={DownloadsScreen} />
+        <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         <Stack.Screen
           name="PreferencesOnboarding"

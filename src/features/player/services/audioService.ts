@@ -28,6 +28,10 @@ try {
   console.warn('[AudioService] expo-media-control not available (Expo Go mode)');
 }
 
+// Remote command callback type for chapter navigation
+type RemoteCommandCallback = (command: 'nextChapter' | 'prevChapter') => void;
+let remoteCommandCallback: RemoteCommandCallback | null = null;
+
 import {
   audioLog,
   createTimer,
@@ -219,6 +223,8 @@ class AudioService {
           Command.SKIP_FORWARD,
           Command.SKIP_BACKWARD,
           Command.SEEK,
+          Command.NEXT_TRACK,      // For chapter navigation
+          Command.PREVIOUS_TRACK,  // For chapter navigation
         ],
         notification: {
           color: '#1a1a1a',
@@ -228,6 +234,13 @@ class AudioService {
         },
         android: {
           skipInterval: 30,
+          // Show compact controls with skip buttons
+          compactCapabilities: [
+            Command.SKIP_BACKWARD,
+            Command.PLAY,
+            Command.PAUSE,
+            Command.SKIP_FORWARD,
+          ],
         },
       });
 
@@ -278,7 +291,26 @@ class AudioService {
           this.seekTo(event.data.position);
         }
         break;
+      case Command.NEXT_TRACK:
+        // Delegate to player store for chapter navigation
+        if (remoteCommandCallback) {
+          remoteCommandCallback('nextChapter');
+        }
+        break;
+      case Command.PREVIOUS_TRACK:
+        // Delegate to player store for chapter navigation
+        if (remoteCommandCallback) {
+          remoteCommandCallback('prevChapter');
+        }
+        break;
     }
+  }
+
+  /**
+   * Set callback for remote commands that need to be handled by player store
+   */
+  setRemoteCommandCallback(callback: RemoteCommandCallback | null): void {
+    remoteCommandCallback = callback;
   }
 
   /**
@@ -922,6 +954,43 @@ class AudioService {
     this.preloadedTrackIndex = -1;
     this.currentPollRate = 500; // Reset poll rate
     this.hasReachedEnd = false; // Reset end flag
+  }
+
+  /**
+   * Get the underlying AudioPlayer instance for advanced features like audio sampling
+   */
+  getPlayer(): AudioPlayer | null {
+    return this.player;
+  }
+
+  /**
+   * Enable or disable audio sampling for waveform visualization
+   */
+  setAudioSamplingEnabled(enabled: boolean): void {
+    if (this.player && 'setAudioSamplingEnabled' in this.player) {
+      (this.player as any).setAudioSamplingEnabled(enabled);
+    }
+  }
+
+  /**
+   * Add a listener for audio sample updates
+   * Returns a cleanup function to remove the listener
+   */
+  addAudioSampleListener(callback: (sample: any) => void): (() => void) | null {
+    if (!this.player || !('addListener' in this.player)) {
+      return null;
+    }
+    try {
+      this.setAudioSamplingEnabled(true);
+      const subscription = (this.player as any).addListener('audioSampleUpdate', callback);
+      return () => {
+        subscription?.remove?.();
+        this.setAudioSamplingEnabled(false);
+      };
+    } catch (e) {
+      console.warn('[AudioService] Audio sampling not supported:', e);
+      return null;
+    }
   }
 
   /**

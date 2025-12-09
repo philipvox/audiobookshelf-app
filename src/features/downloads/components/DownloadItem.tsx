@@ -145,12 +145,12 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
         // Show "Preparing" when server is fetching/caching the file
         const progressPct = Math.round(download.progress * 100);
         const statusText = progressPct === 0
-          ? 'Preparing download (server caching)...'
+          ? 'Preparing...'
           : `Downloading ${progressPct}%${bytesInfo}`;
         return {
           text: statusText,
           color: COLORS.accent,
-          showProgress: progressPct > 0,
+          showProgress: true, // Always show progress bar for downloading state
         };
       case 'pending':
         return {

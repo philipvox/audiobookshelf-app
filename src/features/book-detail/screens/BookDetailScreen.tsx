@@ -13,9 +13,11 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
-  ActivityIndicator,
   Platform,
+  ActivityIndicator,
+  Share,
 } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,6 +46,93 @@ type BookDetailRouteParams = {
 
 type TabType = 'overview' | 'chapters' | 'details';
 
+/**
+ * Format bytes to human readable string (e.g., "45.2 MB")
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+// Download progress button with clean minimal design
+function DownloadProgressButton({
+  progress,
+  bytesDownloaded,
+  totalBytes,
+  status,
+  onPress,
+}: {
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  status: 'preparing' | 'downloading' | 'paused';
+  onPress: () => void;
+}) {
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${withTiming(progress * 100, { duration: 200 })}%`,
+  }));
+
+  // Status label
+  const getStatusLabel = () => {
+    switch (status) {
+      case 'preparing': return 'Preparing...';
+      case 'downloading': return 'Downloading';
+      case 'paused': return 'Paused';
+      default: return '';
+    }
+  };
+
+  // Progress text - show bytes downloaded / total
+  const getProgressText = () => {
+    if (status === 'preparing' || totalBytes === 0) {
+      return 'Calculating...';
+    }
+    return `${formatBytes(bytesDownloaded)} / ${formatBytes(totalBytes)}`;
+  };
+
+  return (
+    <TouchableOpacity
+      style={styles.downloadProgressButton}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {/* Header row: Status on left, percentage on right */}
+      <View style={styles.downloadProgressHeader}>
+        <View style={styles.downloadStatusRow}>
+          {status === 'preparing' ? (
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" style={styles.downloadSpinner} />
+          ) : status === 'paused' ? (
+            <Ionicons name="play" size={14} color="rgba(255,255,255,0.6)" />
+          ) : (
+            <Ionicons name="pause" size={14} color="rgba(255,255,255,0.6)" />
+          )}
+          <Text style={styles.downloadStatusText}>{getStatusLabel()}</Text>
+        </View>
+        <Text style={styles.downloadPercentText}>
+          {status === 'preparing' ? '—' : `${Math.round(progress * 100)}%`}
+        </Text>
+      </View>
+
+      {/* Progress bar */}
+      <View style={styles.downloadProgressTrack}>
+        <Animated.View
+          style={[
+            styles.downloadProgressFill,
+            progressStyle,
+            status === 'paused' && styles.downloadProgressFillPaused
+          ]}
+        />
+      </View>
+
+      {/* Footer: bytes downloaded / total */}
+      <Text style={styles.downloadBytesText}>{getProgressText()}</Text>
+    </TouchableOpacity>
+  );
+}
+
 export function BookDetailScreen() {
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<BookDetailRouteParams, 'BookDetail'>>();
@@ -57,7 +146,10 @@ export function BookDetailScreen() {
     isDownloaded,
     isDownloading,
     isPending,
-    progress: downloadProgress
+    isPaused,
+    progress: downloadProgress,
+    bytesDownloaded,
+    totalBytes,
   } = useDownloadStatusHook(bookId);
   const isThisBookPlaying = currentBook?.id === bookId && isPlaying;
   const isThisBookLoaded = currentBook?.id === bookId;
@@ -105,6 +197,32 @@ export function BookDetailScreen() {
       addToQueue(book);
     }
   }, [book, bookId, isDownloaded, isInQueue, addToQueue, removeFromQueue]);
+
+  const handleShare = useCallback(async () => {
+    if (!book) return;
+
+    const metadata = book.media?.metadata as any;
+    const title = metadata?.title || 'Unknown Title';
+    const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
+    const progress = book.userMediaProgress?.progress || 0;
+    const progressPercent = Math.round(progress * 100);
+
+    let shareText = '';
+    if (progress >= 1) {
+      shareText = `Just finished "${title}" by ${author}!`;
+    } else if (progress > 0) {
+      shareText = `I'm ${progressPercent}% through "${title}" by ${author}`;
+    } else {
+      shareText = `Check out "${title}" by ${author}`;
+    }
+    shareText += '\n\n#audiobook #audiobookshelf';
+
+    try {
+      await Share.share({ message: shareText });
+    } catch (err) {
+      console.error('Share failed:', err);
+    }
+  }, [book]);
 
   if (isLoading) {
     return (
@@ -189,17 +307,22 @@ export function BookDetailScreen() {
         />
       )}
 
-      {/* Header - Only back button and queue indicator when queued */}
+      {/* Header - Back button, share button, and queue indicator */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
-        {/* Only show queue indicator when book is in queue */}
-        {isInQueue && (
-          <TouchableOpacity style={styles.queueIndicator} onPress={handleQueueToggle}>
-            <Ionicons name="checkmark" size={18} color="#000" />
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleShare}>
+            <Ionicons name="share-outline" size={22} color="#fff" />
           </TouchableOpacity>
-        )}
+          {/* Only show queue indicator when book is in queue */}
+          {isInQueue && (
+            <TouchableOpacity style={styles.queueIndicator} onPress={handleQueueToggle}>
+              <Ionicons name="checkmark" size={18} color="#000" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -265,33 +388,48 @@ export function BookDetailScreen() {
 
         {/* Action Buttons - Download and Play */}
         <View style={styles.actionButtons}>
-          {/* Download Button */}
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              isDownloaded && styles.actionButtonCompleted
-            ]}
-            onPress={handleDownload}
-            disabled={isDownloading || isPending || isDownloaded}
-            activeOpacity={0.7}
-          >
-            {isDownloaded ? (
-              <>
-                <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
-                <Text style={styles.actionButtonTextCompleted}>Downloaded</Text>
-              </>
-            ) : isDownloading || isPending ? (
-              <>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.actionButtonText}>{Math.round(downloadProgress * 100)}%</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="arrow-down-circle-outline" size={18} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.actionButtonText}>Download</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* Download Button - with progress bar when downloading or paused */}
+          {isDownloading || isPending || isPaused ? (
+            <DownloadProgressButton
+              progress={downloadProgress}
+              bytesDownloaded={bytesDownloaded}
+              totalBytes={totalBytes}
+              status={isPaused ? 'paused' : downloadProgress === 0 ? 'preparing' : 'downloading'}
+              onPress={() => {
+                // Use isDownloading as the primary check since isPaused and isDownloading are mutually exclusive
+                if (isDownloading) {
+                  console.log('[BookDetail] Pausing download');
+                  downloadManager.pauseDownload(bookId);
+                } else if (isPaused) {
+                  console.log('[BookDetail] Resuming download');
+                  downloadManager.resumeDownload(bookId);
+                }
+                // isPending - do nothing, let it start
+              }}
+            />
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                isDownloaded && styles.actionButtonCompleted
+              ]}
+              onPress={handleDownload}
+              disabled={isDownloaded}
+              activeOpacity={0.7}
+            >
+              {isDownloaded ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
+                  <Text style={styles.actionButtonTextCompleted}>Downloaded</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="arrow-down-circle-outline" size={18} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.actionButtonText}>Download</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           {/* Play Button */}
           <TouchableOpacity
@@ -353,7 +491,7 @@ export function BookDetailScreen() {
             <OverviewTab book={book} />
           )}
           {activeTab === 'chapters' && (
-            <ChaptersTab chapters={chapters} bookId={bookId} />
+            <ChaptersTab chapters={chapters} bookId={bookId} book={book} />
           )}
           {activeTab === 'details' && (
             <View style={styles.detailsTab}>
@@ -452,6 +590,11 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   queueIndicator: {
     width: 36,
@@ -613,6 +756,61 @@ const styles = StyleSheet.create({
   },
   playButtonTextActive: {
     color: '#000',
+  },
+
+  // Download progress button styles - clean minimal design
+  downloadProgressButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  downloadProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  downloadStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  downloadSpinner: {
+    transform: [{ scale: 0.8 }],
+  },
+  downloadStatusText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+  },
+  downloadPercentText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+  },
+  downloadProgressTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  downloadProgressFill: {
+    height: '100%',
+    backgroundColor: ACCENT,
+    borderRadius: 2,
+  },
+  downloadProgressFillPaused: {
+    backgroundColor: '#FF9800',
+  },
+  downloadBytesText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 4,
+    fontVariant: ['tabular-nums'],
   },
 
   // Genre Pills (in Details tab)

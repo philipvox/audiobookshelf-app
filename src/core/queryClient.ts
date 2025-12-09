@@ -234,6 +234,53 @@ export function getCachedData<T>(queryKey: readonly unknown[]): T | undefined {
 }
 
 /**
+ * Prefetch all main tab data in parallel.
+ * Call this after authentication to warm the cache for instant tab switching.
+ * This runs in the background - don't await unless you need to block on it.
+ */
+export async function prefetchMainTabData(): Promise<void> {
+  // Import apiClient lazily to avoid circular deps
+  const { apiClient } = await import('./api');
+  // Import library cache store directly
+  const { useLibraryCache } = await import('./cache/libraryCache');
+
+  // Prefetch all main data in parallel - don't block on these
+  const prefetches = [
+    // Items in progress (for home screen)
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.user.inProgress(),
+      queryFn: () => apiClient.getItemsInProgress(),
+      staleTime: 2 * 60 * 1000, // 2 minutes
+    }),
+
+    // Libraries list
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.libraries.all,
+      queryFn: () => apiClient.getLibraries(),
+      staleTime: 10 * 60 * 1000, // 10 minutes
+    }),
+
+    // Playlists
+    queryClient.prefetchQuery({
+      queryKey: ['playlists'],
+      queryFn: () => apiClient.getPlaylists(),
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    }),
+
+    // Library cache refresh (loads all items, series, authors)
+    // Access the zustand store directly
+    useLibraryCache.getState().refreshCache(),
+  ];
+
+  try {
+    await Promise.allSettled(prefetches);
+    console.log('[QueryClient] Main tab data prefetched');
+  } catch (err) {
+    console.warn('[QueryClient] Some prefetches failed:', err);
+  }
+}
+
+/**
  * Set cached data directly.
  * Useful for optimistic updates.
  *

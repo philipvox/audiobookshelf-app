@@ -118,3 +118,16 @@ export type { SeriesHeartButtonProps } from './SeriesHeartButton';
 // =============================================================================
 export { BookCard, BookCardWithState } from './BookCard';
 export type { BookCardProps } from './BookCard';
+export { SwipeableBookCard } from './SwipeableBookCard';
+export type { SwipeableBookCardProps } from './SwipeableBookCard';
+
+// =============================================================================
+// PLAYER CONTROLS
+// =============================================================================
+export { CoverPlayButton } from './CoverPlayButton';
+
+// =============================================================================
+// PULL-TO-REFRESH
+// =============================================================================
+export { CassetteRefreshControl, useCassetteRefresh } from './CassetteRefreshControl';
+export { CassetteRefreshView } from './CassetteRefreshView';
