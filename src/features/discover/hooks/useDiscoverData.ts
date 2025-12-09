@@ -2,17 +2,16 @@
  * src/features/discover/hooks/useDiscoverData.ts
  *
  * Hook to fetch and organize discover page data:
- * - Continue Listening (from API)
- * - New This Week (recently added)
- * - Popular (most played - approximated by most downloaded)
- * - Genre-based recommendations
+ * - New This Week (recently added, not yet listened)
+ * - Short & Sweet (short books, not yet listened)
+ * - Personalized recommendations (based on reading history, excludes listened books)
  */
 
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useLibraryCache, getAllGenres } from '@/core/cache';
 import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { apiClient } from '@/core/api';
-import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
+import { downloadManager } from '@/core/services/downloadManager';
 import { useRecommendations } from '@/features/recommendations/hooks/useRecommendations';
 import {
   ContentRow,
@@ -39,6 +38,12 @@ function getTimeBasedReason(): string {
   } else {
     return 'Perfect for winding down';
   }
+}
+
+// Check if a book has been listened to (any progress)
+function hasBeenListened(item: LibraryItem): boolean {
+  const progress = (item as any).userMediaProgress?.progress || 0;
+  return progress > 0;
 }
 
 export function useDiscoverData(selectedGenre: string = 'All') {
@@ -91,34 +96,14 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     });
   }, []);
 
-  // Continue Listening row
-  const continueListeningRow = useMemo((): ContentRow | null => {
-    if (!inProgressItems || inProgressItems.length === 0) return null;
-
-    const items = inProgressItems.slice(0, 15).map(item => {
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      return convertToBookSummary(item, progress);
-    });
-
-    return {
-      id: 'continue_listening',
-      type: 'continue_listening',
-      title: 'Continue Listening',
-      items,
-      totalCount: inProgressItems.length,
-      seeAllRoute: 'LibraryTab',
-      priority: 1,
-      refreshPolicy: 'realtime',
-    };
-  }, [inProgressItems, convertToBookSummary]);
-
-  // New This Week row
+  // New This Week row (only unlistened books)
   const newThisWeekRow = useMemo((): ContentRow | null => {
     if (!isLoaded || !libraryItems.length) return null;
 
     const oneWeekAgo = Date.now() - ONE_WEEK_MS;
     let newItems = libraryItems
       .filter(item => (item.addedAt || 0) * 1000 > oneWeekAgo)
+      .filter(item => !hasBeenListened(item)) // Exclude listened books
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 
     // Apply genre filter
@@ -139,36 +124,7 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     };
   }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
 
-  // Popular row (approximated by longest books - assuming quality content)
-  const popularRow = useMemo((): ContentRow | null => {
-    if (!isLoaded || !libraryItems.length) return null;
-
-    let sortedItems = [...libraryItems].sort((a, b) => {
-      // Sort by duration (longer = more invested content)
-      const durationA = (a.media as any)?.duration || 0;
-      const durationB = (b.media as any)?.duration || 0;
-      return durationB - durationA;
-    });
-
-    // Apply genre filter
-    sortedItems = filterByGenre(sortedItems, selectedGenre);
-
-    if (sortedItems.length === 0) return null;
-
-    const items = sortedItems.slice(0, 15).map(item => convertToBookSummary(item));
-
-    return {
-      id: 'popular',
-      type: 'popular',
-      title: 'Popular Right Now',
-      items,
-      totalCount: sortedItems.length,
-      priority: 4,
-      refreshPolicy: 'daily',
-    };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
-
-  // Short & Sweet row (books under 5 hours)
+  // Short & Sweet row (books under 5 hours, only unlistened)
   const shortBooksRow = useMemo((): ContentRow | null => {
     if (!isLoaded || !libraryItems.length) return null;
 
@@ -177,6 +133,7 @@ export function useDiscoverData(selectedGenre: string = 'All') {
         const duration = (item.media as any)?.duration || 0;
         return duration > 0 && duration < SHORT_BOOK_THRESHOLD;
       })
+      .filter(item => !hasBeenListened(item)) // Exclude listened books
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 
     // Apply genre filter
@@ -198,30 +155,6 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     };
   }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
 
-  // Recently Added row (all recent)
-  const recentlyAddedRow = useMemo((): ContentRow | null => {
-    if (!isLoaded || !libraryItems.length) return null;
-
-    let sortedItems = [...libraryItems].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
-
-    // Apply genre filter
-    sortedItems = filterByGenre(sortedItems, selectedGenre);
-
-    if (sortedItems.length === 0) return null;
-
-    const items = sortedItems.slice(0, 15).map(item => convertToBookSummary(item));
-
-    return {
-      id: 'recently_added',
-      type: 'new_this_week',
-      title: 'Recently Added',
-      items,
-      totalCount: sortedItems.length,
-      priority: 5,
-      refreshPolicy: 'hourly',
-    };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
-
   // Personalized recommendations rows (based on reading history and preferences)
   const recommendationRows = useMemo((): ContentRow[] => {
     if (!isLoaded || !hasPreferences || groupedRecommendations.length === 0) return [];
@@ -238,27 +171,29 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     }));
   }, [isLoaded, hasPreferences, groupedRecommendations, convertToBookSummary]);
 
-  // Hero recommendation
+  // Hero recommendation (show top unlistened recommendation)
   const hero = useMemo((): HeroRecommendation | null => {
     if (!isLoaded || !libraryItems.length) return null;
 
-    // Priority: in-progress > new > popular
+    // Get unlistened books
+    const unlistenedBooks = libraryItems.filter(item => !hasBeenListened(item));
+    if (unlistenedBooks.length === 0) return null;
+
     let heroBook: LibraryItem | null = null;
-    let heroType: HeroRecommendation['type'] = 'popular';
+    let heroType: HeroRecommendation['type'] = 'personalized';
     let reason = getTimeBasedReason();
 
-    // Try to use most recent in-progress
-    if (inProgressItems && inProgressItems.length > 0) {
-      heroBook = inProgressItems[0];
-      heroType = 'personalized';
-      reason = 'Continue where you left off';
+    // Try to use top recommendation (if available)
+    if (groupedRecommendations.length > 0 && groupedRecommendations[0].items.length > 0) {
+      heroBook = groupedRecommendations[0].items[0];
+      reason = 'Recommended for you';
     }
-    // Otherwise use newest book
-    else if (libraryItems.length > 0) {
-      const sorted = [...libraryItems].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+    // Otherwise use newest unlistened book
+    else {
+      const sorted = [...unlistenedBooks].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
       heroBook = sorted[0];
       heroType = 'new';
-      reason = 'Just added to your library';
+      reason = 'New to your library';
     }
 
     if (!heroBook) return null;
@@ -268,24 +203,21 @@ export function useDiscoverData(selectedGenre: string = 'All') {
       reason,
       type: heroType,
     };
-  }, [libraryItems, inProgressItems, isLoaded, convertToBookSummary]);
+  }, [libraryItems, isLoaded, convertToBookSummary, groupedRecommendations]);
 
   // Organize rows by priority
   const rows = useMemo((): ContentRow[] => {
     const staticRows = [
-      continueListeningRow,
       newThisWeekRow,
-      popularRow,
-      recentlyAddedRow,
       shortBooksRow,
     ].filter((row): row is ContentRow => row !== null);
 
-    // Combine with recommendation rows
-    const allRows = [...staticRows, ...recommendationRows];
+    // Combine with recommendation rows (recommendations first)
+    const allRows = [...recommendationRows, ...staticRows];
 
     // Sort by priority
     return allRows.sort((a, b) => a.priority - b.priority);
-  }, [continueListeningRow, newThisWeekRow, popularRow, recentlyAddedRow, shortBooksRow, recommendationRows]);
+  }, [newThisWeekRow, shortBooksRow, recommendationRows]);
 
   // Refresh handler
   const refresh = useCallback(async () => {

@@ -1,13 +1,25 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
-import { Image } from 'expo-image';
-import { LibraryItem } from '@/core/types';
-import { apiClient } from '@/core/api';
-import { usePlayerStore } from '@/features/player';
+/**
+ * src/features/book-detail/components/OverviewTab.tsx
+ *
+ * Compact overview tab with tappable metadata chips for author, narrator, genres.
+ */
 
-// Design constants matching HomeScreen
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { LibraryItem } from '@/core/types';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
 const ACCENT = '#c1f40c';
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 interface OverviewTabProps {
   book: LibraryItem;
@@ -16,26 +28,69 @@ interface OverviewTabProps {
 
 export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { loadBook } = usePlayerStore();
+  const navigation = useNavigation<any>();
 
   const metadata = book.media.metadata as any;
   const description = metadata.description || '';
-  const seriesName = metadata.seriesName || null;
-  const publishedYear = metadata.publishedYear;
-  const publisher = metadata.publisher;
-  const language = metadata.language;
+
+  // Parse authors (handle both string and array formats)
+  const authors: string[] = [];
+  if (metadata.authorName) {
+    authors.push(...metadata.authorName.split(',').map((a: string) => a.trim()).filter(Boolean));
+  } else if (metadata.authors?.length > 0) {
+    metadata.authors.forEach((a: any) => {
+      const name = typeof a === 'string' ? a : a.name;
+      if (name) authors.push(name.trim());
+    });
+  }
+
+  // Parse narrators
+  const narrators: string[] = [];
+  let rawNarrator = metadata.narratorName || '';
+  if (!rawNarrator && metadata.narrators?.length > 0) {
+    metadata.narrators.forEach((n: any) => {
+      const name = typeof n === 'string' ? n : n.name;
+      if (name) narrators.push(name.replace(/^Narrated by\s*/i, '').trim());
+    });
+  } else if (rawNarrator) {
+    narrators.push(...rawNarrator.replace(/^Narrated by\s*/i, '').split(',').map((n: string) => n.trim()).filter(Boolean));
+  }
+
+  // Genres
+  const genres: string[] = metadata.genres || [];
+
+  // Series info
+  const seriesName = metadata.seriesName || metadata.series?.[0]?.name || null;
 
   const needsExpansion = description.length > 200;
   const displayDescription = needsExpansion && !isExpanded
     ? description.substring(0, 200) + '...'
     : description;
 
-  const similarBooks: any[] = [];
+  const handleAuthorPress = (authorName: string) => {
+    navigation.navigate('AuthorDetail', { authorName });
+  };
+
+  const handleNarratorPress = (narratorName: string) => {
+    navigation.navigate('NarratorDetail', { narratorName });
+  };
+
+  const handleGenrePress = (genre: string) => {
+    navigation.navigate('GenreDetail', { genreName: genre });
+  };
+
+  const handleSeriesPress = () => {
+    if (seriesName) {
+      const cleanName = seriesName.replace(/\s*#[\d.]+$/, '').trim();
+      navigation.navigate('SeriesDetail', { seriesName: cleanName });
+    }
+  };
 
   return (
     <View style={styles.container}>
+      {/* Description */}
       {description ? (
-        <View style={styles.section}>
+        <View style={styles.descriptionSection}>
           <Text style={styles.description}>{displayDescription}</Text>
           {needsExpansion && (
             <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)}>
@@ -44,77 +99,111 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
           )}
         </View>
       ) : (
-        <View style={styles.section}>
+        <View style={styles.descriptionSection}>
           <Text style={styles.noDescription}>No description available</Text>
         </View>
       )}
 
-      {showFullDetails && (
-        <View style={styles.detailsSection}>
-          {seriesName && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>SERIES</Text>
-              <Text style={styles.detailValue}>{seriesName}</Text>
+      {/* Metadata chips */}
+      <View style={styles.metadataSection}>
+        {/* Authors */}
+        {authors.length > 0 && (
+          <View style={styles.metadataRow}>
+            <Ionicons name="person-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <View style={styles.chipContainer}>
+              {authors.map((author, idx) => (
+                <TouchableOpacity
+                  key={`author-${idx}`}
+                  style={styles.chip}
+                  onPress={() => handleAuthorPress(author)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.chipText}>{author}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          )}
-          {publishedYear && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>PUBLISHED</Text>
-              <Text style={styles.detailValue}>{publishedYear}</Text>
-            </View>
-          )}
-          {publisher && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>PUBLISHER</Text>
-              <Text style={styles.detailValue}>{publisher}</Text>
-            </View>
-          )}
-          {language && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>LANGUAGE</Text>
-              <Text style={styles.detailValue}>{language}</Text>
-            </View>
-          )}
-        </View>
-      )}
+          </View>
+        )}
 
-      {!showFullDetails && similarBooks.length > 0 && (
-        <View style={styles.similarSection}>
-          <View style={styles.similarHeader}>
-            <Text style={styles.sectionTitle}>Similar Books</Text>
-            <TouchableOpacity>
-              <Text style={styles.moreLink}>More</Text>
+        {/* Narrators */}
+        {narrators.length > 0 && (
+          <View style={styles.metadataRow}>
+            <Ionicons name="mic-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <View style={styles.chipContainer}>
+              {narrators.map((narrator, idx) => (
+                <TouchableOpacity
+                  key={`narrator-${idx}`}
+                  style={styles.chip}
+                  onPress={() => handleNarratorPress(narrator)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.chipText}>{narrator}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Series */}
+        {seriesName && (
+          <View style={styles.metadataRow}>
+            <Ionicons name="library-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <TouchableOpacity
+              style={styles.chip}
+              onPress={handleSeriesPress}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.chipText}>{seriesName}</Text>
             </TouchableOpacity>
           </View>
-          <FlatList
-            horizontal
-            data={similarBooks}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.similarBook}
-                onPress={async () => {
-                  try {
-                    const fullBook = await apiClient.getItem(item.id);
-                    await loadBook(fullBook, { autoPlay: false });
-                  } catch {
-                    await loadBook(item, { autoPlay: false });
-                  }
-                }}
-              >
-                <Image
-                  source={apiClient.getItemCoverUrl(item.id)}
-                  style={styles.similarCover}
-                  contentFit="cover"
-                  transition={200}
-                />
-              </TouchableOpacity>
+        )}
+
+        {/* Genres */}
+        {genres.length > 0 && (
+          <View style={styles.metadataRow}>
+            <Ionicons name="pricetag-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <View style={styles.chipContainer}>
+              {genres.slice(0, 4).map((genre, idx) => (
+                <TouchableOpacity
+                  key={`genre-${idx}`}
+                  style={[styles.chip, styles.genreChip]}
+                  onPress={() => handleGenrePress(genre)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.genreChipText}>#{genre.toLowerCase()}</Text>
+                </TouchableOpacity>
+              ))}
+              {genres.length > 4 && (
+                <Text style={styles.moreGenres}>+{genres.length - 4}</Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Additional details if showFullDetails */}
+        {showFullDetails && (
+          <>
+            {metadata.publishedYear && (
+              <View style={styles.metadataRow}>
+                <Ionicons name="calendar-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Text style={styles.detailText}>{metadata.publishedYear}</Text>
+              </View>
             )}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.similarList}
-          />
-        </View>
-      )}
+            {metadata.publisher && (
+              <View style={styles.metadataRow}>
+                <Ionicons name="business-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Text style={styles.detailText}>{metadata.publisher}</Text>
+              </View>
+            )}
+            {metadata.language && (
+              <View style={styles.metadataRow}>
+                <Ionicons name="globe-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Text style={styles.detailText}>{metadata.language}</Text>
+              </View>
+            )}
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -123,84 +212,70 @@ const styles = StyleSheet.create({
   container: {
     paddingTop: 0,
   },
-  section: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+  descriptionSection: {
+    paddingHorizontal: scale(20),
+    marginBottom: scale(20),
   },
   description: {
-    fontSize: 14,
+    fontSize: scale(14),
     color: 'rgba(255,255,255,0.7)',
-    lineHeight: 22,
+    lineHeight: scale(22),
   },
   noDescription: {
-    fontSize: 14,
-    fontFamily: MONO_FONT,
+    fontSize: scale(14),
     color: 'rgba(255,255,255,0.4)',
     fontStyle: 'italic',
   },
   readMore: {
-    fontSize: 13,
+    fontSize: scale(13),
     fontWeight: '600',
     color: ACCENT,
-    marginTop: 8,
+    marginTop: scale(8),
   },
-  detailsSection: {
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingVertical: 16,
-    marginHorizontal: 20,
-    borderRadius: 12,
-    marginBottom: 20,
+
+  // Metadata section
+  metadataSection: {
+    paddingHorizontal: scale(20),
+    gap: scale(12),
   },
-  detailRow: {
+  metadataRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'flex-start',
+    gap: scale(10),
   },
-  detailLabel: {
-    fontSize: 10,
-    fontFamily: MONO_FONT,
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1,
+  chipContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
   },
-  detailValue: {
-    fontSize: 14,
+  chip: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(6),
+    borderRadius: scale(16),
+  },
+  chipText: {
+    fontSize: scale(12),
+    color: '#fff',
     fontWeight: '500',
-    color: '#fff',
   },
-  similarSection: {
-    marginTop: 8,
+  genreChip: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
-  similarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 12,
+  genreChipText: {
+    fontSize: scale(11),
+    color: 'rgba(255,255,255,0.6)',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
+  moreGenres: {
+    fontSize: scale(11),
+    color: 'rgba(255,255,255,0.4)',
+    alignSelf: 'center',
   },
-  moreLink: {
-    fontSize: 12,
-    fontFamily: MONO_FONT,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  similarList: {
-    paddingHorizontal: 20,
-  },
-  similarBook: {
-    width: 100,
-    marginRight: 12,
-  },
-  similarCover: {
-    width: 100,
-    height: 150,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  detailText: {
+    fontSize: scale(13),
+    color: 'rgba(255,255,255,0.6)',
   },
 });

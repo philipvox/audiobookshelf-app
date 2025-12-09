@@ -1,7 +1,8 @@
 /**
  * src/features/library/screens/GenreDetailScreen.tsx
  *
- * Shows all books in a specific genre with search functionality.
+ * Shows all books in a specific genre with search functionality
+ * and comprehensive sort options.
  */
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
@@ -14,24 +15,63 @@ import {
   StatusBar,
   RefreshControl,
   TextInput,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
-import { Icon } from '@/shared/components/Icon';
 import { BookCard } from '@/shared/components/BookCard';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
-const BG_COLOR = '#000000';
-const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#CCFF00';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
+const BG_COLOR = '#1a1a1a';
+const CARD_COLOR = 'rgba(255,255,255,0.08)';
+const ACCENT = '#c1f40c';
 const PADDING = 16;
 
-type SortType = 'title' | 'author' | 'dateAdded';
-type SortDirection = 'asc' | 'desc';
+type SortOption =
+  | 'recentlyAdded'
+  | 'titleAsc'
+  | 'titleDesc'
+  | 'authorAsc'
+  | 'authorDesc'
+  | 'durationAsc'
+  | 'durationDesc';
+
+interface SortConfig {
+  id: SortOption;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}
 
 type GenreDetailParams = {
   genreName: string;
 };
+
+const SORT_OPTIONS: SortConfig[] = [
+  { id: 'recentlyAdded', label: 'Recently Added', icon: 'time-outline' },
+  { id: 'titleAsc', label: 'Title A-Z', icon: 'arrow-up' },
+  { id: 'titleDesc', label: 'Title Z-A', icon: 'arrow-down' },
+  { id: 'authorAsc', label: 'Author A-Z', icon: 'person-outline' },
+  { id: 'authorDesc', label: 'Author Z-A', icon: 'person-outline' },
+  { id: 'durationAsc', label: 'Duration (Short to Long)', icon: 'timer-outline' },
+  { id: 'durationDesc', label: 'Duration (Long to Short)', icon: 'timer-outline' },
+];
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
 
 export function GenreDetailScreen() {
   const navigation = useNavigation<any>();
@@ -42,8 +82,8 @@ export function GenreDetailScreen() {
   const genreName = route.params?.genreName || '';
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortType>('title');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [sortOption, setSortOption] = useState<SortOption>('recentlyAdded');
+  const [showSortModal, setShowSortModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { refreshCache, isLoaded, filterItems } = useLibraryCache();
@@ -69,35 +109,70 @@ export function GenreDetailScreen() {
     });
   }, [genreBooks, searchQuery]);
 
-  // Sort books
+  // Sort books based on selected option
   const sortedBooks = useMemo(() => {
     const sorted = [...filteredBooks];
-    const direction = sortDirection === 'asc' ? 1 : -1;
 
-    switch (sortBy) {
-      case 'title':
+    switch (sortOption) {
+      case 'recentlyAdded':
+        sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        break;
+      case 'titleAsc':
         sorted.sort((a, b) => {
           const aTitle = (a.media?.metadata as any)?.title || '';
           const bTitle = (b.media?.metadata as any)?.title || '';
-          return direction * aTitle.localeCompare(bTitle);
+          return aTitle.localeCompare(bTitle);
         });
         break;
-      case 'author':
+      case 'titleDesc':
+        sorted.sort((a, b) => {
+          const aTitle = (a.media?.metadata as any)?.title || '';
+          const bTitle = (b.media?.metadata as any)?.title || '';
+          return bTitle.localeCompare(aTitle);
+        });
+        break;
+      case 'authorAsc':
         sorted.sort((a, b) => {
           const aAuthor = (a.media?.metadata as any)?.authorName || '';
           const bAuthor = (b.media?.metadata as any)?.authorName || '';
-          return direction * aAuthor.localeCompare(bAuthor);
+          return aAuthor.localeCompare(bAuthor);
         });
         break;
-      case 'dateAdded':
+      case 'authorDesc':
         sorted.sort((a, b) => {
-          return direction * ((a.addedAt || 0) - (b.addedAt || 0));
+          const aAuthor = (a.media?.metadata as any)?.authorName || '';
+          const bAuthor = (b.media?.metadata as any)?.authorName || '';
+          return bAuthor.localeCompare(aAuthor);
+        });
+        break;
+      case 'durationAsc':
+        sorted.sort((a, b) => {
+          const aDuration = (a.media as any)?.duration || 0;
+          const bDuration = (b.media as any)?.duration || 0;
+          return aDuration - bDuration;
+        });
+        break;
+      case 'durationDesc':
+        sorted.sort((a, b) => {
+          const aDuration = (a.media as any)?.duration || 0;
+          const bDuration = (b.media as any)?.duration || 0;
+          return bDuration - aDuration;
         });
         break;
     }
 
     return sorted;
-  }, [filteredBooks, sortBy, sortDirection]);
+  }, [filteredBooks, sortOption]);
+
+  // Get total duration for stats
+  const totalDuration = useMemo(() => {
+    return genreBooks.reduce((sum, book) => {
+      return sum + ((book.media as any)?.duration || 0);
+    }, 0);
+  }, [genreBooks]);
+
+  // Get current sort config
+  const currentSortConfig = SORT_OPTIONS.find((opt) => opt.id === sortOption) || SORT_OPTIONS[0];
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -111,14 +186,16 @@ export function GenreDetailScreen() {
     navigation.navigate('BookDetail', { id: bookId });
   }, [navigation]);
 
-  const handleSortPress = (type: SortType) => {
-    if (sortBy === type) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortBy(type);
-      setSortDirection('asc');
-    }
-  };
+  const handleOpenSortModal = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowSortModal(true);
+  }, []);
+
+  const handleSelectSort = useCallback((option: SortOption) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSortOption(option);
+    setShowSortModal(false);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -145,12 +222,12 @@ export function GenreDetailScreen() {
       <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
+          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
         </TouchableOpacity>
         <View style={styles.searchContainer}>
-          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <Ionicons name="search" size={scale(18)} color="rgba(255,255,255,0.5)" />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
@@ -164,61 +241,78 @@ export function GenreDetailScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+              <Ionicons name="close-circle" size={scale(18)} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Genre Title */}
-      <View style={styles.titleBar}>
-        <Text style={styles.genreTitle}>{genreName}</Text>
-        <Text style={styles.resultCount}>{sortedBooks.length} books</Text>
-      </View>
-
-      {/* Sort Bar */}
-      <View style={styles.sortBar}>
-        <View style={styles.sortButtons}>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'title' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('title')}
-          >
-            <Icon
-              name={sortBy === 'title' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
-              size={14}
-              color={sortBy === 'title' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
-            />
-            <Text style={[styles.sortButtonText, sortBy === 'title' && styles.sortButtonTextActive]}>
-              {sortBy === 'title' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Title'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'author' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('author')}
-          >
-            <Icon
-              name={sortBy === 'author' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'person-outline'}
-              size={14}
-              color={sortBy === 'author' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
-            />
-            <Text style={[styles.sortButtonText, sortBy === 'author' && styles.sortButtonTextActive]}>Author</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'dateAdded' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('dateAdded')}
-          >
-            <Icon
-              name={sortBy === 'dateAdded' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'calendar-outline'}
-              size={14}
-              color={sortBy === 'dateAdded' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
-            />
-            <Text style={[styles.sortButtonText, sortBy === 'dateAdded' && styles.sortButtonTextActive]}>Date</Text>
-          </TouchableOpacity>
+      {/* Genre Title and Stats */}
+      <View style={styles.titleSection}>
+        <View style={styles.genreIcon}>
+          <Ionicons name="musical-notes" size={scale(24)} color={ACCENT} />
+        </View>
+        <View style={styles.titleInfo}>
+          <Text style={styles.genreTitle}>{genreName}</Text>
+          <Text style={styles.genreStats}>
+            {sortedBooks.length} book{sortedBooks.length !== 1 ? 's' : ''} • {formatDuration(totalDuration)}
+          </Text>
         </View>
       </View>
+
+      {/* Sort Dropdown Button */}
+      <View style={styles.sortBar}>
+        <TouchableOpacity style={styles.sortDropdown} onPress={handleOpenSortModal}>
+          <Ionicons name={currentSortConfig.icon} size={scale(16)} color={ACCENT} />
+          <Text style={styles.sortDropdownText}>{currentSortConfig.label}</Text>
+          <Ionicons name="chevron-down" size={scale(16)} color="rgba(255,255,255,0.5)" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Sort Modal */}
+      <Modal
+        visible={showSortModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSortModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSortModal(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Sort By</Text>
+              <TouchableOpacity onPress={() => setShowSortModal(false)}>
+                <Ionicons name="close" size={scale(24)} color="rgba(255,255,255,0.5)" />
+              </TouchableOpacity>
+            </View>
+            {SORT_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={[styles.sortOption, sortOption === option.id && styles.sortOptionActive]}
+                onPress={() => handleSelectSort(option.id)}
+              >
+                <View style={styles.sortOptionLeft}>
+                  <Ionicons
+                    name={option.icon}
+                    size={scale(18)}
+                    color={sortOption === option.id ? ACCENT : 'rgba(255,255,255,0.6)'}
+                  />
+                  <Text
+                    style={[
+                      styles.sortOptionText,
+                      sortOption === option.id && styles.sortOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </View>
+                {sortOption === option.id && (
+                  <Ionicons name="checkmark" size={scale(20)} color={ACCENT} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ScrollView
         style={styles.content}
@@ -244,7 +338,7 @@ export function GenreDetailScreen() {
 
         {sortedBooks.length === 0 && (
           <View style={styles.emptyState}>
-            <Icon name="book-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
+            <Ionicons name="book-outline" size={scale(48)} color="rgba(255,255,255,0.2)" />
             <Text style={styles.emptyTitle}>No books found</Text>
             <Text style={styles.emptySubtitle}>
               {searchQuery ? 'Try a different search term' : 'No books in this genre'}
@@ -264,13 +358,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 8,
+    paddingHorizontal: scale(12),
+    paddingBottom: scale(12),
+    gap: scale(8),
   },
   headerButton: {
-    width: 36,
-    height: 36,
+    width: scale(36),
+    height: scale(36),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -279,35 +373,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CARD_COLOR,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 40,
+    borderRadius: scale(10),
+    paddingHorizontal: scale(12),
+    height: scale(40),
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
-    fontSize: 15,
-    marginLeft: 8,
+    color: '#fff',
+    fontSize: scale(15),
+    marginLeft: scale(8),
     paddingVertical: 0,
   },
   clearButton: {
-    padding: 4,
+    padding: scale(4),
   },
-  titleBar: {
+  // Title Section
+  titleSection: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: PADDING,
-    marginBottom: 8,
+    marginBottom: scale(16),
+  },
+  genreIcon: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(12),
+    backgroundColor: 'rgba(193,244,12,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  titleInfo: {
+    marginLeft: scale(12),
   },
   genreTitle: {
-    fontSize: 24,
+    fontSize: scale(22),
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#fff',
   },
-  resultCount: {
+  genreStats: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
+    fontSize: scale(13),
+    marginTop: scale(2),
   },
   loadingContainer: {
     flex: 1,
@@ -316,61 +422,101 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 16,
+    fontSize: scale(16),
   },
+  // Sort Bar
   sortBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
     paddingHorizontal: PADDING,
-    paddingBottom: 12,
+    paddingBottom: scale(12),
   },
-  sortButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  sortButton: {
+  sortDropdown: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: scale(6),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
     backgroundColor: CARD_COLOR,
   },
-  sortButtonActive: {
-    backgroundColor: ACCENT,
-  },
-  sortButtonText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+  sortDropdownText: {
+    fontSize: scale(13),
+    color: '#fff',
     fontWeight: '500',
   },
-  sortButtonTextActive: {
-    color: '#000',
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
   },
+  modalContent: {
+    backgroundColor: '#262626',
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    paddingBottom: scale(40),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  modalTitle: {
+    fontSize: scale(18),
+    fontWeight: '600',
+    color: '#fff',
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  sortOptionActive: {
+    backgroundColor: 'rgba(193,244,12,0.1)',
+  },
+  sortOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+  },
+  sortOptionText: {
+    fontSize: scale(15),
+    color: 'rgba(255,255,255,0.8)',
+  },
+  sortOptionTextActive: {
+    color: ACCENT,
+    fontWeight: '600',
+  },
+  // Content
   content: {
     flex: 1,
   },
   listContent: {
-    paddingTop: 8,
+    paddingTop: scale(8),
   },
   emptyState: {
     flex: 1,
     width: '100%',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: scale(60),
   },
   emptyTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: scale(18),
     fontWeight: '600',
-    marginTop: 16,
+    marginTop: scale(16),
   },
   emptySubtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: scale(14),
+    marginTop: scale(4),
     textAlign: 'center',
   },
 });

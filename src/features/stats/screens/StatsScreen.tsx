@@ -26,6 +26,7 @@ import {
   getWeekdayName,
 } from '../hooks/useListeningStats';
 import { ShareStatsCard } from '../components/ShareStatsCard';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -239,7 +240,7 @@ export function StatsScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
 
       <ScrollView

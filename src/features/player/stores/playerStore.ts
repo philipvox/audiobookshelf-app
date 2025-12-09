@@ -129,6 +129,12 @@ interface PlayerState {
   // ---------------------------------------------------------------------------
   shakeToExtendEnabled: boolean;          // User preference
   isShakeDetectionActive: boolean;        // Currently listening for shakes
+
+  // ---------------------------------------------------------------------------
+  // Skip Intervals (persisted)
+  // ---------------------------------------------------------------------------
+  skipForwardInterval: number;            // Seconds to skip forward (default 30)
+  skipBackInterval: number;               // Seconds to skip back (default 15)
 }
 
 interface PlayerActions {
@@ -233,6 +239,8 @@ interface PlayerActions {
   extendSleepTimer: (minutes: number) => void;
   clearSleepTimer: () => void;
   setShakeToExtendEnabled: (enabled: boolean) => Promise<void>;
+  setSkipForwardInterval: (seconds: number) => Promise<void>;
+  setSkipBackInterval: (seconds: number) => Promise<void>;
   setControlMode: (mode: 'rewind' | 'chapter') => void;
   setProgressMode: (mode: 'bar' | 'chapters') => void;
   loadPlayerSettings: () => Promise<void>;
@@ -264,6 +272,8 @@ interface PlayerActions {
 const BOOK_SPEED_MAP_KEY = 'playerBookSpeedMap';
 const GLOBAL_DEFAULT_RATE_KEY = 'playerGlobalDefaultRate';
 const SHAKE_TO_EXTEND_KEY = 'playerShakeToExtend';
+const SKIP_FORWARD_INTERVAL_KEY = 'playerSkipForwardInterval';
+const SKIP_BACK_INTERVAL_KEY = 'playerSkipBackInterval';
 const PROGRESS_SAVE_INTERVAL = 30000; // Save progress every 30 seconds
 const PREV_CHAPTER_THRESHOLD = 3;     // Seconds before going to prev vs restart
 const SLEEP_TIMER_SHAKE_THRESHOLD = 60; // Start shake detection when < 60 seconds remaining
@@ -557,6 +567,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     shakeToExtendEnabled: true,  // Default enabled
     isShakeDetectionActive: false,
 
+    // Skip intervals
+    skipForwardInterval: 30,
+    skipBackInterval: 15,
+
     // =========================================================================
     // LIFECYCLE
     // =========================================================================
@@ -598,6 +612,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         log('Same book already loaded');
         if (showPlayer) {
           set({ isPlayerVisible: true });
+        }
+        // If startPosition is provided, seek to it
+        if (startPosition !== undefined && startPosition > 0) {
+          log('Seeking to startPosition:', startPosition);
+          await get().seekTo(startPosition);
         }
         if (autoPlay && !get().isPlaying) {
           await get().play();
@@ -1454,6 +1473,20 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       }
     },
 
+    setSkipForwardInterval: async (seconds: number) => {
+      set({ skipForwardInterval: seconds });
+      try {
+        await AsyncStorage.setItem(SKIP_FORWARD_INTERVAL_KEY, seconds.toString());
+      } catch {}
+    },
+
+    setSkipBackInterval: async (seconds: number) => {
+      set({ skipBackInterval: seconds });
+      try {
+        await AsyncStorage.setItem(SKIP_BACK_INTERVAL_KEY, seconds.toString());
+      } catch {}
+    },
+
     setControlMode: (mode: 'rewind' | 'chapter') => {
       set({ controlMode: mode });
       AsyncStorage.setItem('playerControlMode', mode).catch(() => {});
@@ -1466,17 +1499,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     loadPlayerSettings: async () => {
       try {
-        const [controlMode, progressMode, bookSpeedMapStr, globalDefaultRateStr, shakeToExtendStr] = await Promise.all([
+        const [
+          controlMode,
+          progressMode,
+          bookSpeedMapStr,
+          globalDefaultRateStr,
+          shakeToExtendStr,
+          skipForwardStr,
+          skipBackStr,
+        ] = await Promise.all([
           AsyncStorage.getItem('playerControlMode'),
           AsyncStorage.getItem('playerProgressMode'),
           AsyncStorage.getItem(BOOK_SPEED_MAP_KEY),
           AsyncStorage.getItem(GLOBAL_DEFAULT_RATE_KEY),
           AsyncStorage.getItem(SHAKE_TO_EXTEND_KEY),
+          AsyncStorage.getItem(SKIP_FORWARD_INTERVAL_KEY),
+          AsyncStorage.getItem(SKIP_BACK_INTERVAL_KEY),
         ]);
 
         const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
         const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
         const shakeToExtendEnabled = shakeToExtendStr !== 'false'; // Default true
+        const skipForwardInterval = skipForwardStr ? parseInt(skipForwardStr, 10) : 30;
+        const skipBackInterval = skipBackStr ? parseInt(skipBackStr, 10) : 15;
 
         set({
           controlMode: (controlMode as 'rewind' | 'chapter') || 'rewind',
@@ -1485,6 +1530,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           bookSpeedMap,
           globalDefaultRate,
           shakeToExtendEnabled,
+          skipForwardInterval,
+          skipBackInterval,
         });
       } catch {
         // Use defaults

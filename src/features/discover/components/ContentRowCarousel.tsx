@@ -25,7 +25,6 @@ import { BookSummary, ContentRow } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 // Card dimensions - smaller square covers with more spacing
 const CARD_WIDTH = scale(100); // Smaller than default 125
@@ -172,13 +171,11 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     fontSize: scale(13),
-    fontFamily: MONO_FONT,
     color: COLORS.textSecondary,
     letterSpacing: 0.3,
   },
   rowSubtitle: {
     fontSize: scale(10),
-    fontFamily: MONO_FONT,
     color: COLORS.textTertiary,
     marginTop: scale(2),
   },
@@ -188,7 +185,6 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: scale(11),
-    fontFamily: MONO_FONT,
     color: COLORS.textTertiary,
   },
   carouselContent: {
@@ -237,7 +233,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: scale(11),
-    fontFamily: MONO_FONT,
     color: COLORS.textTertiary,
     marginTop: scale(2),
   },

@@ -4,6 +4,7 @@ export {
   getAllNarrators,
   getAllSeries,
   getAllGenres,
+  getSeriesNavigationInfo,
   type FilterOptions,
 } from './libraryCache';
 

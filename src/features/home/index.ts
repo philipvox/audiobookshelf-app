@@ -5,16 +5,16 @@
  */
 
 // Screens
-export { HomeScreen, HOME_CONFIG } from './screens/HomeScreen';
+export { HomeScreen } from './screens/HomeScreen';
 
 // Components
 export { NowPlayingCard } from './components/NowPlayingCard';
+export { CompactNowPlaying, NothingPlayingCard } from './components/CompactNowPlaying';
+export { Greeting } from './components/Greeting';
+export { EmptySection } from './components/EmptySection';
 export { InfoTiles } from './components/InfoTiles';
 export { PlaybackControls } from './components/PlaybackControls';
-export { GlassButton } from './components/GlassButton';
 export { CoverArtwork } from './components/CoverArtwork';
-export { CassetteCover } from './components/CassetteCover';
-export { HomeBackground } from './components/HomeBackground';
 export { MiniControls } from './components/MiniControls';
 export { SectionHeader } from './components/SectionHeader';
 export { HorizontalCarousel } from './components/HorizontalCarousel';
@@ -23,9 +23,6 @@ export { PlaylistCard } from './components/PlaylistCard';
 export { CoverStack } from './components/CoverStack';
 export { CoverGrid } from './components/CoverGrid';
 export { HeartBadge } from './components/HeartBadge';
-
-// Icons
-export * from './components/icons';
 
 // Hooks
 export { useHomeData } from './hooks/useHomeData';
@@ -36,4 +33,3 @@ export * from './types';
 
 // Constants
 export * from './constants';
-// Note: homeDesign.ts exports are imported directly where needed to avoid conflicts

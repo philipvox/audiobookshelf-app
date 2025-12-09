@@ -19,7 +19,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity, RecoveryStrategy } from '../types';
 
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 interface ErrorSheetProps {
   error: AppError;
@@ -241,19 +240,16 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 12,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.4)',
     width: 80,
   },
   detailValue: {
     fontSize: 12,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.6)',
     flex: 1,
   },
   technicalMessage: {
     fontSize: 11,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.4)',
     marginTop: 8,
   },

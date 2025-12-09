@@ -47,8 +47,15 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
   const recommendations = useMemo(() => {
     if (!allItems.length) return [];
 
-    // Filter out items already in user's library
-    const availableItems = allItems.filter(item => !libraryIds.includes(item.id));
+    // Filter out items already in user's library AND items with any progress (listened to)
+    const availableItems = allItems.filter(item => {
+      // Exclude items in user's library (downloaded/saved)
+      if (libraryIds.includes(item.id)) return false;
+      // Exclude items the user has started listening to
+      const progress = (item as any).userMediaProgress?.progress || 0;
+      if (progress > 0) return false;
+      return true;
+    });
 
     // Create lookup maps for history-based scoring
     const historyAuthorWeights = new Map<string, number>();

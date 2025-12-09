@@ -1,13 +1,19 @@
 /**
  * src/features/home/screens/HomeScreen.tsx
  *
- * Redesigned home screen:
- * - Top bar: Profile, Discover, Your Library
- * - Now Playing: Large cover, title/author, controls
- * - Downloaded books section
+ * Redesigned Home Screen - the app's engagement hub
+ * Answers: "What should I listen to next?"
+ *
+ * Sections:
+ * 1. Greeting (time-based)
+ * 2. Compact Now Playing Card (~25% of screen)
+ * 3. Continue Listening (in-progress books)
+ * 4. Up Next (queue preview)
+ * 5. Continue Series (active series)
+ * 6. Downloaded books
  */
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -17,7 +23,7 @@ import {
   ScrollView,
   Dimensions,
   TouchableOpacity,
-  Platform,
+  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,42 +36,35 @@ import { usePlayerStore } from '@/features/player';
 import { useRobustSeekControl } from '@/features/player/hooks/useRobustSeekControl';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache } from '@/core/cache/libraryCache';
+import { useAuth } from '@/core/auth/authContext';
 import { BookCard } from '@/shared/components/BookCard';
 import { useHomeData } from '../hooks/useHomeData';
 import { useQueue } from '@/features/queue/stores/queueStore';
-
-// Monospace font for titles
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
-
-// Button assets
-const RewindButtonImage = require('../assets/rewind-button.png');
-const FastForwardButtonImage = require('../assets/fast-forward-button.png');
-const PlayButtonImage = require('../assets/play-button.png');
-const PauseButtonImage = require('../assets/pause-button.png');
+import { Greeting } from '../components/Greeting';
+import { CompactNowPlaying, NothingPlayingCard } from '../components/CompactNowPlaying';
+import { SectionHeader } from '../components/SectionHeader';
+import { EmptySection } from '../components/EmptySection';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const COVER_SIZE = SCREEN_WIDTH * 0.75;
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 const ACCENT = '#c1f40c';
 const REWIND_COLOR = '#ff4444';
-const BUTTON_SIZE = 58; // All buttons same size
 
-// Format seek time with appropriate units
-const formatSeekTime = (seconds: number): string => {
-  const absSeconds = Math.abs(Math.round(seconds));
-  if (absSeconds >= 300) { // 5+ minutes
-    const mins = Math.floor(absSeconds / 60);
-    return `${mins}m`;
-  }
-  return `${absSeconds}s`;
-};
+// Horizontal card dimensions
+const HORIZONTAL_CARD_WIDTH = scale(125);
+const HORIZONTAL_CARD_COVER = scale(110);
 
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
 
   const {
     currentBook,
     currentProgress,
+    recentlyListened,
+    userSeries,
     isRefreshing,
     refresh,
   } = useHomeData();
@@ -74,6 +73,9 @@ export function HomeScreen() {
     currentBook: playerCurrentBook,
     isPlaying,
     isLoading: isPlayerLoading,
+    position,
+    duration,
+    chapters,
     loadBook,
     play,
     pause,
@@ -87,9 +89,8 @@ export function HomeScreen() {
     isSeeking,
   } = useRobustSeekControl();
 
-  // Queue state
+  // Queue state (for renderQueueCard)
   const queue = useQueue();
-  const hasQueue = queue.length > 0;
 
   // Downloaded books from downloads hook
   const { downloads } = useDownloads();
@@ -103,12 +104,10 @@ export function HomeScreen() {
       const books: LibraryItem[] = [];
 
       for (const download of completedDownloads.slice(0, 10)) {
-        // Try to get from cache first
         const cachedBook = getItem(download.itemId);
         if (cachedBook) {
           books.push(cachedBook);
         } else {
-          // Fetch from API if not in cache
           try {
             const book = await apiClient.getItem(download.itemId);
             books.push(book);
@@ -124,33 +123,28 @@ export function HomeScreen() {
     loadDownloadedBooks();
   }, [downloads, getItem]);
 
-  // Get author from book metadata - check multiple field paths
-  const getAuthor = (book: LibraryItem | null): string => {
-    if (!book) return '';
-    const metadata = book.media?.metadata as any;
-    if (!metadata) return '';
+  // Get current chapter info
+  const currentChapterInfo = useMemo(() => {
+    if (!chapters || chapters.length === 0) return { current: undefined, total: undefined };
 
-    // Try authorName first (formatted string)
-    if (metadata.authorName) return metadata.authorName;
+    const currentPosition = isSeeking ? position : position;
+    const chapterIndex = chapters.findIndex((ch, idx) => {
+      const nextChapter = chapters[idx + 1];
+      return currentPosition >= ch.start && (!nextChapter || currentPosition < nextChapter.start);
+    });
 
-    // Try authors array
-    if (metadata.authors?.length > 0) {
-      return metadata.authors.map((a: any) => a.name).join(', ');
+    if (chapterIndex >= 0) {
+      return { current: chapterIndex + 1, total: chapters.length };
     }
-
-    return '';
-  };
-
-  const currentCoverUrl = currentBook ? apiClient.getItemCoverUrl(currentBook.id) : undefined;
-  const currentTitle = currentBook?.media?.metadata?.title || 'No book selected';
-  const currentAuthor = getAuthor(currentBook);
-  const progressPercent = currentProgress?.progress ? Math.round(currentProgress.progress * 100) : 0;
+    return { current: 1, total: chapters.length };
+  }, [chapters, position, isSeeking]);
 
   // Navigation handlers
-  const handleProfilePress = () => navigation.navigate('Main', { screen: 'ProfileTab' });
-  const handleDiscoverPress = () => navigation.navigate('Main', { screen: 'DiscoverTab' });
   const handleLibraryPress = () => navigation.navigate('Main', { screen: 'LibraryTab' });
   const handleQueuePress = () => navigation.navigate('QueueScreen');
+  const handleSeriesPress = useCallback((seriesName: string) => {
+    navigation.navigate('SeriesDetail', { name: seriesName });
+  }, [navigation]);
 
   // Player controls
   const handlePlayPause = useCallback(async () => {
@@ -186,176 +180,301 @@ export function HomeScreen() {
     await stopContinuousSeek();
   }, [stopContinuousSeek]);
 
-  // Cover tap opens book details
-  const handleCoverPress = useCallback(() => {
+  // Now Playing card tap opens player
+  const togglePlayer = usePlayerStore((s) => s.togglePlayer);
+  const handleNowPlayingPress = useCallback(() => {
     if (currentBook) {
-      navigation.navigate('BookDetail', { id: currentBook.id });
+      togglePlayer();
     }
-  }, [currentBook, navigation]);
+  }, [currentBook, togglePlayer]);
 
-  // Book list item press - always goes to BookDetail
+  // Book card press
   const handleBookPress = useCallback((bookId: string) => {
     navigation.navigate('BookDetail', { id: bookId });
   }, [navigation]);
+
+  // Resume book immediately
+  const handleResumeBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  // Continue Listening - exclude current book, take first 15
+  const continueListeningBooks = useMemo(() => {
+    if (!currentBook) return recentlyListened.slice(0, 15);
+    return recentlyListened.filter(book => book.id !== currentBook.id).slice(0, 15);
+  }, [recentlyListened, currentBook]);
+
+  // Up Next - first 5 from queue
+  const upNextBooks = useMemo(() => queue.slice(0, 5), [queue]);
+
+  // Continue Series - series with in-progress books
+  const continueSeriesData = useMemo(() => {
+    return userSeries.filter(s => s.booksInProgress > 0).slice(0, 5);
+  }, [userSeries]);
+
+  // Get author from book
+  const getBookAuthor = (book: LibraryItem): string => {
+    const metadata = book.media?.metadata as any;
+    if (!metadata) return '';
+    if (metadata.authorName) return metadata.authorName;
+    if (metadata.authors?.length > 0) {
+      return metadata.authors.map((a: any) => a.name).join(', ');
+    }
+    return '';
+  };
+
+  // Render horizontal book card with progress
+  const renderContinueListeningCard = useCallback(({ item }: { item: LibraryItem }) => {
+    const coverUrl = apiClient.getItemCoverUrl(item.id);
+    const title = item.media?.metadata?.title || 'Unknown';
+    const progress = (item as any).userMediaProgress?.progress || 0;
+    const progressPct = Math.round(progress * 100);
+
+    return (
+      <TouchableOpacity
+        style={styles.horizontalCard}
+        onPress={() => handleResumeBook(item)}
+        onLongPress={() => handleBookPress(item.id)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.horizontalCardCoverContainer}>
+          <Image
+            source={coverUrl}
+            style={styles.horizontalCardCover}
+            contentFit="cover"
+            transition={200}
+          />
+          {progressPct > 0 && (
+            <>
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.8)']}
+                style={styles.cardGradient}
+              />
+              <View style={styles.horizontalCardProgress}>
+                <View style={[styles.horizontalCardProgressFill, { width: `${progressPct}%` }]} />
+              </View>
+              <Text style={styles.cardProgressText}>{progressPct}%</Text>
+            </>
+          )}
+        </View>
+        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{title}</Text>
+      </TouchableOpacity>
+    );
+  }, [handleResumeBook, handleBookPress]);
+
+  // Render queue card with position badge
+  const renderQueueCard = useCallback(({ item, index }: { item: any; index: number }) => {
+    const coverUrl = apiClient.getItemCoverUrl(item.bookId);
+    const title = item.book?.media?.metadata?.title || 'Unknown';
+    const author = getBookAuthor(item.book);
+
+    return (
+      <TouchableOpacity
+        style={styles.horizontalCard}
+        onPress={() => handleBookPress(item.bookId)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.horizontalCardCoverContainer}>
+          <Image
+            source={coverUrl}
+            style={styles.horizontalCardCover}
+            contentFit="cover"
+            transition={200}
+          />
+          <View style={styles.queueNumberBadge}>
+            <Text style={styles.queueNumberText}>{index + 1}</Text>
+          </View>
+        </View>
+        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{title}</Text>
+        <Text style={styles.horizontalCardAuthor} numberOfLines={1}>{author}</Text>
+      </TouchableOpacity>
+    );
+  }, [handleBookPress]);
+
+  // Render series card with stacked covers
+  const renderSeriesCard = useCallback(({ item }: { item: typeof userSeries[0] }) => {
+    const books = item.books.slice(0, 3);
+    const firstBook = books[0];
+    const coverUrl = firstBook ? apiClient.getItemCoverUrl(firstBook.id) : undefined;
+    const totalBooks = item.totalBooks;
+    const completedBooks = item.booksCompleted || 0;
+    const nextBook = completedBooks + 1;
+
+    return (
+      <TouchableOpacity
+        style={styles.horizontalCard}
+        onPress={() => handleSeriesPress(item.name)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.seriesCardContainer}>
+          {/* Stacked covers */}
+          {books.length > 2 && (
+            <View style={[styles.stackedCover, styles.stackedCover3]}>
+              <Image source={apiClient.getItemCoverUrl(books[2].id)} style={styles.stackedCoverImage} contentFit="cover" />
+            </View>
+          )}
+          {books.length > 1 && (
+            <View style={[styles.stackedCover, styles.stackedCover2]}>
+              <Image source={apiClient.getItemCoverUrl(books[1].id)} style={styles.stackedCoverImage} contentFit="cover" />
+            </View>
+          )}
+          {coverUrl ? (
+            <View style={styles.stackedCoverMain}>
+              <Image source={coverUrl} style={styles.horizontalCardCover} contentFit="cover" transition={200} />
+            </View>
+          ) : (
+            <View style={[styles.horizontalCardCover, styles.placeholderCover]}>
+              <Ionicons name="library" size={scale(32)} color={ACCENT} />
+            </View>
+          )}
+          {/* Progress badge */}
+          <View style={styles.seriesProgressBadge}>
+            <Text style={styles.seriesProgressText}>Book {nextBook} of {totalBooks}</Text>
+          </View>
+        </View>
+        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.seriesBookCount}>{item.booksInProgress} in progress</Text>
+      </TouchableOpacity>
+    );
+  }, [handleSeriesPress, userSeries]);
+
+  // Calculate progress
+  const progressValue = duration > 0 ? position / duration : 0;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Blurred cover background */}
-      {currentCoverUrl && (
-        <View style={StyleSheet.absoluteFill}>
-          <Image
-            source={currentCoverUrl}
-            style={styles.backgroundImage}
-            contentFit="cover"
-            blurRadius={60}
-          />
-          <LinearGradient
-            colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
-      )}
-      {!currentCoverUrl && (
-        <LinearGradient
-          colors={['#2d3a2d', '#1a1f1a', '#0d0f0d']}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
+      {/* Background gradient */}
+      <LinearGradient
+        colors={['#1a1f1a', '#0d0f0d', '#000']}
+        style={StyleSheet.absoluteFill}
+      />
 
-      {/* Fixed Top Header Bar */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.headerIcon} onPress={handleProfilePress}>
-            <Ionicons name="person-outline" size={22} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIcon} onPress={handleDiscoverPress}>
-            <Ionicons name="help-circle-outline" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.headerRight}>
-          {/* Queue indicator - shows when queue has items */}
-          {hasQueue && (
-            <TouchableOpacity style={styles.queueIndicatorButton} onPress={handleQueuePress}>
-              <Ionicons name="list" size={14} color="#000" />
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.libraryButton} onPress={handleLibraryPress}>
-            <Text style={styles.libraryButtonText}>Your Library</Text>
-            <View style={styles.libraryIcon}>
-              <View style={styles.libraryIconBack} />
-              <View style={styles.libraryIconFront} />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* TopNav is now rendered at the navigator level */}
 
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 60, paddingBottom: 100 + insets.bottom },
+          { paddingTop: insets.top + TOP_NAV_HEIGHT + 8, paddingBottom: 100 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={ACCENT} />
         }
       >
+        {/* Greeting */}
+        <Greeting username={user?.username} />
 
-        {/* Now Playing Section */}
-        {currentBook && (
-          <View style={styles.nowPlaying}>
-            {/* Title and Author */}
-            <Text style={styles.bookTitle} numberOfLines={1}>{currentTitle}</Text>
-            <Text style={styles.bookAuthor} numberOfLines={1}>{currentAuthor}</Text>
+        {/* Compact Now Playing Card */}
+        {currentBook ? (
+          <CompactNowPlaying
+            book={currentBook}
+            isPlaying={isPlaying}
+            isLoading={isPlayerLoading}
+            progress={progressValue}
+            currentTime={position}
+            duration={duration}
+            currentChapter={currentChapterInfo.current}
+            totalChapters={currentChapterInfo.total}
+            isSeeking={isSeeking}
+            seekDirection={seekDirection}
+            seekMagnitude={seekMagnitude}
+            onPress={handleNowPlayingPress}
+            onPlayPause={handlePlayPause}
+            onSkipBackPressIn={handleSkipBackPressIn}
+            onSkipBackPressOut={handleSkipBackPressOut}
+            onSkipForwardPressIn={handleSkipForwardPressIn}
+            onSkipForwardPressOut={handleSkipForwardPressOut}
+          />
+        ) : (
+          <NothingPlayingCard onBrowse={handleLibraryPress} />
+        )}
 
-            {/* Large Cover - No queue button per spec */}
-            <TouchableOpacity style={styles.coverContainer} onPress={handleCoverPress} activeOpacity={0.9}>
-              <Image
-                source={currentCoverUrl}
-                style={styles.cover}
-                contentFit="cover"
-                transition={200}
-              />
-            </TouchableOpacity>
+        {/* =============== CONTINUE LISTENING SECTION =============== */}
+        <View style={styles.horizontalSection}>
+          <SectionHeader
+            title="Continue Listening"
+            onViewAll={handleLibraryPress}
+            showViewAll={continueListeningBooks.length > 0}
+          />
+          {continueListeningBooks.length > 0 ? (
+            <FlatList
+              data={continueListeningBooks}
+              renderItem={renderContinueListeningCard}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          ) : (
+            <EmptySection
+              title="Start listening"
+              description="Your in-progress books will appear here"
+              ctaLabel="Browse Library"
+              onCTAPress={handleLibraryPress}
+            />
+          )}
+        </View>
 
-            {/* Control Buttons - Under cover: Rewind, FastForward, Play */}
-            <View style={styles.controls}>
-              <TouchableOpacity
-                onPressIn={handleSkipBackPressIn}
-                onPressOut={handleSkipBackPressOut}
-                activeOpacity={0.8}
-              >
-                <Image
-                  source={RewindButtonImage}
-                  style={styles.controlButtonImage}
-                  contentFit="contain"
-                />
-              </TouchableOpacity>
+        {/* =============== UP NEXT (QUEUE) SECTION =============== */}
+        <View style={styles.horizontalSection}>
+          <SectionHeader
+            title="Up Next"
+            onViewAll={handleQueuePress}
+            showViewAll={upNextBooks.length > 0}
+          />
+          {upNextBooks.length > 0 ? (
+            <FlatList
+              data={upNextBooks}
+              renderItem={renderQueueCard}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          ) : (
+            <EmptySection
+              title="Your queue is empty"
+              description="Add books to plan your listening"
+              ctaLabel="Browse Library"
+              onCTAPress={handleLibraryPress}
+            />
+          )}
+        </View>
 
-              <TouchableOpacity
-                onPressIn={handleSkipForwardPressIn}
-                onPressOut={handleSkipForwardPressOut}
-                activeOpacity={0.8}
-              >
-                <Image
-                  source={FastForwardButtonImage}
-                  style={styles.controlButtonImage}
-                  contentFit="contain"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handlePlayPause} activeOpacity={0.8}>
-                <Image
-                  source={isPlaying ? PauseButtonImage : PlayButtonImage}
-                  style={styles.controlButtonImage}
-                  contentFit="contain"
-                />
-              </TouchableOpacity>
-            </View>
+        {/* =============== CONTINUE SERIES SECTION =============== */}
+        {continueSeriesData.length > 0 && (
+          <View style={styles.horizontalSection}>
+            <SectionHeader
+              title="Continue Series"
+              onViewAll={handleLibraryPress}
+              showViewAll={true}
+            />
+            <FlatList
+              data={continueSeriesData}
+              renderItem={renderSeriesCard}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
           </View>
         )}
 
-        {/* Seek indicators and Progress Bar */}
-        {currentBook && (
-          <View style={styles.progressSection}>
-            {/* Full-width Progress Bar with background line */}
-            <View style={styles.progressBarContainer}>
-              <View style={styles.progressBarBackground} />
-              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-            </View>
-            {/* Seek indicators - aligned below progress bar */}
-            <View style={styles.seekIndicators}>
-              <Text style={[
-                styles.seekIndicatorText,
-                styles.seekIndicatorRewind,
-                isSeeking && seekDirection === 'backward' && styles.seekIndicatorRewindActive
-              ]}>
-                -{formatSeekTime(seekMagnitude)}
-              </Text>
-              <Text style={styles.progressPercentCenter}>{progressPercent}%</Text>
-              <Text style={[
-                styles.seekIndicatorText,
-                isSeeking && seekDirection === 'forward' && styles.seekIndicatorForwardActive
-              ]}>
-                +{formatSeekTime(seekMagnitude)}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Downloaded Books Section - Using BookCard */}
+        {/* =============== DOWNLOADED BOOKS SECTION =============== */}
         {downloadedBooks.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recently Added</Text>
-              <TouchableOpacity onPress={handleLibraryPress}>
-                <Text style={styles.viewAllText}>View All</Text>
-              </TouchableOpacity>
-            </View>
-
+            <SectionHeader
+              title="Downloaded"
+              onViewAll={handleLibraryPress}
+              showViewAll={true}
+            />
             {downloadedBooks.slice(0, 5).map((book) => (
               <BookCard
                 key={book.id}
@@ -364,14 +483,6 @@ export function HomeScreen() {
                 showListeningProgress={true}
               />
             ))}
-          </View>
-        )}
-
-        {/* Empty state when no downloads */}
-        {downloadedBooks.length === 0 && (
-          <View style={styles.emptySection}>
-            <Text style={styles.emptyText}>No downloaded books</Text>
-            <Text style={styles.emptySubtext}>Search for books to download</Text>
           </View>
         )}
       </ScrollView>
@@ -384,250 +495,173 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  backgroundImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
   scrollContent: {
     flexGrow: 1,
   },
 
-  // Header - Fixed at top
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    zIndex: 100,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  queueIndicatorButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: ACCENT,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  libraryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 100,
-    gap: 8,
-  },
-  libraryButtonText: {
-    color: '#fff',
-    fontSize: 10,
-    fontFamily: MONO_FONT,
-    letterSpacing: 0.2,
-  },
-  libraryIcon: {
-    width: 14,
-    height: 16,
-    position: 'relative',
-  },
-  libraryIconBack: {
-    position: 'absolute',
-    top: 2,
-    left: 2,
-    width: 10,
-    height: 14,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    backgroundColor: 'transparent',
-  },
-  libraryIconFront: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 10,
-    height: 14,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: '#fff',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  // Section
+  section: {
+    marginTop: scale(24),
+    paddingHorizontal: scale(20),
   },
 
-  // Now Playing
-  nowPlaying: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+  // =============== HORIZONTAL SECTIONS ===============
+  horizontalSection: {
+    marginTop: scale(24),
   },
-  bookTitle: {
-    fontSize: 14,
-    fontFamily: MONO_FONT,
-    fontWeight: '400',
-    color: '#fff',
-    textAlign: 'center',
-    letterSpacing: 0.3,
-    marginBottom: 6,
+  horizontalList: {
+    paddingHorizontal: scale(20),
+    gap: scale(12),
   },
-  bookAuthor: {
-    fontSize: 12,
-    fontFamily: 'System',
-    color: 'rgba(255,255,255,0.5)',
-    textAlign: 'center',
-    marginBottom: 20,
+
+  // =============== HORIZONTAL CARDS ===============
+  horizontalCard: {
+    width: HORIZONTAL_CARD_WIDTH,
   },
-  coverContainer: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
-    borderRadius: 12,
+  horizontalCardCoverContainer: {
+    width: HORIZONTAL_CARD_COVER,
+    height: HORIZONTAL_CARD_COVER,
+    borderRadius: scale(10),
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
+    marginBottom: scale(10),
+    position: 'relative',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  cover: {
+  horizontalCardCover: {
     width: '100%',
     height: '100%',
   },
+  cardGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+  },
+  placeholderCover: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  horizontalCardProgress: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  horizontalCardProgressFill: {
+    height: '100%',
+    backgroundColor: ACCENT,
+  },
+  cardProgressText: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    fontSize: scale(11),
+    fontWeight: '700',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  horizontalCardTitle: {
+    fontSize: scale(12),
+    fontWeight: '500',
+    color: '#fff',
+    lineHeight: scale(16),
+  },
+  horizontalCardAuthor: {
+    fontSize: scale(10),
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
+  },
 
-  // Controls - Under cover: Rewind, FastForward, Play (all same size)
-  controls: {
+  // Queue number badge
+  queueNumberBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: ACCENT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  queueNumberText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+
+  // =============== SERIES CARDS ===============
+  seriesCardContainer: {
+    width: HORIZONTAL_CARD_COVER,
+    height: HORIZONTAL_CARD_COVER,
+    marginBottom: scale(10),
+    position: 'relative',
+  },
+  stackedCover: {
+    position: 'absolute',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  stackedCover3: {
+    top: 8,
+    left: 16,
+    width: HORIZONTAL_CARD_COVER - 16,
+    height: HORIZONTAL_CARD_COVER - 16,
+    opacity: 0.4,
+  },
+  stackedCover2: {
+    top: 4,
+    left: 8,
+    width: HORIZONTAL_CARD_COVER - 8,
+    height: HORIZONTAL_CARD_COVER - 8,
+    opacity: 0.6,
+  },
+  stackedCoverMain: {
+    width: HORIZONTAL_CARD_COVER,
+    height: HORIZONTAL_CARD_COVER,
+    borderRadius: scale(10),
+    overflow: 'hidden',
+    position: 'relative',
+    zIndex: 1,
+  },
+  stackedCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  seriesProgressBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
-    gap: 12,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    zIndex: 2,
   },
-  controlButtonImage: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
+  seriesProgressText: {
+    fontSize: scale(9),
+    fontWeight: '600',
+    color: ACCENT,
   },
-
-  // Progress section with seek indicators
-  progressSection: {
-    width: '100%',
-    marginTop: 20,
-  },
-  seekIndicators: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 8,
-  },
-  seekIndicatorText: {
-    fontSize: 11,
-    fontFamily: MONO_FONT,
-    color: 'transparent', // Hidden by default
-    letterSpacing: 0.2,
-    minWidth: 50,
-  },
-  seekIndicatorRewind: {
-    textAlign: 'left',
-  },
-  seekIndicatorRewindActive: {
-    color: REWIND_COLOR, // Red when rewinding
-  },
-  seekIndicatorForwardActive: {
-    color: ACCENT, // Green when fast-forwarding
-  },
-  progressPercentCenter: {
-    fontSize: 12,
-    fontFamily: MONO_FONT,
-    color: '#fff',
-    letterSpacing: 0.2,
-  },
-
-  // Progress bar - Full width with background line
-  progressBarContainer: {
-    width: '100%',
-    height: 7,
-    position: 'relative',
-  },
-  progressBarBackground: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 7,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 100,
-  },
-  progressBarFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: 7,
-    backgroundColor: ACCENT,
-    borderRadius: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-
-  // Section
-  section: {
-    marginTop: 24,
-    paddingHorizontal: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontFamily: MONO_FONT,
-    fontWeight: '400',
-    color: '#fff',
-    letterSpacing: 0.3,
-  },
-  viewAllText: {
-    fontSize: 10,
-    fontFamily: MONO_FONT,
-    color: '#fff',
-    letterSpacing: 0.2,
-  },
-
-  // Empty state
-  emptySection: {
-    marginTop: 40,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: MONO_FONT,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.3)',
+  seriesBookCount: {
+    fontSize: scale(10),
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 2,
   },
 });
 

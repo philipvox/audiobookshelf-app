@@ -1,10 +1,10 @@
 /**
  * src/features/profile/screens/ProfileScreen.tsx
  *
- * Profile screen with dark theme matching app style
+ * Clean profile hub screen with grouped navigation links.
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -13,30 +13,19 @@ import {
   Alert,
   StatusBar,
   TouchableOpacity,
-  Modal,
-  Switch,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useLibraryCache } from '@/core/cache';
-import { Icon } from '@/shared/components/Icon';
-import { usePlayerStore } from '@/features/player/stores/playerStore';
-import { networkMonitor } from '@/core/services/networkMonitor';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
-// Dark theme colors
-const COLORS = {
-  background: '#303030',
-  card: '#404040',
-  cardBorder: '#505050',
-  text: '#FFFFFF',
-  textSecondary: '#AAAAAA',
-  textTertiary: '#888888',
-  accent: '#CCFF00',
-  danger: '#FF6B6B',
-  success: '#22c55e',
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
+const ACCENT = '#c1f40c';
 
 // Safe import - store may not exist yet
 let usePreferencesStore: any;
@@ -44,52 +33,6 @@ try {
   usePreferencesStore = require('@/features/recommendations').usePreferencesStore;
 } catch {
   usePreferencesStore = null;
-}
-
-interface SettingsRowProps {
-  icon: string;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  showChevron?: boolean;
-  valueColor?: string;
-  switchValue?: boolean;
-  onSwitchChange?: (value: boolean) => void;
-}
-
-function SettingsRow({ icon, label, value, onPress, showChevron, valueColor, switchValue, onSwitchChange }: SettingsRowProps) {
-  const content = (
-    <View style={styles.settingsRow}>
-      <View style={styles.settingsRowLeft}>
-        <Icon name={icon} size={20} color={COLORS.textSecondary} set="ionicons" />
-        <Text style={styles.settingsLabel}>{label}</Text>
-      </View>
-      <View style={styles.settingsRowRight}>
-        {value && <Text style={[styles.settingsValue, valueColor && { color: valueColor }]}>{value}</Text>}
-        {onSwitchChange !== undefined && (
-          <Switch
-            value={switchValue}
-            onValueChange={onSwitchChange}
-            trackColor={{ false: '#505050', true: COLORS.accent }}
-            thumbColor="#FFFFFF"
-          />
-        )}
-        {showChevron && (
-          <Icon name="chevron-forward" size={18} color={COLORS.textTertiary} set="ionicons" />
-        )}
-      </View>
-    </View>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-        {content}
-      </TouchableOpacity>
-    );
-  }
-
-  return content;
 }
 
 // Format bytes to human readable
@@ -101,11 +44,88 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-// Playback speed options
-const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+// User Header Component
+interface UserHeaderProps {
+  username: string;
+  role: string;
+  serverUrl: string;
+}
 
-function formatSpeed(speed: number): string {
-  return speed === 1.0 ? '1.0x (Normal)' : `${speed}x`;
+function UserHeader({ username, role, serverUrl }: UserHeaderProps) {
+  const initials = username
+    .split(' ')
+    .map((word) => word[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || '?';
+
+  // Format server URL for display
+  const displayServer = serverUrl
+    .replace(/^https?:\/\//, '')
+    .replace(/\/$/, '');
+
+  return (
+    <View style={styles.userHeader}>
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{initials}</Text>
+      </View>
+      <View style={styles.userInfo}>
+        <Text style={styles.username}>{username}</Text>
+        <Text style={styles.userRole}>{role}</Text>
+        <View style={styles.serverRow}>
+          <Ionicons name="server-outline" size={scale(12)} color="rgba(255,255,255,0.4)" />
+          <Text style={styles.serverText} numberOfLines={1}>{displayServer}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// Profile Link Component
+interface ProfileLinkProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  subtitle?: string;
+  badge?: string;
+  badgeColor?: string;
+  onPress: () => void;
+}
+
+function ProfileLink({ icon, label, subtitle, badge, badgeColor, onPress }: ProfileLinkProps) {
+  return (
+    <TouchableOpacity style={styles.profileLink} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.linkIconContainer}>
+        <Ionicons name={icon} size={scale(20)} color="rgba(255,255,255,0.8)" />
+      </View>
+      <View style={styles.linkContent}>
+        <Text style={styles.linkLabel}>{label}</Text>
+        {subtitle ? <Text style={styles.linkSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {badge ? (
+        <View style={[styles.badge, badgeColor ? { backgroundColor: badgeColor } : null]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      ) : null}
+      <Ionicons name="chevron-forward" size={scale(18)} color="rgba(255,255,255,0.3)" />
+    </TouchableOpacity>
+  );
+}
+
+// Section Group Component
+interface SectionGroupProps {
+  title: string;
+  children: React.ReactNode;
+}
+
+function SectionGroup({ title, children }: SectionGroupProps) {
+  return (
+    <View style={styles.sectionGroup}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionContent}>
+        {children}
+      </View>
+    </View>
+  );
 }
 
 export function ProfileScreen() {
@@ -113,87 +133,31 @@ export function ProfileScreen() {
   const navigation = useNavigation<any>();
   const { user, serverUrl, logout, isLoading } = useAuth();
 
-  // Download stats from downloadManager via useDownloads hook
+  // Download stats
   const { downloads } = useDownloads();
-  const [isRefreshingCache, setIsRefreshingCache] = useState(false);
-  const [showSpeedPicker, setShowSpeedPicker] = useState(false);
-  const [wifiOnlyEnabled, setWifiOnlyEnabled] = useState(networkMonitor.isWifiOnlyEnabled());
-  const [autoDownloadSeriesEnabled, setAutoDownloadSeriesEnabled] = useState(networkMonitor.isAutoDownloadSeriesEnabled());
-
-  // Library cache
-  const { refreshCache } = useLibraryCache();
-
-  // Player settings
-  const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
-  const setGlobalDefaultRate = usePlayerStore((s) => s.setGlobalDefaultRate);
-  const shakeToExtendEnabled = usePlayerStore((s) => s.shakeToExtendEnabled);
-  const setShakeToExtendEnabled = usePlayerStore((s) => s.setShakeToExtendEnabled);
-
-  // Safe access to preferences store
-  const hasCompletedOnboarding = usePreferencesStore?.()?.hasCompletedOnboarding ?? false;
-
-  // Calculate download stats from downloads
   const completedDownloads = downloads.filter(d => d.status === 'complete');
   const downloadCount = completedDownloads.length;
   const totalStorage = completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
 
+  // Safe access to preferences store
+  const hasCompletedOnboarding = usePreferencesStore?.()?.hasCompletedOnboarding ?? false;
+
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Logout',
+        text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
           try {
             await logout();
           } catch {
-            Alert.alert('Logout Failed', 'Please try again');
+            Alert.alert('Error', 'Failed to sign out. Please try again.');
           }
         },
       },
     ]);
   };
-
-  const handleDownloadsPress = () => {
-    navigation.navigate('Downloads');
-  };
-
-  const handlePreferencesPress = () => {
-    navigation.navigate('Preferences');
-  };
-
-  const handleRefreshLibrary = async () => {
-    if (isRefreshingCache) return;
-
-    setIsRefreshingCache(true);
-    try {
-      await refreshCache();
-      Alert.alert('Success', 'Library cache refreshed successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to refresh library cache');
-    } finally {
-      setIsRefreshingCache(false);
-    }
-  };
-
-  const handleWifiOnlyToggle = async (enabled: boolean) => {
-    setWifiOnlyEnabled(enabled);
-    await networkMonitor.setWifiOnlyEnabled(enabled);
-  };
-
-  const handleAutoDownloadSeriesToggle = async (enabled: boolean) => {
-    setAutoDownloadSeriesEnabled(enabled);
-    await networkMonitor.setAutoDownloadSeriesEnabled(enabled);
-  };
-
-  const initials = user?.username
-    ? user.username
-        .split(' ')
-        .map((word) => word[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase()
-    : '?';
 
   const formatAccountType = (type?: string) => {
     if (!type) return 'User';
@@ -201,189 +165,95 @@ export function ProfileScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+    <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
         </View>
 
-        <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-          <Text style={styles.username}>{user?.username}</Text>
-          <Text style={styles.accountType}>{formatAccountType(user?.type)}</Text>
-        </View>
+        {/* User Header */}
+        <UserHeader
+          username={user?.username || 'User'}
+          role={formatAccountType(user?.type)}
+          serverUrl={serverUrl || ''}
+        />
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account</Text>
-          <SettingsRow icon="server-outline" label="Server" value={serverUrl || ''} />
-          <SettingsRow icon="person-outline" label="Username" value={user?.username} />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Recommendations</Text>
-          <SettingsRow
-            icon="sparkles-outline"
-            label="Reading Preferences"
-            value={hasCompletedOnboarding ? 'Configured' : 'Set up'}
-            valueColor={hasCompletedOnboarding ? COLORS.success : COLORS.accent}
-            onPress={handlePreferencesPress}
-            showChevron
+        {/* MY STUFF Section */}
+        <SectionGroup title="MY STUFF">
+          <ProfileLink
+            icon="download-outline"
+            label="Downloads"
+            subtitle={`${downloadCount} book${downloadCount !== 1 ? 's' : ''} · ${formatBytes(totalStorage)}`}
+            onPress={() => navigation.navigate('Downloads')}
           />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Activity</Text>
-          <SettingsRow
+          <ProfileLink
             icon="stats-chart-outline"
             label="Listening Stats"
+            subtitle="Track your listening activity"
             onPress={() => navigation.navigate('Stats')}
-            showChevron
           />
-        </View>
+          <ProfileLink
+            icon="sparkles-outline"
+            label="Reading Preferences"
+            subtitle="Personalize recommendations"
+            badge={hasCompletedOnboarding ? undefined : 'Set up'}
+            badgeColor={ACCENT}
+            onPress={() => navigation.navigate('Preferences')}
+          />
+        </SectionGroup>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Downloads</Text>
-          <SettingsRow
-            icon="download-outline"
-            label="Manage Downloads"
-            value={`${downloadCount} book${downloadCount !== 1 ? 's' : ''}`}
-            onPress={handleDownloadsPress}
-            showChevron
+        {/* SETTINGS Section */}
+        <SectionGroup title="SETTINGS">
+          <ProfileLink
+            icon="play-circle-outline"
+            label="Playback"
+            subtitle="Speed, skip intervals, sleep timer"
+            onPress={() => navigation.navigate('PlaybackSettings')}
           />
-          <SettingsRow icon="folder-outline" label="Storage Used" value={formatBytes(totalStorage)} />
-          <SettingsRow
-            icon="wifi-outline"
-            label="WiFi Only"
-            switchValue={wifiOnlyEnabled}
-            onSwitchChange={handleWifiOnlyToggle}
+          <ProfileLink
+            icon="folder-outline"
+            label="Storage"
+            subtitle="Downloads, cache, WiFi-only"
+            onPress={() => navigation.navigate('StorageSettings')}
           />
-          <SettingsRow
-            icon="library-outline"
-            label="Auto-Download Series"
-            switchValue={autoDownloadSeriesEnabled}
-            onSwitchChange={handleAutoDownloadSeriesToggle}
-          />
-          <Text style={styles.settingsNote}>
-            Downloads will pause on cellular if WiFi Only is enabled. Auto-download queues the next book in a series when you reach 80% progress.
-          </Text>
-        </View>
+        </SectionGroup>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Storage</Text>
-          <SettingsRow
-            icon="refresh-outline"
-            label="Refresh Library Cache"
-            value={isRefreshingCache ? 'Refreshing...' : ''}
-            onPress={handleRefreshLibrary}
-            showChevron={!isRefreshingCache}
-          />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Playback</Text>
-          <SettingsRow
-            icon="speedometer-outline"
-            label="Default Speed"
-            value={`${globalDefaultRate}x`}
-            onPress={() => setShowSpeedPicker(true)}
-            showChevron
-          />
-          <SettingsRow icon="time-outline" label="Skip Forward" value="30s" />
-          <SettingsRow icon="time-outline" label="Skip Back" value="15s" />
-          <Text style={styles.settingsNote}>
-            Speed is remembered per book. Default speed is used for new books.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sleep Timer</Text>
-          <SettingsRow
-            icon="phone-portrait-outline"
-            label="Shake to Extend"
-            switchValue={shakeToExtendEnabled}
-            onSwitchChange={setShakeToExtendEnabled}
-          />
-          <Text style={styles.settingsNote}>
-            Shake your phone to add 15 minutes when the sleep timer is about to expire.
-          </Text>
-        </View>
-
-        {/* Developer/Test Section */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Developer</Text>
-          <SettingsRow
+        {/* DEVELOPER Section - keep for testing */}
+        <SectionGroup title="DEVELOPER">
+          <ProfileLink
             icon="musical-notes-outline"
-            label="Test Cassette Player"
+            label="Cassette Player Test"
+            subtitle="Test the retro cassette UI"
             onPress={() => navigation.navigate('CassetteTest')}
-            showChevron
           />
-        </View>
+        </SectionGroup>
 
-        <View style={styles.logoutSection}>
+        {/* Sign Out Button */}
+        <View style={styles.signOutSection}>
           <TouchableOpacity
-            style={[styles.logoutButton, isLoading && styles.logoutButtonDisabled]}
+            style={[styles.signOutButton, isLoading && styles.signOutButtonDisabled]}
             onPress={handleLogout}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Text style={styles.logoutButtonText}>Logout</Text>
+            <Ionicons name="log-out-outline" size={scale(20)} color="#fff" />
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.versionSection}>
-          <Text style={styles.versionText}>AudiobookShelf Mobile v1.0.0</Text>
+        {/* App Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.appName}>AudiobookShelf</Text>
+          <Text style={styles.versionText}>Version 1.0.0</Text>
         </View>
       </ScrollView>
-
-      {/* Speed Picker Modal */}
-      <Modal
-        visible={showSpeedPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSpeedPicker(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowSpeedPicker(false)}
-        >
-          <View style={styles.speedPickerContainer}>
-            <Text style={styles.speedPickerTitle}>Default Playback Speed</Text>
-            <Text style={styles.speedPickerSubtitle}>
-              Used for books without a saved speed preference
-            </Text>
-            {SPEED_OPTIONS.map((speed) => (
-              <TouchableOpacity
-                key={speed}
-                style={[
-                  styles.speedOption,
-                  globalDefaultRate === speed && styles.speedOptionSelected,
-                ]}
-                onPress={() => {
-                  setGlobalDefaultRate(speed);
-                  setShowSpeedPicker(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.speedOptionText,
-                    globalDefaultRate === speed && styles.speedOptionTextSelected,
-                  ]}
-                >
-                  {formatSpeed(speed)}
-                </Text>
-                {globalDefaultRate === speed && (
-                  <Icon name="checkmark" size={20} color={COLORS.accent} set="ionicons" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -391,173 +261,172 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#1a1a1a',
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    paddingBottom: 140,
+    paddingBottom: scale(140),
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(12),
   },
   headerTitle: {
-    fontSize: 34,
+    fontSize: scale(32),
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#fff',
     letterSpacing: -0.5,
   },
-  profileSection: {
+  // User Header
+  userHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(20),
+    marginHorizontal: scale(16),
+    marginBottom: scale(24),
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: scale(16),
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.accent,
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
+    backgroundColor: ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
   },
   avatarText: {
-    fontSize: 36,
+    fontSize: scale(24),
     fontWeight: '700',
-    color: '#000000',
+    color: '#000',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: scale(16),
   },
   username: {
-    fontSize: 24,
+    fontSize: scale(20),
     fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 4,
+    color: '#fff',
+    marginBottom: scale(2),
   },
-  accountType: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
+  userRole: {
+    fontSize: scale(14),
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: scale(6),
   },
-  card: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 16,
-  },
-  cardTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  settingsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
-  },
-  settingsRowLeft: {
+  serverRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: scale(4),
   },
-  settingsRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  settingsLabel: {
-    fontSize: 15,
-    color: COLORS.text,
-    marginLeft: 12,
-  },
-  settingsValue: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    maxWidth: 180,
-    textAlign: 'right',
-  },
-  logoutSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-  },
-  logoutButton: {
-    backgroundColor: COLORS.danger,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  logoutButtonDisabled: {
-    opacity: 0.6,
-  },
-  logoutButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  versionSection: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  versionText: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
-  },
-  settingsNote: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-  modalOverlay: {
+  serverText: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.4)',
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  // Section Group
+  sectionGroup: {
+    marginBottom: scale(24),
+  },
+  sectionTitle: {
+    fontSize: scale(12),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 1,
+    marginHorizontal: scale(20),
+    marginBottom: scale(8),
+  },
+  sectionContent: {
+    marginHorizontal: scale(16),
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: scale(12),
+    overflow: 'hidden',
+  },
+  // Profile Link
+  profileLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  linkIconContainer: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  speedPickerContainer: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 20,
-    width: '80%',
-    maxWidth: 320,
+  linkContent: {
+    flex: 1,
+    marginLeft: scale(12),
   },
-  speedPickerTitle: {
-    fontSize: 18,
+  linkLabel: {
+    fontSize: scale(15),
+    fontWeight: '500',
+    color: '#fff',
+    marginBottom: scale(2),
+  },
+  linkSubtitle: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.5)',
+  },
+  badge: {
+    backgroundColor: 'rgba(193,244,12,0.2)',
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
+    marginRight: scale(8),
+  },
+  badgeText: {
+    fontSize: scale(11),
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
-    textAlign: 'center',
+    color: ACCENT,
   },
-  speedPickerSubtitle: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
-    marginBottom: 16,
-    textAlign: 'center',
+  // Sign Out
+  signOutSection: {
+    paddingHorizontal: scale(16),
+    marginTop: scale(8),
+    marginBottom: scale(24),
   },
-  speedOption: {
+  signOutButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
+    justifyContent: 'center',
+    gap: scale(8),
+    paddingVertical: scale(14),
+    backgroundColor: 'rgba(255,75,75,0.15)',
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: 'rgba(255,75,75,0.3)',
   },
-  speedOptionSelected: {
-    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+  signOutButtonDisabled: {
+    opacity: 0.5,
   },
-  speedOptionText: {
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  speedOptionTextSelected: {
-    color: COLORS.accent,
+  signOutText: {
+    fontSize: scale(15),
     fontWeight: '600',
+    color: '#ff4b4b',
+  },
+  // Footer
+  footer: {
+    alignItems: 'center',
+    paddingVertical: scale(16),
+  },
+  appName: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.3)',
+    marginBottom: scale(4),
+  },
+  versionText: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.2)',
   },
 });

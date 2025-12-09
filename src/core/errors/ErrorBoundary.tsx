@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { errorService, wrapError } from './errorService';
 import { AppError } from './types';
 
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -210,7 +209,6 @@ const styles = StyleSheet.create({
   },
   devText: {
     fontSize: 11,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.5)',
     marginBottom: 4,
   },

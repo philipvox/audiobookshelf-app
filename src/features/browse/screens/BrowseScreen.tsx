@@ -29,8 +29,11 @@ import {
   QuickFilterChips,
   ContentRowCarousel,
   CategoryGrid,
+  PopularSeriesSection,
+  TopAuthorsSection,
   GENRE_CHIPS,
 } from '@/features/discover';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -91,20 +94,14 @@ export function BrowseScreen() {
         </View>
       )}
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + scale(10) }]}>
-        <Text style={styles.headerTitle}>Discover</Text>
-        <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
-          <Icon name="search" size={scale(20)} color="#FFF" set="ionicons" />
-        </TouchableOpacity>
-      </View>
+      {/* TopNav is rendered at navigator level */}
 
       {/* Main Content */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: 100 + insets.bottom },
+          { paddingTop: insets.top + TOP_NAV_HEIGHT + 8, paddingBottom: 100 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -159,6 +156,16 @@ export function BrowseScreen() {
         {!showSkeleton && rows.map((row) => (
           <ContentRowCarousel key={row.id} row={row} />
         ))}
+
+        {/* Popular Series */}
+        {selectedGenre === 'All' && (
+          <PopularSeriesSection limit={10} />
+        )}
+
+        {/* Top Authors */}
+        {selectedGenre === 'All' && (
+          <TopAuthorsSection limit={10} />
+        )}
 
         {/* Browse by Category */}
         {selectedGenre === 'All' && (
