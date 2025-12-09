@@ -28,9 +28,11 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { usePlayerStore, useCurrentChapterIndex, useBookProgress, useSleepTimerState } from '../stores/playerStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
 import { haptics } from '@/core/native/haptics';
 import { ChapterProgressBar } from '../components/ChapterProgressBar';
+import { getSeriesName, getSeriesWithSequence } from '@/shared/utils/metadata';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -81,6 +83,7 @@ const formatTimeRemaining = (seconds: number): string => {
 
 export function SimplePlayerScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   // Store state - use useShallow to prevent infinite re-renders from object reference changes
@@ -139,6 +142,10 @@ export function SimplePlayerScreen() {
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
   const currentChapter = chapters[chapterIndex];
+
+  // Series info
+  const seriesName = getSeriesName(currentBook);
+  const seriesWithSequence = getSeriesWithSequence(currentBook);
 
   // Time calculations
   const timeRemaining = duration - position;
@@ -248,6 +255,17 @@ export function SimplePlayerScreen() {
     seekTo?.(chapterStart);
     setActiveSheet('none');
   }, [seekTo]);
+
+  // Navigate to series
+  const handleSeriesPress = useCallback(() => {
+    if (!seriesName) return;
+    haptics.selection();
+    handleClose();
+    // Small delay to let the close animation finish
+    setTimeout(() => {
+      navigation.navigate('SeriesDetail', { seriesName });
+    }, 250);
+  }, [seriesName, handleClose, navigation]);
 
   // Scrubber
   const handleScrub = useCallback((percent: number) => {
@@ -423,6 +441,19 @@ export function SimplePlayerScreen() {
         <View style={styles.bookInfo}>
           <Text style={styles.bookTitle} numberOfLines={2}>{title}</Text>
           <Text style={styles.bookAuthor} numberOfLines={1}>{author}</Text>
+          {seriesWithSequence && (
+            <TouchableOpacity
+              style={styles.seriesBadge}
+              onPress={handleSeriesPress}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="library-outline" size={12} color="#C8FF00" />
+              <Text style={styles.seriesText} numberOfLines={1}>
+                {seriesWithSequence}
+              </Text>
+              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
+          )}
           {currentChapter && (
             <Text style={styles.chapterName} numberOfLines={1}>
               {currentChapter.title || `Chapter ${chapterIndex + 1}`}
@@ -642,7 +673,24 @@ const styles = StyleSheet.create({
   bookAuthor: {
     fontSize: 16,
     color: 'rgba(255,255,255,0.7)',
-    marginBottom: 4,
+    marginBottom: 6,
+  },
+  seriesBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(200,255,0,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 6,
+    marginBottom: 6,
+  },
+  seriesText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#C8FF00',
+    maxWidth: 200,
   },
   chapterName: {
     fontSize: 14,

@@ -232,21 +232,11 @@ export function useHomeData(): UseHomeDataReturn {
     return null;
   }, [currentBook, playerCurrentBook, position, duration]);
 
-  // Recently listened - now playing at top, then last few books with progress
+  // Recently listened - all in-progress books for Continue Listening section
   const recentlyListened = useMemo(() => {
-    // Start with books other than current
-    const others = currentBook
-      ? inProgressItems.filter((item) => item.id !== currentBook.id)
-      : inProgressItems;
-
-    // If there's a current book, put it first, then add 2 more
-    if (currentBook) {
-      return [currentBook, ...others.slice(0, 2)];
-    }
-
-    // No current book, just return top 3
-    return others.slice(0, 3);
-  }, [inProgressItems, currentBook]);
+    // Return all in-progress items (up to 20)
+    return inProgressItems.slice(0, 20);
+  }, [inProgressItems]);
 
   // Your Books - from library store (live updates when adding/removing)
   // Exclude current book from the list

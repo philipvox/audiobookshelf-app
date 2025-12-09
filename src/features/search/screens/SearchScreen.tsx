@@ -32,6 +32,7 @@ import { Icon } from '@/shared/components/Icon';
 import { HeartButton, SeriesHeartButton } from '@/shared/components';
 import { BookCard } from '@/shared/components/BookCard';
 import { LibraryItem } from '@/core/types';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#000000';
@@ -378,7 +379,7 @@ export function SearchScreen() {
       <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10 }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
         </TouchableOpacity>

@@ -1,0 +1,15 @@
+FloatingPlayerNav.tsx
+PlaybackControls.tsx
+SeriesCard.tsx
+SeriesListScreen.tsx
+backgrounds.tsx
+constants.ts
+controls.tsx
+homeDesign.ts
+index.ts
+loading.tsx
+metadata.ts
+navigation.tsx
+overlays.tsx
+types.ts
+user.ts

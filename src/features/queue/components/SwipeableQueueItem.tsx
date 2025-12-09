@@ -1,15 +1,16 @@
 /**
  * src/features/queue/components/SwipeableQueueItem.tsx
  *
- * Swipeable queue item with delete action.
+ * Enhanced swipeable queue item with delete and play next actions.
  * Swipe left to reveal remove button.
+ * Tap ▲ button to move to top of queue.
  */
 
 import React, { useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable, Animated as RNAnimated } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Pressable, TouchableOpacity, Animated as RNAnimated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
-import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
@@ -18,54 +19,24 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const ACTION_WIDTH = 80;
-
-const COLORS = {
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.6)',
-  accent: '#4ADE80',
-  cardBg: 'rgba(255, 255, 255, 0.08)',
-  danger: '#F44336',
-};
-
-// Drag handle icon
-const DragIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M8 6h2M8 10h2M8 14h2M8 18h2M14 6h2M14 10h2M14 14h2M14 18h2"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
-// Trash icon
-const TrashIcon = ({ size = 22, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
+const ACCENT = '#c1f40c';
 
 interface SwipeableQueueItemProps {
   book: LibraryItem;
   position: number;
   onRemove: () => void;
+  onPlayNext?: () => void;
   onPress?: () => void;
-  onDragStart?: () => void;
+  showPlayNext?: boolean;
 }
 
 export function SwipeableQueueItem({
   book,
   position,
   onRemove,
+  onPlayNext,
   onPress,
-  onDragStart,
+  showPlayNext = true,
 }: SwipeableQueueItemProps) {
   const swipeableRef = useRef<Swipeable>(null);
   const coverUrl = useCoverUrl(book.id);
@@ -84,6 +55,11 @@ export function SwipeableQueueItem({
     swipeableRef.current?.close();
     onRemove();
   }, [onRemove]);
+
+  const handlePlayNext = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPlayNext?.();
+  }, [onPlayNext]);
 
   const renderRightActions = useCallback(
     (
@@ -106,7 +82,7 @@ export function SwipeableQueueItem({
           style={[styles.rightAction, { transform: [{ translateX }], opacity }]}
         >
           <Pressable style={styles.removeAction} onPress={handleRemove}>
-            <TrashIcon size={scale(22)} color="#fff" />
+            <Ionicons name="trash-outline" size={scale(22)} color="#fff" />
             <Text style={styles.actionText}>Remove</Text>
           </Pressable>
         </RNAnimated.View>
@@ -128,13 +104,8 @@ export function SwipeableQueueItem({
     >
       <Pressable style={styles.container} onPress={onPress}>
         {/* Drag handle */}
-        <Pressable style={styles.dragHandle} onLongPress={onDragStart}>
-          <DragIcon size={scale(18)} color={COLORS.textSecondary} />
-        </Pressable>
-
-        {/* Position number */}
-        <View style={styles.positionContainer}>
-          <Text style={styles.positionNumber}>{position + 1}</Text>
+        <View style={styles.dragHandle}>
+          <Ionicons name="menu" size={scale(18)} color="rgba(255,255,255,0.4)" />
         </View>
 
         {/* Cover */}
@@ -151,9 +122,24 @@ export function SwipeableQueueItem({
           <Text style={styles.duration}>{durationText}</Text>
         </View>
 
-        {/* Swipe indicator */}
-        <View style={styles.swipeIndicator}>
-          <Text style={styles.swipeText}>←</Text>
+        {/* Action buttons */}
+        <View style={styles.actions}>
+          {showPlayNext && onPlayNext ? (
+            <TouchableOpacity
+              style={styles.playNextButton}
+              onPress={handlePlayNext}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="arrow-up" size={scale(16)} color={ACCENT} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={handleRemove}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close" size={scale(18)} color="rgba(255,255,255,0.5)" />
+          </TouchableOpacity>
         </View>
       </Pressable>
     </Swipeable>
@@ -166,7 +152,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: scale(10),
     paddingHorizontal: scale(12),
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: scale(12),
     marginBottom: scale(8),
     gap: scale(10),
@@ -174,18 +160,9 @@ const styles = StyleSheet.create({
   dragHandle: {
     padding: scale(4),
   },
-  positionContainer: {
-    width: scale(24),
-    alignItems: 'center',
-  },
-  positionNumber: {
-    fontSize: scale(14),
-    fontWeight: '600',
-    color: COLORS.accent,
-  },
   cover: {
-    width: scale(50),
-    height: scale(50),
+    width: scale(48),
+    height: scale(48),
     borderRadius: scale(6),
     backgroundColor: '#262626',
   },
@@ -195,25 +172,36 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.textPrimary,
+    color: '#fff',
     marginBottom: scale(2),
   },
   author: {
     fontSize: scale(12),
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.6)',
     marginBottom: scale(2),
   },
   duration: {
     fontSize: scale(11),
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.4)',
   },
-  swipeIndicator: {
-    paddingHorizontal: scale(4),
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
   },
-  swipeText: {
-    fontSize: scale(14),
-    color: COLORS.textSecondary,
-    opacity: 0.5,
+  playNextButton: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: 'rgba(193,244,12,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeButton: {
+    width: scale(32),
+    height: scale(32),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   rightAction: {
     width: ACTION_WIDTH,
@@ -221,7 +209,7 @@ const styles = StyleSheet.create({
   },
   removeAction: {
     flex: 1,
-    backgroundColor: COLORS.danger,
+    backgroundColor: '#ff4b4b',
     justifyContent: 'center',
     alignItems: 'center',
     borderTopRightRadius: scale(12),

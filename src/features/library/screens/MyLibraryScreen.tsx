@@ -1,13 +1,20 @@
 /**
  * src/features/library/screens/MyLibraryScreen.tsx
  *
- * Your Library screen - shows downloaded books organized by series.
- * - Header bar with Profile, Discover icons + "Your Library" chip (active)
- * - Books grouped by series (downloaded books first within each series)
- * - Browse CTA at bottom
+ * My Library screen - shows downloaded content with filtering and sorting.
+ *
+ * Sections:
+ * 1. Filter chips (All, In Progress, Not Started, Completed)
+ * 2. Sort picker + book count
+ * 3. Downloading section (if active)
+ * 4. Continue Listening (in-progress books)
+ * 5. Downloaded books (list view)
+ * 6. Your Series (with progress)
+ * 7. Storage summary
+ * 8. Browse Library CTA
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,48 +24,76 @@ import {
   StatusBar,
   Dimensions,
   RefreshControl,
-  Image,
-  Platform,
+  FlatList,
+  Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useLibraryCache } from '@/core/cache';
-import { useCoverUrl } from '@/core/cache';
+import { useLibraryCache, useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { formatBytes } from '@/shared/utils/format';
+import { apiClient } from '@/core/api';
+import { usePlayerStore } from '@/features/player';
 import { DownloadItem } from '@/features/downloads/components/DownloadItem';
+import { SectionHeader } from '@/features/home/components/SectionHeader';
+import { FilterChips, FilterOption } from '../components/FilterChips';
+import { SortPicker, SortOption } from '../components/SortPicker';
+import { StorageSummary } from '../components/StorageSummary';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
-
-// Monospace font for titles (matching HomeScreen)
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 const COLORS = {
   background: '#000000',
   textPrimary: '#FFFFFF',
   textSecondary: 'rgba(255, 255, 255, 0.6)',
-  accent: '#c1f40c', // Lime green matching HomeScreen
+  accent: '#c1f40c',
   cardBg: 'rgba(255, 255, 255, 0.08)',
 };
+
+const HORIZONTAL_CARD_WIDTH = scale(110);
+const HORIZONTAL_CARD_COVER = scale(100);
 
 // Helper to extract metadata safely
 function getMetadata(item: LibraryItem): any {
   return (item.media?.metadata as any) || {};
 }
 
-// Extract series name and sequence from metadata
-function parseSeriesInfo(seriesName: string): { name: string; sequence?: number } {
-  const match = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
-  if (match) {
-    return { name: match[1].trim(), sequence: parseFloat(match[2]) };
-  }
-  return { name: seriesName, sequence: undefined };
+// Get progress from item
+function getProgress(item: LibraryItem): number {
+  const userProgress = (item as any).userMediaProgress;
+  return userProgress?.progress || 0;
 }
 
+// Get duration from item
+function getDuration(item: LibraryItem): number {
+  const media = item.media as any;
+  return media?.duration || 0;
+}
+
+// Format time remaining
+function formatTimeRemaining(seconds: number): string {
+  if (seconds <= 0) return '0m';
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m left`;
+  return `${mins}m left`;
+}
+
+// Format duration
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return '';
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
 
 // Compass/browse icon
 const BrowseIcon = ({ size = 24, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -87,7 +122,7 @@ const DownloadIcon = ({ size = 48, color = 'rgba(255,255,255,0.3)' }: { size?: n
   </Svg>
 );
 
-// Checkmark for downloaded indicator
+// Checkmark icon
 const CheckIcon = ({ size = 12, color = '#4ADE80' }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
@@ -100,110 +135,43 @@ const CheckIcon = ({ size = 12, color = '#4ADE80' }: { size?: number; color?: st
   </Svg>
 );
 
-// Book cover thumbnail with downloaded badge
-function BookCover({ itemId, title, isDownloaded }: { itemId: string; title: string; isDownloaded: boolean }) {
-  const coverUrl = useCoverUrl(itemId);
-
-  return (
-    <View style={styles.bookCoverContainer}>
-      {coverUrl ? (
-        <Image source={{ uri: coverUrl }} style={styles.bookCover} />
-      ) : (
-        <View style={[styles.bookCover, styles.bookCoverPlaceholder]}>
-          <Text style={styles.bookCoverText}>{title.charAt(0)}</Text>
-        </View>
-      )}
-      {isDownloaded && (
-        <View style={styles.downloadedBadge}>
-          <CheckIcon size={10} color="#FFFFFF" />
-        </View>
-      )}
-    </View>
-  );
-}
-
-interface BookInfo {
+interface EnrichedBook {
   id: string;
+  item: LibraryItem;
   title: string;
   author: string;
+  seriesName: string;
   sequence?: number;
+  progress: number;
+  duration: number;
   totalBytes: number;
+  lastPlayedAt?: number;
+  addedAt?: number;
 }
 
-// Series section with horizontal scroll of books
-function SeriesSection({
-  seriesName,
-  books,
-  downloadedIds,
-  onBookPress
-}: {
-  seriesName: string;
-  books: BookInfo[];
-  downloadedIds: Set<string>;
-  onBookPress: (id: string) => void;
-}) {
-  // Sort books: downloaded first, then by sequence
-  const sortedBooks = useMemo(() => {
-    return [...books].sort((a, b) => {
-      const aDownloaded = downloadedIds.has(a.id);
-      const bDownloaded = downloadedIds.has(b.id);
-
-      // Downloaded books first
-      if (aDownloaded && !bDownloaded) return -1;
-      if (!aDownloaded && bDownloaded) return 1;
-
-      // Then by sequence
-      const aSeq = a.sequence ?? 999;
-      const bSeq = b.sequence ?? 999;
-      return aSeq - bSeq;
-    });
-  }, [books, downloadedIds]);
-
-  const downloadedCount = books.filter(b => downloadedIds.has(b.id)).length;
-
-  return (
-    <View style={styles.seriesSection}>
-      <View style={styles.seriesTitleRow}>
-        <Text style={styles.seriesTitle}>{seriesName}</Text>
-        <Text style={styles.seriesCount}>{downloadedCount}/{books.length} downloaded</Text>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.seriesBooksScroll}
-      >
-        {sortedBooks.map((book) => (
-          <TouchableOpacity
-            key={book.id}
-            style={styles.seriesBookItem}
-            onPress={() => onBookPress(book.id)}
-            activeOpacity={0.7}
-          >
-            <BookCover
-              itemId={book.id}
-              title={book.title}
-              isDownloaded={downloadedIds.has(book.id)}
-            />
-            <Text style={styles.seriesBookTitle} numberOfLines={2}>{book.title}</Text>
-            {book.sequence && (
-              <Text style={styles.seriesBookSequence}>Book {book.sequence}</Text>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
+interface SeriesGroup {
+  name: string;
+  books: EnrichedBook[];
+  totalBooks: number;
+  downloadedCount: number;
+  completedCount: number;
+  inProgressCount: number;
 }
 
 export function MyLibraryScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { items: cachedItems, isLoaded, getSeries, getItem } = useLibraryCache();
-  const { downloads, isLoading, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
+  const { downloads, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
+  const { loadBook } = usePlayerStore();
+
+  // Filter and sort state
+  const [filter, setFilter] = useState<FilterOption>('all');
+  const [sort, setSort] = useState<SortOption>('recently-played');
 
   // Separate active downloads from completed
   const activeDownloads = useMemo(
-    () => downloads.filter((d) => d.status === 'downloading' || d.status === 'pending' || d.status === 'paused'),
+    () => downloads.filter((d) => d.status === 'downloading' || d.status === 'pending' || d.status === 'paused' || d.status === 'error'),
     [downloads]
   );
 
@@ -212,155 +180,369 @@ export function MyLibraryScreen() {
     [downloads]
   );
 
-  // Get total size of completed downloads
-  const totalSize = useMemo(() => {
+  // Get total storage used
+  const totalStorageUsed = useMemo(() => {
     return completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
   }, [completedDownloads]);
 
-  // Enrich downloads with book metadata from library cache
-  const enrichedBooks = useMemo(() => {
+  // Enrich downloads with book metadata
+  const enrichedBooks = useMemo<EnrichedBook[]>(() => {
     if (!isLoaded) return [];
+
     return completedDownloads.map((download) => {
       const item = getItem(download.itemId);
-      const metadata = item ? getMetadata(item) : {};
+      if (!item) {
+        return {
+          id: download.itemId,
+          item: {} as LibraryItem,
+          title: 'Unknown Title',
+          author: 'Unknown Author',
+          seriesName: '',
+          progress: 0,
+          duration: 0,
+          totalBytes: download.totalBytes || 0,
+        };
+      }
+
+      const metadata = getMetadata(item);
       const seriesName = metadata.seriesName || '';
-      const { name: cleanSeriesName, sequence } = seriesName ? parseSeriesInfo(seriesName) : { name: '', sequence: undefined };
+      const sequenceMatch = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
+      const cleanSeriesName = sequenceMatch ? sequenceMatch[1].trim() : seriesName;
+      const sequence = sequenceMatch ? parseFloat(sequenceMatch[2]) : undefined;
 
       return {
         id: download.itemId,
+        item,
         title: metadata.title || 'Unknown Title',
-        author: metadata.authorName || 'Unknown Author',
+        author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
         seriesName: cleanSeriesName,
         sequence,
+        progress: getProgress(item),
+        duration: getDuration(item),
         totalBytes: download.totalBytes || 0,
+        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        addedAt: item.addedAt,
       };
     });
   }, [completedDownloads, getItem, isLoaded]);
 
-  // Group books by series and get full series from library cache
-  const { seriesGroups, standaloneBooks } = useMemo(() => {
-    const seriesMap = new Map<string, BookInfo[]>();
-    const standalone: BookInfo[] = [];
-    const processedSeries = new Set<string>();
+  // Calculate filter counts
+  const filterCounts = useMemo(() => {
+    const all = enrichedBooks.length;
+    const inProgress = enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95).length;
+    const notStarted = enrichedBooks.filter(b => b.progress === 0).length;
+    const completed = enrichedBooks.filter(b => b.progress >= 0.95).length;
+    return { all, inProgress, notStarted, completed };
+  }, [enrichedBooks]);
 
-    for (const book of enrichedBooks) {
+  // Apply filter
+  const filteredBooks = useMemo(() => {
+    switch (filter) {
+      case 'in-progress':
+        return enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
+      case 'not-started':
+        return enrichedBooks.filter(b => b.progress === 0);
+      case 'completed':
+        return enrichedBooks.filter(b => b.progress >= 0.95);
+      default:
+        return enrichedBooks;
+    }
+  }, [enrichedBooks, filter]);
+
+  // Apply sort
+  const sortedBooks = useMemo(() => {
+    const sorted = [...filteredBooks];
+
+    switch (sort) {
+      case 'recently-played':
+        return sorted.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+      case 'recently-added':
+        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+      case 'title-asc':
+        return sorted.sort((a, b) => a.title.localeCompare(b.title));
+      case 'title-desc':
+        return sorted.sort((a, b) => b.title.localeCompare(a.title));
+      case 'author-asc':
+        return sorted.sort((a, b) => a.author.localeCompare(b.author));
+      case 'duration-asc':
+        return sorted.sort((a, b) => a.duration - b.duration);
+      case 'duration-desc':
+        return sorted.sort((a, b) => b.duration - a.duration);
+      default:
+        return sorted;
+    }
+  }, [filteredBooks, sort]);
+
+  // Separate in-progress books for Continue Listening section
+  const inProgressBooks = useMemo(() => {
+    if (filter === 'not-started' || filter === 'completed') return [];
+    return sortedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
+  }, [sortedBooks, filter]);
+
+  // Downloaded books section (exclude in-progress unless filtered to in-progress)
+  const downloadedBooksList = useMemo(() => {
+    if (filter === 'in-progress') return sortedBooks;
+    return sortedBooks.filter(b => b.progress === 0 || b.progress >= 0.95);
+  }, [sortedBooks, filter]);
+
+  // Group books by series
+  const seriesGroups = useMemo<SeriesGroup[]>(() => {
+    const seriesMap = new Map<string, EnrichedBook[]>();
+
+    for (const book of filteredBooks) {
       if (book.seriesName) {
-        if (!processedSeries.has(book.seriesName)) {
-          processedSeries.add(book.seriesName);
-
-          // Get the full series from library cache
-          const seriesInfo = getSeries(book.seriesName);
-          if (seriesInfo && seriesInfo.books.length > 0) {
-            // Use all books from the series, not just downloaded ones
-            const allBooksInSeries: BookInfo[] = seriesInfo.books.map((item) => {
-              const meta = getMetadata(item);
-              const { sequence } = meta.seriesName ? parseSeriesInfo(meta.seriesName) : { sequence: undefined };
-              const downloadInfo = completedDownloads.find(d => d.itemId === item.id);
-              return {
-                id: item.id,
-                title: meta.title || 'Unknown Title',
-                author: meta.authorName || 'Unknown Author',
-                sequence,
-                totalBytes: downloadInfo?.totalBytes || 0,
-              };
-            });
-            seriesMap.set(book.seriesName, allBooksInSeries);
-          } else {
-            // Series not in cache, just show the downloaded book
-            seriesMap.set(book.seriesName, [book]);
-          }
-        }
-      } else {
-        standalone.push(book);
+        const existing = seriesMap.get(book.seriesName) || [];
+        existing.push(book);
+        seriesMap.set(book.seriesName, existing);
       }
     }
 
-    return {
-      seriesGroups: Array.from(seriesMap.entries()).map(([name, books]) => ({ name, books })),
-      standaloneBooks: standalone,
-    };
-  }, [enrichedBooks, getSeries, completedDownloads]);
+    return Array.from(seriesMap.entries()).map(([name, books]) => {
+      // Get full series info from cache
+      const seriesInfo = getSeries(name);
+      const totalBooks = seriesInfo?.books?.length || books.length;
 
-  // Set of downloaded item IDs for quick lookup
-  const downloadedIds = useMemo(() => {
-    return new Set(completedDownloads.map(d => d.itemId));
-  }, [completedDownloads]);
+      return {
+        name,
+        books: books.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)),
+        totalBooks,
+        downloadedCount: books.length,
+        completedCount: books.filter(b => b.progress >= 0.95).length,
+        inProgressCount: books.filter(b => b.progress > 0 && b.progress < 0.95).length,
+      };
+    });
+  }, [filteredBooks, getSeries]);
 
-  // Refresh - just trigger re-render, downloads update via subscription
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  // Refresh handler
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    // Brief delay to show refresh indicator
     setTimeout(() => setIsRefreshing(false), 500);
   }, []);
 
-  // Navigation handlers (matching HomeScreen)
-  const handleProfilePress = useCallback(() => {
-    navigation.navigate('Main', { screen: 'ProfileTab' });
-  }, [navigation]);
+  // Navigation handlers
+  const handleProfilePress = () => navigation.navigate('Main', { screen: 'ProfileTab' });
+  const handleDiscoverPress = () => navigation.navigate('Main', { screen: 'DiscoverTab' });
+  const handleHomePress = () => navigation.navigate('Main', { screen: 'HomeTab' });
+  const handleBrowse = () => navigation.navigate('DiscoverTab');
+  const handleBookPress = (itemId: string) => navigation.navigate('BookDetail', { id: itemId });
+  const handleSeriesPress = (seriesName: string) => navigation.navigate('SeriesDetail', { name: seriesName });
+  const handleManageStorage = () => navigation.navigate('Main', { screen: 'ProfileTab' });
 
-  const handleDiscoverPress = useCallback(() => {
-    navigation.navigate('Main', { screen: 'DiscoverTab' });
-  }, [navigation]);
+  // Resume book playback
+  const handleResumeBook = useCallback(async (book: EnrichedBook) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      if (book.item) {
+        await loadBook(book.item, { autoPlay: true, showPlayer: false });
+      }
+    }
+  }, [loadBook]);
 
-  const handleHomePress = useCallback(() => {
-    navigation.navigate('Main', { screen: 'HomeTab' });
-  }, [navigation]);
+  // Play book from beginning
+  const handlePlayBook = useCallback(async (book: EnrichedBook) => {
+    if (book.progress >= 0.95) {
+      // Completed book - ask to restart
+      Alert.alert(
+        'Restart Book?',
+        'This book is completed. Would you like to start from the beginning?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restart',
+            onPress: async () => {
+              try {
+                const fullBook = await apiClient.getItem(book.id);
+                await loadBook(fullBook, { autoPlay: true, showPlayer: false, startPosition: 0 });
+              } catch {
+                if (book.item) {
+                  await loadBook(book.item, { autoPlay: true, showPlayer: false, startPosition: 0 });
+                }
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      handleResumeBook(book);
+    }
+  }, [loadBook, handleResumeBook]);
 
-  const handleBrowse = useCallback(() => {
-    navigation.navigate('DiscoverTab');
-  }, [navigation]);
+  // Pause/Resume all downloads
+  const handlePauseAll = useCallback(() => {
+    activeDownloads.forEach(d => {
+      if (d.status === 'downloading') {
+        pauseDownload(d.itemId);
+      }
+    });
+  }, [activeDownloads, pauseDownload]);
 
-  const handleBookPress = useCallback((itemId: string) => {
-    navigation.navigate('BookDetail', { id: itemId });
-  }, [navigation]);
+  const handleResumeAll = useCallback(() => {
+    activeDownloads.forEach(d => {
+      if (d.status === 'paused') {
+        resumeDownload(d.itemId);
+      }
+    });
+  }, [activeDownloads, resumeDownload]);
+
+  const hasDownloading = activeDownloads.some(d => d.status === 'downloading');
+  const hasPaused = activeDownloads.some(d => d.status === 'paused');
 
   const hasContent = completedDownloads.length > 0 || activeDownloads.length > 0;
+
+  // Render Continue Listening card
+  const renderContinueListeningCard = useCallback(({ item }: { item: EnrichedBook }) => {
+    const coverUrl = apiClient.getItemCoverUrl(item.id);
+    const progressPct = Math.round(item.progress * 100);
+    const timeRemaining = item.duration * (1 - item.progress);
+
+    return (
+      <TouchableOpacity
+        style={styles.horizontalCard}
+        onPress={() => handleResumeBook(item)}
+        onLongPress={() => handleBookPress(item.id)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.horizontalCardCoverContainer}>
+          <Image
+            source={coverUrl}
+            style={styles.horizontalCardCover}
+            contentFit="cover"
+            transition={200}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.cardGradient}
+          />
+          <View style={styles.horizontalCardProgress}>
+            <View style={[styles.horizontalCardProgressFill, { width: `${progressPct}%` }]} />
+          </View>
+          <Text style={styles.cardProgressText}>{progressPct}%</Text>
+        </View>
+        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{item.title}</Text>
+        <Text style={styles.horizontalCardSubtitle}>{formatTimeRemaining(timeRemaining)}</Text>
+      </TouchableOpacity>
+    );
+  }, [handleResumeBook, handleBookPress]);
+
+  // Render downloaded book row
+  const renderBookRow = useCallback((book: EnrichedBook) => {
+    const coverUrl = apiClient.getItemCoverUrl(book.id);
+    const isCompleted = book.progress >= 0.95;
+
+    return (
+      <TouchableOpacity
+        key={book.id}
+        style={styles.bookRow}
+        onPress={() => handleBookPress(book.id)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.bookCoverContainer}>
+          <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
+          <View style={styles.downloadedBadge}>
+            <CheckIcon size={10} color="#FFFFFF" />
+          </View>
+          {isCompleted && (
+            <View style={styles.completedBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={COLORS.accent} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.bookInfo}>
+          <Text style={styles.bookTitle} numberOfLines={1}>{book.title}</Text>
+          <Text style={styles.bookAuthor} numberOfLines={1}>{book.author}</Text>
+          <Text style={styles.bookMeta}>{formatDuration(book.duration)}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={() => handlePlayBook(book)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="play" size={18} color="#000" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  }, [handleBookPress, handlePlayBook]);
+
+  // Render series card
+  const renderSeriesCard = useCallback((series: SeriesGroup) => {
+    const firstBook = series.books[0];
+    const coverUrl = firstBook ? apiClient.getItemCoverUrl(firstBook.id) : undefined;
+    const progressPercent = series.totalBooks > 0
+      ? Math.round((series.completedCount / series.totalBooks) * 100)
+      : 0;
+
+    return (
+      <TouchableOpacity
+        key={series.name}
+        style={styles.seriesCard}
+        onPress={() => handleSeriesPress(series.name)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.seriesCoversContainer}>
+          {/* Stacked covers */}
+          {series.books.slice(0, 2).reverse().map((book, idx) => (
+            <View
+              key={book.id}
+              style={[
+                styles.seriesCover,
+                { left: idx * 8, top: idx * 4, zIndex: 2 - idx },
+              ]}
+            >
+              <Image
+                source={apiClient.getItemCoverUrl(book.id)}
+                style={styles.seriesCoverImage}
+                contentFit="cover"
+              />
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.seriesInfo}>
+          <Text style={styles.seriesName} numberOfLines={1}>{series.name}</Text>
+          <Text style={styles.seriesStats}>
+            {series.downloadedCount} of {series.totalBooks} downloaded
+          </Text>
+          <Text style={styles.seriesProgress}>
+            {series.completedCount} listened · {series.inProgressCount} in progress
+          </Text>
+
+          {/* Progress bar */}
+          <View style={styles.seriesProgressBar}>
+            <View style={[styles.seriesProgressFill, { width: `${progressPercent}%` }]} />
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [handleSeriesPress]);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      {/* Fixed Top Header Bar - matching HomeScreen */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.headerIcon} onPress={handleProfilePress}>
-            <Ionicons name="person-outline" size={22} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIcon} onPress={handleDiscoverPress}>
-            <Ionicons name="help-circle-outline" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.headerRight}>
-          {/* Your Library button - ACTIVE state (highlighted) */}
-          <TouchableOpacity style={styles.libraryButtonActive} onPress={handleHomePress}>
-            <Text style={styles.libraryButtonTextActive}>Your Library</Text>
-            <View style={styles.libraryIcon}>
-              <View style={styles.libraryIconBack} />
-              <View style={styles.libraryIconFront} />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* TopNav is now rendered at the navigator level */}
 
       {/* Content */}
       {!hasContent ? (
-        <View style={[styles.emptyContainer, { paddingTop: insets.top + 70 }]}>
+        <View style={[styles.emptyContainer, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}>
           <DownloadIcon size={scale(64)} />
-          <Text style={styles.emptyTitle}>No Downloads</Text>
+          <Text style={styles.emptyTitle}>Your library is empty</Text>
           <Text style={styles.emptySubtitle}>
-            Download audiobooks for offline listening. Browse the library to find something to download.
+            Download books from Discover to build your collection and listen offline.
           </Text>
           <TouchableOpacity style={styles.browseButton} onPress={handleBrowse}>
             <BrowseIcon size={20} color="#000" />
-            <Text style={styles.browseButtonText}>Browse Library</Text>
+            <Text style={styles.browseButtonText}>Browse Books</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 70 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -370,10 +552,41 @@ export function MyLibraryScreen() {
             />
           }
         >
-          {/* Active downloads/queue section */}
+          {/* Screen Title */}
+          <Text style={styles.screenTitle}>My Library</Text>
+
+          {/* Filter Chips */}
+          <FilterChips
+            selected={filter}
+            onSelect={setFilter}
+            counts={filterCounts}
+          />
+
+          {/* Sort Picker + Book Count */}
+          <SortPicker
+            selected={sort}
+            onSelect={setSort}
+            bookCount={filteredBooks.length}
+          />
+
+          {/* =============== DOWNLOADING SECTION =============== */}
           {activeDownloads.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Downloading</Text>
+              <View style={styles.sectionHeaderWithAction}>
+                <Text style={styles.sectionTitle}>
+                  Downloading ({activeDownloads.length})
+                </Text>
+                {hasDownloading && (
+                  <TouchableOpacity onPress={handlePauseAll}>
+                    <Text style={styles.sectionAction}>Pause All</Text>
+                  </TouchableOpacity>
+                )}
+                {!hasDownloading && hasPaused && (
+                  <TouchableOpacity onPress={handleResumeAll}>
+                    <Text style={styles.sectionAction}>Resume All</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.downloadList}>
                 {activeDownloads.map((download) => (
                   <DownloadItem
@@ -388,49 +601,53 @@ export function MyLibraryScreen() {
             </View>
           )}
 
-          {/* Your Books section (standalone books first) */}
-          {standaloneBooks.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Books</Text>
-              {standaloneBooks.map((book) => (
-                <TouchableOpacity
-                  key={book.id}
-                  style={styles.bookRow}
-                  onPress={() => handleBookPress(book.id)}
-                  activeOpacity={0.7}
-                >
-                  <BookCover
-                    itemId={book.id}
-                    title={book.title}
-                    isDownloaded={true}
-                  />
-                  <View style={styles.bookInfo}>
-                    <Text style={styles.bookTitle} numberOfLines={1}>{book.title}</Text>
-                    <Text style={styles.bookAuthor} numberOfLines={1}>{book.author}</Text>
-                    <Text style={styles.bookSize}>{formatBytes(book.totalBytes)}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+          {/* =============== CONTINUE LISTENING SECTION =============== */}
+          {inProgressBooks.length > 0 && filter !== 'not-started' && filter !== 'completed' && (
+            <View style={styles.horizontalSection}>
+              <SectionHeader
+                title={`Continue Listening (${inProgressBooks.length})`}
+                showViewAll={false}
+              />
+              <FlatList
+                data={inProgressBooks}
+                renderItem={renderContinueListeningCard}
+                keyExtractor={(item) => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalList}
+              />
             </View>
           )}
 
-          {/* Your Series sections */}
+          {/* =============== DOWNLOADED BOOKS SECTION =============== */}
+          {downloadedBooksList.length > 0 && (
+            <View style={styles.section}>
+              <SectionHeader
+                title={`Downloaded (${downloadedBooksList.length})`}
+                showViewAll={false}
+              />
+              {downloadedBooksList.map(renderBookRow)}
+            </View>
+          )}
+
+          {/* =============== YOUR SERIES SECTION =============== */}
           {seriesGroups.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Series</Text>
-              {seriesGroups.map((series) => (
-                <SeriesSection
-                  key={series.name}
-                  seriesName={series.name}
-                  books={series.books}
-                  downloadedIds={downloadedIds}
-                  onBookPress={handleBookPress}
-                />
-              ))}
+              <SectionHeader
+                title={`Your Series (${seriesGroups.length})`}
+                showViewAll={false}
+              />
+              {seriesGroups.map(renderSeriesCard)}
             </View>
           )}
 
-          {/* Browse CTA at bottom */}
+          {/* =============== STORAGE SUMMARY =============== */}
+          <StorageSummary
+            usedBytes={totalStorageUsed}
+            onManagePress={handleManageStorage}
+          />
+
+          {/* =============== BROWSE CTA =============== */}
           <View style={styles.bottomCta}>
             <Text style={styles.bottomCtaText}>Looking for more?</Text>
             <TouchableOpacity style={styles.browseButtonOutline} onPress={handleBrowse}>
@@ -450,7 +667,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  // Header - Fixed at top (matching HomeScreen)
+  // Header
   header: {
     position: 'absolute',
     top: 0,
@@ -479,22 +696,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  // Active library button (highlighted since we're on this page)
   libraryButtonActive: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(193, 244, 12, 0.2)', // Lime green tint
+    backgroundColor: 'rgba(193, 244, 12, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 100,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#c1f40c', // Lime green border
+    borderColor: '#c1f40c',
   },
   libraryButtonTextActive: {
-    color: '#c1f40c', // Lime green text
+    color: '#c1f40c',
     fontSize: 10,
-    fontFamily: MONO_FONT,
     letterSpacing: 0.2,
     fontWeight: '600',
   },
@@ -511,7 +726,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: 'rgba(193, 244, 12, 0.5)', // Lime green
+    borderColor: 'rgba(193, 244, 12, 0.5)',
     backgroundColor: 'transparent',
   },
   libraryIconFront: {
@@ -522,7 +737,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: '#c1f40c', // Lime green
+    borderColor: '#c1f40c',
     backgroundColor: 'rgba(193, 244, 12, 0.1)',
   },
 
@@ -532,62 +747,123 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: scale(100),
   },
+
+  // Screen title
+  screenTitle: {
+    fontSize: scale(28),
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    paddingHorizontal: scale(20),
+    marginBottom: scale(8),
+  },
+
+  // Sections
   section: {
     marginBottom: scale(24),
+  },
+  sectionHeaderWithAction: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
+    marginBottom: scale(12),
   },
   sectionTitle: {
     fontSize: scale(18),
     fontWeight: '600',
     color: COLORS.textPrimary,
-    paddingHorizontal: scale(20),
-    marginBottom: scale(12),
   },
-  downloadList: {
-    paddingHorizontal: scale(16),
+  sectionAction: {
+    fontSize: scale(14),
+    fontWeight: '500',
+    color: COLORS.accent,
   },
-  // Series section styles
-  seriesSection: {
-    marginBottom: scale(20),
+
+  // Horizontal sections
+  horizontalSection: {
+    marginBottom: scale(24),
   },
-  seriesTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(20),
-    marginBottom: scale(12),
-  },
-  seriesTitle: {
-    fontSize: scale(16),
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    flex: 1,
-  },
-  seriesCount: {
-    fontSize: scale(12),
-    color: COLORS.textSecondary,
-  },
-  seriesBooksScroll: {
+  horizontalList: {
     paddingHorizontal: scale(20),
     gap: scale(12),
   },
-  seriesBookItem: {
-    width: scale(100),
+
+  // Horizontal cards
+  horizontalCard: {
+    width: HORIZONTAL_CARD_WIDTH,
   },
-  seriesBookTitle: {
+  horizontalCardCoverContainer: {
+    width: HORIZONTAL_CARD_COVER,
+    height: HORIZONTAL_CARD_COVER,
+    borderRadius: scale(10),
+    overflow: 'hidden',
+    marginBottom: scale(8),
+    position: 'relative',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  horizontalCardCover: {
+    width: '100%',
+    height: '100%',
+  },
+  cardGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+  },
+  horizontalCardProgress: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  horizontalCardProgressFill: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+  },
+  cardProgressText: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    fontSize: scale(11),
+    fontWeight: '700',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  horizontalCardTitle: {
     fontSize: scale(12),
-    color: COLORS.textPrimary,
-    marginTop: scale(6),
+    fontWeight: '500',
+    color: '#fff',
+    lineHeight: scale(16),
   },
-  seriesBookSequence: {
+  horizontalCardSubtitle: {
     fontSize: scale(10),
-    color: COLORS.textSecondary,
-    marginTop: scale(2),
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
   },
-  // Book cover styles
+
+  // Download list
+  downloadList: {
+    paddingHorizontal: scale(16),
+  },
+
+  // Book row
+  bookRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(10),
+    gap: scale(12),
+  },
   bookCoverContainer: {
     position: 'relative',
-    width: scale(100),
-    height: scale(100),
+    width: scale(60),
+    height: scale(60),
     borderRadius: scale(8),
     overflow: 'hidden',
   },
@@ -595,16 +871,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: scale(8),
-  },
-  bookCoverPlaceholder: {
-    backgroundColor: COLORS.cardBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bookCoverText: {
-    fontSize: scale(28),
-    fontWeight: '600',
-    color: COLORS.textSecondary,
   },
   downloadedBadge: {
     position: 'absolute',
@@ -617,13 +883,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Standalone book row
-  bookRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(20),
-    paddingVertical: scale(8),
-    gap: scale(12),
+  completedBadge: {
+    position: 'absolute',
+    top: scale(4),
+    right: scale(4),
   },
   bookInfo: {
     flex: 1,
@@ -638,11 +901,83 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: scale(2),
   },
-  bookSize: {
+  bookMeta: {
     fontSize: scale(12),
     color: COLORS.textSecondary,
     marginTop: scale(4),
   },
+  playButton: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: COLORS.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Series card
+  seriesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: scale(20),
+    marginBottom: scale(12),
+    padding: scale(12),
+    backgroundColor: COLORS.cardBg,
+    borderRadius: scale(12),
+    gap: scale(12),
+  },
+  seriesCoversContainer: {
+    width: scale(70),
+    height: scale(70),
+    position: 'relative',
+  },
+  seriesCover: {
+    position: 'absolute',
+    width: scale(55),
+    height: scale(55),
+    borderRadius: scale(6),
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  seriesCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  seriesInfo: {
+    flex: 1,
+  },
+  seriesName: {
+    fontSize: scale(15),
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: scale(4),
+  },
+  seriesStats: {
+    fontSize: scale(12),
+    color: COLORS.textSecondary,
+  },
+  seriesProgress: {
+    fontSize: scale(11),
+    color: COLORS.textSecondary,
+    marginTop: scale(2),
+    marginBottom: scale(8),
+  },
+  seriesProgressBar: {
+    height: scale(4),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  seriesProgressFill: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+    borderRadius: scale(2),
+  },
+
   // Empty state
   emptyContainer: {
     flex: 1,
@@ -651,7 +986,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(40),
   },
   emptyTitle: {
-    fontSize: scale(18),
+    fontSize: scale(20),
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginTop: scale(16),
@@ -678,6 +1013,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000000',
   },
+
   // Bottom CTA
   bottomCta: {
     alignItems: 'center',

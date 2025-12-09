@@ -1,41 +1,55 @@
-import React, { memo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+/**
+ * src/features/collections/components/CollectionCard.tsx
+ *
+ * Simple collection card component for use in lists.
+ * Now matches dark theme design pattern.
+ */
+
+import React, { memo, useMemo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Collection } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { theme } from '@/shared/theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
+const ACCENT = '#c1f40c';
 
 interface CollectionCardProps {
   collection: Collection;
 }
 
-export function CollectionCard({ collection }: CollectionCardProps) {
+export const CollectionCard = memo(function CollectionCard({ collection }: CollectionCardProps) {
   const navigation = useNavigation();
 
   const handlePress = () => {
     navigation.navigate('CollectionDetail' as never, { collectionId: collection.id } as never);
   };
 
-  const bookCount = collection.books?.length || 0;
-  const firstBook = collection.books?.[0];
-  const coverUrl = firstBook ? apiClient.getItemCoverUrl(firstBook.id) : undefined;
+  const books = collection.books || [];
+  const bookCount = books.length;
+
+  // Get first book cover
+  const coverUrl = useMemo(() => {
+    return books[0] ? apiClient.getItemCoverUrl(books[0].id) : undefined;
+  }, [books]);
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.container, pressed && styles.pressed]}
-      onPress={handlePress}
-    >
+    <TouchableOpacity style={styles.container} onPress={handlePress} activeOpacity={0.7}>
       <View style={styles.coverContainer}>
         {coverUrl ? (
           <Image source={coverUrl} style={styles.cover} contentFit="cover" transition={200} />
         ) : (
           <View style={[styles.cover, styles.placeholderCover]}>
-            <Text style={styles.placeholderText}>📚</Text>
+            <Ionicons name="albums" size={scale(32)} color="rgba(255,255,255,0.3)" />
           </View>
         )}
-        
+
         <View style={styles.countBadge}>
+          <Ionicons name="book" size={scale(10)} color="#000" />
           <Text style={styles.countText}>{bookCount}</Text>
         </View>
       </View>
@@ -50,26 +64,22 @@ export function CollectionCard({ collection }: CollectionCardProps) {
           </Text>
         )}
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
-    width: 160,
-    marginBottom: theme.spacing[4],
-  },
-  pressed: {
-    opacity: 0.7,
+    width: scale(160),
+    marginBottom: scale(16),
   },
   coverContainer: {
     position: 'relative',
-    width: 160,
-    height: 160,
-    borderRadius: theme.radius.large,
-    backgroundColor: theme.colors.neutral[200],
+    width: scale(160),
+    height: scale(160),
+    borderRadius: scale(12),
+    backgroundColor: '#262626',
     overflow: 'hidden',
-    ...theme.elevation.small,
   },
   cover: {
     width: '100%',
@@ -78,39 +88,37 @@ const styles = StyleSheet.create({
   placeholderCover: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.colors.neutral[300],
-  },
-  placeholderText: {
-    fontSize: 48,
+    backgroundColor: '#262626',
   },
   countBadge: {
     position: 'absolute',
-    bottom: theme.spacing[2],
-    right: theme.spacing[2],
-    backgroundColor: theme.colors.primary[500],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.radius.medium,
-    minWidth: 28,
+    bottom: scale(8),
+    right: scale(8),
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: scale(4),
+    backgroundColor: ACCENT,
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(10),
   },
   countText: {
-    fontSize: 12,
+    fontSize: scale(11),
     fontWeight: '700',
-    color: theme.colors.text.inverse,
+    color: '#000',
   },
   info: {
-    marginTop: theme.spacing[2],
+    marginTop: scale(8),
   },
   name: {
-    fontSize: 15,
+    fontSize: scale(14),
     fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginBottom: theme.spacing[1],
-    lineHeight: 20,
+    color: '#fff',
+    marginBottom: scale(2),
+    lineHeight: scale(18),
   },
   description: {
-    fontSize: 13,
-    color: theme.colors.text.secondary,
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.5)',
   },
 });

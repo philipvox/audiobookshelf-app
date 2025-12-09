@@ -46,57 +46,12 @@ export type { SortOption } from './FilterSortBar';
 // =============================================================================
 // SKELETON LOADING
 // =============================================================================
-export {
-  Shimmer,
-  BookCardSkeleton,
-  SquareCardSkeleton,
-  ListItemSkeleton,
-  PlayerHeaderSkeleton,
-  BookDetailSkeleton,
-  BookGridSkeleton,
-  SquareGridSkeleton,
-  ListSkeleton,
-} from './Skeleton';
+export { Shimmer } from './Skeleton';
 
 // =============================================================================
 // GESTURE COMPONENTS
 // =============================================================================
-export {
-  Swipeable,
-  ScalePressable,
-  PullToRefresh,
-  DoubleTapSeek,
-  GestureHandlerRootView,
-} from './GestureComponents';
-
-// =============================================================================
-// ANIMATION COMPONENTS
-// =============================================================================
-export {
-  FadeInUp,
-  ScaleIn,
-  StaggeredItem,
-  AnimatedProgress,
-  AnimatedNumber,
-  AnimatedModal,
-  Pulse,
-  layoutAnimations,
-} from './AnimatedComponents';
-
-// =============================================================================
-// LAZY LOADING
-// =============================================================================
-export {
-  DeferRender,
-  LazyWrapper,
-  OnVisible,
-  ProgressiveLoad,
-  BatchRender,
-  useIdleCallback,
-  useDeferredValue,
-  createLazyScreen,
-  preloadComponent,
-} from './LazyComponents';
+export { Swipeable } from './GestureComponents';
 
 // =============================================================================
 // OFFLINE-FIRST

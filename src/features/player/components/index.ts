@@ -2,10 +2,8 @@
  * src/features/player/components/index.ts
  */
 
-export { GlassPanel, type LightingVariant } from './GlassPanel';
-export { PlayerButton, type ButtonVariant } from './PlayerButton';
-export { CassetteTape } from './CassetteTape';
-export { MiniPlayer } from './MiniPlayer';
-export { AudioWaveform } from './AudioWaveform';
-export { PlayerHeader } from './PlayerHeader';
-export { PlayerProgress } from './PlayerProgress';
+export { ChapterProgressBar } from './ChapterProgressBar';
+export { LiquidSlider } from './LiquidSlider';
+export { PlayerModule } from './PlayerModule';
+export { ProgressBar } from './ProgressBar';
+export { SleepTimer } from './SleepTimer';

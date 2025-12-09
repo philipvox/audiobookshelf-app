@@ -30,6 +30,8 @@ import { DownloadItem } from '../components/DownloadItem';
 import { useCoverUrl } from '@/core/cache';
 import { formatBytes } from '@/shared/utils/format';
 import { LibraryItem } from '@/core/types';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -221,6 +223,7 @@ function SeriesSection({
 
 export function DownloadsScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { downloads, isLoading, deleteDownload, pauseDownload, resumeDownload } = useDownloads();
   const { getItem, getSeries } = useLibraryCache();
 
@@ -353,11 +356,11 @@ export function DownloadsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       {/* Top bar with icons */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(8) }]}>
         <TouchableOpacity style={styles.iconButton} onPress={handleSearch}>
           <SearchIcon size={scale(22)} />
         </TouchableOpacity>
@@ -462,7 +465,7 @@ export function DownloadsScreen() {
           </View>
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -28,7 +28,7 @@ import { AuthorDetailScreen } from '@/features/author';
 import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { BookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen } from '@/features/profile';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { SimplePlayerScreen } from '@/features/player';
 import { QueueScreen, useQueueStore } from '@/features/queue';
@@ -37,6 +37,7 @@ import { StatsScreen } from '@/features/stats';
 import { downloadManager } from '@/core/services/downloadManager';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { NavigationBar } from './components/NavigationBar';
+import { TopNav } from './components/TopNav';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -133,6 +134,8 @@ function AuthenticatedApp() {
         <Stack.Screen name="QueueScreen" component={QueueScreen} />
         <Stack.Screen name="Downloads" component={DownloadsScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
+        <Stack.Screen name="PlaybackSettings" component={PlaybackSettingsScreen} />
+        <Stack.Screen name="StorageSettings" component={StorageSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         <Stack.Screen
           name="PreferencesOnboarding"
@@ -140,6 +143,7 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
+      <TopNav />
       <SimplePlayerScreen />
       <NavigationBar />
     </NavigationContainer>

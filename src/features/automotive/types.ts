@@ -106,8 +106,8 @@ export interface AutomotiveConfig {
 
 export const DEFAULT_AUTOMOTIVE_CONFIG: AutomotiveConfig = {
   appName: 'Audiobookshelf',
-  enableCarPlay: false,  // Requires Apple entitlement
-  enableAndroidAuto: false,
+  enableCarPlay: true,   // Native config now in place
+  enableAndroidAuto: true, // Native config now in place
   maxListItems: 30,
   showSpeedControl: true,
   showSleepTimer: false,

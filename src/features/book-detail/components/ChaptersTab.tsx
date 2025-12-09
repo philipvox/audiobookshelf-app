@@ -1,18 +1,31 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Platform } from 'react-native';
+/**
+ * src/features/book-detail/components/ChaptersTab.tsx
+ *
+ * Redesigned chapters list with progress tracking and visual indicators.
+ */
+
+import React, { useMemo } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BookChapter, LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 
-// Design constants matching HomeScreen
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
+
 const ACCENT = '#c1f40c';
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 
 interface ChaptersTabProps {
   chapters: BookChapter[];
   currentPosition?: number;
   bookId?: string;
-  book?: LibraryItem; // Full book object for loading
+  book?: LibraryItem;
 }
 
 function formatDuration(seconds: number): string {
@@ -26,159 +39,320 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
+function formatShortDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
 export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: ChaptersTabProps) {
   const { seekTo, currentBook, loadBook, play } = usePlayerStore();
+
+  // Calculate chapter states
+  const chapterStates = useMemo(() => {
+    return chapters.map((chapter, idx) => {
+      const duration = chapter.end - chapter.start;
+      const nextChapterStart = idx < chapters.length - 1 ? chapters[idx + 1].start : chapter.end;
+
+      const isCompleted = currentPosition >= chapter.end;
+      const isCurrent = currentPosition >= chapter.start && currentPosition < nextChapterStart;
+      const isUpcoming = currentPosition < chapter.start;
+
+      // Progress within current chapter (0-1)
+      let chapterProgress = 0;
+      if (isCompleted) {
+        chapterProgress = 1;
+      } else if (isCurrent) {
+        chapterProgress = (currentPosition - chapter.start) / duration;
+      }
+
+      // Time remaining in chapter
+      const timeRemaining = isCurrent ? chapter.end - currentPosition : duration;
+
+      return {
+        isCompleted,
+        isCurrent,
+        isUpcoming,
+        chapterProgress,
+        timeRemaining,
+        duration,
+      };
+    });
+  }, [chapters, currentPosition]);
 
   if (!chapters || chapters.length === 0) {
     return (
       <View style={styles.emptyContainer}>
+        <Ionicons name="list-outline" size={scale(40)} color="rgba(255,255,255,0.2)" />
         <Text style={styles.emptyText}>No chapters available</Text>
       </View>
     );
   }
 
-  const currentIndex = chapters.findIndex(
-    (ch, idx) => currentPosition >= ch.start &&
-      (idx === chapters.length - 1 || currentPosition < chapters[idx + 1].start)
-  );
-
   const handleChapterPress = async (chapter: BookChapter) => {
     try {
-      // If this book is currently loaded in player, just seek
+      console.log('[ChaptersTab] Chapter press:', chapter.title, 'start:', chapter.start);
       if (currentBook?.id === bookId) {
+        console.log('[ChaptersTab] Same book loaded, seeking to:', chapter.start);
         await seekTo(chapter.start);
-        // Also start playing if paused
         await play();
       } else if (book) {
-        // Book not loaded - load it and start from this chapter
+        console.log('[ChaptersTab] Different/no book loaded, loading with startPosition:', chapter.start);
         await loadBook(book, {
           startPosition: chapter.start,
           autoPlay: true,
-          showPlayer: false  // Stay on detail screen
+          showPlayer: false,
         });
-      } else {
-        console.log('Cannot play chapter - book data not available');
       }
     } catch (error) {
-      console.error('Failed to play chapter:', error);
+      console.error('[ChaptersTab] Failed to play chapter:', error);
     }
   };
 
-  const renderChapter = ({ item, index }: { item: BookChapter; index: number }) => {
-    const duration = item.end - item.start;
-    const isCurrentChapter = index === currentIndex;
-
-    return (
-      <TouchableOpacity
-        style={[styles.chapterItem, isCurrentChapter && styles.currentChapter]}
-        onPress={() => handleChapterPress(item)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.chapterNumber, isCurrentChapter && styles.currentChapterNumber]}>
-          {isCurrentChapter ? (
-            <Ionicons name="volume-high" size={14} color="#000" />
-          ) : (
-            <Text style={styles.chapterNumberText}>{index + 1}</Text>
-          )}
-        </View>
-
-        <View style={styles.chapterInfo}>
-          <Text style={[styles.chapterTitle, isCurrentChapter && styles.currentChapterTitle]} numberOfLines={2}>
-            {item.title || `Chapter ${index + 1}`}
-          </Text>
-          <Text style={styles.chapterDuration}>
-            {formatDuration(duration)}
-          </Text>
-        </View>
-
-        <Ionicons
-          name="play-circle-outline"
-          size={24}
-          color={isCurrentChapter ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)'}
-        />
-      </TouchableOpacity>
-    );
-  };
+  // Count completed chapters
+  const completedCount = chapterStates.filter(s => s.isCompleted).length;
+  const currentIndex = chapterStates.findIndex(s => s.isCurrent);
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={chapters}
-        renderItem={renderChapter}
-        keyExtractor={(item) => item.id.toString()}
-        scrollEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-      />
+      {/* Progress summary */}
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryText}>
+          {completedCount} of {chapters.length} completed
+        </Text>
+        {currentIndex >= 0 && (
+          <Text style={styles.currentText}>
+            Currently on Chapter {currentIndex + 1}
+          </Text>
+        )}
+      </View>
+
+      {/* Chapter list */}
+      <View style={styles.chapterList}>
+        {chapters.map((chapter, index) => {
+          const state = chapterStates[index];
+
+          return (
+            <TouchableOpacity
+              key={chapter.id}
+              style={[
+                styles.chapterItem,
+                state.isCurrent && styles.chapterItemCurrent,
+              ]}
+              onPress={() => handleChapterPress(chapter)}
+              activeOpacity={0.7}
+            >
+              {/* Status indicator */}
+              <View style={[
+                styles.statusIndicator,
+                state.isCompleted && styles.statusCompleted,
+                state.isCurrent && styles.statusCurrent,
+              ]}>
+                {state.isCompleted ? (
+                  <Ionicons name="checkmark" size={scale(12)} color="#000" />
+                ) : state.isCurrent ? (
+                  <Ionicons name="volume-high" size={scale(10)} color="#000" />
+                ) : (
+                  <Text style={styles.chapterNumber}>{index + 1}</Text>
+                )}
+              </View>
+
+              {/* Chapter info */}
+              <View style={styles.chapterInfo}>
+                <Text
+                  style={[
+                    styles.chapterTitle,
+                    state.isCompleted && styles.chapterTitleCompleted,
+                    state.isCurrent && styles.chapterTitleCurrent,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {chapter.title || `Chapter ${index + 1}`}
+                </Text>
+
+                {/* Progress bar for current chapter */}
+                {state.isCurrent && (
+                  <View style={styles.progressBarContainer}>
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${state.chapterProgress * 100}%` }
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.timeRemaining}>
+                      {formatShortDuration(state.timeRemaining)} left
+                    </Text>
+                  </View>
+                )}
+
+                {/* Duration for non-current chapters */}
+                {!state.isCurrent && (
+                  <Text style={[
+                    styles.chapterDuration,
+                    state.isCompleted && styles.chapterDurationCompleted,
+                  ]}>
+                    {formatDuration(state.duration)}
+                  </Text>
+                )}
+              </View>
+
+              {/* Play indicator */}
+              <View style={styles.playIndicator}>
+                {state.isCurrent ? (
+                  <View style={styles.nowPlayingDot} />
+                ) : (
+                  <Ionicons
+                    name="play"
+                    size={scale(14)}
+                    color={state.isCompleted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'}
+                  />
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    paddingTop: 0,
+    paddingHorizontal: scale(20),
   },
   emptyContainer: {
-    padding: 40,
+    padding: scale(40),
     alignItems: 'center',
+    gap: scale(12),
   },
   emptyText: {
-    fontSize: 14,
-    fontFamily: MONO_FONT,
+    fontSize: scale(14),
     color: 'rgba(255,255,255,0.4)',
+  },
+
+  // Summary
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: scale(16),
+    paddingBottom: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  summaryText: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.5)',
+  },
+  currentText: {
+    fontSize: scale(12),
+    color: ACCENT,
+    fontWeight: '600',
+  },
+
+  // Chapter list
+  chapterList: {
+    gap: scale(2),
   },
   chapterItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(12),
+    marginHorizontal: scale(-12),
+    borderRadius: scale(10),
   },
-  currentChapter: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginHorizontal: -12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+  chapterItemCurrent: {
+    backgroundColor: 'rgba(193,244,12,0.08)',
   },
-  chapterNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+
+  // Status indicator
+  statusIndicator: {
+    width: scale(26),
+    height: scale(26),
+    borderRadius: scale(13),
     backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: scale(12),
   },
-  currentChapterNumber: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
+  statusCompleted: {
+    backgroundColor: ACCENT,
   },
-  chapterNumberText: {
-    fontSize: 11,
-    fontFamily: MONO_FONT,
+  statusCurrent: {
+    backgroundColor: '#fff',
+  },
+  chapterNumber: {
+    fontSize: scale(10),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.4)',
   },
+
+  // Chapter info
   chapterInfo: {
     flex: 1,
-    marginRight: 12,
+    marginRight: scale(12),
   },
   chapterTitle: {
-    fontSize: 14,
+    fontSize: scale(14),
     color: '#fff',
-    marginBottom: 4,
-    lineHeight: 19,
+    fontWeight: '500',
   },
-  currentChapterTitle: {
-    fontWeight: '600',
+  chapterTitleCompleted: {
+    color: 'rgba(255,255,255,0.5)',
+  },
+  chapterTitleCurrent: {
     color: '#fff',
+    fontWeight: '600',
   },
   chapterDuration: {
-    fontSize: 11,
-    fontFamily: MONO_FONT,
+    fontSize: scale(11),
     color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 0.2,
+    marginTop: scale(4),
   },
-  separator: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    marginLeft: 40,
+  chapterDurationCompleted: {
+    color: 'rgba(255,255,255,0.3)',
+  },
+
+  // Progress bar (current chapter)
+  progressBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: scale(6),
+    gap: scale(8),
+  },
+  progressTrack: {
+    flex: 1,
+    height: scale(3),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: ACCENT,
+    borderRadius: scale(2),
+  },
+  timeRemaining: {
+    fontSize: scale(10),
+    color: ACCENT,
+    fontWeight: '500',
+  },
+
+  // Play indicator
+  playIndicator: {
+    width: scale(24),
+    alignItems: 'center',
+  },
+  nowPlayingDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    backgroundColor: ACCENT,
   },
 });

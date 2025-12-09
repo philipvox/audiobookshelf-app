@@ -543,6 +543,54 @@ export function getAllGenres(): string[] {
 }
 
 /**
+ * Get series navigation info for a book
+ * Returns null if the book is not in a series
+ */
+export function getSeriesNavigationInfo(currentBook: LibraryItem): {
+  seriesName: string;
+  currentSequence: number;
+  totalBooks: number;
+  previousBook: LibraryItem | null;
+  nextBook: LibraryItem | null;
+} | null {
+  const metadata = (currentBook.media?.metadata as any) || {};
+  const seriesNameRaw = metadata.seriesName || '';
+
+  if (!seriesNameRaw) return null;
+
+  // Extract sequence number
+  const seqMatch = seriesNameRaw.match(/#([\d.]+)/);
+  if (!seqMatch) return null;
+
+  const currentSeq = parseFloat(seqMatch[1]);
+  const cleanSeriesName = seriesNameRaw.replace(/\s*#[\d.]+$/, '').trim();
+
+  const seriesInfo = useLibraryCache.getState().getSeries(cleanSeriesName);
+  if (!seriesInfo || seriesInfo.books.length === 0) return null;
+
+  // Find current book index
+  const currentIndex = seriesInfo.books.findIndex(book => book.id === currentBook.id);
+
+  let previousBook: LibraryItem | null = null;
+  let nextBook: LibraryItem | null = null;
+
+  if (currentIndex > 0) {
+    previousBook = seriesInfo.books[currentIndex - 1];
+  }
+  if (currentIndex >= 0 && currentIndex < seriesInfo.books.length - 1) {
+    nextBook = seriesInfo.books[currentIndex + 1];
+  }
+
+  return {
+    seriesName: cleanSeriesName,
+    currentSequence: currentSeq,
+    totalBooks: seriesInfo.books.length,
+    previousBook,
+    nextBook,
+  };
+}
+
+/**
  * Get the next book in a series based on the current book
  * Returns null if the book is not in a series or there's no next book
  */

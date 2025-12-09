@@ -2,9 +2,10 @@
  * src/features/discover/components/CategoryGrid.tsx
  *
  * Browse by Category grid using app design system.
+ * Shows Genres, Authors, Series, and Narrators with counts.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,8 +15,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Icon } from '@/shared/components/Icon';
+import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators, getAllGenres } from '@/core/cache';
 import { COLORS, DIMENSIONS, TYPOGRAPHY, LAYOUT } from '@/features/home/homeDesign';
-import { Category, DEFAULT_CATEGORIES } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -23,8 +24,16 @@ const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 const GAP = scale(10);
 const COLUMN_WIDTH = (SCREEN_WIDTH - LAYOUT.carouselPaddingHorizontal * 2 - GAP) / 2;
 
+interface BrowseCategory {
+  id: string;
+  name: string;
+  icon: string;
+  count: number;
+  route: string;
+}
+
 interface CategoryCardProps {
-  category: Category;
+  category: BrowseCategory;
   onPress: () => void;
 }
 
@@ -36,36 +45,54 @@ const CategoryCard = React.memo(function CategoryCard({ category, onPress }: Cat
       activeOpacity={0.7}
     >
       <Icon name={category.icon} size={scale(22)} color={COLORS.playButton} set="ionicons" />
-      <Text style={styles.categoryName}>{category.name}</Text>
+      <View style={styles.cardText}>
+        <Text style={styles.categoryName}>{category.name}</Text>
+        {category.count > 0 && (
+          <Text style={styles.categoryCount}>{category.count}</Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
 });
 
-interface CategoryGridProps {
-  categories?: Category[];
-  onCategoryPress?: (category: Category) => void;
-}
-
-export function CategoryGrid({
-  categories = DEFAULT_CATEGORIES,
-  onCategoryPress,
-}: CategoryGridProps) {
+export function CategoryGrid() {
   const navigation = useNavigation<any>();
+  const { isLoaded } = useLibraryCache();
 
-  const handleCategoryPress = useCallback((category: Category) => {
-    if (onCategoryPress) {
-      onCategoryPress(category);
-    } else {
-      navigation.navigate('GenresList');
+  // Build categories with counts from cache
+  const categories = useMemo((): BrowseCategory[] => {
+    if (!isLoaded) {
+      return [
+        { id: 'genres', name: 'Genres', icon: 'albums-outline', count: 0, route: 'GenresList' },
+        { id: 'authors', name: 'Authors', icon: 'person-outline', count: 0, route: 'AuthorsList' },
+        { id: 'series', name: 'Series', icon: 'library-outline', count: 0, route: 'SeriesList' },
+        { id: 'narrators', name: 'Narrators', icon: 'mic-outline', count: 0, route: 'NarratorsList' },
+      ];
     }
-  }, [navigation, onCategoryPress]);
+
+    const genres = getAllGenres();
+    const authors = getAllAuthors();
+    const series = getAllSeries();
+    const narrators = getAllNarrators();
+
+    return [
+      { id: 'genres', name: 'Genres', icon: 'albums-outline', count: genres.length, route: 'GenresList' },
+      { id: 'authors', name: 'Authors', icon: 'person-outline', count: authors.length, route: 'AuthorsList' },
+      { id: 'series', name: 'Series', icon: 'library-outline', count: series.length, route: 'SeriesList' },
+      { id: 'narrators', name: 'Narrators', icon: 'mic-outline', count: narrators.length, route: 'NarratorsList' },
+    ];
+  }, [isLoaded]);
+
+  const handleCategoryPress = useCallback((category: BrowseCategory) => {
+    navigation.navigate(category.route);
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Browse by Category</Text>
+      <Text style={styles.title}>Browse By</Text>
 
       <View style={styles.grid}>
-        {categories.slice(0, 6).map((category) => (
+        {categories.map((category) => (
           <CategoryCard
             key={category.id}
             category={category}
@@ -98,11 +125,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: DIMENSIONS.cardRadius,
     paddingVertical: scale(16),
+    paddingHorizontal: scale(12),
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(8),
+    gap: scale(10),
+  },
+  cardText: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   categoryName: {
     ...TYPOGRAPHY.cardTitle,
     color: COLORS.textPrimary,
+  },
+  categoryCount: {
+    fontSize: scale(13),
+    color: COLORS.textTertiary,
   },
 });

@@ -25,7 +25,6 @@ import { HeroRecommendation } from '../types';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 const COVER_SIZE = scale(90);
 
 // Format duration
@@ -134,20 +133,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: scale(9),
-    fontFamily: MONO_FONT,
     color: COLORS.playButton,
     letterSpacing: 1,
   },
   title: {
     fontSize: scale(14),
-    fontFamily: MONO_FONT,
     fontWeight: '600',
     color: COLORS.textPrimary,
     lineHeight: scale(18),
   },
   author: {
     fontSize: scale(11),
-    fontFamily: MONO_FONT,
     color: COLORS.textSecondary,
     marginTop: scale(2),
   },
@@ -158,7 +154,6 @@ const styles = StyleSheet.create({
   },
   duration: {
     fontSize: scale(10),
-    fontFamily: MONO_FONT,
     color: COLORS.textTertiary,
   },
   dot: {
@@ -168,7 +163,6 @@ const styles = StyleSheet.create({
   },
   genre: {
     fontSize: scale(10),
-    fontFamily: MONO_FONT,
     color: COLORS.textTertiary,
   },
 });

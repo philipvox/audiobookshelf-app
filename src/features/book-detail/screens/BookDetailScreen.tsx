@@ -1,10 +1,11 @@
 /**
  * src/features/book-detail/screens/BookDetailScreen.tsx
  *
- * Dark theme book detail screen matching home screen design
+ * Enhanced book detail screen with consistent action buttons,
+ * series navigation, and clear state indicators.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +14,10 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
-  Platform,
   ActivityIndicator,
   Share,
+  Alert,
 } from 'react-native';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,17 +26,20 @@ import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useBookDetails } from '../hooks/useBookDetails';
 import { OverviewTab } from '../components/OverviewTab';
 import { ChaptersTab } from '../components/ChaptersTab';
-import { LoadingSpinner, ErrorView } from '@/shared/components';
+import { ActionButtonsRow } from '../components/ActionButtonsRow';
+import { SeriesNavigator } from '../components/SeriesNavigator';
+import { ErrorView } from '@/shared/components';
 import { useCoverUrl } from '@/core/cache';
+import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { useDownloadStatus as useDownloadStatusHook } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
+import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
 // Design constants matching HomeScreen - minimal accent usage
 const ACCENT = '#c1f40c';
 const ACCENT_SUBTLE = 'rgba(193,244,12,0.6)'; // Muted accent for less prominence
-const MONO_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' });
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COVER_SIZE = SCREEN_WIDTH * 0.45;
 
@@ -46,102 +49,16 @@ type BookDetailRouteParams = {
 
 type TabType = 'overview' | 'chapters' | 'details';
 
-/**
- * Format bytes to human readable string (e.g., "45.2 MB")
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-// Download progress button with clean minimal design
-function DownloadProgressButton({
-  progress,
-  bytesDownloaded,
-  totalBytes,
-  status,
-  onPress,
-}: {
-  progress: number;
-  bytesDownloaded: number;
-  totalBytes: number;
-  status: 'preparing' | 'downloading' | 'paused';
-  onPress: () => void;
-}) {
-  const progressStyle = useAnimatedStyle(() => ({
-    width: `${withTiming(progress * 100, { duration: 200 })}%`,
-  }));
-
-  // Status label
-  const getStatusLabel = () => {
-    switch (status) {
-      case 'preparing': return 'Preparing...';
-      case 'downloading': return 'Downloading';
-      case 'paused': return 'Paused';
-      default: return '';
-    }
-  };
-
-  // Progress text - show bytes downloaded / total
-  const getProgressText = () => {
-    if (status === 'preparing' || totalBytes === 0) {
-      return 'Calculating...';
-    }
-    return `${formatBytes(bytesDownloaded)} / ${formatBytes(totalBytes)}`;
-  };
-
-  return (
-    <TouchableOpacity
-      style={styles.downloadProgressButton}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      {/* Header row: Status on left, percentage on right */}
-      <View style={styles.downloadProgressHeader}>
-        <View style={styles.downloadStatusRow}>
-          {status === 'preparing' ? (
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" style={styles.downloadSpinner} />
-          ) : status === 'paused' ? (
-            <Ionicons name="play" size={14} color="rgba(255,255,255,0.6)" />
-          ) : (
-            <Ionicons name="pause" size={14} color="rgba(255,255,255,0.6)" />
-          )}
-          <Text style={styles.downloadStatusText}>{getStatusLabel()}</Text>
-        </View>
-        <Text style={styles.downloadPercentText}>
-          {status === 'preparing' ? '—' : `${Math.round(progress * 100)}%`}
-        </Text>
-      </View>
-
-      {/* Progress bar */}
-      <View style={styles.downloadProgressTrack}>
-        <Animated.View
-          style={[
-            styles.downloadProgressFill,
-            progressStyle,
-            status === 'paused' && styles.downloadProgressFillPaused
-          ]}
-        />
-      </View>
-
-      {/* Footer: bytes downloaded / total */}
-      <Text style={styles.downloadBytesText}>{getProgressText()}</Text>
-    </TouchableOpacity>
-  );
-}
 
 export function BookDetailScreen() {
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<BookDetailRouteParams, 'BookDetail'>>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { id: bookId } = route.params;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const { book, isLoading, error, refetch } = useBookDetails(bookId);
-  const { loadBook, currentBook, isPlaying, play, pause } = usePlayerStore();
+  const { loadBook, currentBook, isPlaying, play, pause, position } = usePlayerStore();
   const {
     isDownloaded,
     isDownloading,
@@ -156,47 +73,115 @@ export function BookDetailScreen() {
   const coverUrl = useCoverUrl(bookId);
 
   // Queue state
+  const queue = useQueueStore((s) => s.queue);
   const isInQueue = useIsInQueue(bookId);
   const addToQueue = useQueueStore((s) => s.addToQueue);
   const removeFromQueue = useQueueStore((s) => s.removeFromQueue);
+  const reorderQueue = useQueueStore((s) => s.reorderQueue);
 
-  const handlePlayPause = useCallback(async () => {
-    if (!book) return;
+  // Get queue position (1-indexed)
+  const queuePosition = useMemo(() => {
+    const index = queue.findIndex(item => item.bookId === bookId);
+    return index >= 0 ? index + 1 : 0;
+  }, [queue, bookId]);
 
-    // If this book is already loaded, toggle play/pause
+  // Calculate current position from progress or player state
+  const currentPosition = useMemo(() => {
     if (isThisBookLoaded) {
-      if (isPlaying) {
-        await pause();
-      } else {
-        await play();
-      }
-      return;
+      return position || 0;
     }
+    const progress = (book as any)?.userMediaProgress?.progress || 0;
+    const duration = (book?.media as any)?.duration || 0;
+    return progress * duration;
+  }, [isThisBookLoaded, position, book]);
 
-    // Otherwise, load and start playing this book
+  // Playback handlers
+  const handlePlay = useCallback(async () => {
+    if (!book) return;
     try {
       await loadBook(book, { showPlayer: false });
     } catch (err) {
       console.error('Failed to start playback:', err);
     }
-  }, [book, loadBook, isThisBookLoaded, isPlaying, play, pause]);
+  }, [book, loadBook]);
 
+  const handlePause = useCallback(async () => {
+    await pause();
+  }, [pause]);
+
+  const handleStream = useCallback(async () => {
+    if (!book) return;
+    try {
+      // Stream without downloading
+      await loadBook(book, { showPlayer: false });
+    } catch (err) {
+      console.error('Failed to stream:', err);
+      Alert.alert('Streaming Error', 'Could not start streaming. Check your connection.');
+    }
+  }, [book, loadBook]);
+
+  const handlePlayFromBeginning = useCallback(async () => {
+    if (!book) return;
+    try {
+      await loadBook(book, { showPlayer: false, startPosition: 0 });
+    } catch (err) {
+      console.error('Failed to restart playback:', err);
+    }
+  }, [book, loadBook]);
+
+  // Download handlers
   const handleDownload = useCallback(() => {
     if (!book) return;
-    if (isDownloaded || isDownloading || isPending) {
-      return;
-    }
+    if (isDownloaded || isDownloading || isPending) return;
     downloadManager.queueDownload(book);
   }, [book, isDownloaded, isDownloading, isPending]);
 
-  const handleQueueToggle = useCallback(() => {
-    if (!book || !isDownloaded) return;
-    if (isInQueue) {
-      removeFromQueue(bookId);
-    } else {
-      addToQueue(book);
+  const handlePauseDownload = useCallback(() => {
+    downloadManager.pauseDownload(bookId);
+  }, [bookId]);
+
+  const handleResumeDownload = useCallback(() => {
+    downloadManager.resumeDownload(bookId);
+  }, [bookId]);
+
+  const handleCancelDownload = useCallback(() => {
+    Alert.alert(
+      'Cancel Download',
+      'Are you sure you want to cancel this download?',
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes', onPress: () => downloadManager.cancelDownload(bookId) },
+      ]
+    );
+  }, [bookId]);
+
+  const handleDeleteDownload = useCallback(() => {
+    Alert.alert(
+      'Delete Download',
+      'This will remove the downloaded file. You can download it again later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => downloadManager.deleteDownload(bookId) },
+      ]
+    );
+  }, [bookId]);
+
+  // Queue handlers
+  const handleAddToQueue = useCallback(() => {
+    if (!book) return;
+    addToQueue(book);
+  }, [book, addToQueue]);
+
+  const handleRemoveFromQueue = useCallback(() => {
+    removeFromQueue(bookId);
+  }, [bookId, removeFromQueue]);
+
+  const handleMoveToTop = useCallback(() => {
+    const currentIndex = queue.findIndex(item => item.bookId === bookId);
+    if (currentIndex > 0) {
+      reorderQueue(currentIndex, 0);
     }
-  }, [book, bookId, isDownloaded, isInQueue, addToQueue, removeFromQueue]);
+  }, [queue, bookId, reorderQueue]);
 
   const handleShare = useCallback(async () => {
     if (!book) return;
@@ -204,21 +189,21 @@ export function BookDetailScreen() {
     const metadata = book.media?.metadata as any;
     const title = metadata?.title || 'Unknown Title';
     const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
-    const progress = book.userMediaProgress?.progress || 0;
-    const progressPercent = Math.round(progress * 100);
 
-    let shareText = '';
-    if (progress >= 1) {
-      shareText = `Just finished "${title}" by ${author}!`;
-    } else if (progress > 0) {
-      shareText = `I'm ${progressPercent}% through "${title}" by ${author}`;
-    } else {
-      shareText = `Check out "${title}" by ${author}`;
+    // Build book URL
+    const serverUrl = apiClient.getBaseURL();
+    const bookUrl = serverUrl ? `${serverUrl}/item/${book.id}` : null;
+
+    let shareText = `Check out "${title}" by ${author}`;
+    if (bookUrl) {
+      shareText += `\n\n${bookUrl}`;
     }
-    shareText += '\n\n#audiobook #audiobookshelf';
 
     try {
-      await Share.share({ message: shareText });
+      await Share.share({
+        message: shareText,
+        url: bookUrl || undefined,
+      });
     } catch (err) {
       console.error('Share failed:', err);
     }
@@ -307,22 +292,14 @@ export function BookDetailScreen() {
         />
       )}
 
-      {/* Header - Back button, share button, and queue indicator */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      {/* Header - Back button and share button */}
+      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 8 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleShare}>
-            <Ionicons name="share-outline" size={22} color="#fff" />
-          </TouchableOpacity>
-          {/* Only show queue indicator when book is in queue */}
-          {isInQueue && (
-            <TouchableOpacity style={styles.queueIndicator} onPress={handleQueueToggle}>
-              <Ionicons name="checkmark" size={18} color="#000" />
-            </TouchableOpacity>
-          )}
-        </View>
+        <TouchableOpacity style={styles.headerButton} onPress={handleShare}>
+          <Ionicons name="share-outline" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -361,128 +338,82 @@ export function BookDetailScreen() {
             <Text style={styles.statValue}>{formatDuration(duration)}</Text>
           </View>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Ionicons name="list-outline" size={18} color="rgba(255,255,255,0.5)" />
-            <Text style={styles.statValue}>{chapters.length} Chapters</Text>
-          </View>
-          {series && (
-            <>
-              <View style={styles.statDivider} />
-              <TouchableOpacity
-                style={[styles.statItem, { flexShrink: 1 }]}
-                onPress={() => {
-                  const seriesName = typeof series === 'object' ? series.name : series;
-                  if (seriesName) {
-                    (navigation as any).navigate('SeriesDetail', { seriesName });
-                  }
-                }}
-              >
-                <Text style={styles.seriesLink} numberOfLines={2}>
-                  {typeof series === 'object' ? series.name : series}
-                  {seriesSequence ? ` #${seriesSequence}` : ''}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {/* Action Buttons - Download and Play */}
-        <View style={styles.actionButtons}>
-          {/* Download Button - with progress bar when downloading or paused */}
-          {isDownloading || isPending || isPaused ? (
-            <DownloadProgressButton
-              progress={downloadProgress}
-              bytesDownloaded={bytesDownloaded}
-              totalBytes={totalBytes}
-              status={isPaused ? 'paused' : downloadProgress === 0 ? 'preparing' : 'downloading'}
-              onPress={() => {
-                // Use isDownloading as the primary check since isPaused and isDownloading are mutually exclusive
-                if (isDownloading) {
-                  console.log('[BookDetail] Pausing download');
-                  downloadManager.pauseDownload(bookId);
-                } else if (isPaused) {
-                  console.log('[BookDetail] Resuming download');
-                  downloadManager.resumeDownload(bookId);
-                }
-                // isPending - do nothing, let it start
-              }}
-            />
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                isDownloaded && styles.actionButtonCompleted
-              ]}
-              onPress={handleDownload}
-              disabled={isDownloaded}
-              activeOpacity={0.7}
-            >
-              {isDownloaded ? (
-                <>
-                  <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
-                  <Text style={styles.actionButtonTextCompleted}>Downloaded</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="arrow-down-circle-outline" size={18} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.actionButtonText}>Download</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Play Button */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.playButton, isThisBookPlaying && styles.playButtonActive]}
-            onPress={handlePlayPause}
+            style={styles.statItem}
+            onPress={() => setActiveTab('chapters')}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name={isThisBookPlaying ? 'pause' : 'play'}
-              size={18}
-              color={isThisBookPlaying ? '#000' : 'rgba(255,255,255,0.7)'}
-            />
-            <Text style={[styles.actionButtonText, isThisBookPlaying && styles.playButtonTextActive]}>
-              {isThisBookPlaying ? 'Pause' : 'Play'}
-            </Text>
+            <Ionicons name="list-outline" size={18} color="rgba(255,255,255,0.5)" />
+            <Text style={[styles.statValue, styles.statValueClickable]}>{chapters.length} Chapters</Text>
+            <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
           </TouchableOpacity>
         </View>
 
-        {/* Tabs with Queue (+) button */}
-        <View style={styles.tabsContainer}>
-          <View style={styles.tabsLeft}>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
-              onPress={() => setActiveTab('overview')}
-            >
-              <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
-                Overview
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'chapters' && styles.tabActive]}
-              onPress={() => setActiveTab('chapters')}
-            >
-              <Text style={[styles.tabText, activeTab === 'chapters' && styles.tabTextActive]}>
-                Chapters
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'details' && styles.tabActive]}
-              onPress={() => setActiveTab('details')}
-            >
-              <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
-                Details
-              </Text>
-            </TouchableOpacity>
-          </View>
+        {/* Series Navigation */}
+        <SeriesNavigator book={book} />
 
-          {/* Queue (+) button - only show when downloaded and not yet in queue */}
-          {isDownloaded && !isInQueue && (
-            <TouchableOpacity style={styles.addToQueueButton} onPress={handleQueueToggle}>
-              <Ionicons name="add" size={20} color="#fff" />
-            </TouchableOpacity>
-          )}
+        {/* Action Buttons - Download, Play, Queue */}
+        <ActionButtonsRow
+          book={book}
+          // Download state
+          isDownloaded={isDownloaded}
+          isDownloading={isDownloading}
+          isPending={isPending}
+          isPaused={isPaused}
+          downloadProgress={downloadProgress}
+          bytesDownloaded={bytesDownloaded}
+          totalBytes={totalBytes}
+          fileSize={totalBytes}
+          // Playback state
+          isPlaying={isThisBookPlaying}
+          isLoaded={isThisBookLoaded}
+          currentPosition={currentPosition}
+          progress={progress}
+          duration={duration}
+          // Queue state
+          isInQueue={isInQueue}
+          queuePosition={queuePosition}
+          // Callbacks
+          onDownload={handleDownload}
+          onPauseDownload={handlePauseDownload}
+          onResumeDownload={handleResumeDownload}
+          onCancelDownload={handleCancelDownload}
+          onDeleteDownload={handleDeleteDownload}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onStream={handleStream}
+          onPlayFromBeginning={handlePlayFromBeginning}
+          onAddToQueue={handleAddToQueue}
+          onRemoveFromQueue={handleRemoveFromQueue}
+          onMoveToTop={handleMoveToTop}
+        />
+
+        {/* Tabs */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
+            onPress={() => setActiveTab('overview')}
+          >
+            <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
+              Overview
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'chapters' && styles.tabActive]}
+            onPress={() => setActiveTab('chapters')}
+          >
+            <Text style={[styles.tabText, activeTab === 'chapters' && styles.tabTextActive]}>
+              Chapters
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'details' && styles.tabActive]}
+            onPress={() => setActiveTab('details')}
+          >
+            <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
+              Details
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Tab Content */}
@@ -491,7 +422,12 @@ export function BookDetailScreen() {
             <OverviewTab book={book} />
           )}
           {activeTab === 'chapters' && (
-            <ChaptersTab chapters={chapters} bookId={bookId} book={book} />
+            <ChaptersTab
+              chapters={chapters}
+              currentPosition={currentPosition}
+              bookId={bookId}
+              book={book}
+            />
           )}
           {activeTab === 'details' && (
             <View style={styles.detailsTab}>
@@ -563,7 +499,6 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#fff',
     marginTop: 12,
-    fontFamily: MONO_FONT,
     fontSize: 12,
   },
   backgroundImage: {
@@ -588,19 +523,6 @@ const styles = StyleSheet.create({
   headerButton: {
     width: 44,
     height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  queueIndicator: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -648,7 +570,6 @@ const styles = StyleSheet.create({
   },
   narrator: {
     fontSize: 12,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.4)',
     textAlign: 'center',
   },
@@ -673,7 +594,6 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 11,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.5)',
     marginTop: 8,
     letterSpacing: 0.2,
@@ -701,118 +621,12 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 13,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: 0.2,
   },
-  seriesLink: {
-    fontSize: 13,
-    fontFamily: MONO_FONT,
-    color: 'rgba(255,255,255,0.7)',
-    letterSpacing: 0.2,
+  statValueClickable: {
     textDecorationLine: 'underline',
-    textAlign: 'center',
-    maxWidth: 180,
   },
-
-  // Action Buttons - Download and Sample (same size pills)
-  actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 22,
-    gap: 8,
-    minWidth: 120,
-  },
-  actionButtonCompleted: {
-    backgroundColor: 'rgba(193,244,12,0.1)',
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontFamily: MONO_FONT,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  actionButtonTextCompleted: {
-    fontSize: 13,
-    fontFamily: MONO_FONT,
-    color: ACCENT,
-  },
-  playButton: {
-    // Same base styling from actionButton
-  },
-  playButtonActive: {
-    backgroundColor: ACCENT,
-  },
-  playButtonTextActive: {
-    color: '#000',
-  },
-
-  // Download progress button styles - clean minimal design
-  downloadProgressButton: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  downloadProgressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  downloadStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  downloadSpinner: {
-    transform: [{ scale: 0.8 }],
-  },
-  downloadStatusText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.6)',
-  },
-  downloadPercentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#fff',
-    fontVariant: ['tabular-nums'],
-  },
-  downloadProgressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  downloadProgressFill: {
-    height: '100%',
-    backgroundColor: ACCENT,
-    borderRadius: 2,
-  },
-  downloadProgressFillPaused: {
-    backgroundColor: '#FF9800',
-  },
-  downloadBytesText: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 4,
-    fontVariant: ['tabular-nums'],
-  },
-
   // Genre Pills (in Details tab)
   genrePills: {
     flexDirection: 'row',
@@ -828,7 +642,6 @@ const styles = StyleSheet.create({
   },
   genrePillText: {
     fontSize: 12,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.6)',
     letterSpacing: 0.2,
   },
@@ -836,23 +649,9 @@ const styles = StyleSheet.create({
   // Tabs
   tabsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  tabsLeft: {
-    flexDirection: 'row',
-  },
-  addToQueueButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
   },
   tab: {
     paddingVertical: 14,
@@ -885,7 +684,6 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 10,
-    fontFamily: MONO_FONT,
     color: 'rgba(255,255,255,0.4)',
     marginBottom: 4,
     letterSpacing: 1,
