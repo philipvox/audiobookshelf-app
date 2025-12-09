@@ -13,6 +13,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { Alert } from 'react-native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
@@ -55,10 +56,12 @@ export interface Chapter {
   title: string;
 }
 
-interface Bookmark {
+export interface Bookmark {
   id: string;
   title: string;
+  note: string | null;
   time: number;
+  chapterTitle: string | null;
   createdAt: number;
 }
 
@@ -114,6 +117,18 @@ interface PlayerState {
   // ---------------------------------------------------------------------------
   controlMode: 'rewind' | 'chapter';  // Skip buttons mode: time skip or chapter skip
   progressMode: 'bar' | 'chapters';   // Progress display: full book or chapter-based
+
+  // ---------------------------------------------------------------------------
+  // Per-Book Speed Memory
+  // ---------------------------------------------------------------------------
+  bookSpeedMap: Record<string, number>;  // bookId → playback speed
+  globalDefaultRate: number;              // Default speed for new books
+
+  // ---------------------------------------------------------------------------
+  // Shake to Extend Sleep Timer
+  // ---------------------------------------------------------------------------
+  shakeToExtendEnabled: boolean;          // User preference
+  isShakeDetectionActive: boolean;        // Currently listening for shakes
 }
 
 interface PlayerActions {
@@ -212,8 +227,12 @@ interface PlayerActions {
   // Settings
   // ---------------------------------------------------------------------------
   setPlaybackRate: (rate: number) => Promise<void>;
+  setGlobalDefaultRate: (rate: number) => Promise<void>;
+  getBookSpeed: (bookId: string) => number;
   setSleepTimer: (minutes: number) => void;
+  extendSleepTimer: (minutes: number) => void;
   clearSleepTimer: () => void;
+  setShakeToExtendEnabled: (enabled: boolean) => Promise<void>;
   setControlMode: (mode: 'rewind' | 'chapter') => void;
   setProgressMode: (mode: 'bar' | 'chapters') => void;
   loadPlayerSettings: () => Promise<void>;
@@ -232,8 +251,9 @@ interface PlayerActions {
   // ---------------------------------------------------------------------------
   // Bookmarks
   // ---------------------------------------------------------------------------
-  addBookmark: (bookmark: Bookmark) => void;
-  removeBookmark: (bookmarkId: string) => void;
+  addBookmark: (bookmark: Omit<Bookmark, 'id' | 'createdAt'>) => Promise<void>;
+  updateBookmark: (bookmarkId: string, updates: { title?: string; note?: string | null }) => Promise<void>;
+  removeBookmark: (bookmarkId: string) => Promise<void>;
   loadBookmarks: () => Promise<void>;
 }
 
@@ -241,9 +261,14 @@ interface PlayerActions {
 // CONSTANTS
 // =============================================================================
 
-const BOOKMARKS_KEY = 'player_bookmarks';
+const BOOK_SPEED_MAP_KEY = 'playerBookSpeedMap';
+const GLOBAL_DEFAULT_RATE_KEY = 'playerGlobalDefaultRate';
+const SHAKE_TO_EXTEND_KEY = 'playerShakeToExtend';
 const PROGRESS_SAVE_INTERVAL = 30000; // Save progress every 30 seconds
 const PREV_CHAPTER_THRESHOLD = 3;     // Seconds before going to prev vs restart
+const SLEEP_TIMER_SHAKE_THRESHOLD = 60; // Start shake detection when < 60 seconds remaining
+const SLEEP_TIMER_EXTEND_MINUTES = 15;  // Add 15 minutes on shake
+const AUTO_DOWNLOAD_THRESHOLD = 0.8;  // Trigger auto-download at 80% progress
 
 // =============================================================================
 // MODULE-LEVEL STATE (not exposed to components)
@@ -257,6 +282,70 @@ let lastLoadTime = 0;
 let lastBookFinishTime = 0;
 const LOAD_DEBOUNCE_MS = 300;
 const TRANSITION_GUARD_MS = 500; // Prevent queue races during book transitions
+
+// Track books we've already checked for auto-download to prevent repeated triggers
+const autoDownloadCheckedBooks = new Set<string>();
+
+// =============================================================================
+// LISTENING SESSION TRACKING
+// =============================================================================
+const MIN_SESSION_DURATION = 10; // Minimum 10 seconds to record a session
+
+// Track active listening session
+let activeSession: {
+  bookId: string;
+  bookTitle: string;
+  startTimestamp: number;
+  startPosition: number;
+} | null = null;
+
+/**
+ * Start tracking a new listening session
+ */
+function startListeningSession(book: LibraryItem, position: number) {
+  const title = (book.media?.metadata as any)?.title || 'Unknown Title';
+  activeSession = {
+    bookId: book.id,
+    bookTitle: title,
+    startTimestamp: Date.now(),
+    startPosition: position,
+  };
+  log(`[ListeningStats] Session started for "${title}" at ${position.toFixed(1)}s`);
+}
+
+/**
+ * End the current listening session and record it to SQLite
+ */
+async function endListeningSession(endPosition: number) {
+  if (!activeSession) return;
+
+  const endTimestamp = Date.now();
+  const durationSeconds = Math.round((endTimestamp - activeSession.startTimestamp) / 1000);
+
+  // Only record sessions >= minimum duration
+  if (durationSeconds < MIN_SESSION_DURATION) {
+    log(`[ListeningStats] Session too short (${durationSeconds}s < ${MIN_SESSION_DURATION}s), not recording`);
+    activeSession = null;
+    return;
+  }
+
+  try {
+    await sqliteCache.recordListeningSession({
+      bookId: activeSession.bookId,
+      bookTitle: activeSession.bookTitle,
+      startTimestamp: activeSession.startTimestamp,
+      endTimestamp,
+      durationSeconds,
+      startPosition: activeSession.startPosition,
+      endPosition,
+    });
+    log(`[ListeningStats] Session recorded: ${durationSeconds}s for "${activeSession.bookTitle}"`);
+  } catch (err) {
+    logError('[ListeningStats] Failed to record session:', err);
+  }
+
+  activeSession = null;
+}
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -341,6 +430,79 @@ function findChapterIndex(chapters: Chapter[], position: number): number {
   return 0;
 }
 
+/**
+ * Check and trigger auto-download of next book in series.
+ * Called when playback reaches 80% progress.
+ */
+async function checkAutoDownloadNextInSeries(currentBook: LibraryItem): Promise<void> {
+  try {
+    // Check if feature is enabled
+    const { networkMonitor } = await import('@/core/services/networkMonitor');
+    if (!networkMonitor.isAutoDownloadSeriesEnabled()) {
+      log('Auto-download series disabled');
+      return;
+    }
+
+    // Check if network allows download
+    if (!networkMonitor.canDownload()) {
+      log('Auto-download: Network does not allow downloads');
+      return;
+    }
+
+    // Import series utils and find next book
+    const { findNextInSeries } = await import('@/core/utils/seriesUtils');
+    const { useLibraryCache } = await import('@/core/cache/libraryCache');
+    const { downloadManager } = await import('@/core/services/downloadManager');
+
+    const libraryItems = useLibraryCache.getState().items;
+    const nextBook = findNextInSeries(currentBook, libraryItems);
+
+    if (!nextBook) {
+      log('Auto-download: No next book in series');
+      return;
+    }
+
+    const nextTitle = (nextBook.media?.metadata as any)?.title || 'Unknown';
+
+    // Check if already downloaded
+    const isDownloaded = await downloadManager.isDownloaded(nextBook.id);
+    if (isDownloaded) {
+      log(`Auto-download: "${nextTitle}" already downloaded`);
+      return;
+    }
+
+    // Check if already in download queue
+    const status = await downloadManager.getDownloadStatus(nextBook.id);
+    if (status && ['pending', 'downloading', 'waiting_wifi'].includes(status.status)) {
+      log(`Auto-download: "${nextTitle}" already in queue`);
+      return;
+    }
+
+    // Queue the download with low priority
+    log(`Auto-download: Queueing "${nextTitle}"`);
+    const result = await downloadManager.queueDownload(nextBook, -1); // Low priority
+
+    if (result.success) {
+      // Show toast notification (import lazily to avoid dependency issues)
+      try {
+        const { Toast } = await import('react-native-toast-message');
+        Toast.show({
+          type: 'info',
+          text1: 'Auto-downloading next book',
+          text2: nextTitle,
+          position: 'bottom',
+          visibilityTime: 3000,
+        });
+      } catch {
+        // Toast not available, log instead
+        log(`Auto-download started: "${nextTitle}"`);
+      }
+    }
+  } catch (err) {
+    logError('Auto-download check failed:', err);
+  }
+}
+
 // =============================================================================
 // STORE
 // =============================================================================
@@ -386,6 +548,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // Player settings (persisted)
     controlMode: 'rewind',
     progressMode: 'bar',
+
+    // Per-book speed memory
+    bookSpeedMap: {},
+    globalDefaultRate: 1.0,
+
+    // Shake to extend
+    shakeToExtendEnabled: true,  // Default enabled
+    isShakeDetectionActive: false,
 
     // =========================================================================
     // LIFECYCLE
@@ -452,8 +622,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       timing('State set');
 
       try {
-        // Save progress for previous book
+        // Save progress for previous book and end listening session
         if (currentBook && currentBook.id !== book.id && prevPosition > 0) {
+          // End listening session for previous book
+          await endListeningSession(prevPosition);
+
           const session = sessionService.getCurrentSession();
           backgroundSyncService.saveProgress(
             currentBook.id,
@@ -655,6 +828,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           get().updatePlaybackState(state);
         });
 
+        // Set up remote command callback for chapter navigation
+        audioService.setRemoteCommandCallback((command) => {
+          if (command === 'nextChapter') {
+            get().nextChapter();
+          } else if (command === 'prevChapter') {
+            get().prevChapter();
+          }
+        });
+
         // Load audio
         timing('Before loadAudio');
 
@@ -684,10 +866,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           return;
         }
 
-        // Apply playback rate
-        const { playbackRate } = get();
-        if (playbackRate !== 1.0) {
-          audioService.setPlaybackRate(playbackRate).catch(() => {});
+        // Apply per-book playback rate (falls back to global default for new books)
+        const bookSpeed = get().getBookSpeed(book.id);
+        log('Applying playback rate for book:', bookSpeed);
+        set({ playbackRate: bookSpeed });
+        if (bookSpeed !== 1.0) {
+          audioService.setPlaybackRate(bookSpeed).catch(() => {});
         }
 
         // Load bookmarks in BACKGROUND
@@ -702,6 +886,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             isPlaying: true,
             lastPlayedBookId: book.id,  // Track that this book was actually played
           });
+
+          // Start listening session tracking for autoplay
+          startListeningSession(book, resumePosition);
+
           logSection('LOAD BOOK SUCCESS');
           log('Playback started');
         } else {
@@ -774,6 +962,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (sleepTimerInterval) {
         clearInterval(sleepTimerInterval);
       }
+
+      // End any active listening session
+      await endListeningSession(position);
 
       // Save final progress
       if (currentBook && position > 0) {
@@ -869,11 +1060,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         return;
       }
       await audioService.play();
-      const { currentBook } = get();
+      const { currentBook, position } = get();
       set({
         isPlaying: true,
         lastPlayedBookId: currentBook?.id || null,
       });
+
+      // Start listening session tracking
+      if (currentBook && !activeSession) {
+        startListeningSession(currentBook, position);
+      }
     },
 
     pause: async () => {
@@ -882,6 +1078,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       const { currentBook, position, duration } = get();
       if (!currentBook) return;
+
+      // End listening session tracking
+      await endListeningSession(position);
 
       // Sync progress on pause
       const session = sessionService.getCurrentSession();
@@ -1121,36 +1320,108 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     setPlaybackRate: async (rate: number) => {
+      const { currentBook, bookSpeedMap } = get();
       await audioService.setPlaybackRate(rate);
       set({ playbackRate: rate });
 
+      // Save per-book speed if a book is loaded
+      if (currentBook) {
+        const updatedMap = { ...bookSpeedMap, [currentBook.id]: rate };
+        set({ bookSpeedMap: updatedMap });
+
+        try {
+          await AsyncStorage.setItem(BOOK_SPEED_MAP_KEY, JSON.stringify(updatedMap));
+        } catch {}
+      }
+    },
+
+    setGlobalDefaultRate: async (rate: number) => {
+      set({ globalDefaultRate: rate });
       try {
-        await AsyncStorage.setItem('playbackRate', rate.toString());
+        await AsyncStorage.setItem(GLOBAL_DEFAULT_RATE_KEY, rate.toString());
       } catch {}
     },
 
+    getBookSpeed: (bookId: string) => {
+      const { bookSpeedMap, globalDefaultRate } = get();
+      return bookSpeedMap[bookId] ?? globalDefaultRate;
+    },
+
     setSleepTimer: (minutes: number) => {
-      const { sleepTimerInterval } = get();
+      const { sleepTimerInterval, shakeToExtendEnabled } = get();
+
+      // Import shake detector lazily to avoid circular deps
+      import('../services/shakeDetector').then(({ shakeDetector }) => {
+        // Stop any existing shake detection
+        shakeDetector.stop();
+        set({ isShakeDetectionActive: false });
+      }).catch(() => {});
 
       if (sleepTimerInterval) {
         clearInterval(sleepTimerInterval);
       }
 
-      const endTime = Date.now() + minutes * 60 * 1000;
+      let endTime = Date.now() + minutes * 60 * 1000;
 
-      const interval = setInterval(() => {
+      const interval = setInterval(async () => {
         const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
 
         if (remaining <= 0) {
           clearInterval(interval);
           get().pause();
-          set({ sleepTimer: null, sleepTimerInterval: null });
+
+          // Stop shake detection
+          try {
+            const { shakeDetector } = await import('../services/shakeDetector');
+            shakeDetector.stop();
+          } catch {}
+
+          set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
         } else {
           set({ sleepTimer: remaining });
+
+          // Start shake detection when timer is low and feature is enabled
+          const { shakeToExtendEnabled: enabled, isShakeDetectionActive } = get();
+          if (enabled && remaining <= SLEEP_TIMER_SHAKE_THRESHOLD && !isShakeDetectionActive) {
+            try {
+              const { shakeDetector } = await import('../services/shakeDetector');
+              shakeDetector.start(() => {
+                // On shake, extend the timer
+                const { extendSleepTimer } = get();
+                extendSleepTimer(SLEEP_TIMER_EXTEND_MINUTES);
+              });
+              set({ isShakeDetectionActive: true });
+              log('Shake detection started - timer low');
+            } catch (err) {
+              logError('Failed to start shake detection:', err);
+            }
+          }
         }
       }, 1000);
 
       set({ sleepTimer: minutes * 60, sleepTimerInterval: interval });
+    },
+
+    extendSleepTimer: (minutes: number) => {
+      const { sleepTimer, sleepTimerInterval } = get();
+
+      if (!sleepTimer || !sleepTimerInterval) {
+        log('extendSleepTimer: No active timer');
+        return;
+      }
+
+      // Add time to current remaining
+      const newRemaining = sleepTimer + (minutes * 60);
+      log(`Sleep timer extended by ${minutes} minutes. New remaining: ${newRemaining}s`);
+
+      // Stop shake detection after extension (will restart when < 60s again)
+      import('../services/shakeDetector').then(({ shakeDetector }) => {
+        shakeDetector.stop();
+        set({ isShakeDetectionActive: false });
+      }).catch(() => {});
+
+      // Update the timer - the interval will continue with the new value
+      set({ sleepTimer: newRemaining });
     },
 
     clearSleepTimer: () => {
@@ -1158,7 +1429,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (sleepTimerInterval) {
         clearInterval(sleepTimerInterval);
       }
-      set({ sleepTimer: null, sleepTimerInterval: null });
+
+      // Stop shake detection
+      import('../services/shakeDetector').then(({ shakeDetector }) => {
+        shakeDetector.stop();
+      }).catch(() => {});
+
+      set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
+    },
+
+    setShakeToExtendEnabled: async (enabled: boolean) => {
+      set({ shakeToExtendEnabled: enabled });
+      try {
+        await AsyncStorage.setItem(SHAKE_TO_EXTEND_KEY, enabled.toString());
+      } catch {}
+
+      // If disabling and currently active, stop detection
+      if (!enabled) {
+        try {
+          const { shakeDetector } = await import('../services/shakeDetector');
+          shakeDetector.stop();
+          set({ isShakeDetectionActive: false });
+        } catch {}
+      }
     },
 
     setControlMode: (mode: 'rewind' | 'chapter') => {
@@ -1173,16 +1466,25 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     loadPlayerSettings: async () => {
       try {
-        const [controlMode, progressMode, playbackRate] = await Promise.all([
+        const [controlMode, progressMode, bookSpeedMapStr, globalDefaultRateStr, shakeToExtendStr] = await Promise.all([
           AsyncStorage.getItem('playerControlMode'),
           AsyncStorage.getItem('playerProgressMode'),
-          AsyncStorage.getItem('playbackRate'),
+          AsyncStorage.getItem(BOOK_SPEED_MAP_KEY),
+          AsyncStorage.getItem(GLOBAL_DEFAULT_RATE_KEY),
+          AsyncStorage.getItem(SHAKE_TO_EXTEND_KEY),
         ]);
+
+        const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
+        const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
+        const shakeToExtendEnabled = shakeToExtendStr !== 'false'; // Default true
 
         set({
           controlMode: (controlMode as 'rewind' | 'chapter') || 'rewind',
           progressMode: (progressMode as 'bar' | 'chapters') || 'bar',
-          playbackRate: playbackRate ? parseFloat(playbackRate) : 1.0,
+          playbackRate: globalDefaultRate, // Start with global default, will be overridden when book loads
+          bookSpeedMap,
+          globalDefaultRate,
+          shakeToExtendEnabled,
         });
       } catch {
         // Use defaults
@@ -1297,6 +1599,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           totalBookDuration,
           session?.id
         ).catch(() => {});
+
+        // Check for auto-download of next book in series
+        const progress = totalBookDuration > 0 ? state.position / totalBookDuration : 0;
+        if (progress >= AUTO_DOWNLOAD_THRESHOLD && !autoDownloadCheckedBooks.has(currentBook.id)) {
+          autoDownloadCheckedBooks.add(currentBook.id);
+          checkAutoDownloadNextInSeries(currentBook);
+        }
       }
 
       // Handle track finished - only once per book
@@ -1364,30 +1673,72 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // BOOKMARKS
     // =========================================================================
 
-    addBookmark: (bookmark: Bookmark) => {
+    addBookmark: async (bookmarkData: Omit<Bookmark, 'id' | 'createdAt'>) => {
       const { currentBook, bookmarks } = get();
       if (!currentBook) return;
 
+      const now = Date.now();
+      const bookmark: Bookmark = {
+        id: `${currentBook.id}_${now}`,
+        ...bookmarkData,
+        createdAt: now,
+      };
+
+      // Update local state immediately
       const updated = [...bookmarks, bookmark];
       set({ bookmarks: updated });
 
-      AsyncStorage.setItem(
-        `${BOOKMARKS_KEY}_${currentBook.id}`,
-        JSON.stringify(updated)
-      ).catch(() => {});
+      // Persist to SQLite
+      try {
+        await sqliteCache.addBookmark({
+          id: bookmark.id,
+          bookId: currentBook.id,
+          title: bookmark.title,
+          note: bookmark.note,
+          time: bookmark.time,
+          chapterTitle: bookmark.chapterTitle,
+          createdAt: bookmark.createdAt,
+        });
+        log('Bookmark added:', bookmark.title);
+      } catch (err) {
+        logError('Failed to save bookmark:', err);
+      }
     },
 
-    removeBookmark: (bookmarkId: string) => {
-      const { currentBook, bookmarks } = get();
-      if (!currentBook) return;
+    updateBookmark: async (bookmarkId: string, updates: { title?: string; note?: string | null }) => {
+      const { bookmarks } = get();
 
+      // Update local state
+      const updated = bookmarks.map((b) =>
+        b.id === bookmarkId
+          ? { ...b, title: updates.title ?? b.title, note: updates.note ?? b.note }
+          : b
+      );
+      set({ bookmarks: updated });
+
+      // Persist to SQLite
+      try {
+        await sqliteCache.updateBookmark(bookmarkId, updates);
+        log('Bookmark updated:', bookmarkId);
+      } catch (err) {
+        logError('Failed to update bookmark:', err);
+      }
+    },
+
+    removeBookmark: async (bookmarkId: string) => {
+      const { bookmarks } = get();
+
+      // Update local state
       const updated = bookmarks.filter((b) => b.id !== bookmarkId);
       set({ bookmarks: updated });
 
-      AsyncStorage.setItem(
-        `${BOOKMARKS_KEY}_${currentBook.id}`,
-        JSON.stringify(updated)
-      ).catch(() => {});
+      // Persist to SQLite
+      try {
+        await sqliteCache.removeBookmark(bookmarkId);
+        log('Bookmark removed:', bookmarkId);
+      } catch (err) {
+        logError('Failed to remove bookmark:', err);
+      }
     },
 
     loadBookmarks: async () => {
@@ -1395,13 +1746,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (!currentBook) return;
 
       try {
-        const data = await AsyncStorage.getItem(`${BOOKMARKS_KEY}_${currentBook.id}`);
-        if (data) {
-          set({ bookmarks: JSON.parse(data) });
-        } else {
-          set({ bookmarks: [] });
-        }
-      } catch {
+        const records = await sqliteCache.getBookmarks(currentBook.id);
+        const bookmarks: Bookmark[] = records.map((r) => ({
+          id: r.id,
+          title: r.title,
+          note: r.note,
+          time: r.time,
+          chapterTitle: r.chapterTitle,
+          createdAt: r.createdAt,
+        }));
+        set({ bookmarks });
+        log('Loaded', bookmarks.length, 'bookmarks for book:', currentBook.id);
+      } catch (err) {
+        logError('Failed to load bookmarks:', err);
         set({ bookmarks: [] });
       }
     },
@@ -1503,3 +1860,23 @@ export const useViewingBook = () =>
  */
 export const usePlayingBook = () =>
   usePlayerStore((s) => s.currentBook);
+
+/**
+ * Returns whether shake detection is currently active.
+ */
+export const useIsShakeDetectionActive = () =>
+  usePlayerStore((s) => s.isShakeDetectionActive);
+
+/**
+ * Returns the sleep timer state with shake detection info.
+ * Uses useShallow to prevent unnecessary re-renders from object reference changes.
+ */
+export function useSleepTimerState() {
+  return usePlayerStore(
+    useShallow((s) => ({
+      sleepTimer: s.sleepTimer,
+      isShakeDetectionActive: s.isShakeDetectionActive,
+      shakeToExtendEnabled: s.shakeToExtendEnabled,
+    }))
+  );
+}

@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
-import { LoadingSpinner } from '@/shared/components';
+import { Shimmer } from '@/shared/components';
 import { COLORS, DIMENSIONS, LAYOUT } from '@/features/home/homeDesign';
 import {
   useDiscoverData,
@@ -61,15 +61,8 @@ export function BrowseScreen() {
     setSelectedGenre(genre);
   }, []);
 
-  // Loading state
-  if (isLoading && rows.length === 0) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <LoadingSpinner text="Loading library..." />
-      </View>
-    );
-  }
+  // Show skeleton only on true first load (no cached data exists)
+  const showSkeleton = isLoading && rows.length === 0 && !hero;
 
   // Empty state
   const hasContent = hero || rows.length > 0;
@@ -129,13 +122,41 @@ export function BrowseScreen() {
           onSelect={handleGenreSelect}
         />
 
+        {/* Skeleton Loading State */}
+        {showSkeleton && (
+          <View style={styles.skeletonContainer}>
+            {/* Hero skeleton */}
+            <View style={styles.heroSkeleton}>
+              <Shimmer width={scale(160)} height={scale(240)} borderRadius={scale(12)} />
+              <View style={styles.heroSkeletonText}>
+                <Shimmer width={scale(200)} height={scale(24)} style={{ marginTop: scale(16) }} />
+                <Shimmer width={scale(140)} height={scale(16)} style={{ marginTop: scale(8) }} />
+              </View>
+            </View>
+            {/* Row skeletons */}
+            {[1, 2, 3].map((i) => (
+              <View key={i} style={styles.rowSkeleton}>
+                <Shimmer width={scale(120)} height={scale(20)} style={{ marginBottom: scale(12), marginLeft: scale(16) }} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: scale(16) }}>
+                  {[1, 2, 3, 4].map((j) => (
+                    <View key={j} style={{ marginRight: scale(12) }}>
+                      <Shimmer width={scale(140)} height={scale(140)} borderRadius={scale(8)} />
+                      <Shimmer width={scale(100)} height={scale(14)} style={{ marginTop: scale(8) }} />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Hero Recommendation Content */}
-        {showHeroBackground && (
+        {!showSkeleton && showHeroBackground && (
           <HeroSection hero={hero} />
         )}
 
         {/* Content Rows */}
-        {rows.map((row) => (
+        {!showSkeleton && rows.map((row) => (
           <ContentRowCarousel key={row.id} row={row} />
         ))}
 
@@ -144,8 +165,8 @@ export function BrowseScreen() {
           <CategoryGrid />
         )}
 
-        {/* Empty State */}
-        {!hasContent && (
+        {/* Empty State - only show when not loading and no content */}
+        {!showSkeleton && !hasContent && (
           <View style={styles.emptyState}>
             <Icon name="library-outline" size={scale(48)} color="rgba(255,255,255,0.3)" set="ionicons" />
             <Text style={styles.emptyTitle}>Your library is waiting</Text>
@@ -247,5 +268,21 @@ const styles = StyleSheet.create({
     fontSize: scale(14),
     fontWeight: '600',
     color: '#000',
+  },
+
+  // Skeleton styles
+  skeletonContainer: {
+    paddingTop: scale(16),
+  },
+  heroSkeleton: {
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    marginBottom: scale(24),
+  },
+  heroSkeletonText: {
+    alignItems: 'center',
+  },
+  rowSkeleton: {
+    marginBottom: scale(24),
   },
 });

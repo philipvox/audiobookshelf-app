@@ -88,6 +88,17 @@ export interface QueueItem {
   addedAt: number;
 }
 
+export interface BookmarkRecord {
+  id: string;
+  bookId: string;
+  title: string;
+  note: string | null;
+  time: number;
+  chapterTitle: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ReadHistoryEntry {
   itemId: string;
   title: string;
@@ -97,6 +108,39 @@ export interface ReadHistoryEntry {
   completedAt: number;
   timesRead: number;
   rating?: number;
+}
+
+// Listening Stats Types
+export interface ListeningSession {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  startTimestamp: number;
+  endTimestamp: number;
+  durationSeconds: number;
+  startPosition: number;
+  endPosition: number;
+}
+
+export interface DailyStats {
+  date: string; // YYYY-MM-DD format
+  totalSeconds: number;
+  sessionCount: number;
+  booksTouched: string[]; // JSON array of book IDs
+}
+
+export interface ListeningStreak {
+  currentStreak: number;
+  longestStreak: number;
+  lastListenDate: string | null;
+}
+
+export interface MonthlyStats {
+  month: string; // YYYY-MM format
+  totalSeconds: number;
+  sessionCount: number;
+  uniqueBooks: number;
+  averageSessionLength: number;
 }
 
 class SQLiteCache {
@@ -255,6 +299,38 @@ class SQLiteCache {
           added_at INTEGER NOT NULL
         );
 
+        -- Bookmarks with notes
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          note TEXT,
+          time REAL NOT NULL,
+          chapter_title TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+
+        -- Listening sessions (individual playback sessions)
+        CREATE TABLE IF NOT EXISTS listening_sessions (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          book_title TEXT NOT NULL,
+          start_timestamp INTEGER NOT NULL,
+          end_timestamp INTEGER NOT NULL,
+          duration_seconds INTEGER NOT NULL,
+          start_position REAL NOT NULL,
+          end_position REAL NOT NULL
+        );
+
+        -- Daily listening stats (aggregated per day)
+        CREATE TABLE IF NOT EXISTS daily_stats (
+          date TEXT PRIMARY KEY,
+          total_seconds INTEGER NOT NULL DEFAULT 0,
+          session_count INTEGER NOT NULL DEFAULT 0,
+          books_touched TEXT NOT NULL DEFAULT '[]'
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
@@ -269,11 +345,16 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_download_queue_priority ON download_queue(priority DESC);
         CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_playback_queue_position ON playback_queue(position ASC);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_book_id ON bookmarks(book_id);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_time ON bookmarks(time ASC);
+        CREATE INDEX IF NOT EXISTS idx_sessions_book_id ON listening_sessions(book_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_start ON listening_sessions(start_timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date DESC);
       `);
 
       // Migration: Add last_played_at column if it doesn't exist
       try {
-        await db.execAsync(`ALTER TABLE downloads ADD COLUMN last_played_at TEXT`);
+        await this.db.execAsync(`ALTER TABLE downloads ADD COLUMN last_played_at TEXT`);
         console.log('[SQLiteCache] Added last_played_at column to downloads');
       } catch {
         // Column already exists, ignore
@@ -1418,6 +1499,623 @@ class SQLiteCache {
       return result?.count || 0;
     } catch (err) {
       return 0;
+    }
+  }
+
+  // ============================================================================
+  // BOOKMARKS WITH NOTES
+  // ============================================================================
+
+  async getBookmarks(bookId: string): Promise<BookmarkRecord[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        id: string;
+        book_id: string;
+        title: string;
+        note: string | null;
+        time: number;
+        chapter_title: string | null;
+        created_at: number;
+        updated_at: number;
+      }>('SELECT * FROM bookmarks WHERE book_id = ? ORDER BY time ASC', [bookId]);
+
+      return rows.map((r) => ({
+        id: r.id,
+        bookId: r.book_id,
+        title: r.title,
+        note: r.note,
+        time: r.time,
+        chapterTitle: r.chapter_title,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getBookmarks error:', err);
+      return [];
+    }
+  }
+
+  async addBookmark(bookmark: Omit<BookmarkRecord, 'updatedAt'>): Promise<void> {
+    const db = await this.ensureReady();
+    const now = Date.now();
+    try {
+      await db.runAsync(
+        `INSERT INTO bookmarks (id, book_id, title, note, time, chapter_title, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bookmark.id,
+          bookmark.bookId,
+          bookmark.title,
+          bookmark.note,
+          bookmark.time,
+          bookmark.chapterTitle,
+          bookmark.createdAt,
+          now,
+        ]
+      );
+      console.log(`[SQLiteCache] Added bookmark: ${bookmark.title}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] addBookmark error:', err);
+    }
+  }
+
+  async updateBookmark(
+    bookmarkId: string,
+    updates: { title?: string; note?: string | null }
+  ): Promise<void> {
+    const db = await this.ensureReady();
+    const now = Date.now();
+    try {
+      const setClauses: string[] = ['updated_at = ?'];
+      const values: any[] = [now];
+
+      if (updates.title !== undefined) {
+        setClauses.push('title = ?');
+        values.push(updates.title);
+      }
+      if (updates.note !== undefined) {
+        setClauses.push('note = ?');
+        values.push(updates.note);
+      }
+
+      values.push(bookmarkId);
+
+      await db.runAsync(
+        `UPDATE bookmarks SET ${setClauses.join(', ')} WHERE id = ?`,
+        values
+      );
+      console.log(`[SQLiteCache] Updated bookmark: ${bookmarkId}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] updateBookmark error:', err);
+    }
+  }
+
+  async removeBookmark(bookmarkId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM bookmarks WHERE id = ?', [bookmarkId]);
+      console.log(`[SQLiteCache] Removed bookmark: ${bookmarkId}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeBookmark error:', err);
+    }
+  }
+
+  async getAllBookmarks(): Promise<BookmarkRecord[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        id: string;
+        book_id: string;
+        title: string;
+        note: string | null;
+        time: number;
+        chapter_title: string | null;
+        created_at: number;
+        updated_at: number;
+      }>('SELECT * FROM bookmarks ORDER BY created_at DESC');
+
+      return rows.map((r) => ({
+        id: r.id,
+        bookId: r.book_id,
+        title: r.title,
+        note: r.note,
+        time: r.time,
+        chapterTitle: r.chapter_title,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getAllBookmarks error:', err);
+      return [];
+    }
+  }
+
+  async getBookmarkCount(bookId: string): Promise<number> {
+    const db = await this.ensureReady();
+    try {
+      const result = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM bookmarks WHERE book_id = ?',
+        [bookId]
+      );
+      return result?.count || 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  // ============================================================================
+  // LISTENING SESSIONS & STATS
+  // ============================================================================
+
+  /**
+   * Record a listening session and update daily stats
+   */
+  async recordListeningSession(session: Omit<ListeningSession, 'id'>): Promise<string> {
+    const db = await this.ensureReady();
+    const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const date = new Date(session.startTimestamp).toISOString().split('T')[0];
+
+    try {
+      await db.withTransactionAsync(async () => {
+        // Insert the session
+        await db.runAsync(
+          `INSERT INTO listening_sessions (id, book_id, book_title, start_timestamp, end_timestamp, duration_seconds, start_position, end_position)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            session.bookId,
+            session.bookTitle,
+            session.startTimestamp,
+            session.endTimestamp,
+            session.durationSeconds,
+            session.startPosition,
+            session.endPosition,
+          ]
+        );
+
+        // Update daily stats
+        const existing = await db.getFirstAsync<{
+          total_seconds: number;
+          session_count: number;
+          books_touched: string;
+        }>('SELECT * FROM daily_stats WHERE date = ?', [date]);
+
+        if (existing) {
+          const booksTouched: string[] = JSON.parse(existing.books_touched);
+          if (!booksTouched.includes(session.bookId)) {
+            booksTouched.push(session.bookId);
+          }
+
+          await db.runAsync(
+            `UPDATE daily_stats SET total_seconds = ?, session_count = ?, books_touched = ? WHERE date = ?`,
+            [
+              existing.total_seconds + session.durationSeconds,
+              existing.session_count + 1,
+              JSON.stringify(booksTouched),
+              date,
+            ]
+          );
+        } else {
+          await db.runAsync(
+            `INSERT INTO daily_stats (date, total_seconds, session_count, books_touched) VALUES (?, ?, 1, ?)`,
+            [date, session.durationSeconds, JSON.stringify([session.bookId])]
+          );
+        }
+      });
+
+      console.log(`[SQLiteCache] Recorded listening session: ${session.durationSeconds}s for ${session.bookTitle}`);
+      return id;
+    } catch (err) {
+      console.error('[SQLiteCache] recordListeningSession error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Get listening sessions for a specific book
+   */
+  async getBookSessions(bookId: string, limit = 50): Promise<ListeningSession[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        id: string;
+        book_id: string;
+        book_title: string;
+        start_timestamp: number;
+        end_timestamp: number;
+        duration_seconds: number;
+        start_position: number;
+        end_position: number;
+      }>(
+        'SELECT * FROM listening_sessions WHERE book_id = ? ORDER BY start_timestamp DESC LIMIT ?',
+        [bookId, limit]
+      );
+
+      return rows.map((r) => ({
+        id: r.id,
+        bookId: r.book_id,
+        bookTitle: r.book_title,
+        startTimestamp: r.start_timestamp,
+        endTimestamp: r.end_timestamp,
+        durationSeconds: r.duration_seconds,
+        startPosition: r.start_position,
+        endPosition: r.end_position,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getBookSessions error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get recent listening sessions across all books
+   */
+  async getRecentSessions(limit = 100): Promise<ListeningSession[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        id: string;
+        book_id: string;
+        book_title: string;
+        start_timestamp: number;
+        end_timestamp: number;
+        duration_seconds: number;
+        start_position: number;
+        end_position: number;
+      }>(
+        'SELECT * FROM listening_sessions ORDER BY start_timestamp DESC LIMIT ?',
+        [limit]
+      );
+
+      return rows.map((r) => ({
+        id: r.id,
+        bookId: r.book_id,
+        bookTitle: r.book_title,
+        startTimestamp: r.start_timestamp,
+        endTimestamp: r.end_timestamp,
+        durationSeconds: r.duration_seconds,
+        startPosition: r.start_position,
+        endPosition: r.end_position,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getRecentSessions error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get daily stats for a date range
+   */
+  async getDailyStats(startDate: string, endDate: string): Promise<DailyStats[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        date: string;
+        total_seconds: number;
+        session_count: number;
+        books_touched: string;
+      }>(
+        'SELECT * FROM daily_stats WHERE date >= ? AND date <= ? ORDER BY date DESC',
+        [startDate, endDate]
+      );
+
+      return rows.map((r) => ({
+        date: r.date,
+        totalSeconds: r.total_seconds,
+        sessionCount: r.session_count,
+        booksTouched: JSON.parse(r.books_touched),
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getDailyStats error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get stats for today
+   */
+  async getTodayStats(): Promise<DailyStats | null> {
+    const db = await this.ensureReady();
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      const row = await db.getFirstAsync<{
+        date: string;
+        total_seconds: number;
+        session_count: number;
+        books_touched: string;
+      }>('SELECT * FROM daily_stats WHERE date = ?', [today]);
+
+      if (!row) return null;
+      return {
+        date: row.date,
+        totalSeconds: row.total_seconds,
+        sessionCount: row.session_count,
+        booksTouched: JSON.parse(row.books_touched),
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * Get stats for the current week (last 7 days)
+   */
+  async getWeeklyStats(): Promise<{
+    totalSeconds: number;
+    sessionCount: number;
+    uniqueBooks: number;
+    dailyBreakdown: DailyStats[];
+  }> {
+    const db = await this.ensureReady();
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    try {
+      const dailyStats = await this.getDailyStats(startDate, endDate);
+      const allBooks = new Set<string>();
+
+      let totalSeconds = 0;
+      let sessionCount = 0;
+
+      for (const day of dailyStats) {
+        totalSeconds += day.totalSeconds;
+        sessionCount += day.sessionCount;
+        day.booksTouched.forEach((b) => allBooks.add(b));
+      }
+
+      return {
+        totalSeconds,
+        sessionCount,
+        uniqueBooks: allBooks.size,
+        dailyBreakdown: dailyStats,
+      };
+    } catch (err) {
+      console.warn('[SQLiteCache] getWeeklyStats error:', err);
+      return { totalSeconds: 0, sessionCount: 0, uniqueBooks: 0, dailyBreakdown: [] };
+    }
+  }
+
+  /**
+   * Get stats for a specific month
+   */
+  async getMonthlyStats(year: number, month: number): Promise<MonthlyStats> {
+    const db = await this.ensureReady();
+    const monthStr = `${year}-${month.toString().padStart(2, '0')}`;
+    const startDate = `${monthStr}-01`;
+    const endDate = `${monthStr}-31`; // Will work correctly as string comparison
+
+    try {
+      const rows = await db.getAllAsync<{
+        total_seconds: number;
+        session_count: number;
+        books_touched: string;
+      }>(
+        'SELECT total_seconds, session_count, books_touched FROM daily_stats WHERE date >= ? AND date <= ?',
+        [startDate, endDate]
+      );
+
+      const allBooks = new Set<string>();
+      let totalSeconds = 0;
+      let sessionCount = 0;
+
+      for (const row of rows) {
+        totalSeconds += row.total_seconds;
+        sessionCount += row.session_count;
+        JSON.parse(row.books_touched).forEach((b: string) => allBooks.add(b));
+      }
+
+      return {
+        month: monthStr,
+        totalSeconds,
+        sessionCount,
+        uniqueBooks: allBooks.size,
+        averageSessionLength: sessionCount > 0 ? Math.round(totalSeconds / sessionCount) : 0,
+      };
+    } catch (err) {
+      console.warn('[SQLiteCache] getMonthlyStats error:', err);
+      return { month: monthStr, totalSeconds: 0, sessionCount: 0, uniqueBooks: 0, averageSessionLength: 0 };
+    }
+  }
+
+  /**
+   * Calculate listening streak (consecutive days)
+   */
+  async getListeningStreak(): Promise<ListeningStreak> {
+    const db = await this.ensureReady();
+
+    try {
+      // Get all dates with listening activity, sorted descending
+      const rows = await db.getAllAsync<{ date: string }>(
+        'SELECT date FROM daily_stats WHERE total_seconds > 0 ORDER BY date DESC'
+      );
+
+      if (rows.length === 0) {
+        return { currentStreak: 0, longestStreak: 0, lastListenDate: null };
+      }
+
+      const dates = rows.map((r) => r.date);
+      const lastListenDate = dates[0];
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Calculate current streak
+      let currentStreak = 0;
+      if (lastListenDate === today || lastListenDate === yesterday) {
+        currentStreak = 1;
+        for (let i = 1; i < dates.length; i++) {
+          const prevDate = new Date(dates[i - 1]);
+          const currDate = new Date(dates[i]);
+          const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / (24 * 60 * 60 * 1000));
+
+          if (diffDays === 1) {
+            currentStreak++;
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Calculate longest streak
+      let longestStreak = 1;
+      let tempStreak = 1;
+      for (let i = 1; i < dates.length; i++) {
+        const prevDate = new Date(dates[i - 1]);
+        const currDate = new Date(dates[i]);
+        const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / (24 * 60 * 60 * 1000));
+
+        if (diffDays === 1) {
+          tempStreak++;
+          longestStreak = Math.max(longestStreak, tempStreak);
+        } else {
+          tempStreak = 1;
+        }
+      }
+
+      return { currentStreak, longestStreak, lastListenDate };
+    } catch (err) {
+      console.warn('[SQLiteCache] getListeningStreak error:', err);
+      return { currentStreak: 0, longestStreak: 0, lastListenDate: null };
+    }
+  }
+
+  /**
+   * Get all-time listening statistics
+   */
+  async getAllTimeStats(): Promise<{
+    totalSeconds: number;
+    totalSessions: number;
+    uniqueBooks: number;
+    averageSessionLength: number;
+    firstListenDate: string | null;
+  }> {
+    const db = await this.ensureReady();
+
+    try {
+      const summary = await db.getFirstAsync<{
+        total_seconds: number;
+        total_sessions: number;
+      }>(
+        'SELECT SUM(total_seconds) as total_seconds, SUM(session_count) as total_sessions FROM daily_stats'
+      );
+
+      const books = await db.getAllAsync<{ books_touched: string }>(
+        'SELECT books_touched FROM daily_stats'
+      );
+
+      const firstDate = await db.getFirstAsync<{ date: string }>(
+        'SELECT date FROM daily_stats ORDER BY date ASC LIMIT 1'
+      );
+
+      const allBooks = new Set<string>();
+      for (const row of books) {
+        JSON.parse(row.books_touched).forEach((b: string) => allBooks.add(b));
+      }
+
+      const totalSeconds = summary?.total_seconds || 0;
+      const totalSessions = summary?.total_sessions || 0;
+
+      return {
+        totalSeconds,
+        totalSessions,
+        uniqueBooks: allBooks.size,
+        averageSessionLength: totalSessions > 0 ? Math.round(totalSeconds / totalSessions) : 0,
+        firstListenDate: firstDate?.date || null,
+      };
+    } catch (err) {
+      console.warn('[SQLiteCache] getAllTimeStats error:', err);
+      return {
+        totalSeconds: 0,
+        totalSessions: 0,
+        uniqueBooks: 0,
+        averageSessionLength: 0,
+        firstListenDate: null,
+      };
+    }
+  }
+
+  /**
+   * Get top books by listening time
+   */
+  async getTopBooks(limit = 10): Promise<{ bookId: string; bookTitle: string; totalSeconds: number }[]> {
+    const db = await this.ensureReady();
+
+    try {
+      const rows = await db.getAllAsync<{
+        book_id: string;
+        book_title: string;
+        total: number;
+      }>(
+        `SELECT book_id, book_title, SUM(duration_seconds) as total
+         FROM listening_sessions
+         GROUP BY book_id
+         ORDER BY total DESC
+         LIMIT ?`,
+        [limit]
+      );
+
+      return rows.map((r) => ({
+        bookId: r.book_id,
+        bookTitle: r.book_title,
+        totalSeconds: r.total,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getTopBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get listening activity by hour of day (for heat map)
+   */
+  async getListeningByHour(): Promise<{ hour: number; totalSeconds: number }[]> {
+    const db = await this.ensureReady();
+
+    try {
+      const rows = await db.getAllAsync<{
+        hour: number;
+        total: number;
+      }>(
+        `SELECT CAST(strftime('%H', start_timestamp / 1000, 'unixepoch', 'localtime') AS INTEGER) as hour,
+                SUM(duration_seconds) as total
+         FROM listening_sessions
+         GROUP BY hour
+         ORDER BY hour`
+      );
+
+      // Fill in missing hours with 0
+      const hourMap = new Map<number, number>();
+      for (let i = 0; i < 24; i++) {
+        hourMap.set(i, 0);
+      }
+      for (const row of rows) {
+        hourMap.set(row.hour, row.total);
+      }
+
+      return Array.from(hourMap.entries()).map(([hour, totalSeconds]) => ({
+        hour,
+        totalSeconds,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getListeningByHour error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Clear all listening stats (for testing or user request)
+   */
+  async clearListeningStats(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM listening_sessions');
+        await db.runAsync('DELETE FROM daily_stats');
+      });
+      console.log('[SQLiteCache] Cleared all listening stats');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearListeningStats error:', err);
     }
   }
 }

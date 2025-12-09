@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authService } from './authService';
 import { User } from '../types';
+import { prefetchMainTabData } from '../queryClient';
 
 /**
  * Authentication context state and operations
@@ -76,6 +77,10 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       if (session) {
         setUser(session.user);
         setServerUrl(session.serverUrl);
+
+        // Prefetch main tab data in background after session restore
+        // Don't await - let user see home screen immediately
+        prefetchMainTabData();
       }
     } catch (err) {
       console.error('Failed to restore session:', err);
@@ -101,6 +106,10 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
 
       setUser(user);
       setServerUrl(serverUrl);
+
+      // Prefetch main tab data in background after successful login
+      // Don't await - let user see home screen immediately
+      prefetchMainTabData();
     } catch (err: any) {
       console.error('Login failed:', err);
       const errorMessage = err.message || 'Login failed. Please try again.';

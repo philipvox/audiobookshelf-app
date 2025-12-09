@@ -26,9 +26,11 @@ import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { usePlayerStore, useCurrentChapterIndex, useBookProgress } from '../stores/playerStore';
+import { usePlayerStore, useCurrentChapterIndex, useBookProgress, useSleepTimerState } from '../stores/playerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useCoverUrl } from '@/core/cache';
 import { haptics } from '@/core/native/haptics';
+import { ChapterProgressBar } from '../components/ChapterProgressBar';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -81,7 +83,7 @@ export function SimplePlayerScreen() {
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  // Store state
+  // Store state - use useShallow to prevent infinite re-renders from object reference changes
   const {
     currentBook,
     isPlayerVisible,
@@ -92,18 +94,38 @@ export function SimplePlayerScreen() {
     playbackRate,
     sleepTimer,
     chapters,
-    closePlayer,
-    play,
-    pause,
-    setPlaybackRate,
-    setSleepTimer,
-    clearSleepTimer,
-    seekTo,
-    skipForward,
-    skipBackward,
-    nextChapter,
-    prevChapter,
-  } = usePlayerStore();
+    progressMode,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      currentBook: s.currentBook,
+      isPlayerVisible: s.isPlayerVisible,
+      isPlaying: s.isPlaying,
+      isLoading: s.isLoading,
+      position: s.position,
+      duration: s.duration,
+      playbackRate: s.playbackRate,
+      sleepTimer: s.sleepTimer,
+      chapters: s.chapters,
+      progressMode: s.progressMode,
+    }))
+  );
+
+  // Actions - these are stable functions so we can select them directly
+  const closePlayer = usePlayerStore((s) => s.closePlayer);
+  const play = usePlayerStore((s) => s.play);
+  const pause = usePlayerStore((s) => s.pause);
+  const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
+  const setSleepTimer = usePlayerStore((s) => s.setSleepTimer);
+  const clearSleepTimer = usePlayerStore((s) => s.clearSleepTimer);
+  const seekTo = usePlayerStore((s) => s.seekTo);
+  const skipForward = usePlayerStore((s) => s.skipForward);
+  const skipBackward = usePlayerStore((s) => s.skipBackward);
+  const nextChapter = usePlayerStore((s) => s.nextChapter);
+  const prevChapter = usePlayerStore((s) => s.prevChapter);
+  const setProgressMode = usePlayerStore((s) => s.setProgressMode);
+
+  // Sleep timer state with shake detection info
+  const sleepTimerState = useSleepTimerState();
 
   const chapterIndex = useCurrentChapterIndex();
   const progress = useBookProgress();
@@ -232,6 +254,12 @@ export function SimplePlayerScreen() {
     const newPosition = (percent / 100) * duration;
     seekTo?.(newPosition);
   }, [duration, seekTo]);
+
+  // Toggle progress mode
+  const handleToggleProgressMode = useCallback(() => {
+    haptics.selection();
+    setProgressMode?.(progressMode === 'bar' ? 'chapters' : 'bar');
+  }, [progressMode, setProgressMode]);
 
   // ==========================================================================
   // RENDER HELPERS
@@ -402,17 +430,45 @@ export function SimplePlayerScreen() {
           )}
         </View>
 
-        {/* Progress Scrubber */}
-        <View style={styles.scrubberContainer}>
-          <View style={styles.scrubberTrack}>
-            <View style={[styles.scrubberFill, { width: `${progressPercent}%` }]} />
-            <View style={[styles.scrubberThumb, { left: `${progressPercent}%` }]} />
-          </View>
-          <View style={styles.timeRow}>
-            <Text style={styles.timeText}>{formatTime(position)}</Text>
-            <Text style={styles.timeText}>{formatTimeRemaining(timeRemaining)}</Text>
-          </View>
-        </View>
+        {/* Progress Bar - Toggle between standard scrubber and chapter view */}
+        <TouchableOpacity onPress={handleToggleProgressMode} activeOpacity={0.8}>
+          {progressMode === 'chapters' && chapters.length > 1 ? (
+            <ChapterProgressBar
+              chapters={chapters}
+              position={position}
+              duration={duration}
+              onChapterPress={(start) => seekTo?.(start)}
+            />
+          ) : (
+            <View style={styles.scrubberContainer}>
+              <View style={styles.scrubberTrack}>
+                <View style={[styles.scrubberFill, { width: `${progressPercent}%` }]} />
+                <View style={[styles.scrubberThumb, { left: `${progressPercent}%` }]} />
+              </View>
+              <View style={styles.timeRow}>
+                <Text style={styles.timeText}>{formatTime(position)}</Text>
+                <Text style={styles.timeText}>{formatTimeRemaining(timeRemaining)}</Text>
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Progress mode toggle hint */}
+        {chapters.length > 1 && (
+          <TouchableOpacity
+            onPress={handleToggleProgressMode}
+            style={styles.progressModeToggle}
+          >
+            <Ionicons
+              name={progressMode === 'chapters' ? 'git-commit-outline' : 'menu-outline'}
+              size={16}
+              color="rgba(255,255,255,0.5)"
+            />
+            <Text style={styles.progressModeText}>
+              {progressMode === 'chapters' ? 'Tap for timeline' : 'Tap for chapters'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Main Controls */}
         <View style={styles.controls}>
@@ -460,10 +516,20 @@ export function SimplePlayerScreen() {
             style={styles.actionButton}
             onPress={() => setActiveSheet('sleep')}
           >
-            <Ionicons name="moon-outline" size={22} color={sleepTimer ? '#C8FF00' : '#FFF'} />
-            <Text style={[styles.actionLabel, sleepTimer && styles.actionLabelActive]}>
-              {sleepTimer ? `${Math.ceil(sleepTimer / 60)}m` : 'Sleep'}
+            <View style={styles.actionIconContainer}>
+              <Ionicons name="moon-outline" size={22} color={sleepTimer ? '#C8FF00' : '#FFF'} />
+              {sleepTimerState.isShakeDetectionActive && (
+                <View style={styles.shakeBadge}>
+                  <Ionicons name="phone-portrait-outline" size={10} color="#000" />
+                </View>
+              )}
+            </View>
+            <Text style={[styles.actionLabel, sleepTimer !== null && sleepTimer > 0 && styles.actionLabelActive]}>
+              {sleepTimer && sleepTimer > 0 ? `${Math.ceil(sleepTimer / 60)}m` : 'Sleep'}
             </Text>
+            {sleepTimerState.isShakeDetectionActive && (
+              <Text style={styles.shakeHint}>Shake +15m</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
@@ -670,6 +736,40 @@ const styles = StyleSheet.create({
   },
   actionLabelActive: {
     color: '#C8FF00',
+  },
+  actionIconContainer: {
+    position: 'relative',
+  },
+  shakeBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#C8FF00',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shakeHint: {
+    fontSize: 9,
+    color: '#C8FF00',
+    marginTop: 2,
+  },
+
+  // Progress mode toggle
+  progressModeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: -16,
+    marginBottom: 16,
+    paddingVertical: 4,
+  },
+  progressModeText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
   },
 
   // Bottom Sheet

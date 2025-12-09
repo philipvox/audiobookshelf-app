@@ -7,6 +7,8 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { sqliteCache } from './sqliteCache';
+import { waveformService } from './waveformService';
+import { networkMonitor, NetworkState } from './networkMonitor';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { formatBytes } from '@/shared/utils/format';
@@ -42,7 +44,7 @@ function logWarn(...args: any[]) {
 
 export interface DownloadTask {
   itemId: string;
-  status: 'pending' | 'downloading' | 'complete' | 'error' | 'paused';
+  status: 'pending' | 'downloading' | 'complete' | 'error' | 'paused' | 'waiting_wifi';
   progress: number;
   bytesDownloaded: number;
   totalBytes: number;
@@ -67,6 +69,8 @@ class DownloadManager {
   private listeners: Set<DownloadListener> = new Set();
   private progressListeners: Set<ProgressListener> = new Set();
   private isProcessingQueue = false;
+  private networkUnsubscribe: (() => void) | null = null;
+  private previousCanDownload: boolean = true;
 
   // In-memory progress tracking with byte info
   private progressInfo: Map<string, ProgressInfo> = new Map();
@@ -91,6 +95,13 @@ class DownloadManager {
       log('Download directory exists');
     }
 
+    // Subscribe to network changes
+    this.previousCanDownload = networkMonitor.canDownload();
+    this.networkUnsubscribe = networkMonitor.subscribe((state) => {
+      this.handleNetworkChange(state);
+    });
+    log(`Network monitoring enabled, canDownload: ${this.previousCanDownload}`);
+
     // Resume any paused downloads
     await this.resumePausedDownloads();
 
@@ -101,14 +112,86 @@ class DownloadManager {
     log('Download manager initialized');
   }
 
+  /**
+   * Handle network state changes
+   */
+  private async handleNetworkChange(state: NetworkState): Promise<void> {
+    const canDownloadNow = state.canDownload;
+
+    if (this.previousCanDownload && !canDownloadNow) {
+      // Was able to download, now cannot (WiFi → Cellular or Offline)
+      log('Network changed: downloads now blocked, pausing active downloads...');
+      await this.pauseAllForNetwork();
+    } else if (!this.previousCanDownload && canDownloadNow) {
+      // Was blocked, now can download (Cellular → WiFi or Online)
+      log('Network changed: downloads now allowed, resuming waiting downloads...');
+      await this.resumeWaitingDownloads();
+    }
+
+    this.previousCanDownload = canDownloadNow;
+  }
+
+  /**
+   * Pause all active downloads due to network change
+   */
+  private async pauseAllForNetwork(): Promise<void> {
+    for (const [itemId, download] of this.activeDownloads) {
+      try {
+        await download.pauseAsync();
+        log(`Paused download for network: ${itemId}`);
+      } catch (err) {
+        logWarn(`Failed to pause download ${itemId}:`, err);
+      }
+    }
+    this.activeDownloads.clear();
+
+    // Update all downloading items to waiting_wifi status
+    const downloading = await sqliteCache.getDownloadsByStatus('downloading');
+    for (const item of downloading) {
+      await sqliteCache.setDownload({
+        ...item,
+        status: 'waiting_wifi' as any,
+      });
+    }
+
+    this.notifyListeners();
+  }
+
+  /**
+   * Resume downloads that were waiting for WiFi
+   */
+  private async resumeWaitingDownloads(): Promise<void> {
+    const waiting = await sqliteCache.getDownloadsByStatus('waiting_wifi' as any);
+    if (waiting.length > 0) {
+      log(`Resuming ${waiting.length} downloads that were waiting for WiFi...`);
+      for (const download of waiting) {
+        await sqliteCache.setDownload({
+          ...download,
+          status: 'pending',
+        });
+        await sqliteCache.addToDownloadQueue(download.itemId, 10); // High priority
+      }
+      this.notifyListeners();
+      this.processQueue();
+    }
+  }
+
   // ===========================================================================
   // PUBLIC API
   // ===========================================================================
 
   /**
    * Queue a book for download
+   * @param item The library item to download
+   * @param priority Download priority (higher = sooner)
+   * @param overrideCellular If true, allow this download on cellular even if WiFi-only is enabled
+   * @returns Object with success status and optional reason if blocked
    */
-  async queueDownload(item: LibraryItem, priority = 0): Promise<void> {
+  async queueDownload(
+    item: LibraryItem,
+    priority = 0,
+    overrideCellular = false
+  ): Promise<{ success: boolean; reason?: string }> {
     const itemId = item.id;
     const title = (item.media?.metadata as any)?.title || 'Unknown';
 
@@ -118,18 +201,36 @@ class DownloadManager {
     const existing = await sqliteCache.getDownload(itemId);
     if (existing?.status === 'complete') {
       log(`Already downloaded: "${title}" - skipping`);
-      return;
+      return { success: true };
     }
 
     if (existing) {
       log(`Existing download status: ${existing.status}, progress: ${(existing.progress * 100).toFixed(1)}%`);
     }
 
-    // Add to database with pending status
-    log(`Adding to download database with pending status...`);
+    // Check network conditions
+    const canDownload = networkMonitor.canDownload();
+    const blockedReason = networkMonitor.getDownloadBlockedReason();
+
+    // Determine initial status based on network
+    let initialStatus: 'pending' | 'waiting_wifi' = 'pending';
+
+    if (!canDownload && !overrideCellular) {
+      if (!networkMonitor.isConnected()) {
+        log(`No network connection - rejecting download`);
+        return { success: false, reason: blockedReason || 'No internet connection' };
+      }
+
+      // WiFi-only mode and on cellular - queue as waiting
+      log(`WiFi-only mode enabled, on cellular - queuing as waiting_wifi`);
+      initialStatus = 'waiting_wifi';
+    }
+
+    // Add to database
+    log(`Adding to download database with ${initialStatus} status...`);
     await sqliteCache.setDownload({
       itemId,
-      status: 'pending',
+      status: initialStatus as any,
       progress: 0,
       filePath: null,
       fileSize: null,
@@ -137,9 +238,11 @@ class DownloadManager {
       error: null,
     });
 
-    // Add to queue
-    log(`Adding to download queue...`);
-    await sqliteCache.addToDownloadQueue(itemId, priority);
+    // Add to queue (only if pending, not waiting)
+    if (initialStatus === 'pending') {
+      log(`Adding to download queue...`);
+      await sqliteCache.addToDownloadQueue(itemId, priority);
+    }
 
     // Cache the library item metadata for offline access
     // Only cache if we have a valid libraryId
@@ -156,9 +259,30 @@ class DownloadManager {
 
     this.notifyListeners();
 
-    // Start processing queue
-    log(`Triggering queue processing...`);
-    this.processQueue();
+    // Start processing queue if we can download
+    if (initialStatus === 'pending') {
+      log(`Triggering queue processing...`);
+      this.processQueue();
+    }
+
+    return {
+      success: true,
+      reason: initialStatus === 'waiting_wifi' ? 'Queued - will start when WiFi is available' : undefined,
+    };
+  }
+
+  /**
+   * Check if a download can start now (based on network)
+   */
+  canStartDownload(): boolean {
+    return networkMonitor.canDownload();
+  }
+
+  /**
+   * Get the reason downloads are blocked
+   */
+  getDownloadBlockedReason(): string | null {
+    return networkMonitor.getDownloadBlockedReason();
   }
 
   /**
@@ -258,6 +382,8 @@ class DownloadManager {
     log(`Deleting download: ${itemId}`);
     await sqliteCache.deleteDownload(itemId);
     await this.deleteFiles(itemId);
+    // Also delete waveform data
+    await waveformService.deleteWaveform(itemId);
     this.notifyListeners();
     log(`Download deleted: ${itemId}`);
   }
@@ -354,6 +480,13 @@ class DownloadManager {
       return;
     }
 
+    // Check if we can download
+    if (!networkMonitor.canDownload()) {
+      const reason = networkMonitor.getDownloadBlockedReason();
+      log(`Cannot process queue: ${reason}`);
+      return;
+    }
+
     this.isProcessingQueue = true;
     log('Processing download queue...');
 
@@ -431,6 +564,7 @@ class DownloadManager {
     logVerbose(`Destination: ${destPath}`);
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      let waitingInterval: ReturnType<typeof setInterval> | undefined;
       try {
         if (attempt > 0) {
           log(`Retry attempt ${attempt + 1}/${maxRetries} for file ${fileIndex + 1}...`);
@@ -459,7 +593,7 @@ class DownloadManager {
         const startTime = Date.now();
 
         // Log a message every 30 seconds if still waiting
-        const waitingInterval = setInterval(() => {
+        waitingInterval = setInterval(() => {
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
           log(`Still waiting for download to start... (${elapsed}s elapsed, server may be caching from origin)`);
         }, 30000);
@@ -482,7 +616,7 @@ class DownloadManager {
 
         return result;
       } catch (error) {
-        clearInterval(waitingInterval);
+        if (waitingInterval) clearInterval(waitingInterval);
         lastError = error instanceof Error ? error : new Error('Download failed');
         logWarn(`Attempt ${attempt + 1} failed: ${lastError.message}`);
 
@@ -556,6 +690,9 @@ class DownloadManager {
       // Initialize progress tracking with total size
       this.progressInfo.set(itemId, { bytesDownloaded: 0, totalBytes: totalSize });
 
+      // Track downloaded file paths for waveform extraction
+      const downloadedFilePaths: string[] = [];
+
       // Download each audio file with retry logic
       for (let i = 0; i < audioFiles.length; i++) {
         const file = audioFiles[i];
@@ -595,6 +732,7 @@ class DownloadManager {
           }
         );
 
+        downloadedFilePaths.push(destPath);
         downloadedSize += fileSize;
         log(`File ${i + 1} complete. Downloaded so far: ${formatBytes(downloadedSize)}`);
       }
@@ -602,6 +740,32 @@ class DownloadManager {
       // Download cover image
       log(`Downloading cover image...`);
       await this.downloadCover(item, destDir);
+
+      // Extract waveform for scrub visualization (non-blocking)
+      log(`Extracting waveform for scrub visualization...`);
+      const bookMedia = fullItem.media as any;
+      const bookDuration = bookMedia?.duration || 0;
+      const chapters = bookMedia?.chapters?.map((ch: any) => ({
+        title: ch.title,
+        start: ch.start,
+        end: ch.end,
+      }));
+
+      // Run waveform extraction in background (don't block download completion)
+      waveformService.extractWaveform(
+        itemId,
+        downloadedFilePaths,
+        bookDuration,
+        chapters
+      ).then(waveform => {
+        if (waveform) {
+          log(`Waveform extracted: ${waveform.totalSamples} samples`);
+        } else {
+          logWarn(`Waveform extraction failed for ${itemId}`);
+        }
+      }).catch(err => {
+        logWarn(`Waveform extraction error:`, err);
+      });
 
       // Mark complete
       this.activeDownloads.delete(itemId);

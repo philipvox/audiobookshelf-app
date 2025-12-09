@@ -13,6 +13,8 @@ import {
   Alert,
   StatusBar,
   TouchableOpacity,
+  Modal,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +22,8 @@ import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
+import { usePlayerStore } from '@/features/player/stores/playerStore';
+import { networkMonitor } from '@/core/services/networkMonitor';
 
 // Dark theme colors
 const COLORS = {
@@ -49,9 +53,11 @@ interface SettingsRowProps {
   onPress?: () => void;
   showChevron?: boolean;
   valueColor?: string;
+  switchValue?: boolean;
+  onSwitchChange?: (value: boolean) => void;
 }
 
-function SettingsRow({ icon, label, value, onPress, showChevron, valueColor }: SettingsRowProps) {
+function SettingsRow({ icon, label, value, onPress, showChevron, valueColor, switchValue, onSwitchChange }: SettingsRowProps) {
   const content = (
     <View style={styles.settingsRow}>
       <View style={styles.settingsRowLeft}>
@@ -60,6 +66,14 @@ function SettingsRow({ icon, label, value, onPress, showChevron, valueColor }: S
       </View>
       <View style={styles.settingsRowRight}>
         {value && <Text style={[styles.settingsValue, valueColor && { color: valueColor }]}>{value}</Text>}
+        {onSwitchChange !== undefined && (
+          <Switch
+            value={switchValue}
+            onValueChange={onSwitchChange}
+            trackColor={{ false: '#505050', true: COLORS.accent }}
+            thumbColor="#FFFFFF"
+          />
+        )}
         {showChevron && (
           <Icon name="chevron-forward" size={18} color={COLORS.textTertiary} set="ionicons" />
         )}
@@ -87,6 +101,13 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+// Playback speed options
+const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+function formatSpeed(speed: number): string {
+  return speed === 1.0 ? '1.0x (Normal)' : `${speed}x`;
+}
+
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -95,9 +116,18 @@ export function ProfileScreen() {
   // Download stats from downloadManager via useDownloads hook
   const { downloads } = useDownloads();
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+  const [showSpeedPicker, setShowSpeedPicker] = useState(false);
+  const [wifiOnlyEnabled, setWifiOnlyEnabled] = useState(networkMonitor.isWifiOnlyEnabled());
+  const [autoDownloadSeriesEnabled, setAutoDownloadSeriesEnabled] = useState(networkMonitor.isAutoDownloadSeriesEnabled());
 
   // Library cache
   const { refreshCache } = useLibraryCache();
+
+  // Player settings
+  const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
+  const setGlobalDefaultRate = usePlayerStore((s) => s.setGlobalDefaultRate);
+  const shakeToExtendEnabled = usePlayerStore((s) => s.shakeToExtendEnabled);
+  const setShakeToExtendEnabled = usePlayerStore((s) => s.setShakeToExtendEnabled);
 
   // Safe access to preferences store
   const hasCompletedOnboarding = usePreferencesStore?.()?.hasCompletedOnboarding ?? false;
@@ -144,6 +174,16 @@ export function ProfileScreen() {
     } finally {
       setIsRefreshingCache(false);
     }
+  };
+
+  const handleWifiOnlyToggle = async (enabled: boolean) => {
+    setWifiOnlyEnabled(enabled);
+    await networkMonitor.setWifiOnlyEnabled(enabled);
+  };
+
+  const handleAutoDownloadSeriesToggle = async (enabled: boolean) => {
+    setAutoDownloadSeriesEnabled(enabled);
+    await networkMonitor.setAutoDownloadSeriesEnabled(enabled);
   };
 
   const initials = user?.username
@@ -196,15 +236,44 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Storage</Text>
+          <Text style={styles.cardTitle}>Activity</Text>
+          <SettingsRow
+            icon="stats-chart-outline"
+            label="Listening Stats"
+            onPress={() => navigation.navigate('Stats')}
+            showChevron
+          />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Downloads</Text>
           <SettingsRow
             icon="download-outline"
-            label="Downloads"
+            label="Manage Downloads"
             value={`${downloadCount} book${downloadCount !== 1 ? 's' : ''}`}
             onPress={handleDownloadsPress}
             showChevron
           />
           <SettingsRow icon="folder-outline" label="Storage Used" value={formatBytes(totalStorage)} />
+          <SettingsRow
+            icon="wifi-outline"
+            label="WiFi Only"
+            switchValue={wifiOnlyEnabled}
+            onSwitchChange={handleWifiOnlyToggle}
+          />
+          <SettingsRow
+            icon="library-outline"
+            label="Auto-Download Series"
+            switchValue={autoDownloadSeriesEnabled}
+            onSwitchChange={handleAutoDownloadSeriesToggle}
+          />
+          <Text style={styles.settingsNote}>
+            Downloads will pause on cellular if WiFi Only is enabled. Auto-download queues the next book in a series when you reach 80% progress.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Storage</Text>
           <SettingsRow
             icon="refresh-outline"
             label="Refresh Library Cache"
@@ -216,9 +285,31 @@ export function ProfileScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Playback</Text>
-          <SettingsRow icon="speedometer-outline" label="Default Speed" value="1.0x" />
+          <SettingsRow
+            icon="speedometer-outline"
+            label="Default Speed"
+            value={`${globalDefaultRate}x`}
+            onPress={() => setShowSpeedPicker(true)}
+            showChevron
+          />
           <SettingsRow icon="time-outline" label="Skip Forward" value="30s" />
           <SettingsRow icon="time-outline" label="Skip Back" value="15s" />
+          <Text style={styles.settingsNote}>
+            Speed is remembered per book. Default speed is used for new books.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Sleep Timer</Text>
+          <SettingsRow
+            icon="phone-portrait-outline"
+            label="Shake to Extend"
+            switchValue={shakeToExtendEnabled}
+            onSwitchChange={setShakeToExtendEnabled}
+          />
+          <Text style={styles.settingsNote}>
+            Shake your phone to add 15 minutes when the sleep timer is about to expire.
+          </Text>
         </View>
 
         {/* Developer/Test Section */}
@@ -247,6 +338,52 @@ export function ProfileScreen() {
           <Text style={styles.versionText}>AudiobookShelf Mobile v1.0.0</Text>
         </View>
       </ScrollView>
+
+      {/* Speed Picker Modal */}
+      <Modal
+        visible={showSpeedPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSpeedPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSpeedPicker(false)}
+        >
+          <View style={styles.speedPickerContainer}>
+            <Text style={styles.speedPickerTitle}>Default Playback Speed</Text>
+            <Text style={styles.speedPickerSubtitle}>
+              Used for books without a saved speed preference
+            </Text>
+            {SPEED_OPTIONS.map((speed) => (
+              <TouchableOpacity
+                key={speed}
+                style={[
+                  styles.speedOption,
+                  globalDefaultRate === speed && styles.speedOptionSelected,
+                ]}
+                onPress={() => {
+                  setGlobalDefaultRate(speed);
+                  setShowSpeedPicker(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.speedOptionText,
+                    globalDefaultRate === speed && styles.speedOptionTextSelected,
+                  ]}
+                >
+                  {formatSpeed(speed)}
+                </Text>
+                {globalDefaultRate === speed && (
+                  <Icon name="checkmark" size={20} color={COLORS.accent} set="ionicons" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -370,5 +507,57 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 13,
     color: COLORS.textTertiary,
+  },
+  settingsNote: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  speedPickerContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 20,
+    width: '80%',
+    maxWidth: 320,
+  },
+  speedPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  speedPickerSubtitle: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  speedOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  speedOptionSelected: {
+    backgroundColor: 'rgba(204, 255, 0, 0.15)',
+  },
+  speedOptionText: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  speedOptionTextSelected: {
+    color: COLORS.accent,
+    fontWeight: '600',
   },
 });

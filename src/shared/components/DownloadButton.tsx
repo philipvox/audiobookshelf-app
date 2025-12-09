@@ -73,10 +73,11 @@ export function DownloadButton({
       };
     }
     if (isDownloading) {
+      const progressPct = Math.round(progress * 100);
       return {
         icon: <Feather name="pause" size={iconSize} color={theme.colors.accent.primary} />,
         color: theme.colors.accent.primary,
-        label: `${Math.round(progress * 100)}%`,
+        label: progressPct === 0 ? 'Preparing...' : `${progressPct}%`,
       };
     }
     if (isPending) {

@@ -12,34 +12,91 @@ interface BookActionsProps {
   book: LibraryItem;
 }
 
-// Download progress button with animated progress bar
+/**
+ * Format bytes to human readable string (e.g., "45.2 MB")
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+/**
+ * Clean download progress button with simple progress bar
+ */
 function DownloadProgressButton({
   progress,
-  onPress
+  bytesDownloaded,
+  totalBytes,
+  status,
+  onPress,
 }: {
   progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  status: 'preparing' | 'downloading' | 'paused';
   onPress: () => void;
 }) {
   const progressStyle = useAnimatedStyle(() => ({
     width: `${withTiming(progress * 100, { duration: 200 })}%`,
   }));
 
+  // Status label
+  const getStatusLabel = () => {
+    switch (status) {
+      case 'preparing': return 'Preparing...';
+      case 'downloading': return 'Downloading';
+      case 'paused': return 'Paused';
+      default: return '';
+    }
+  };
+
+  // Progress text - show bytes downloaded / total
+  const getProgressText = () => {
+    if (status === 'preparing' || totalBytes === 0) {
+      return 'Calculating...';
+    }
+    return `${formatBytes(bytesDownloaded)} / ${formatBytes(totalBytes)}`;
+  };
+
   return (
     <TouchableOpacity
-      style={styles.progressButton}
+      style={styles.downloadProgressButton}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Background track */}
-      <View style={styles.progressTrack}>
-        {/* Animated fill */}
-        <Animated.View style={[styles.progressFill, progressStyle]} />
+      {/* Header row: Status on left, percentage on right */}
+      <View style={styles.downloadProgressHeader}>
+        <View style={styles.downloadStatusRow}>
+          {status === 'preparing' ? (
+            <ActivityIndicator size="small" color={theme.colors.text.secondary} style={styles.downloadSpinner} />
+          ) : status === 'paused' ? (
+            <Icon name="play" size={14} color={theme.colors.text.secondary} set="ionicons" />
+          ) : (
+            <Icon name="pause" size={14} color={theme.colors.text.secondary} set="ionicons" />
+          )}
+          <Text style={styles.downloadStatusText}>{getStatusLabel()}</Text>
+        </View>
+        <Text style={styles.downloadPercentText}>
+          {status === 'preparing' ? '—' : `${Math.round(progress * 100)}%`}
+        </Text>
       </View>
-      {/* Text overlay */}
-      <View style={styles.progressContent}>
-        <Icon name="pause" size={16} color="#FFFFFF" set="ionicons" />
-        <Text style={styles.progressText}>{Math.round(progress * 100)}%</Text>
+
+      {/* Progress bar */}
+      <View style={styles.downloadProgressTrack}>
+        <Animated.View
+          style={[
+            styles.downloadProgressFill,
+            progressStyle,
+            status === 'paused' && styles.downloadProgressFillPaused
+          ]}
+        />
       </View>
+
+      {/* Footer: bytes downloaded / total */}
+      <Text style={styles.downloadBytesText}>{getProgressText()}</Text>
     </TouchableOpacity>
   );
 }
@@ -58,6 +115,8 @@ export function BookActions({ book }: BookActionsProps) {
     isPaused,
     hasError,
     progress: downloadProgress,
+    bytesDownloaded,
+    totalBytes,
   } = useDownloadStatus(book.id);
 
   const handlePlay = async () => {
@@ -88,14 +147,13 @@ export function BookActions({ book }: BookActionsProps) {
     } else if (isPaused) {
       await downloadManager.resumeDownload(book.id);
     } else if (hasError) {
-      // Retry with high priority
       await downloadManager.queueDownload(book, 10);
     } else {
       await downloadManager.queueDownload(book);
     }
   };
 
-  // Get download button state
+  // Get download button state for non-progress states
   const getDownloadButtonState = () => {
     if (isDownloaded) {
       return {
@@ -105,28 +163,12 @@ export function BookActions({ book }: BookActionsProps) {
         bgColor: 'rgba(76, 175, 80, 0.15)',
       };
     }
-    if (isDownloading) {
-      return {
-        icon: 'pause' as const,
-        text: `${Math.round(downloadProgress * 100)}%`,
-        color: theme.colors.primary[500],
-        bgColor: theme.colors.primary[50],
-      };
-    }
     if (isPending) {
       return {
         icon: 'time-outline' as const,
         text: 'Queued',
         color: theme.colors.text.secondary,
         bgColor: theme.colors.neutral[100],
-      };
-    }
-    if (isPaused) {
-      return {
-        icon: 'play' as const,
-        text: 'Paused',
-        color: '#FF9800',
-        bgColor: 'rgba(255, 152, 0, 0.15)',
       };
     }
     if (hasError) {
@@ -153,6 +195,9 @@ export function BookActions({ book }: BookActionsProps) {
 
   const playButtonText = isFinished ? 'Play Again' : hasProgress ? 'Continue' : 'Play';
 
+  // Show progress button when downloading or paused
+  const showProgressButton = isDownloading || isPaused;
+
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.8}>
@@ -161,9 +206,12 @@ export function BookActions({ book }: BookActionsProps) {
       </TouchableOpacity>
 
       <View style={styles.secondaryRow}>
-        {isDownloading ? (
+        {showProgressButton ? (
           <DownloadProgressButton
             progress={downloadProgress}
+            bytesDownloaded={bytesDownloaded}
+            totalBytes={totalBytes}
+            status={isPaused ? 'paused' : downloadProgress === 0 ? 'preparing' : 'downloading'}
             onPress={handleDownload}
           />
         ) : (
@@ -183,16 +231,16 @@ export function BookActions({ book }: BookActionsProps) {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity 
-          style={[styles.secondaryButton, isFinished && styles.finishedButton]} 
-          onPress={handleMarkFinished} 
+        <TouchableOpacity
+          style={[styles.secondaryButton, isFinished && styles.finishedButton]}
+          onPress={handleMarkFinished}
           activeOpacity={0.7}
         >
-          <Icon 
-            name="checkmark" 
-            size={18} 
-            color={isFinished ? theme.colors.primary[500] : theme.colors.text.secondary} 
-            set="ionicons" 
+          <Icon
+            name="checkmark"
+            size={18}
+            color={isFinished ? theme.colors.primary[500] : theme.colors.text.secondary}
+            set="ionicons"
           />
           <Text style={[styles.secondaryButtonText, isFinished && styles.finishedButtonText]}>
             Finished
@@ -249,37 +297,58 @@ const styles = StyleSheet.create({
   finishedButtonText: {
     color: theme.colors.primary[500],
   },
-  // Progress button styles
-  progressButton: {
+  // Download progress button - clean minimal design
+  downloadProgressButton: {
     flex: 1,
-    height: 44,
+    backgroundColor: theme.colors.neutral[100],
     borderRadius: theme.radius.large,
-    overflow: 'hidden',
-    position: 'relative',
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
   },
-  progressTrack: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+  downloadProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  progressFill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    backgroundColor: theme.colors.primary[500],
-    opacity: 0.9,
-  },
-  progressContent: {
-    ...StyleSheet.absoluteFillObject,
+  downloadStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing[2],
+    gap: 6,
   },
-  progressText: {
-    fontSize: 15,
+  downloadSpinner: {
+    transform: [{ scale: 0.8 }],
+  },
+  downloadStatusText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.colors.text.secondary,
+  },
+  downloadPercentText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: theme.colors.text.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  downloadProgressTrack: {
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  downloadProgressFill: {
+    height: '100%',
+    backgroundColor: theme.colors.primary[500],
+    borderRadius: 2,
+  },
+  downloadProgressFillPaused: {
+    backgroundColor: '#FF9800',
+  },
+  downloadBytesText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: theme.colors.text.tertiary,
+    marginTop: 4,
     fontVariant: ['tabular-nums'],
   },
 });

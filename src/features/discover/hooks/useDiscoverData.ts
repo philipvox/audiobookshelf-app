@@ -13,6 +13,7 @@ import { useLibraryCache, getAllGenres } from '@/core/cache';
 import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
+import { useRecommendations } from '@/features/recommendations/hooks/useRecommendations';
 import {
   ContentRow,
   BookSummary,
@@ -45,6 +46,9 @@ export function useDiscoverData(selectedGenre: string = 'All') {
   const { items: inProgressItems, isLoading: isLoadingProgress, refetch: refetchProgress } = useContinueListening();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
+
+  // Get personalized recommendations based on reading history
+  const { groupedRecommendations, hasPreferences } = useRecommendations(libraryItems, 30);
 
   // Subscribe to download status changes
   useEffect(() => {
@@ -218,6 +222,22 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     };
   }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
 
+  // Personalized recommendations rows (based on reading history and preferences)
+  const recommendationRows = useMemo((): ContentRow[] => {
+    if (!isLoaded || !hasPreferences || groupedRecommendations.length === 0) return [];
+
+    return groupedRecommendations.map((group, index) => ({
+      id: `recommendation_${index}`,
+      type: 'recommended' as const,
+      title: group.title,
+      subtitle: 'Based on your listening history',
+      items: group.items.slice(0, 15).map(item => convertToBookSummary(item)),
+      totalCount: group.items.length,
+      priority: 2 + index * 0.5, // High priority, right after continue listening
+      refreshPolicy: 'daily' as const,
+    }));
+  }, [isLoaded, hasPreferences, groupedRecommendations, convertToBookSummary]);
+
   // Hero recommendation
   const hero = useMemo((): HeroRecommendation | null => {
     if (!isLoaded || !libraryItems.length) return null;
@@ -252,7 +272,7 @@ export function useDiscoverData(selectedGenre: string = 'All') {
 
   // Organize rows by priority
   const rows = useMemo((): ContentRow[] => {
-    const allRows = [
+    const staticRows = [
       continueListeningRow,
       newThisWeekRow,
       popularRow,
@@ -260,9 +280,12 @@ export function useDiscoverData(selectedGenre: string = 'All') {
       shortBooksRow,
     ].filter((row): row is ContentRow => row !== null);
 
+    // Combine with recommendation rows
+    const allRows = [...staticRows, ...recommendationRows];
+
     // Sort by priority
     return allRows.sort((a, b) => a.priority - b.priority);
-  }, [continueListeningRow, newThisWeekRow, popularRow, recentlyAddedRow, shortBooksRow]);
+  }, [continueListeningRow, newThisWeekRow, popularRow, recentlyAddedRow, shortBooksRow, recommendationRows]);
 
   // Refresh handler
   const refresh = useCallback(async () => {

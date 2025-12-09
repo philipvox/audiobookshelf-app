@@ -1,4 +1,28 @@
 PODS:
+  - AudioAnalyzer (3.1.0):
+    - hermes-engine
+    - NitroModules
+    - RCTRequired
+    - RCTTypeSafety
+    - React-callinvoker
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - EASClient (1.0.7):
     - ExpoModulesCore
   - EXAV (16.0.7):
@@ -255,6 +279,8 @@ PODS:
     - Yoga
   - ExpoSecureStore (15.0.7):
     - ExpoModulesCore
+  - ExpoSensors (15.0.8):
+    - ExpoModulesCore
   - ExpoSplashScreen (31.0.11):
     - ExpoModulesCore
   - ExpoSQLite (16.0.9):
@@ -301,6 +327,29 @@ PODS:
     - libavif/core
     - libdav1d (>= 0.6.0)
   - libdav1d (1.2.0)
+  - NitroModules (0.31.10):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-callinvoker
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - RCTDeprecation (0.81.5)
   - RCTRequired (0.81.5)
   - RCTTypeSafety (0.81.5):
@@ -2408,6 +2457,7 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
+  - AudioAnalyzer (from `../node_modules/react-native-audio-analyzer`)
   - EASClient (from `../node_modules/expo-eas-client/ios`)
   - EXAV (from `../node_modules/expo-av/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
@@ -2430,6 +2480,7 @@ DEPENDENCIES:
   - ExpoMediaControl (from `../node_modules/expo-media-control/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSensors (from `../node_modules/expo-sensors/ios`)
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - ExpoSQLite (from `../node_modules/expo-sqlite/ios`)
   - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
@@ -2438,6 +2489,7 @@ DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - ImageColors (from `../node_modules/react-native-image-colors/ios`)
+  - NitroModules (from `../node_modules/react-native-nitro-modules`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTTypeSafety (from `../node_modules/react-native/Libraries/TypeSafety`)
@@ -2527,6 +2579,8 @@ SPEC REPOS:
     - SDWebImageSVGCoder
 
 EXTERNAL SOURCES:
+  AudioAnalyzer:
+    :path: "../node_modules/react-native-audio-analyzer"
   EASClient:
     :path: "../node_modules/expo-eas-client/ios"
   EXAV:
@@ -2571,6 +2625,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-modules-core"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSensors:
+    :path: "../node_modules/expo-sensors/ios"
   ExpoSplashScreen:
     :path: "../node_modules/expo-splash-screen/ios"
   ExpoSQLite:
@@ -2588,6 +2644,8 @@ EXTERNAL SOURCES:
     :tag: hermes-2025-07-07-RNv0.81.0-e0fc67142ec0763c6b6153ca2bf96df815539782
   ImageColors:
     :path: "../node_modules/react-native-image-colors/ios"
+  NitroModules:
+    :path: "../node_modules/react-native-nitro-modules"
   RCTDeprecation:
     :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
@@ -2744,6 +2802,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  AudioAnalyzer: c9cf1a6b2f180542e919fb647bdd26c7412d4e93
   EASClient: 68127f1248d2b25fdc82dbbfb17be95d1c4700be
   EXAV: e3fefaca88f14624bca01d9a128562a5f8e738f8
   EXConstants: fd688cef4e401dcf798a021cfb5d87c890c30ba3
@@ -2766,6 +2825,7 @@ SPEC CHECKSUMS:
   ExpoMediaControl: 48b9c858514bd4ebde9c5a7f817918a42a7591ac
   ExpoModulesCore: 665178814f1556ca4c6ee34e3ad5db6cb9155d36
   ExpoSecureStore: 9c6571fe3fcb045a671c4011c451546eaaab98fd
+  ExpoSensors: 8f9fe9a9ffd36ca9c2f0fe40dafc0a063f844420
   ExpoSplashScreen: 268b2f128dc04284c21010540a6c4dd9f95003e3
   ExpoSQLite: b312b02c8b77ab55951396e6cd13992f8db9215f
   EXStructuredHeaders: c951e77f2d936f88637421e9588c976da5827368
@@ -2776,6 +2836,7 @@ SPEC CHECKSUMS:
   ImageColors: e12eb73e29bc1feaa3c228db8c174a1b25acb59d
   libavif: 84bbb62fb232c3018d6f1bab79beea87e35de7b7
   libdav1d: 23581a4d8ec811ff171ed5e2e05cd27bad64c39f
+  NitroModules: 48614653babbe0b62252375665d1bb0fc799727d
   RCTDeprecation: 943572d4be82d480a48f4884f670135ae30bf990
   RCTRequired: 8f3cfc90cc25cf6e420ddb3e7caaaabc57df6043
   RCTTypeSafety: 16a4144ca3f959583ab019b57d5633df10b5e97c

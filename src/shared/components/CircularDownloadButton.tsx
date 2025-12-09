@@ -187,6 +187,7 @@ export function CircularDownloadButton({
     // Downloading - show circular progress with size info
     if (isDownloading || isPaused) {
       const progressColor = isPaused ? '#FF9800' : '#4ADE80';
+      const isPreparingDownload = progress === 0 && bytesDownloaded === 0;
       const downloadedStr = formatBytes(bytesDownloaded, 1);
       const totalStr = formatBytes(totalBytes, 1);
 
@@ -216,14 +217,20 @@ export function CircularDownloadButton({
               transform={`rotate(-90 ${center} ${center})`}
             />
           </Svg>
-          {/* Size text */}
+          {/* Size text - show "..." when preparing */}
           <View style={styles.centerContent}>
-            <Text style={[styles.sizeText, { fontSize: size * 0.18 }]} numberOfLines={2}>
-              {downloadedStr}
-            </Text>
-            <Text style={[styles.totalText, { fontSize: size * 0.14 }]} numberOfLines={1}>
-              /{totalStr}
-            </Text>
+            {isPreparingDownload ? (
+              <Text style={[styles.sizeText, { fontSize: size * 0.22 }]}>...</Text>
+            ) : (
+              <>
+                <Text style={[styles.sizeText, { fontSize: size * 0.18 }]} numberOfLines={2}>
+                  {downloadedStr}
+                </Text>
+                <Text style={[styles.totalText, { fontSize: size * 0.14 }]} numberOfLines={1}>
+                  /{totalStr}
+                </Text>
+              </>
+            )}
           </View>
         </View>
       );

@@ -82,6 +82,9 @@ const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
+  const progressPct = Math.round(progress);
+  // Show "..." when preparing (0%), otherwise show percentage
+  const displayText = progressPct === 0 ? '...' : `${progressPct}%`;
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
@@ -107,7 +110,7 @@ const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <Text style={styles.progressText}>{Math.round(progress)}%</Text>
+      <Text style={styles.progressText}>{displayText}</Text>
     </View>
   );
 };

@@ -18,7 +18,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { useQueue, useQueueStore } from '../stores/queueStore';
-import { QueueItem } from '../components/QueueItem';
+import { SwipeableQueueItem } from '../components/SwipeableQueueItem';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -88,6 +88,8 @@ export function QueueScreen() {
           <Text style={styles.emptyTitle}>Queue is empty</Text>
           <Text style={styles.emptySubtitle}>
             Add books to your queue and they'll play automatically when the current book ends.
+            {'\n\n'}
+            Tip: Swipe left on items to remove them quickly.
           </Text>
         </View>
       ) : (
@@ -96,7 +98,7 @@ export function QueueScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item, index }) => (
-            <QueueItem
+            <SwipeableQueueItem
               book={item.book}
               position={index}
               onRemove={() => handleRemove(item.bookId)}

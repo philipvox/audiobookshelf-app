@@ -6,21 +6,20 @@
  * Gradient fades from transparent (top) to solid black (bottom)
  */
 
-import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Pressable, StyleSheet, Dimensions, Image } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
-import { useCoverUrl } from '@/core/cache';
+import { useShallow } from 'zustand/react/shallow';
+import { CoverPlayButton } from '@/shared/components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Design constants from Figma export
 const ICON_COLOR = '#B3B3B3';
-const GREEN_BORDER = '#34C759';
 const PLAY_BUTTON_SIZE = 48;
 const ICON_SIZE = 20;
 const NAV_HEIGHT = 86; // Height from bottom of buttons to bottom of gradient
@@ -58,78 +57,21 @@ const HomeIcon: React.FC<{ size?: number; color?: string }> = ({
   </Svg>
 );
 
-// Pause icon - matches pause-1.svg
-const PauseIcon: React.FC<{ size?: number }> = ({ size = 29 }) => (
-  <Svg width={size} height={size} viewBox="0 0 29 29" fill="none">
-    <Path
-      d="M16.8584 22.8792V6.02087H21.6751V22.8792H16.8584ZM7.2251 22.8792V6.02087H12.0418V22.8792H7.2251Z"
-      fill="#FEF7FF"
-    />
-  </Svg>
-);
-
-// Play icon
-const PlayIcon: React.FC<{ size?: number }> = ({ size = 29 }) => (
-  <Svg width={size} height={size} viewBox="0 0 29 29" fill="none">
-    <Path
-      d="M8 5L23 14.5L8 24V5Z"
-      fill="#FEF7FF"
-    />
-  </Svg>
-);
-
-// Player button with cover image, green border, and blur overlay
-const PlayerButton: React.FC<{
-  size?: number;
-  isPlaying: boolean;
-  coverUrl?: string | null;
-  onPress: () => void;
-  onLongPress: () => void;
-}> = ({ size = PLAY_BUTTON_SIZE, isPlaying, coverUrl, onPress, onLongPress }) => {
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={300}
-      style={[styles.playButton, { width: size, height: size, borderRadius: size / 2 }]}
-    >
-      {/* Book cover background */}
-      {coverUrl && (
-        <Image
-          source={{ uri: coverUrl }}
-          style={[styles.coverImage, { width: size, height: size, borderRadius: size / 2 }]}
-        />
-      )}
-
-      {/* Dark blur overlay */}
-      <View style={[styles.blurOverlay, { borderRadius: size / 2 }]}>
-        <BlurView
-          intensity={2.85}
-          tint="dark"
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.darkOverlay} />
-      </View>
-
-      {/* Green border ring */}
-      <View style={[styles.greenBorder, { width: size, height: size, borderRadius: size / 2 }]} />
-
-      {/* Play/Pause icon */}
-      <View style={styles.iconContainer}>
-        {isPlaying ? <PauseIcon size={29} /> : <PlayIcon size={29} />}
-      </View>
-    </Pressable>
-  );
-};
 
 function FloatingTabBarInner() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { currentBook, isPlaying, play, pause, isPlayerVisible, closePlayer } = usePlayerStore();
+
+  // Use useShallow to prevent infinite re-renders
+  const { currentBook, isPlayerVisible } = usePlayerStore(
+    useShallow((s) => ({
+      currentBook: s.currentBook,
+      isPlayerVisible: s.isPlayerVisible,
+    }))
+  );
+  const closePlayer = usePlayerStore((s) => s.closePlayer);
   const [currentRouteName, setCurrentRouteName] = useState('HomeTab');
   const [currentRouteParams, setCurrentRouteParams] = useState<any>(null);
-
-  const coverUrl = useCoverUrl(currentBook?.id || '');
 
   // Listen for navigation state changes
   useEffect(() => {
@@ -160,33 +102,21 @@ function FloatingTabBarInner() {
 
   const shouldShowPlayerButton = currentBook && !isOnPlayingBookDetailPage;
 
-  const handleSearchPress = () => {
+  const handleSearchPress = useCallback(() => {
     if (isPlayerVisible) closePlayer();
     navigation.navigate('Search');
-  };
+  }, [isPlayerVisible, closePlayer, navigation]);
 
-  const handleHomePress = () => {
+  const handleHomePress = useCallback(() => {
     if (isPlayerVisible) closePlayer();
     navigation.navigate('Main', { screen: 'HomeTab' });
-  };
+  }, [isPlayerVisible, closePlayer, navigation]);
 
-  const handlePlayerPress = async () => {
-    if (!currentBook) {
-      navigation.navigate('Main', { screen: 'LibraryTab' });
-      return;
-    }
-    if (isPlaying) {
-      await pause();
-    } else {
-      await play();
-    }
-  };
-
-  const handlePlayerLongPress = () => {
+  const handleOpenPlayer = useCallback(() => {
     if (currentBook) {
       usePlayerStore.setState({ isPlayerVisible: true });
     }
-  };
+  }, [currentBook]);
 
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 16;
 
@@ -211,14 +141,9 @@ function FloatingTabBarInner() {
           <SearchIcon />
         </TouchableOpacity>
 
-        {/* Player button (center) */}
+        {/* Player button (center) - CoverPlayButton with gesture scrubbing */}
         {shouldShowPlayerButton ? (
-          <PlayerButton
-            isPlaying={isPlaying}
-            coverUrl={coverUrl}
-            onPress={handlePlayerPress}
-            onLongPress={handlePlayerLongPress}
-          />
+          <CoverPlayButton onOpenPlayer={handleOpenPlayer} />
         ) : (
           <View style={{ width: PLAY_BUTTON_SIZE }} />
         )}
@@ -299,38 +224,6 @@ const styles = StyleSheet.create({
   iconButton: {
     width: 44,
     height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Player button styles
-  playButton: {
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  coverImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  blurOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  greenBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    borderWidth: 3,
-    borderColor: GREEN_BORDER,
-    backgroundColor: 'transparent',
-  },
-  iconContainer: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },

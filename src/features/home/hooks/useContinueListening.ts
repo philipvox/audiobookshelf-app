@@ -29,6 +29,8 @@ export function useContinueListening() {
       return response?.libraryItems || [];
     },
     staleTime: 1000 * 60 * 2,
+    // Keep showing previous data while refetching for instant display
+    placeholderData: (previousData) => previousData,
   });
 
   // The items ARE the library items - they come with progressLastUpdate at top level

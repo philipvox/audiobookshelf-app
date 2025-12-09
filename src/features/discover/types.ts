@@ -18,7 +18,8 @@ export type RowType =
   | 'short_books'
   | 'narrator_follow'
   | 'series_continue'
-  | 'browse_category';
+  | 'browse_category'
+  | 'recommended';
 
 // Content Row model
 export interface ContentRow {

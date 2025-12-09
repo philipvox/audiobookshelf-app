@@ -26,8 +26,16 @@ interface ScoredItem {
 }
 
 export function useRecommendations(allItems: LibraryItem[], limit: number = 20) {
-  const preferences = usePreferencesStore();
-  const { libraryIds } = useMyLibraryStore();
+  // Select individual properties to avoid infinite re-render loop from store object reference changes
+  const favoriteGenres = usePreferencesStore((s) => s.favoriteGenres);
+  const favoriteAuthors = usePreferencesStore((s) => s.favoriteAuthors);
+  const favoriteNarrators = usePreferencesStore((s) => s.favoriteNarrators);
+  const prefersSeries = usePreferencesStore((s) => s.prefersSeries);
+  const preferredLength = usePreferencesStore((s) => s.preferredLength);
+  const moods = usePreferencesStore((s) => s.moods);
+  const hasCompletedOnboarding = usePreferencesStore((s) => s.hasCompletedOnboarding);
+
+  const libraryIds = useMyLibraryStore((s) => s.libraryIds);
 
   // Load read history stats for weighted scoring
   const [historyStats, setHistoryStats] = useState<ReadHistoryStats | null>(null);
@@ -109,7 +117,7 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
 
       // Genre matching from preferences
       const matchingGenres = genres.filter(g =>
-        preferences.favoriteGenres.some(fg =>
+        favoriteGenres.some(fg =>
           g.toLowerCase().includes(fg.toLowerCase()) ||
           fg.toLowerCase().includes(g.toLowerCase())
         )
@@ -120,7 +128,7 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
       }
 
       // Author matching from preferences
-      if (preferences.favoriteAuthors.some(a =>
+      if (favoriteAuthors.some(a =>
         author.toLowerCase().includes(a.toLowerCase())
       ) && !reasons.some(r => r.includes(author))) {
         score += 25;
@@ -128,7 +136,7 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
       }
 
       // Narrator matching from preferences
-      if (preferences.favoriteNarrators.some(n =>
+      if (favoriteNarrators.some(n =>
         narrator.toLowerCase().includes(n.toLowerCase())
       ) && !reasons.some(r => r.includes(narrator))) {
         score += 20;
@@ -136,9 +144,9 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
       }
 
       // Series preference
-      if (preferences.prefersSeries !== null) {
+      if (prefersSeries !== null) {
         const isSeries = !!series;
-        if (preferences.prefersSeries === isSeries) {
+        if (prefersSeries === isSeries) {
           score += 10;
           if (isSeries) reasons.push('Part of a series');
         }
@@ -146,18 +154,18 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
 
       // Duration preference
       const hours = duration / 3600;
-      if (preferences.preferredLength !== 'any') {
-        if (preferences.preferredLength === 'short' && hours <= 8) {
+      if (preferredLength !== 'any') {
+        if (preferredLength === 'short' && hours <= 8) {
           score += 10;
-        } else if (preferences.preferredLength === 'medium' && hours > 8 && hours <= 20) {
+        } else if (preferredLength === 'medium' && hours > 8 && hours <= 20) {
           score += 10;
-        } else if (preferences.preferredLength === 'long' && hours > 20) {
+        } else if (preferredLength === 'long' && hours > 20) {
           score += 10;
         }
       }
 
       // Mood matching
-      preferences.moods.forEach(mood => {
+      moods.forEach(mood => {
         const moodGenres = MOOD_GENRE_MAP[mood] || [];
         if (genres.some(g => moodGenres.some(mg =>
           g.toLowerCase().includes(mg.toLowerCase())
@@ -180,7 +188,7 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-  }, [allItems, preferences, libraryIds, limit, historyStats]);
+  }, [allItems, favoriteGenres, favoriteAuthors, favoriteNarrators, prefersSeries, preferredLength, moods, libraryIds, limit, historyStats]);
 
   // Group recommendations by reason
   const groupedRecommendations = useMemo(() => {
@@ -213,7 +221,7 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
     recommendations: recommendations.map(r => r.item),
     scoredRecommendations: recommendations,
     groupedRecommendations,
-    hasPreferences: preferences.hasCompletedOnboarding,
+    hasPreferences: hasCompletedOnboarding,
   };
 }
 

@@ -63,6 +63,8 @@ export function useHomeData(): UseHomeDataReturn {
       });
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
+    // Keep showing previous data while refetching for instant display
+    placeholderData: (previousData) => previousData,
   });
 
   // Fetch playlists
@@ -80,6 +82,8 @@ export function useHomeData(): UseHomeDataReturn {
       }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
+    // Keep showing previous data while refetching for instant display
+    placeholderData: (previousData) => previousData,
   });
 
   // Pre-populate cache from in-progress items and player's current book
