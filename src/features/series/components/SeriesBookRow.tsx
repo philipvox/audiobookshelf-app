@@ -1,7 +1,12 @@
 /**
  * src/features/series/components/SeriesBookRow.tsx
  *
- * Enhanced book row for series with download status, progress, and highlighting.
+ * Enhanced book row for series based on UX research.
+ * Features:
+ * - Completed books dimmed (80% opacity)
+ * - Time remaining for in-progress books
+ * - Visual progress bars
+ * - Clear state indicators
  */
 
 import React, { useCallback } from 'react';
@@ -24,17 +29,28 @@ import { usePlayerStore } from '@/features/player';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 interface SeriesBookRowProps {
   book: LibraryItem;
-  sequenceNumber: number;
+  sequenceNumber: number | null;
   isNowPlaying: boolean;
   isUpNext: boolean;
   onPress: () => void;
 }
 
-function formatDuration(seconds: number): string {
+// Format duration as "Xh Ym"
+function formatDurationReadable(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+// Format duration as timestamp "X:XX:XX"
+function formatDurationTimestamp(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -91,12 +107,17 @@ export function SeriesBookRow({
 
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Unknown';
-  const duration = book.media?.duration || 0;
+  const duration = (book.media as any)?.duration || 0;
 
   // Get listening progress
   const userProgress = (book as any).userMediaProgress?.progress || 0;
   const isCompleted = userProgress >= 0.95;
+  const isInProgress = userProgress > 0 && userProgress < 0.95;
   const progressPercent = Math.round(userProgress * 100);
+
+  // Calculate time remaining
+  const timeRemaining = duration * (1 - userProgress);
+  const timeRemainingText = formatDurationReadable(timeRemaining);
 
   // Handle download press
   const handleDownloadPress = useCallback(() => {
@@ -122,6 +143,7 @@ export function SeriesBookRow({
         styles.container,
         isNowPlaying && styles.containerNowPlaying,
         isUpNext && !isNowPlaying && styles.containerUpNext,
+        isCompleted && !isNowPlaying && styles.containerCompleted,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -133,12 +155,18 @@ export function SeriesBookRow({
           style={[
             styles.cover,
             !isDownloaded && !isDownloading && styles.coverNotDownloaded,
+            isCompleted && !isNowPlaying && styles.coverCompleted,
           ]}
           contentFit="cover"
         />
 
         {/* Status indicator on cover */}
-        {isDownloaded && !isNowPlaying && (
+        {isCompleted && !isNowPlaying && (
+          <View style={[styles.statusBadge, styles.statusBadgeCompleted]}>
+            <Ionicons name="checkmark" size={scale(10)} color="#000" />
+          </View>
+        )}
+        {isDownloaded && !isCompleted && !isNowPlaying && (
           <View style={styles.statusBadge}>
             <Ionicons name="checkmark" size={scale(10)} color="#000" />
           </View>
@@ -153,8 +181,15 @@ export function SeriesBookRow({
       {/* Book info */}
       <View style={styles.info}>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, isNowPlaying && styles.titleNowPlaying]} numberOfLines={1}>
-            {sequenceNumber}. {title}
+          <Text
+            style={[
+              styles.title,
+              isNowPlaying && styles.titleNowPlaying,
+              isCompleted && !isNowPlaying && styles.titleCompleted,
+            ]}
+            numberOfLines={1}
+          >
+            {sequenceNumber !== null ? `${sequenceNumber}. ` : ''}{title}
           </Text>
           {isNowPlaying && (
             <View style={styles.nowPlayingBadge}>
@@ -168,21 +203,28 @@ export function SeriesBookRow({
           )}
         </View>
 
-        {/* Progress section */}
+        {/* Progress section - varies based on state */}
         {isCompleted ? (
+          // Completed state
           <View style={styles.statusRow}>
             <Ionicons name="checkmark-circle" size={scale(14)} color={ACCENT} />
-            <Text style={styles.completedText}>Completed</Text>
+            <Text style={styles.completedText}>Done</Text>
+            <Text style={styles.durationTextDim}>· {formatDurationReadable(duration)}</Text>
           </View>
-        ) : userProgress > 0 ? (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+        ) : isInProgress ? (
+          // In progress state - show progress bar and time remaining
+          <View style={styles.progressSection}>
+            <View style={styles.progressContainer}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+              </View>
+              <Text style={styles.progressText}>{progressPercent}%</Text>
             </View>
-            <Text style={styles.progressText}>{progressPercent}%</Text>
+            <Text style={styles.timeRemainingText}>{timeRemainingText} left</Text>
           </View>
         ) : (
-          <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+          // Not started state
+          <Text style={styles.durationText}>{formatDurationReadable(duration)}</Text>
         )}
       </View>
 
@@ -194,14 +236,17 @@ export function SeriesBookRow({
           </View>
         ) : isDownloaded ? (
           <TouchableOpacity
-            style={styles.playButton}
+            style={[
+              styles.playButton,
+              isNowPlaying && styles.playButtonActive,
+            ]}
             onPress={handlePlayPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons
               name={isNowPlaying && isPlaying ? 'pause' : 'play'}
               size={scale(18)}
-              color={isNowPlaying ? '#000' : 'rgba(255,255,255,0.7)'}
+              color={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'}
             />
           </TouchableOpacity>
         ) : (
@@ -228,9 +273,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(10),
   },
   containerNowPlaying: {
-    backgroundColor: 'rgba(193,244,12,0.12)',
+    backgroundColor: 'rgba(244,182,12,0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(193,244,12,0.3)',
+    borderColor: 'rgba(244,182,12,0.4)',
   },
   containerUpNext: {
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -238,17 +283,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     borderStyle: 'dashed',
   },
+  containerCompleted: {
+    opacity: 0.7,
+  },
   coverContainer: {
     position: 'relative',
   },
   cover: {
-    width: scale(48),
-    height: scale(48),
+    width: scale(52),
+    height: scale(52),
     borderRadius: scale(6),
     backgroundColor: '#262626',
   },
   coverNotDownloaded: {
     opacity: 0.6,
+  },
+  coverCompleted: {
+    opacity: 0.8,
   },
   statusBadge: {
     position: 'absolute',
@@ -263,6 +314,9 @@ const styles = StyleSheet.create({
   },
   statusBadgePlaying: {
     backgroundColor: '#fff',
+  },
+  statusBadgeCompleted: {
+    backgroundColor: 'rgba(244,182,12,0.8)',
   },
   info: {
     flex: 1,
@@ -283,6 +337,10 @@ const styles = StyleSheet.create({
   },
   titleNowPlaying: {
     fontWeight: '600',
+    color: '#fff',
+  },
+  titleCompleted: {
+    color: 'rgba(255,255,255,0.7)',
   },
   nowPlayingBadge: {
     backgroundColor: ACCENT,
@@ -318,6 +376,9 @@ const styles = StyleSheet.create({
     color: ACCENT,
     fontWeight: '500',
   },
+  progressSection: {
+    gap: scale(4),
+  },
   progressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,7 +386,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     flex: 1,
-    height: scale(3),
+    height: scale(4),
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: scale(2),
     overflow: 'hidden',
@@ -337,11 +398,20 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '600',
+    color: ACCENT,
     width: scale(32),
     textAlign: 'right',
   },
+  timeRemainingText: {
+    fontSize: scale(11),
+    color: 'rgba(255,255,255,0.5)',
+  },
   durationText: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.5)',
+  },
+  durationTextDim: {
     fontSize: scale(12),
     color: 'rgba(255,255,255,0.4)',
   },
@@ -349,22 +419,25 @@ const styles = StyleSheet.create({
     marginLeft: scale(8),
   },
   playButton: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
+    width: scale(38),
+    height: scale(38),
+    borderRadius: scale(19),
     backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  playButtonActive: {
+    backgroundColor: ACCENT,
+  },
   downloadButton: {
-    width: scale(36),
-    height: scale(36),
+    width: scale(38),
+    height: scale(38),
     justifyContent: 'center',
     alignItems: 'center',
   },
   downloadingIndicator: {
-    width: scale(36),
-    height: scale(36),
+    width: scale(38),
+    height: scale(38),
     justifyContent: 'center',
     alignItems: 'center',
   },

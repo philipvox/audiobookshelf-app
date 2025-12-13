@@ -34,7 +34,7 @@ const COLORS = {
   textPrimary: '#FFFFFF',
   textSecondary: 'rgba(255, 255, 255, 0.6)',
   textTertiary: 'rgba(255, 255, 255, 0.4)',
-  accent: '#CCFF00',
+  accent: '#F4B60C',
   coverOverlay: 'rgba(0,0,0,0.5)',
 };
 

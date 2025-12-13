@@ -22,11 +22,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 // Format bytes to human readable
 function formatBytes(bytes: number): string {
@@ -324,7 +325,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: scale(100),
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
   // Storage Overview
   storageOverview: {

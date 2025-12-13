@@ -15,7 +15,7 @@ import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { haptics } from '@/core/native/haptics';
 
 // Default colors
-const VIBRANT_GREEN = '#C8FF00';
+const VIBRANT_GREEN = '#F4B60C';
 const GRAY = '#808080';
 
 // Default heart icon

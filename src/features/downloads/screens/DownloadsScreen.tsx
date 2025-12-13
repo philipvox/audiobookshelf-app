@@ -24,13 +24,13 @@ import {
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { DownloadTask } from '@/core/services/downloadManager';
+import { DownloadTask, downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { DownloadItem } from '../components/DownloadItem';
 import { useCoverUrl } from '@/core/cache';
 import { formatBytes } from '@/shared/utils/format';
 import { LibraryItem } from '@/core/types';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -355,6 +355,23 @@ export function DownloadsScreen() {
     [deleteDownload]
   );
 
+  const handleCancelAll = useCallback(() => {
+    Alert.alert(
+      'Cancel All Downloads',
+      'This will cancel all active and pending downloads. Are you sure?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel All',
+          style: 'destructive',
+          onPress: async () => {
+            await downloadManager.cancelAllDownloads();
+          },
+        },
+      ]
+    );
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
@@ -400,7 +417,12 @@ export function DownloadsScreen() {
           {/* Active downloads section */}
           {activeDownloads.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Downloading</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Downloading</Text>
+                <TouchableOpacity style={styles.cancelAllButton} onPress={handleCancelAll}>
+                  <Text style={styles.cancelAllText}>Cancel All</Text>
+                </TouchableOpacity>
+              </View>
               {activeDownloads.map((download) => (
                 <DownloadItem
                   key={download.itemId}
@@ -505,17 +527,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: scale(100),
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
   section: {
     marginBottom: scale(24),
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
+    marginBottom: scale(12),
   },
   sectionTitle: {
     fontSize: scale(18),
     fontWeight: '600',
     color: COLORS.textPrimary,
-    paddingHorizontal: scale(20),
-    marginBottom: scale(12),
+  },
+  cancelAllButton: {
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(6),
+    backgroundColor: 'rgba(220, 38, 38, 0.2)',
+    borderRadius: scale(8),
+  },
+  cancelAllText: {
+    fontSize: scale(13),
+    fontWeight: '600',
+    color: COLORS.danger,
   },
   // Series section styles
   seriesSection: {

@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#CCFF00';
+const ACCENT = '#F4B60C';
 const BG_COLOR = '#1a1a1a';
 const LOADING_BAR_WIDTH = SCREEN_WIDTH * 0.5;
 

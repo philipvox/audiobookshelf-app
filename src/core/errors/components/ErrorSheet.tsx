@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   secondaryButtonText: {
-    color: '#c1f40c',
+    color: '#F4B60C',
     fontSize: 15,
     fontWeight: '500',
   },

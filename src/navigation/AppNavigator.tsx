@@ -17,6 +17,7 @@ import { LoginScreen } from '@/features/auth/screens/LoginScreen';
 import { MyLibraryScreen } from '@/features/library';
 import { SeriesListScreen } from '@/features/library/screens/SeriesListScreen';
 import { AuthorsListScreen } from '@/features/library/screens/AuthorsListScreen';
+import { NarratorsListScreen } from '@/features/library/screens/NarratorsListScreen';
 import { GenresListScreen } from '@/features/library/screens/GenresListScreen';
 import { GenreDetailScreen } from '@/features/library/screens/GenreDetailScreen';
 import { HomeScreen } from '@/features/home';
@@ -30,14 +31,14 @@ import { CollectionDetailScreen } from '@/features/collections';
 import { BookDetailScreen } from '@/features/book-detail';
 import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
-import { SimplePlayerScreen } from '@/features/player';
+import { CDPlayerScreen } from '@/features/player';
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { StatsScreen } from '@/features/stats';
 import { downloadManager } from '@/core/services/downloadManager';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { NavigationBar } from './components/NavigationBar';
-import { TopNav } from './components/TopNav';
+import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -123,6 +124,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="Search" component={SearchScreen} />
         <Stack.Screen name="SeriesList" component={SeriesListScreen} />
         <Stack.Screen name="AuthorsList" component={AuthorsListScreen} />
+        <Stack.Screen name="NarratorsList" component={NarratorsListScreen} />
         <Stack.Screen name="GenresList" component={GenresListScreen} />
         <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
         <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
@@ -143,8 +145,8 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
-      <TopNav />
-      <SimplePlayerScreen />
+      <CDPlayerScreen />
+      <GlobalMiniPlayer />
       <NavigationBar />
     </NavigationContainer>
   );

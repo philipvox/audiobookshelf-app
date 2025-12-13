@@ -25,13 +25,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCollectionDetails } from '../hooks/useCollectionDetails';
 import { BookCard } from '@/shared/components/BookCard';
 import { apiClient } from '@/core/api';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const BG_COLOR = '#1a1a1a';
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 type CollectionDetailRouteParams = {
   CollectionDetail: {
@@ -270,7 +270,7 @@ export function CollectionDetailScreen() {
           )}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderHeader}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={ACCENT} />

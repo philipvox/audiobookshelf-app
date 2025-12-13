@@ -21,6 +21,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
 import { COLORS, DIMENSIONS, LAYOUT } from '@/features/home/homeDesign';
+import { CompleteBadgeOverlay } from '@/features/completion';
 import { BookSummary, ContentRow } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -61,6 +62,8 @@ const DiscoverBookCard = React.memo(function DiscoverBookCard({ book, onPress }:
           cachePolicy="memory-disk"
           transition={200}
         />
+        {/* Complete badge */}
+        <CompleteBadgeOverlay bookId={book.id} size="small" />
         {/* Downloaded badge */}
         {book.isDownloaded && (
           <View style={styles.downloadedBadge}>

@@ -1,65 +1,177 @@
 /**
  * src/features/library/screens/AuthorsListScreen.tsx
  *
- * Browse all authors from the library.
- * Uses library cache for instant loading.
+ * Browse all authors with:
+ * - A-Z scrubber (iOS Contacts pattern)
+ * - "Your Authors" section (based on listening history)
+ * - Search functionality
+ * - Sort by name, book count, recently added
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
+  SectionList,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
   RefreshControl,
+  TextInput,
+  Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllAuthors } from '@/core/cache';
+import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
+import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#CCFF00';
-const PADDING = 16;
-const GAP = 10;
-const COLUMNS = 3;
-const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS;
-const AVATAR_SIZE = CARD_WIDTH * 0.6;
+const ACCENT = '#F4B60C';
 
-type SortType = 'name' | 'bookCount';
-type SortDirection = 'asc' | 'desc';
+type SortType = 'name' | 'bookCount' | 'recent';
+
+interface AuthorWithGenres {
+  id?: string;
+  name: string;
+  bookCount: number;
+  imagePath?: string;
+  description?: string;
+  topGenres: string[];
+  addedAt?: number;
+}
+
+// Avatar color generator based on name
+const AVATAR_COLORS = [
+  '#EF4444', '#F97316', '#F59E0B', '#84CC16', '#22C55E', '#14B8A6',
+  '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#EC4899',
+];
+
+function getAvatarColor(name: string): string {
+  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+}
 
 export function AuthorsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const sectionListRef = useRef<SectionList>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortType>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { refreshCache, isLoaded } = useLibraryCache();
+  const { refreshCache, isLoaded, filterItems } = useLibraryCache();
+  const { items: inProgressItems } = useContinueListening();
 
-  const allAuthors = useMemo(() => getAllAuthors(), [isLoaded]);
+  // Get all authors with genre info
+  const authorsWithGenres = useMemo((): AuthorWithGenres[] => {
+    const allAuthors = getAllAuthors();
+    return allAuthors.map(author => {
+      // Get top genres from this author's books
+      const genreCounts = new Map<string, number>();
+      author.books?.forEach(book => {
+        const genres = (book.media?.metadata as any)?.genres || [];
+        genres.forEach((genre: string) => {
+          genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+        });
+      });
+      const topGenres = [...genreCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([genre]) => genre);
 
+      return {
+        id: author.id,
+        name: author.name,
+        bookCount: author.bookCount,
+        imagePath: author.imagePath,
+        description: author.description,
+        topGenres,
+        addedAt: (author as any).addedAt,
+      };
+    });
+  }, [isLoaded]);
+
+  // Filter by search query
+  const filteredAuthors = useMemo(() => {
+    if (!searchQuery.trim()) return authorsWithGenres;
+    const lowerQuery = searchQuery.toLowerCase();
+    return authorsWithGenres.filter(a => a.name.toLowerCase().includes(lowerQuery));
+  }, [authorsWithGenres, searchQuery]);
+
+  // Sort authors
   const sortedAuthors = useMemo(() => {
-    const sorted = [...allAuthors];
-    const direction = sortDirection === 'asc' ? 1 : -1;
-
+    const sorted = [...filteredAuthors];
     switch (sortBy) {
       case 'name':
-        sorted.sort((a, b) => direction * a.name.localeCompare(b.name));
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
         break;
       case 'bookCount':
-        sorted.sort((a, b) => direction * (a.bookCount - b.bookCount));
+        sorted.sort((a, b) => b.bookCount - a.bookCount);
+        break;
+      case 'recent':
+        sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
         break;
     }
-
     return sorted;
-  }, [allAuthors, sortBy, sortDirection]);
+  }, [filteredAuthors, sortBy]);
+
+  // Get "Your Authors" - authors from books user is listening to
+  const yourAuthors = useMemo((): AuthorWithGenres[] => {
+    const listenedBookIds = new Set(inProgressItems.map(item => item.id));
+    if (listenedBookIds.size === 0) return [];
+
+    const authorCounts = new Map<string, number>();
+    authorsWithGenres.forEach(author => {
+      const listenedCount = author.bookCount > 0 ?
+        (filterItems({ authors: [author.name] }) || []).filter(b => listenedBookIds.has(b.id)).length : 0;
+      if (listenedCount > 0) {
+        authorCounts.set(author.name, listenedCount);
+      }
+    });
+
+    return authorsWithGenres
+      .filter(a => authorCounts.has(a.name))
+      .sort((a, b) => (authorCounts.get(b.name) || 0) - (authorCounts.get(a.name) || 0))
+      .slice(0, 8);
+  }, [authorsWithGenres, inProgressItems, filterItems]);
+
+  // Create sections for A-Z list
+  const sections = useMemo(() => {
+    if (sortBy !== 'name') {
+      // Non-alphabetical sort - single section
+      return [{ title: '', data: sortedAuthors }];
+    }
+
+    const sectionMap = new Map<string, AuthorWithGenres[]>();
+    sortedAuthors.forEach(author => {
+      const letter = author.name[0].toUpperCase();
+      const section = sectionMap.get(letter) || [];
+      section.push(author);
+      sectionMap.set(letter, section);
+    });
+
+    return [...sectionMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([title, data]) => ({ title, data }));
+  }, [sortedAuthors, sortBy]);
+
+  // Available letters for scrubber
+  const availableLetters = useMemo(() => {
+    if (sortBy !== 'name') return [];
+    return sections.filter(s => s.title).map(s => s.title);
+  }, [sections, sortBy]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -73,14 +185,17 @@ export function AuthorsListScreen() {
     navigation.navigate('AuthorDetail', { authorName });
   };
 
-  const handleSortPress = (type: SortType) => {
-    if (sortBy === type) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(type);
-      setSortDirection('asc');
+  const handleLetterPress = useCallback((letter: string) => {
+    const sectionIndex = sections.findIndex(s => s.title === letter);
+    if (sectionIndex >= 0 && sectionListRef.current) {
+      sectionListRef.current.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        animated: true,
+        viewPosition: 0,
+      });
     }
-  };
+  }, [sections]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -91,8 +206,66 @@ export function AuthorsListScreen() {
     }
   }, [refreshCache]);
 
-  const getInitials = (name: string) =>
-    name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const isSearching = searchQuery.trim().length > 0;
+
+  // Render author list item
+  const renderAuthorItem = ({ item }: { item: AuthorWithGenres }) => (
+    <TouchableOpacity
+      style={styles.authorRow}
+      onPress={() => handleAuthorPress(item.name)}
+      activeOpacity={0.7}
+    >
+      {/* Avatar */}
+      <View style={[styles.avatar, { backgroundColor: getAvatarColor(item.name) }]}>
+        {item.id && item.imagePath ? (
+          <Image
+            source={apiClient.getAuthorImageUrl(item.id)}
+            style={styles.avatarImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+        )}
+      </View>
+
+      {/* Info */}
+      <View style={styles.authorInfo}>
+        <Text style={styles.authorName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.bookCount}>{item.bookCount} books in library</Text>
+        {item.topGenres.length > 0 && (
+          <Text style={styles.genres} numberOfLines={1}>
+            {item.topGenres.join(', ')}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Render "Your Authors" card
+  const renderYourAuthorCard = (author: AuthorWithGenres) => (
+    <TouchableOpacity
+      key={author.name}
+      style={styles.yourAuthorCard}
+      onPress={() => handleAuthorPress(author.name)}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.yourAuthorAvatar, { backgroundColor: getAvatarColor(author.name) }]}>
+        {author.id && author.imagePath ? (
+          <Image
+            source={apiClient.getAuthorImageUrl(author.id)}
+            style={styles.yourAuthorAvatarImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <Text style={styles.yourAuthorAvatarText}>{getInitials(author.name)}</Text>
+        )}
+      </View>
+      <Text style={styles.yourAuthorName} numberOfLines={2}>{author.name}</Text>
+      <Text style={styles.yourAuthorBooks}>{author.bookCount} books</Text>
+    </TouchableOpacity>
+  );
 
   if (!isLoaded) {
     return (
@@ -114,70 +287,98 @@ export function AuthorsListScreen() {
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
           <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Authors</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.searchContainer}>
+          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search authors..."
+            placeholderTextColor="rgba(255,255,255,0.4)"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={styles.resultCount}>{sortedAuthors.length} authors</Text>
+        <Text style={styles.resultCount}>{filteredAuthors.length} authors</Text>
         <View style={styles.sortButtons}>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('name')}
-          >
-            <Icon
-              name={sortBy === 'name' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
-              size={14}
-              color={sortBy === 'name' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
-            />
-            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
-              {sortBy === 'name' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Name'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'bookCount' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('bookCount')}
-          >
-            <Icon
-              name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'library-outline'}
-              size={14}
-              color={sortBy === 'bookCount' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
-            />
-            <Text style={[styles.sortButtonText, sortBy === 'bookCount' && styles.sortButtonTextActive]}>Books</Text>
-          </TouchableOpacity>
+          {(['name', 'bookCount', 'recent'] as SortType[]).map(type => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.sortButton, sortBy === type && styles.sortButtonActive]}
+              onPress={() => setSortBy(type)}
+            >
+              <Text style={[styles.sortButtonText, sortBy === type && styles.sortButtonTextActive]}>
+                {type === 'name' ? 'A-Z' : type === 'bookCount' ? 'Books' : 'Recent'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={[styles.grid, { paddingBottom: 100 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={ACCENT}
-          />
-        }
-      >
-        {sortedAuthors.map((author) => (
-          <TouchableOpacity
-            key={author.name}
-            style={styles.authorCard}
-            onPress={() => handleAuthorPress(author.name)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitials(author.name)}</Text>
-            </View>
-            <Text style={styles.authorName} numberOfLines={2}>{author.name}</Text>
-            <Text style={styles.bookCount}>{author.bookCount} books</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Main Content */}
+      <View style={styles.content}>
+        <SectionList
+          ref={sectionListRef}
+          sections={sections}
+          keyExtractor={(item) => item.name}
+          stickySectionHeadersEnabled={sortBy === 'name'}
+          contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: sortBy === 'name' ? 28 : 0 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={ACCENT}
+            />
+          }
+          ListHeaderComponent={
+            !isSearching && yourAuthors.length > 0 ? (
+              <View style={styles.yourAuthorsSection}>
+                <Text style={styles.sectionTitle}>YOUR AUTHORS</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.yourAuthorsScroll}
+                >
+                  {yourAuthors.map(renderYourAuthorCard)}
+                </ScrollView>
+              </View>
+            ) : null
+          }
+          renderSectionHeader={({ section }) =>
+            section.title ? (
+              <View style={styles.letterHeader}>
+                <Text style={styles.letterText}>{section.title}</Text>
+              </View>
+            ) : null
+          }
+          renderItem={renderAuthorItem}
+          onScrollToIndexFailed={() => {}}
+          getItemLayout={(data, index) => ({
+            length: 72,
+            offset: 72 * index,
+            index,
+          })}
+        />
+
+        {/* A-Z Scrubber */}
+        <AlphabetScrubber
+          letters={availableLetters}
+          onLetterSelect={handleLetterPress}
+          visible={availableLetters.length > 1 && !isSearching}
+          style={{ bottom: SCREEN_BOTTOM_PADDING + insets.bottom + 60 }}
+        />
+      </View>
     </View>
   );
 }
@@ -190,20 +391,34 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingBottom: 12,
+    gap: 8,
   },
   headerButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD_COLOR,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
     color: '#FFFFFF',
+    fontSize: 15,
+    marginLeft: 8,
+    paddingVertical: 0,
+  },
+  clearButton: {
+    padding: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -218,7 +433,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: PADDING,
+    paddingHorizontal: 16,
     paddingBottom: 12,
   },
   resultCount: {
@@ -230,10 +445,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: CARD_COLOR,
@@ -252,40 +464,108 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: PADDING,
-    gap: GAP,
+  // Your Authors section
+  yourAuthorsSection: {
+    marginBottom: 16,
   },
-  authorCard: {
-    width: CARD_WIDTH,
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 1,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  yourAuthorsScroll: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  yourAuthorCard: {
+    width: 100,
     alignItems: 'center',
-    paddingVertical: 16,
   },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: ACCENT,
+  yourAuthorAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
+    overflow: 'hidden',
   },
-  avatarText: {
-    fontSize: AVATAR_SIZE * 0.35,
+  yourAuthorAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  yourAuthorAvatarText: {
+    fontSize: 28,
     fontWeight: '700',
     color: '#000',
   },
-  authorName: {
+  yourAuthorName: {
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  bookCount: {
+  yourAuthorBooks: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.5)',
   },
-});
+  // Letter header
+  letterHeader: {
+    backgroundColor: BG_COLOR,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  letterText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: ACCENT,
+  },
+  // Author row
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 72,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  authorInfo: {
+    flex: 1,
+  },
+  authorName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  bookCount: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 2,
+  },
+  genres: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  });

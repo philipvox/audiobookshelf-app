@@ -25,6 +25,7 @@ import { LibraryItem } from '@/core/types';
 // Time constants
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SHORT_BOOK_THRESHOLD = 5 * 60 * 60; // 5 hours in seconds
+const LONG_BOOK_THRESHOLD = 10 * 60 * 60; // 10 hours in seconds
 
 // Context-aware recommendation reasons
 function getTimeBasedReason(): string {
@@ -155,6 +156,126 @@ export function useDiscoverData(selectedGenre: string = 'All') {
     };
   }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
 
+  // Long Listens row (books over 10 hours, only unlistened)
+  const longBooksRow = useMemo((): ContentRow | null => {
+    if (!isLoaded || !libraryItems.length) return null;
+
+    let longItems = libraryItems
+      .filter(item => {
+        const duration = (item.media as any)?.duration || 0;
+        return duration >= LONG_BOOK_THRESHOLD;
+      })
+      .filter(item => !hasBeenListened(item)) // Exclude listened books
+      .sort((a, b) => {
+        const durationA = (a.media as any)?.duration || 0;
+        const durationB = (b.media as any)?.duration || 0;
+        return durationB - durationA; // Longest first
+      });
+
+    // Apply genre filter
+    longItems = filterByGenre(longItems, selectedGenre);
+
+    if (longItems.length === 0) return null;
+
+    const items = longItems.slice(0, 15).map(item => convertToBookSummary(item));
+
+    return {
+      id: 'long_listens',
+      type: 'first_listens',
+      title: 'Long Listens',
+      subtitle: 'Over 10 hours',
+      items,
+      totalCount: longItems.length,
+      priority: 9,
+      refreshPolicy: 'daily',
+    };
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
+
+  // Not Started row (books never played at all)
+  const notStartedRow = useMemo((): ContentRow | null => {
+    if (!isLoaded || !libraryItems.length) return null;
+
+    let unplayed = libraryItems
+      .filter(item => !hasBeenListened(item))
+      .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+    // Apply genre filter
+    unplayed = filterByGenre(unplayed, selectedGenre);
+
+    if (unplayed.length === 0) return null;
+
+    const items = unplayed.slice(0, 15).map(item => convertToBookSummary(item));
+
+    return {
+      id: 'not_started',
+      type: 'first_listens',
+      title: 'Not Started',
+      subtitle: 'Waiting for you',
+      items,
+      totalCount: unplayed.length,
+      priority: 5,
+      refreshPolicy: 'daily',
+    };
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, convertToBookSummary]);
+
+  // Continue Series row (next book in series user is reading)
+  const continueSeriesRow = useMemo((): ContentRow | null => {
+    if (!isLoaded || !libraryItems.length || !inProgressItems.length) return null;
+
+    // Get series from in-progress books
+    const seriesFromProgress = new Map<string, { seriesName: string; sequence: number; bookId: string }>();
+
+    for (const item of inProgressItems) {
+      const metadata = (item.media?.metadata as any) || {};
+      const series = metadata.series?.[0];
+      if (series?.name && series?.sequence) {
+        const existing = seriesFromProgress.get(series.name);
+        if (!existing || series.sequence > existing.sequence) {
+          seriesFromProgress.set(series.name, {
+            seriesName: series.name,
+            sequence: parseFloat(series.sequence) || 0,
+            bookId: item.id,
+          });
+        }
+      }
+    }
+
+    if (seriesFromProgress.size === 0) return null;
+
+    // Find next books in each series
+    const nextBooks: LibraryItem[] = [];
+
+    for (const [seriesName, progress] of seriesFromProgress) {
+      // Find next book in this series (sequence > progress.sequence)
+      const nextInSeries = libraryItems.find(item => {
+        const metadata = (item.media?.metadata as any) || {};
+        const series = metadata.series?.[0];
+        if (!series?.name || series.name !== seriesName) return false;
+        const seq = parseFloat(series.sequence) || 0;
+        return seq > progress.sequence && !hasBeenListened(item);
+      });
+
+      if (nextInSeries) {
+        nextBooks.push(nextInSeries);
+      }
+    }
+
+    if (nextBooks.length === 0) return null;
+
+    const items = nextBooks.slice(0, 15).map(item => convertToBookSummary(item));
+
+    return {
+      id: 'continue_series',
+      type: 'series_continue',
+      title: 'Continue Series',
+      subtitle: 'Your next chapters',
+      items,
+      totalCount: nextBooks.length,
+      priority: 4, // High priority, after recommendations
+      refreshPolicy: 'realtime',
+    };
+  }, [libraryItems, inProgressItems, isLoaded, convertToBookSummary]);
+
   // Personalized recommendations rows (based on reading history and preferences)
   const recommendationRows = useMemo((): ContentRow[] => {
     if (!isLoaded || !hasPreferences || groupedRecommendations.length === 0) return [];
@@ -209,7 +330,10 @@ export function useDiscoverData(selectedGenre: string = 'All') {
   const rows = useMemo((): ContentRow[] => {
     const staticRows = [
       newThisWeekRow,
+      continueSeriesRow,
+      notStartedRow,
       shortBooksRow,
+      longBooksRow,
     ].filter((row): row is ContentRow => row !== null);
 
     // Combine with recommendation rows (recommendations first)
@@ -217,7 +341,7 @@ export function useDiscoverData(selectedGenre: string = 'All') {
 
     // Sort by priority
     return allRows.sort((a, b) => a.priority - b.priority);
-  }, [newThisWeekRow, shortBooksRow, recommendationRows]);
+  }, [newThisWeekRow, continueSeriesRow, notStartedRow, shortBooksRow, longBooksRow, recommendationRows]);
 
   // Refresh handler
   const refresh = useCallback(async () => {

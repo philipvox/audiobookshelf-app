@@ -33,7 +33,7 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { SeriesProgressHeader } from '../components/SeriesProgressHeader';
 import { BatchActionButtons } from '../components/BatchActionButtons';
 import { SeriesBookRow } from '../components/SeriesBookRow';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 type SeriesDetailRouteParams = {
   SeriesDetail: { seriesName: string };
@@ -44,7 +44,7 @@ const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 const CARD_RADIUS = 5;
 
 // Stacked covers constants
@@ -54,25 +54,53 @@ const STACK_ROTATION = 6;
 
 type SortType = 'asc' | 'desc';
 
-// Get sequence from book metadata
-function getSequence(item: LibraryItem): number {
+// Get sequence from book metadata - returns null if unknown
+function getSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
+
+  // First check series array (preferred - has explicit sequence)
+  if (metadata.series?.length > 0) {
+    const primarySeries = metadata.series[0];
+    if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
+      const parsed = parseFloat(primarySeries.sequence);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  // Fallback: check seriesName for #N pattern
   const seriesName = metadata.seriesName || '';
   const match = seriesName.match(/#([\d.]+)/);
   if (match) {
     return parseFloat(match[1]);
   }
+
+  // Fallback: check title for "Book N" pattern
   const titleMatch = (metadata.title || '').match(/Book\s*(\d+)/i);
   if (titleMatch) {
     return parseInt(titleMatch[1], 10);
   }
-  return 999;
+
+  // No sequence found
+  return null;
 }
 
-// Stacked book covers component
-function StackedCovers({ bookIds }: { bookIds: string[] }) {
-  const stackBooks = bookIds.slice(0, Math.min(3, bookIds.length));
+// Get sequence for sorting (returns 999 for unknown to sort at end)
+function getSequenceForSort(item: LibraryItem): number {
+  return getSequence(item) ?? 999;
+}
+
+// Stacked book covers component - memoized to prevent flashing
+const StackedCovers = React.memo(function StackedCovers({ bookIds }: { bookIds: string[] }) {
+  const stackBooks = useMemo(() => bookIds.slice(0, Math.min(3, bookIds.length)), [bookIds]);
   const count = stackBooks.length;
+
+  // Memoize cover URLs to prevent re-fetching
+  const coverUrls = useMemo(() =>
+    stackBooks.map(id => apiClient.getItemCoverUrl(id)),
+    [stackBooks]
+  );
 
   if (count === 0) {
     return (
@@ -104,17 +132,17 @@ function StackedCovers({ bookIds }: { bookIds: string[] }) {
             ]}
           >
             <Image
-              source={apiClient.getItemCoverUrl(bookId)}
+              source={coverUrls[index]}
               style={stackStyles.cover}
               contentFit="cover"
-              transition={150}
+              cachePolicy="memory-disk"
             />
           </View>
         );
       })}
     </View>
   );
-}
+});
 
 const stackStyles = StyleSheet.create({
   container: {
@@ -243,8 +271,8 @@ export function SeriesDetailScreen() {
     if (!seriesInfo?.books) return [];
     const sorted = [...seriesInfo.books];
     sorted.sort((a, b) => {
-      const seqA = getSequence(a);
-      const seqB = getSequence(b);
+      const seqA = getSequenceForSort(a);
+      const seqB = getSequenceForSort(b);
       return sortOrder === 'asc' ? seqA - seqB : seqB - seqA;
     });
     return sorted;
@@ -275,6 +303,8 @@ export function SeriesDetailScreen() {
   const progressStats = useMemo(() => {
     let completed = 0;
     let inProgress = 0;
+    let inProgressBook: LibraryItem | null = null;
+    let inProgressPercent = 0;
 
     sortedBooks.forEach(book => {
       const progress = (book as any).userMediaProgress?.progress || 0;
@@ -282,10 +312,14 @@ export function SeriesDetailScreen() {
         completed++;
       } else if (progress > 0) {
         inProgress++;
+        if (!inProgressBook) {
+          inProgressBook = book;
+          inProgressPercent = Math.round(progress * 100);
+        }
       }
     });
 
-    return { completed, inProgress };
+    return { completed, inProgress, inProgressBook, inProgressPercent };
   }, [sortedBooks]);
 
   // Find next book to listen to
@@ -402,7 +436,7 @@ export function SeriesDetailScreen() {
   const firstBookCoverUrl = bookIds[0] ? apiClient.getItemCoverUrl(bookIds[0]) : null;
 
   // Calculate total duration
-  const totalDuration = sortedBooks.reduce((sum, book) => sum + (book.media?.duration || 0), 0);
+  const totalDuration = sortedBooks.reduce((sum, book) => sum + ((book.media as any)?.duration || 0), 0);
   const formatTotalDuration = () => {
     const hours = Math.floor(totalDuration / 3600);
     return `${hours}h`;
@@ -444,7 +478,11 @@ export function SeriesDetailScreen() {
         completedCount={progressStats.completed}
         inProgressCount={progressStats.inProgress}
         nextBook={nextBook}
+        currentBook={progressStats.inProgressBook}
         onNextBookPress={(book) => handleBookPress(book.id)}
+        onPlayPress={async (book) => {
+          await loadBook(book, { autoPlay: true, showPlayer: true });
+        }}
       />
 
       {/* Batch Action Buttons */}
@@ -454,6 +492,9 @@ export function SeriesDetailScreen() {
         nextBookDownloaded={nextBookDownloaded}
         allDownloaded={allDownloaded}
         seriesComplete={seriesComplete}
+        totalBooks={sortedBooks.length}
+        inProgressBook={progressStats.inProgressBook}
+        inProgressPercent={progressStats.inProgressPercent}
         onContinue={handleContinueSeries}
       />
 
@@ -548,7 +589,7 @@ export function SeriesDetailScreen() {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={showDownloadedOnly ? ListEmpty : null}
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

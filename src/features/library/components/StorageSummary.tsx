@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 interface StorageSummaryProps {
   usedBytes: number;

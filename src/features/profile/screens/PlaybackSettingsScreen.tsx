@@ -20,11 +20,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 // Playback speed options
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -339,7 +340,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: scale(100),
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
   section: {
     marginBottom: scale(24),

@@ -1,11 +1,13 @@
 /**
  * src/features/search/screens/SearchScreen.tsx
  *
- * Enhanced search screen with unified results:
- * - Books with download status indicators
- * - Top 3 series with stacked covers
- * - Top 2 authors
- * - Top 2 narrators
+ * Enhanced search screen based on NNGroup/Baymard UX research:
+ * - Simple text autocomplete (no thumbnails per research)
+ * - Darkened background when autocomplete active
+ * - Debounced search (300ms)
+ * - Typo tolerance with fuzzy matching
+ * - "Did you mean" suggestions for no results
+ * - Audiobook-specific metadata (narrator, duration, download status)
  */
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
@@ -19,6 +21,7 @@ import {
   ScrollView,
   Dimensions,
   Keyboard,
+  Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,18 +35,32 @@ import { Icon } from '@/shared/components/Icon';
 import { HeartButton, SeriesHeartButton } from '@/shared/components';
 import { BookCard } from '@/shared/components/BookCard';
 import { LibraryItem } from '@/core/types';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#CCFF00';
+const ACCENT = '#F4B60C';
 const GAP = 8;
 const CARD_RADIUS = 5;
 const PADDING = 16;
 
 const SEARCH_HISTORY_KEY = 'search_history_v1';
 const MAX_HISTORY = 10;
+const DEBOUNCE_MS = 300; // Debounce delay for search
+
+// Custom debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 // Series card constants - horizontal stack design
 const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
@@ -129,6 +146,14 @@ export function SearchScreen() {
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState<FilterTab>('all');
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Debounced query for search (300ms delay per research)
+  const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
+
+  // Show autocomplete when typing (but not for committed searches)
+  const [hasCommittedSearch, setHasCommittedSearch] = useState(false);
+  const showAutocomplete = query.length > 0 && isInputFocused && !hasCommittedSearch;
 
   // Previous searches
   const [previousSearches, setPreviousSearches] = useState<string[]>([]);
@@ -218,9 +243,9 @@ export function SearchScreen() {
     }
   };
 
-  // Build filter options
+  // Build filter options - use debounced query for full results
   const filters: FilterOptions = useMemo(() => ({
-    query: query.trim(),
+    query: debouncedQuery.trim(),
     genres: selectedGenres.length > 0 ? selectedGenres : undefined,
     authors: selectedAuthors.length > 0 ? selectedAuthors : undefined,
     series: selectedSeries.length > 0 ? selectedSeries : undefined,
@@ -228,47 +253,127 @@ export function SearchScreen() {
     maxDuration: durationFilter.max,
     sortBy,
     sortOrder,
-  }), [query, selectedGenres, selectedAuthors, selectedSeries, durationFilter, sortBy, sortOrder]);
+  }), [debouncedQuery, selectedGenres, selectedAuthors, selectedSeries, durationFilter, sortBy, sortOrder]);
 
-  // Check if we have any active search/filters
-  const hasActiveSearch = query.trim().length > 0 || selectedGenres.length > 0 ||
+  // Check if we have any active search/filters (use debounced for results)
+  const hasActiveSearch = debouncedQuery.trim().length > 0 || selectedGenres.length > 0 ||
     selectedAuthors.length > 0 || selectedSeries.length > 0 ||
     durationFilter.min !== undefined || durationFilter.max !== undefined;
 
-  // Filter book results - instant from cache!
+  // Filter book results with fuzzy matching
   const bookResults = useMemo(() => {
     if (!hasActiveSearch) return [];
-    const results = filterItems(filters);
-    console.log(`[Search] Query: "${filters.query}", isLoaded: ${isLoaded}, Results: ${results.length}`);
+
+    // Get base results from cache
+    let results = filterItems(filters);
+
+    // If query has results, use them; otherwise try fuzzy matching
+    if (results.length === 0 && debouncedQuery.trim()) {
+      // Try expanded abbreviations
+      const expanded = expandAbbreviations(debouncedQuery);
+      for (const term of expanded) {
+        if (term !== debouncedQuery) {
+          const expandedResults = filterItems({ ...filters, query: term });
+          if (expandedResults.length > 0) {
+            results = expandedResults;
+            break;
+          }
+        }
+      }
+    }
+
     return results.slice(0, 100);
-  }, [filterItems, filters, hasActiveSearch, isLoaded]);
+  }, [filterItems, filters, hasActiveSearch, debouncedQuery]);
 
-  // Filter authors matching query
+  // Filter authors matching query (with fuzzy matching)
   const authorResults = useMemo(() => {
-    if (!query.trim()) return [];
-    const lowerQuery = query.toLowerCase();
+    if (!debouncedQuery.trim()) return [];
     return allAuthors
-      .filter(a => a.name.toLowerCase().includes(lowerQuery))
+      .filter(a => fuzzyMatch(debouncedQuery, a.name, 0.6))
       .slice(0, 20);
-  }, [query, allAuthors]);
+  }, [debouncedQuery, allAuthors]);
 
-  // Filter narrators matching query
+  // Filter narrators matching query (with fuzzy matching)
   const narratorResults = useMemo(() => {
-    if (!query.trim()) return [];
-    const lowerQuery = query.toLowerCase();
+    if (!debouncedQuery.trim()) return [];
     return allNarrators
-      .filter(n => n.name.toLowerCase().includes(lowerQuery))
+      .filter(n => fuzzyMatch(debouncedQuery, n.name, 0.6))
       .slice(0, 20);
-  }, [query, allNarrators]);
+  }, [debouncedQuery, allNarrators]);
 
-  // Filter series matching query
+  // Filter series matching query (with fuzzy matching)
   const seriesResults = useMemo(() => {
-    if (!query.trim()) return [];
-    const lowerQuery = query.toLowerCase();
+    if (!debouncedQuery.trim()) return [];
     return allSeries
-      .filter(s => s.name.toLowerCase().includes(lowerQuery))
+      .filter(s => fuzzyMatch(debouncedQuery, s.name, 0.6))
       .slice(0, 20);
-  }, [query, allSeries]);
+  }, [debouncedQuery, allSeries]);
+
+  // ============================================================================
+  // AUTOCOMPLETE SUGGESTIONS (simple text, max 6 on mobile per research)
+  // ============================================================================
+
+  // Autocomplete uses instant query (not debounced) for responsiveness
+  const autocompleteSuggestions = useMemo(() => {
+    if (!query.trim() || query.length < 2) return { books: [], authors: [], series: [], narrators: [] };
+
+    const lowerQuery = query.toLowerCase();
+
+    // Books - simple text, max 2 (per research: 4-6 total suggestions)
+    const books = filterItems({ query: query.trim() })
+      .slice(0, 2)
+      .map(book => {
+        const metadata = book.media?.metadata as any;
+        const media = book.media as any;
+        const duration = media?.duration || 0;
+        const hours = Math.floor(duration / 3600);
+        const mins = Math.floor((duration % 3600) / 60);
+        const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        return {
+          id: book.id,
+          title: metadata?.title || 'Unknown',
+          author: metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown',
+          duration: durationStr,
+        };
+      });
+
+    // Authors - max 2
+    const authors = allAuthors
+      .filter(a => a.name.toLowerCase().includes(lowerQuery))
+      .slice(0, 2)
+      .map(a => ({ name: a.name, bookCount: a.bookCount }));
+
+    // Series - max 1
+    const series = allSeries
+      .filter(s => s.name.toLowerCase().includes(lowerQuery))
+      .slice(0, 1)
+      .map(s => ({ name: s.name, bookCount: s.bookCount }));
+
+    // Narrators - max 1
+    const narrators = allNarrators
+      .filter(n => n.name.toLowerCase().includes(lowerQuery))
+      .slice(0, 1)
+      .map(n => ({ name: n.name, bookCount: n.bookCount }));
+
+    return { books, authors, series, narrators };
+  }, [query, filterItems, allAuthors, allSeries, allNarrators]);
+
+  // "Did you mean" suggestions when no results
+  const spellingSuggestions = useMemo(() => {
+    if (!hasActiveSearch || bookResults.length > 0 || authorResults.length > 0) {
+      return [];
+    }
+
+    // Find similar author names
+    const authorNames = allAuthors.map(a => a.name);
+    const authorSuggestions = findSuggestions(debouncedQuery, authorNames, 2, 0.5);
+
+    // Find similar series names
+    const seriesNames = allSeries.map(s => s.name);
+    const seriesSuggestions = findSuggestions(debouncedQuery, seriesNames, 1, 0.5);
+
+    return [...authorSuggestions, ...seriesSuggestions].slice(0, 3);
+  }, [hasActiveSearch, bookResults, authorResults, debouncedQuery, allAuthors, allSeries]);
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
@@ -290,19 +395,77 @@ export function SearchScreen() {
     setSelectedAuthors([]);
     setSelectedSeries([]);
     setDurationFilter({});
+    setHasCommittedSearch(false);
     inputRef.current?.focus();
   };
 
   const handleSearch = () => {
     if (query.trim()) {
       saveSearch(query.trim());
+      setHasCommittedSearch(true);
       Keyboard.dismiss();
     }
   };
 
   const handlePreviousSearchPress = (search: string) => {
     setQuery(search);
+    setHasCommittedSearch(true);
     saveSearch(search);
+    Keyboard.dismiss();
+  };
+
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+    setHasCommittedSearch(false);
+  };
+
+  const handleInputBlur = () => {
+    // Small delay to allow taps on autocomplete items
+    setTimeout(() => setIsInputFocused(false), 150);
+  };
+
+  const dismissAutocomplete = () => {
+    setIsInputFocused(false);
+    setHasCommittedSearch(true);
+    Keyboard.dismiss();
+  };
+
+  // Handle autocomplete selection
+  const handleAutocompleteBook = (bookId: string) => {
+    setHasCommittedSearch(true);
+    Keyboard.dismiss();
+    navigation.navigate('BookDetail', { id: bookId });
+  };
+
+  const handleAutocompleteAuthor = (authorName: string) => {
+    setQuery(authorName);
+    setHasCommittedSearch(true);
+    saveSearch(authorName);
+    Keyboard.dismiss();
+    navigation.navigate('AuthorDetail', { authorName });
+  };
+
+  const handleAutocompleteSeries = (seriesName: string) => {
+    setQuery(seriesName);
+    setHasCommittedSearch(true);
+    saveSearch(seriesName);
+    Keyboard.dismiss();
+    navigation.navigate('SeriesDetail', { seriesName });
+  };
+
+  const handleAutocompleteNarrator = (narratorName: string) => {
+    setQuery(narratorName);
+    setHasCommittedSearch(true);
+    saveSearch(narratorName);
+    Keyboard.dismiss();
+    navigation.navigate('NarratorDetail', { narratorName });
+  };
+
+  // Handle "Did you mean" suggestion tap
+  const handleSpellingSuggestion = (text: string) => {
+    setQuery(text);
+    setHasCommittedSearch(false);
+    saveSearch(text);
   };
 
   const handleBookPress = useCallback((book: LibraryItem) => {
@@ -392,8 +555,13 @@ export function SearchScreen() {
             placeholder="Search books, authors, series..."
             placeholderTextColor="rgba(255,255,255,0.4)"
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(text) => {
+              setQuery(text);
+              setHasCommittedSearch(false);
+            }}
             onSubmitEditing={handleSearch}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
             autoFocus
             returnKeyType="search"
             autoCapitalize="none"
@@ -533,10 +701,110 @@ export function SearchScreen() {
         </View>
       )}
 
+      {/* Autocomplete Overlay (simple text per research - no thumbnails) */}
+      {showAutocomplete && (
+        <>
+          {/* Darkened background per Baymard research */}
+          <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} />
+
+          <View style={styles.autocompleteContainer}>
+            {/* Books */}
+            {autocompleteSuggestions.books.length > 0 && (
+              <View style={styles.autocompleteSectionContainer}>
+                <Text style={styles.autocompleteSection}>BOOKS</Text>
+                {autocompleteSuggestions.books.map((book) => (
+                  <TouchableOpacity
+                    key={book.id}
+                    style={styles.autocompleteItem}
+                    onPress={() => handleAutocompleteBook(book.id)}
+                  >
+                    <View style={styles.autocompleteItemContent}>
+                      <Text style={styles.autocompleteTitle} numberOfLines={1}>{book.title}</Text>
+                      <Text style={styles.autocompleteMeta}>{book.author} · {book.duration}</Text>
+                    </View>
+                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Authors */}
+            {autocompleteSuggestions.authors.length > 0 && (
+              <View style={styles.autocompleteSectionContainer}>
+                <Text style={styles.autocompleteSection}>AUTHORS</Text>
+                {autocompleteSuggestions.authors.map((author) => (
+                  <TouchableOpacity
+                    key={author.name}
+                    style={styles.autocompleteItem}
+                    onPress={() => handleAutocompleteAuthor(author.name)}
+                  >
+                    <View style={styles.autocompleteItemContent}>
+                      <Text style={styles.autocompleteTitle}>{author.name}</Text>
+                      <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
+                    </View>
+                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Series */}
+            {autocompleteSuggestions.series.length > 0 && (
+              <View style={styles.autocompleteSectionContainer}>
+                <Text style={styles.autocompleteSection}>SERIES</Text>
+                {autocompleteSuggestions.series.map((series) => (
+                  <TouchableOpacity
+                    key={series.name}
+                    style={styles.autocompleteItem}
+                    onPress={() => handleAutocompleteSeries(series.name)}
+                  >
+                    <View style={styles.autocompleteItemContent}>
+                      <Text style={styles.autocompleteTitle}>{series.name}</Text>
+                      <Text style={styles.autocompleteMeta}>{series.bookCount} books</Text>
+                    </View>
+                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Narrators */}
+            {autocompleteSuggestions.narrators.length > 0 && (
+              <View style={styles.autocompleteSectionContainer}>
+                <Text style={styles.autocompleteSection}>NARRATORS</Text>
+                {autocompleteSuggestions.narrators.map((narrator) => (
+                  <TouchableOpacity
+                    key={narrator.name}
+                    style={styles.autocompleteItem}
+                    onPress={() => handleAutocompleteNarrator(narrator.name)}
+                  >
+                    <View style={styles.autocompleteItemContent}>
+                      <Text style={styles.autocompleteTitle}>{narrator.name}</Text>
+                      <Text style={styles.autocompleteMeta}>{narrator.bookCount} books narrated</Text>
+                    </View>
+                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* No autocomplete results */}
+            {autocompleteSuggestions.books.length === 0 &&
+              autocompleteSuggestions.authors.length === 0 &&
+              autocompleteSuggestions.series.length === 0 &&
+              autocompleteSuggestions.narrators.length === 0 && (
+                <View style={styles.noAutocomplete}>
+                  <Text style={styles.noAutocompleteText}>Press search to find results</Text>
+                </View>
+              )}
+          </View>
+        </>
+      )}
+
       {/* Results */}
       <ScrollView
         style={styles.results}
-        contentContainerStyle={[styles.resultsContent, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.resultsContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -603,12 +871,66 @@ export function SearchScreen() {
           </View>
         )}
 
-        {/* No results */}
+        {/* No results - with "Did you mean" recovery (per NNGroup: never leave at dead end) */}
         {hasActiveSearch && !hasResults && (
-          <View style={styles.emptyState}>
-            <Icon name="book-outline" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
-            <Text style={styles.emptyTitle}>No results found</Text>
-            <Text style={styles.emptySubtitle}>Try adjusting your search or filters</Text>
+          <View style={styles.noResultsContainer}>
+            <View style={styles.noResultsHeader}>
+              <Icon name="search-outline" size={40} color="rgba(255,255,255,0.3)" set="ionicons" />
+              <Text style={styles.noResultsTitle}>No results for "{debouncedQuery}"</Text>
+            </View>
+
+            {/* Spelling suggestions */}
+            {spellingSuggestions.length > 0 && (
+              <View style={styles.spellingSuggestions}>
+                <Text style={styles.didYouMean}>Did you mean:</Text>
+                {spellingSuggestions.map((suggestion, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.suggestionItem}
+                    onPress={() => handleSpellingSuggestion(suggestion.text)}
+                  >
+                    <Text style={styles.suggestionText}>{suggestion.text}</Text>
+                    <Icon name="arrow-forward" size={16} color={ACCENT} set="ionicons" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Browse categories recovery */}
+            <View style={styles.browseRecovery}>
+              <Text style={styles.browseRecoveryTitle}>Or browse popular categories</Text>
+              <View style={styles.browseRecoveryGrid}>
+                <TouchableOpacity
+                  style={styles.browseRecoveryItem}
+                  onPress={() => navigation.navigate('GenresList')}
+                >
+                  <Icon name="albums-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Text style={styles.browseRecoveryText}>Genres</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.browseRecoveryItem}
+                  onPress={() => navigation.navigate('AuthorsList')}
+                >
+                  <Icon name="person-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Text style={styles.browseRecoveryText}>Authors</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.browseRecoveryItem}
+                  onPress={() => navigation.navigate('SeriesList')}
+                >
+                  <Icon name="library-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Text style={styles.browseRecoveryText}>Series</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Tips */}
+            <View style={styles.searchTips}>
+              <Text style={styles.searchTipsTitle}>Search tips:</Text>
+              <Text style={styles.searchTip}>• Check spelling of author/narrator names</Text>
+              <Text style={styles.searchTip}>• Try searching by series name</Text>
+              <Text style={styles.searchTip}>• Use fewer keywords</Text>
+            </View>
           </View>
         )}
 
@@ -1100,5 +1422,164 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
     marginTop: 2,
+  },
+
+  // ============================================================================
+  // AUTOCOMPLETE STYLES (per NNGroup/Baymard research)
+  // ============================================================================
+
+  autocompleteBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)', // Darkened background per research
+    zIndex: 10,
+  },
+  autocompleteContainer: {
+    position: 'absolute',
+    top: 110, // Below search bar
+    left: 0,
+    right: 0,
+    backgroundColor: CARD_COLOR,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 400,
+    zIndex: 20,
+    paddingVertical: 8,
+    // Shadow for visual depth
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  autocompleteSectionContainer: {
+    marginBottom: 4,
+  },
+  autocompleteSection: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  autocompleteItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  autocompleteItemContent: {
+    flex: 1,
+  },
+  autocompleteTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  autocompleteMeta: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  noAutocomplete: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  noAutocompleteText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 14,
+  },
+
+  // ============================================================================
+  // NO RESULTS RECOVERY STYLES (per NNGroup: never leave at dead end)
+  // ============================================================================
+
+  noResultsContainer: {
+    paddingHorizontal: PADDING,
+    paddingTop: 40,
+  },
+  noResultsHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  noResultsTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+
+  // Spelling suggestions
+  spellingSuggestions: {
+    backgroundColor: CARD_COLOR,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  didYouMean: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  suggestionText: {
+    color: ACCENT,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Browse recovery
+  browseRecovery: {
+    marginBottom: 24,
+  },
+  browseRecoveryTitle: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  browseRecoveryGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  browseRecoveryItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: CARD_COLOR,
+    borderRadius: 12,
+    paddingVertical: 16,
+    gap: 6,
+  },
+  browseRecoveryText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  // Search tips
+  searchTips: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  searchTipsTitle: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  searchTip: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    lineHeight: 20,
   },
 });

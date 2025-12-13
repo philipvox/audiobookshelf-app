@@ -31,10 +31,10 @@ interface ChapterProgressBarProps {
 }
 
 // Accent color
-const ACCENT_COLOR = '#C8FF00';
+const ACCENT_COLOR = '#F4B60C';
 const UNFILLED_COLOR = 'rgba(255,255,255,0.15)';
 const FILLED_COLOR = ACCENT_COLOR;
-const CURRENT_CHAPTER_BG = 'rgba(200,255,0,0.25)';
+const CURRENT_CHAPTER_BG = 'rgba(244,182,12,0.25)';
 
 /**
  * Calculate the fill percentage for a chapter based on current position.

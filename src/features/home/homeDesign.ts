@@ -22,7 +22,7 @@ export const COLORS = {
   cardOverlay: 'rgba(0, 0, 0, 0.2)',
 
   // Accent colors
-  playButton: '#C8FF00', // Lime green play button
+  playButton: '#F4B60C', // Golden yellow play button
   heart: '#34C759', // Green heart badge
   sleepTimerRed: '#F12802', // Red sleep timer indicator
 

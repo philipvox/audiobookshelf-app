@@ -27,13 +27,14 @@ import {
   useDiscoverData,
   HeroSection,
   QuickFilterChips,
+  BrowsePills,
   ContentRowCarousel,
   CategoryGrid,
   PopularSeriesSection,
   TopAuthorsSection,
   GENRE_CHIPS,
 } from '@/features/discover';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -101,7 +102,7 @@ export function BrowseScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + TOP_NAV_HEIGHT + 8, paddingBottom: 100 + insets.bottom },
+          { paddingTop: insets.top + TOP_NAV_HEIGHT + 8, paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -150,6 +151,11 @@ export function BrowseScreen() {
         {/* Hero Recommendation Content */}
         {!showSkeleton && showHeroBackground && (
           <HeroSection hero={hero} />
+        )}
+
+        {/* Browse Pills - Category Navigation */}
+        {!showSkeleton && selectedGenre === 'All' && (
+          <BrowsePills />
         )}
 
         {/* Content Rows */}
@@ -211,7 +217,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: scale(350),
+    height: scale(500), // Adjusted for larger square hero cover
   },
   scrollView: {
     flex: 1,

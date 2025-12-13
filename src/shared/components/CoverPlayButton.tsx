@@ -35,29 +35,30 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SCRUB_CONFIG = {
   DRAG_THRESHOLD: 8,        // pt - movement needed to enter scrub mode
-  MAX_DISPLACEMENT: 80,     // pt - maximum drag distance from center
-  DEAD_ZONE: 10,            // pt - no scrub in this zone
+  MAX_DISPLACEMENT: 140,    // pt - maximum drag distance from center (to pill edges)
+  DEAD_ZONE: 15,            // pt - no scrub in this zone
   LONG_PRESS_DURATION: 500, // ms - threshold for opening player
   HAPTIC_INTERVAL_MS: 30000,// ms of audio scrubbed between haptic ticks
 
   // Speed zones: displacement → seconds of audio per second of real time
+  // Spread across full 140pt range to reach pill edges
   SPEED_ZONES: [
-    { displacement: 10, speed: 0, label: 'dead' },
-    { displacement: 25, speed: 0.5, label: '0.5x' },
-    { displacement: 40, speed: 1, label: '1x' },
-    { displacement: 55, speed: 2, label: '2x' },
-    { displacement: 70, speed: 4, label: '4x' },
-    { displacement: 80, speed: 30, label: '30s' },
+    { displacement: 15, speed: 0, label: 'dead' },
+    { displacement: 45, speed: 0.5, label: '0.5x' },   // 0.5x realtime
+    { displacement: 75, speed: 2, label: '2x' },       // 2x realtime
+    { displacement: 105, speed: 30, label: '30s/s' },  // 30 seconds per second
+    { displacement: 125, speed: 120, label: '2m/s' },  // 2 minutes per second
+    { displacement: 140, speed: 300, label: '5m/s' },  // 5 minutes per second
   ],
 
   // Max playback rate for audible scrubbing
   MAX_AUDIBLE_RATE: 4,
 
   // Time-based ramp at max displacement
-  RAMP_THRESHOLD: 70,
+  RAMP_THRESHOLD: 125,
   RAMP_DELAY_MS: 2000,
   RAMP_DURATION_MS: 1000,
-  RAMP_MAX_SPEED: 300,
+  RAMP_MAX_SPEED: 600,  // 10 minutes per second at max ramp
 
   // Spring animation for snap back
   SPRING_CONFIG: {
@@ -171,18 +172,22 @@ interface CoverPlayButtonProps {
   size?: number;
   /** Called with scrub speed in degrees per second (negative = backward) */
   onScrubSpeedChange?: (speed: number) => void;
+  /** Called with scrub offset in seconds (negative = backward) during scrubbing */
+  onScrubOffsetChange?: (offset: number, isScrubbing: boolean) => void;
 }
 
 export function CoverPlayButton({
   onOpenPlayer,
   size = BUTTON_SIZE,
   onScrubSpeedChange,
+  onScrubOffsetChange,
 }: CoverPlayButtonProps) {
   const currentBook = usePlayerStore((s) => s.currentBook);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const position = usePlayerStore((s) => s.position);
   const duration = usePlayerStore((s) => s.duration);
   const chapters = usePlayerStore((s) => s.chapters);
+  const playbackRate = usePlayerStore((s) => s.playbackRate);
   const play = usePlayerStore((s) => s.play);
   const pause = usePlayerStore((s) => s.pause);
 
@@ -200,8 +205,6 @@ export function CoverPlayButton({
   // State
   const [tooltipText, setTooltipText] = useState('+00:00');
   const [scrubPosition, setScrubPosition] = useState(0);
-  const [showProgressBar, setShowProgressBar] = useState(false);
-  const [currentChapter, setCurrentChapter] = useState<{ title: string; start: number; end: number } | null>(null);
   const [speedLabel, setSpeedLabel] = useState('');
 
   // Refs
@@ -211,6 +214,9 @@ export function CoverPlayButton({
   const timeAtMaxRef = useRef(0);
   const currentSpeedZoneRef = useRef(0);
   const hasTriggeredRampHapticRef = useRef(false);
+  const isAudioPlayingRef = useRef(false);  // Track if audio is playing during scrub
+  const lastSeekTimeRef = useRef(0);  // Throttle seek calls
+  const lastSeekPositionRef = useRef(0);  // Track last seeked position
 
   const positionRef = useRef(position);
   useEffect(() => {
@@ -244,16 +250,20 @@ export function CoverPlayButton({
     currentScrubOffset.value = 0;
     setTooltipText('+00:00');
     setScrubPosition(positionRef.current);
-    setShowProgressBar(true);
     setSpeedLabel('');
     lastHapticPositionRef.current = positionRef.current;
     wasPlayingRef.current = isPlaying;
     timeAtMaxRef.current = 0;
     currentSpeedZoneRef.current = 0;
     hasTriggeredRampHapticRef.current = false;
+    lastSeekTimeRef.current = 0;
+    lastSeekPositionRef.current = positionRef.current;
 
-    const chapter = findChapterAtPosition(positionRef.current);
-    setCurrentChapter(chapter);
+    // Notify parent that scrubbing started
+    onScrubOffsetChange?.(0, true);
+
+    // Tell audio service we're scrubbing (enables optimizations)
+    audioService.setScrubbing(true);
 
     // Pause playback during scrub
     if (isPlaying) {
@@ -330,14 +340,44 @@ export function CoverPlayButton({
 
         currentScrubOffset.value = newPosition - scrubStartPosition.value;
 
-        setTooltipText(formatTimeOffset(newPosition - scrubStartPosition.value));
+        const offset = newPosition - scrubStartPosition.value;
+        setTooltipText(formatTimeOffset(offset));
         setScrubPosition(newPosition);
 
-        const chapter = findChapterAtPosition(newPosition);
-        setCurrentChapter(chapter);
+        // Notify parent of scrub offset
+        onScrubOffsetChange?.(offset, true);
 
-        // Seek to position (silent scrubbing - no audio during scrub)
-        audioService.seekTo(newPosition);
+        // Audio feedback during scrubbing - tape-style sound
+        // Rapid seeking while playing creates choppy tape FF/RW effect
+
+        if (speed !== 0) {
+          // Throttle audio seeks to every 16ms (60fps) for smooth performance
+          // Animation continues at full speed via onScrubSpeedChange
+          const now = Date.now();
+          const timeSinceLastSeek = now - lastSeekTimeRef.current;
+          const positionDelta = Math.abs(newPosition - lastSeekPositionRef.current);
+
+          // Seek if: 16ms passed AND position changed by at least 0.1s
+          // This reduces seek calls while maintaining responsiveness
+          if (timeSinceLastSeek >= 16 && positionDelta >= 0.1) {
+            lastSeekTimeRef.current = now;
+            lastSeekPositionRef.current = newPosition;
+
+            // Play at 2x for energetic tape sound
+            if (!isAudioPlayingRef.current) {
+              audioService.setPlaybackRate(2);
+              audioService.play();
+              isAudioPlayingRef.current = true;
+            }
+            audioService.seekTo(newPosition);
+          }
+        } else {
+          // Dead zone - pause audio
+          if (isAudioPlayingRef.current) {
+            audioService.pause();
+            isAudioPlayingRef.current = false;
+          }
+        }
 
         // Haptic tick every 30s
         const scrubbed = Math.abs(newPosition - lastHapticPositionRef.current);
@@ -351,8 +391,8 @@ export function CoverPlayButton({
           haptics.error();
         }
       }
-    }, 50); // 20fps for seeking
-  }, [isPlaying, pause, duration, findChapterAtPosition]);
+    }, 1); // Ultra-fast for aggressive tape sound effect
+  }, [isPlaying, pause, duration, findChapterAtPosition, onScrubOffsetChange]);
 
   const endScrub = useCallback(() => {
     if (scrubIntervalRef.current) {
@@ -360,8 +400,19 @@ export function CoverPlayButton({
       scrubIntervalRef.current = null;
     }
 
+    // Stop scrub audio and reset playback rate
+    if (isAudioPlayingRef.current) {
+      audioService.pause();
+      isAudioPlayingRef.current = false;
+    }
+    // Reset to user's preferred playback rate
+    audioService.setPlaybackRate(playbackRate);
+
     // Reset disc rotation speed
     onScrubSpeedChange?.(0);
+
+    // Notify parent that scrubbing ended
+    onScrubOffsetChange?.(0, false);
 
     const finalPosition = clamp(
       scrubStartPosition.value + currentScrubOffset.value,
@@ -369,17 +420,18 @@ export function CoverPlayButton({
       duration
     );
 
+    // Tell audio service scrubbing ended (triggers any pending track switch)
+    audioService.setScrubbing(false);
+
     audioService.seekTo(finalPosition);
     usePlayerStore.setState({ position: finalPosition });
-
-    setTimeout(() => setShowProgressBar(false), 200);
 
     if (wasPlayingRef.current) {
       play();
     }
 
     haptics.buttonPress();
-  }, [duration, play, onScrubSpeedChange]);
+  }, [duration, play, playbackRate, onScrubSpeedChange, onScrubOffsetChange]);
 
   const handlePlayPause = useCallback(async () => {
     haptics.playbackToggle();
@@ -502,78 +554,31 @@ export function CoverPlayButton({
     return null;
   }
 
-  const chapterProgressPercent = currentChapter
-    ? ((scrubPosition - currentChapter.start) / (currentChapter.end - currentChapter.start)) * 100
-    : 0;
-  const chapterDuration = currentChapter ? currentChapter.end - currentChapter.start : 0;
-  const positionInChapter = currentChapter ? scrubPosition - currentChapter.start : 0;
-
   return (
     <View style={styles.container}>
-      {/* Progress bar during scrub */}
-      {showProgressBar && (
-        <View style={styles.progressBarContainer}>
-          {currentChapter && (
-            <Text style={styles.chapterTitle} numberOfLines={1}>
-              {currentChapter.title}
-            </Text>
-          )}
-          {speedLabel && (
-            <View style={styles.speedBadge}>
-              <Text style={styles.speedBadgeText}>{speedLabel}/s</Text>
-            </View>
-          )}
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, chapterProgressPercent))}%` }]} />
-          </View>
-          <View style={styles.progressLabels}>
-            <Text style={styles.progressTime}>{formatTime(positionInChapter)}</Text>
-            <Text style={styles.progressTimeOffset}>{tooltipText}</Text>
-            <Text style={styles.progressTime}>{formatTime(chapterDuration)}</Text>
-          </View>
-          <Text style={styles.overallTime}>
-            {formatTime(scrubPosition)} / {formatTime(duration)}
-          </Text>
-        </View>
-      )}
-
-      {/* Direction icons */}
-      <Animated.View style={[styles.directionIcon, styles.rewindIcon, rewindIconStyle]}>
-        <RewindIcon size={16} />
-      </Animated.View>
-
-      <Animated.View style={[styles.directionIcon, styles.fastForwardIcon, fastForwardIconStyle]}>
-        <FastForwardIcon size={16} />
-      </Animated.View>
-
-      {/* Tooltip */}
-      {!showProgressBar && (
-        <Animated.View style={[styles.tooltip, tooltipStyle]}>
-          <Text style={styles.tooltipText}>{tooltipText}</Text>
-        </Animated.View>
-      )}
-
       {/* Main button */}
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.button, { width: size, height: size }, buttonAnimatedStyle]}>
+        <Animated.View style={[
+          styles.button,
+          { width: size, height: size, borderRadius: size / 2 },
+          buttonAnimatedStyle,
+        ]}>
           {coverUrl && (
             <Image
               source={coverUrl}
-              style={[styles.coverImage, { width: COVER_SIZE, height: COVER_SIZE }]}
+              style={[styles.coverImage, { width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }]}
               contentFit="cover"
               transition={200}
             />
           )}
 
-          <View style={styles.blurOverlay}>
-            <BlurView intensity={2} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={[styles.blurOverlay, { borderRadius: size / 2 }]}>
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
             <View style={styles.darkOverlay} />
           </View>
 
-          <View style={[styles.border, { width: size, height: size }]} />
-
           <View style={styles.iconOverlay}>
-            {isPlaying ? <PauseIcon size={20} /> : <PlayIcon size={20} />}
+            {isPlaying ? <PauseIcon size={size * 0.35} /> : <PlayIcon size={size * 0.35} />}
           </View>
         </Animated.View>
       </GestureDetector>
@@ -629,12 +634,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 24,
     height: 24,
-  },
-  rewindIcon: {
-    right: BUTTON_SIZE + 20,
-  },
-  fastForwardIcon: {
-    left: BUTTON_SIZE + 20,
   },
   tooltip: {
     position: 'absolute',

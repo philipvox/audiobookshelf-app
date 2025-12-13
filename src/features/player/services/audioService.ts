@@ -93,6 +93,12 @@ class AudioService {
   private mediaControlUpdateCounter = 0;
   private readonly MEDIA_CONTROL_UPDATE_INTERVAL = 8; // ~2 seconds at 250ms
 
+  // Scrubbing optimization: debounce track changes during rapid seeking
+  private isScrubbing = false;
+  private lastSeekTime = 0;
+  private pendingTrackSwitch: { trackIndex: number; positionInTrack: number } | null = null;
+  private trackSwitchTimeout: NodeJS.Timeout | null = null;
+
   constructor() {
     // Pre-warm on construction - don't await, let it run in background
     this.setupPromise = this.setup();
@@ -811,6 +817,7 @@ class AudioService {
   /**
    * Seek to a global position across all tracks
    * Finds the correct track and seeks within it
+   * Optimized for rapid scrubbing - debounces track switches
    */
   async seekToGlobal(globalPositionSec: number): Promise<void> {
     if (!this.player) return;
@@ -849,29 +856,99 @@ class AudioService {
       // Move to start of next track instead
       targetTrackIndex++;
       positionInTrack = 0;
-      log(`⏩ Global seek ${globalPositionSec.toFixed(1)}s → adjusted to track ${targetTrackIndex} start (was near end of previous)`);
-    } else {
-      log(`⏩ Global seek ${globalPositionSec.toFixed(1)}s → track ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
     }
 
     // If we need to change tracks
     if (targetTrackIndex !== this.currentTrackIndex) {
-      const wasPlaying = this.player.playing;
-      this.currentTrackIndex = targetTrackIndex;
-      const newTrack = this.tracks[targetTrackIndex];
+      // During scrubbing, debounce track switches to avoid rapid loading
+      if (this.isScrubbing) {
+        // Queue the track switch but don't execute immediately
+        this.pendingTrackSwitch = { trackIndex: targetTrackIndex, positionInTrack };
 
-      this.player.replace({ uri: newTrack.url });
+        // Clear existing timeout
+        if (this.trackSwitchTimeout) {
+          clearTimeout(this.trackSwitchTimeout);
+        }
 
-      // Wait a moment for the new track to load
-      await new Promise(resolve => setTimeout(resolve, 100));
+        // Execute track switch after scrubbing settles (50ms of no new seeks)
+        this.trackSwitchTimeout = setTimeout(() => {
+          if (this.pendingTrackSwitch) {
+            this.executeTrackSwitch(
+              this.pendingTrackSwitch.trackIndex,
+              this.pendingTrackSwitch.positionInTrack
+            );
+            this.pendingTrackSwitch = null;
+          }
+        }, 50);
+        return;
+      }
+
+      // Not scrubbing - execute track switch immediately
+      await this.executeTrackSwitch(targetTrackIndex, positionInTrack);
+    } else {
+      // Same track - seek directly (fast path)
+      this.player.seekTo(positionInTrack);
+    }
+  }
+
+  /**
+   * Execute a track switch - separated for debouncing during scrubbing
+   */
+  private async executeTrackSwitch(targetTrackIndex: number, positionInTrack: number): Promise<void> {
+    if (!this.player) return;
+
+    const wasPlaying = this.player.playing;
+    this.currentTrackIndex = targetTrackIndex;
+    const newTrack = this.tracks[targetTrackIndex];
+
+    log(`⏩ Track switch → ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
+
+    // Check if we have this track preloaded for instant switch
+    if (this.preloadedTrackIndex === targetTrackIndex && this.preloadPlayer) {
+      // Swap players for seamless transition
+      const temp = this.player;
+      this.player = this.preloadPlayer;
+      this.preloadPlayer = temp;
+      this.preloadedTrackIndex = -1;
 
       this.player.seekTo(positionInTrack);
-
       if (wasPlaying) {
         this.player.play();
       }
-    } else {
-      this.player.seekTo(positionInTrack);
+      return;
+    }
+
+    // Load the new track
+    this.player.replace({ uri: newTrack.url });
+
+    // Minimal wait - just enough for player to initialize
+    // Don't block - seek and play immediately
+    this.player.seekTo(positionInTrack);
+
+    if (wasPlaying) {
+      this.player.play();
+    }
+  }
+
+  /**
+   * Mark start of scrubbing session - enables optimizations
+   */
+  setScrubbing(scrubbing: boolean): void {
+    this.isScrubbing = scrubbing;
+
+    if (!scrubbing) {
+      // Scrubbing ended - execute any pending track switch immediately
+      if (this.trackSwitchTimeout) {
+        clearTimeout(this.trackSwitchTimeout);
+        this.trackSwitchTimeout = null;
+      }
+      if (this.pendingTrackSwitch) {
+        this.executeTrackSwitch(
+          this.pendingTrackSwitch.trackIndex,
+          this.pendingTrackSwitch.positionInTrack
+        );
+        this.pendingTrackSwitch = null;
+      }
     }
   }
 

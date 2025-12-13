@@ -557,9 +557,9 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
             >
               <Svg width={s(24)} height={s(24)} viewBox="0 0 24 24">
                 {isPlaying ? (
-                  <Path d="M6 4h4v16H6zm8 0h4v16h-4z" fill="#C8FF00" />
+                  <Path d="M6 4h4v16H6zm8 0h4v16h-4z" fill="#F4B60C" />
                 ) : (
-                  <Path d="M8 5v14l11-7z" fill="#C8FF00" />
+                  <Path d="M8 5v14l11-7z" fill="#F4B60C" />
                 )}
               </Svg>
             </Pressable>

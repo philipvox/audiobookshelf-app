@@ -30,10 +30,10 @@ export const COLORS = {
   cardBackground: 'rgba(255, 255, 255, 0.08)',
   cardBackgroundHover: 'rgba(255, 255, 255, 0.12)',
 
-  // Accent (lime green from design)
-  accent: '#CCFF00',
-  accentDark: '#99CC00',
-  accentDim: 'rgba(204, 255, 0, 0.3)',
+  // Accent (golden yellow from design)
+  accent: '#F4B60C',
+  accentDark: '#D9A00A',
+  accentDim: 'rgba(244, 182, 12, 0.3)',
 
   // Heart/Favorite
   heartFill: '#4ADE80',

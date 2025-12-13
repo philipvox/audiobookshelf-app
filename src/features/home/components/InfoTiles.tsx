@@ -275,8 +275,8 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   seekDeltaText: {
-    color: '#C8FF00', // Lime green like PlayerScreen
-    textShadowColor: 'rgba(200, 255, 0, 1)',
+    color: '#F4B60C', // Golden yellow like PlayerScreen
+    textShadowColor: 'rgba(244, 182, 12, 1)',
   },
   bottomRow: {
     flexDirection: 'row',

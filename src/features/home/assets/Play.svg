@@ -1,5 +1,5 @@
 <svg width="78" height="81" viewBox="0 0 78 81" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M38.7003 43.493C38.7003 40.3412 42.1759 38.4276 44.8392 40.113L59.7278 49.5346C62.2092 51.1049 62.2092 54.7245 59.7278 56.2948L44.8392 65.7164C42.1759 67.4018 38.7003 65.4882 38.7003 62.3364V43.493Z" fill="#C8FF00"/>
+<path d="M38.7003 43.493C38.7003 40.3412 42.1759 38.4276 44.8392 40.113L59.7278 49.5346C62.2092 51.1049 62.2092 54.7245 59.7278 56.2948L44.8392 65.7164C42.1759 67.4018 38.7003 65.4882 38.7003 62.3364V43.493Z" fill="#F4B60C"/>
 <foreignObject x="19.6919" y="19.6919" width="62.7377" height="66.0338"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(2.5px);clip-path:url(#bgblur_0_224_128_clip_path);height:100%;width:100%"></div></foreignObject><g data-figma-bg-blur-radius="5">
 <path d="M24.6919 29.9047C24.6919 27.0257 27.0257 24.6919 29.9047 24.6919H72.2168C75.0958 24.6919 77.4296 27.0257 77.4296 29.9047V75.513C77.4296 78.3919 75.0958 80.7257 72.2168 80.7257H29.9047C27.0257 80.7257 24.6919 78.3919 24.6919 75.513V29.9047Z" fill="black" fill-opacity="0.2"/>
 <path d="M24.6919 29.9047C24.6919 27.0257 27.0257 24.6919 29.9047 24.6919H72.2168C75.0958 24.6919 77.4296 27.0257 77.4296 29.9047V75.513C77.4296 78.3919 75.0958 80.7257 72.2168 80.7257H29.9047C27.0257 80.7257 24.6919 78.3919 24.6919 75.513V29.9047Z" fill="white" fill-opacity="0.04"/>
@@ -27,7 +27,7 @@
 </filter>
 <linearGradient id="paint0_linear_224_128" x1="51.0607" y1="24.6919" x2="51.0607" y2="80.7257" gradientUnits="userSpaceOnUse">
 <stop stop-opacity="0"/>
-<stop offset="0.673077" stop-color="#C8FF00"/>
+<stop offset="0.673077" stop-color="#F4B60C"/>
 </linearGradient>
 <radialGradient id="paint1_radial_224_128" cx="0" cy="0" r="1" gradientTransform="matrix(-58.8778 15.9173 -7.64442 -28.1137 77.3502 80.9192)" gradientUnits="userSpaceOnUse">
 <stop stop-color="white"/>

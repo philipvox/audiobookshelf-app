@@ -25,7 +25,7 @@ const COLORS = {
   background: '#1A1A2E',
   cardGradientStart: '#16213E',
   cardGradientEnd: '#0F3460',
-  accent: '#CCFF00',
+  accent: '#F4B60C',
   text: '#FFFFFF',
   textSecondary: '#B8B8D1',
 };

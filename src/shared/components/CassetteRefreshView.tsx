@@ -28,7 +28,7 @@ import { CassetteRefreshControl } from './CassetteRefreshControl';
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
 // Accent color
-const ACCENT_COLOR = '#CCFF00';
+const ACCENT_COLOR = '#F4B60C';
 
 interface CassetteRefreshViewProps extends Omit<ScrollViewProps, 'refreshControl'> {
   children: ReactNode;

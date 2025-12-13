@@ -5,17 +5,38 @@
  * Detects shake gestures for extending sleep timer.
  */
 
-import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
 import * as Haptics from 'expo-haptics';
+
+// Lazy import to avoid crashes in simulator
+let Accelerometer: typeof import('expo-sensors').Accelerometer | null = null;
+let AccelerometerLoaded = false;
+
+async function loadAccelerometer() {
+  if (AccelerometerLoaded) return Accelerometer;
+
+  try {
+    // Only import Accelerometer to avoid loading other sensors (like Pedometer)
+    // that may not be available in the simulator
+    const { Accelerometer: AccelModule } = await import('expo-sensors/build/Accelerometer');
+    Accelerometer = AccelModule;
+    AccelerometerLoaded = true;
+    return Accelerometer;
+  } catch (error) {
+    console.warn('[ShakeDetector] expo-sensors Accelerometer not available:', error);
+    AccelerometerLoaded = true; // Mark as loaded to prevent retries
+    return null;
+  }
+}
 
 // Shake detection thresholds
 const SHAKE_THRESHOLD = 2.5;      // Acceleration magnitude threshold
 const SHAKE_COOLDOWN_MS = 1500;   // Minimum time between shake detections
 
 type ShakeCallback = () => void;
+type AccelerometerMeasurement = { x: number; y: number; z: number };
 
 class ShakeDetector {
-  private subscription: ReturnType<typeof Accelerometer.addListener> | null = null;
+  private subscription: { remove: () => void } | null = null;
   private lastShakeTime: number = 0;
   private callback: ShakeCallback | null = null;
   private isActive: boolean = false;
@@ -36,22 +57,30 @@ class ShakeDetector {
     this.lastShakeTime = 0;
 
     try {
-      // Check if accelerometer is available
-      const isAvailable = await Accelerometer.isAvailableAsync();
+      // Load accelerometer module
+      const accel = await loadAccelerometer();
+      if (!accel) {
+        console.warn('[ShakeDetector] Accelerometer module not available (simulator?)');
+        this.isActive = false;
+        return;
+      }
+
+      // Check if accelerometer hardware is available
+      const isAvailable = await accel.isAvailableAsync();
       if (!isAvailable) {
-        console.warn('[ShakeDetector] Accelerometer not available');
+        console.warn('[ShakeDetector] Accelerometer hardware not available');
         this.isActive = false;
         return;
       }
 
       // Set update interval (~60Hz for responsive detection)
-      Accelerometer.setUpdateInterval(16);
+      accel.setUpdateInterval(16);
 
       // Subscribe to accelerometer updates
-      this.subscription = Accelerometer.addListener(this.handleAccelerometerData);
+      this.subscription = accel.addListener(this.handleAccelerometerData);
       console.log('[ShakeDetector] Started listening for shakes');
     } catch (error) {
-      console.error('[ShakeDetector] Failed to start:', error);
+      console.warn('[ShakeDetector] Failed to start (likely simulator):', error);
       this.isActive = false;
     }
   }

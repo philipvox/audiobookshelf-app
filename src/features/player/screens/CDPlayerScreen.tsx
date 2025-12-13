@@ -39,6 +39,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useNavigation } from '@react-navigation/native';
 
 import { usePlayerStore, useCurrentChapterIndex, useBookProgress, useSleepTimerState } from '../stores/playerStore';
+import { SleepTimerSheet, SpeedSheet } from '../sheets';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useCoverUrl } from '@/core/cache';
 import { useIsOfflineAvailable } from '@/core/hooks/useDownloads';
@@ -57,7 +58,7 @@ const GRAY_RING_COLOR = '#6B6B6B';
 // TYPES
 // =============================================================================
 
-type SheetType = 'none' | 'speed' | 'sleep' | 'chapters' | 'settings';
+type SheetType = 'none' | 'chapters' | 'settings';
 type ProgressMode = 'chapter' | 'book';
 
 // =============================================================================
@@ -65,15 +66,6 @@ type ProgressMode = 'chapter' | 'book';
 // =============================================================================
 
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2];
-const SLEEP_OPTIONS = [
-  { label: 'Off', value: 0 },
-  { label: '15 min', value: 15 },
-  { label: '30 min', value: 30 },
-  { label: '45 min', value: 45 },
-  { label: '1 hour', value: 60 },
-  { label: '2 hours', value: 120 },
-  { label: 'End of chapter', value: -1 }, // Special value for end of chapter
-];
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -90,6 +82,14 @@ const formatTime = (seconds: number): string => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
+const formatScrubOffset = (seconds: number): string => {
+  const sign = seconds >= 0 ? '+' : '-';
+  const absSeconds = Math.abs(seconds);
+  const m = Math.floor(absSeconds / 60);
+  const s = Math.floor(absSeconds % 60);
+  return `${sign}${m}:${s.toString().padStart(2, '0')}`;
+};
+
 // =============================================================================
 // SVG Icons
 // =============================================================================
@@ -99,6 +99,46 @@ const MoonIcon = () => (
     <Path
       d="M13 7.08559C12.8861 8.31757 12.4238 9.49165 11.667 10.4704C10.9102 11.4492 9.89037 12.1923 8.72672 12.6126C7.56307 13.0329 6.30378 13.1131 5.09621 12.8439C3.88863 12.5746 2.78271 11.967 1.90785 11.0921C1.033 10.2173 0.425392 9.11137 0.156131 7.90379C-0.11313 6.69622 -0.0329082 5.43693 0.38741 4.27328C0.807727 3.10963 1.55076 2.08975 2.52955 1.33298C3.50835 0.576212 4.68243 0.113851 5.91441 0C5.19313 0.975819 4.84604 2.17811 4.93628 3.38821C5.02652 4.59831 5.54809 5.73582 6.40614 6.59386C7.26418 7.45191 8.40169 7.97348 9.61179 8.06372C10.8219 8.15396 12.0242 7.80687 13 7.08559Z"
       fill="white"
+    />
+  </Svg>
+);
+
+// Double-chevron rewind icon (<<)
+const RewindIcon = () => (
+  <Svg width={scale(22)} height={scale(15)} viewBox="0 0 22 15" fill="none">
+    <Path
+      d="M9.65391 13.3207C9.65391 13.8212 9.08125 14.1058 8.68224 13.8036L0.391342 7.52258C0.0713467 7.28016 0.0713462 6.79919 0.391341 6.55677L8.68223 0.275788C9.08125 -0.0264932 9.65391 0.258109 9.65391 0.758693V13.3207Z"
+      fill="white"
+    />
+    <Path
+      d="M21.7539 13.3207C21.7539 13.8212 21.1812 14.1058 20.7822 13.8036L12.4913 7.52258C12.1713 7.28016 12.1713 6.79919 12.4913 6.55677L20.7822 0.275788C21.1812 -0.0264932 21.7539 0.258109 21.7539 0.758693V13.3207Z"
+      fill="white"
+    />
+  </Svg>
+);
+
+// Double-chevron fast-forward icon (>>)
+const FastForwardIcon = () => (
+  <Svg width={scale(22)} height={scale(15)} viewBox="0 0 22 15" fill="none">
+    <Path
+      d="M12.2514 13.3207C12.2514 13.8212 12.824 14.1058 13.223 13.8036L21.5139 7.52258C21.8339 7.28016 21.8339 6.79919 21.5139 6.55677L13.223 0.275788C12.824 -0.0264932 12.2514 0.258109 12.2514 0.758693V13.3207Z"
+      fill="white"
+    />
+    <Path
+      d="M0.151367 13.3207C0.151367 13.8212 0.724027 14.1058 1.12304 13.8036L9.41393 7.52258C9.73393 7.28016 9.73393 6.79919 9.41393 6.55677L1.12304 0.275788C0.724028 -0.0264932 0.151367 0.258109 0.151367 0.758693V13.3207Z"
+      fill="white"
+    />
+  </Svg>
+);
+
+const DownArrowIcon = () => (
+  <Svg width={scale(24)} height={scale(14)} viewBox="0 0 24 14" fill="none">
+    <Path
+      d="M2 2L12 12L22 2"
+      stroke="rgba(255,255,255,0.4)"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </Svg>
 );
@@ -239,7 +279,7 @@ interface ProgressBarProps {
 }
 
 // Pre-compute values outside worklet
-const THUMB_TRANSLATE_X = -scale(10);
+const THUMB_TRANSLATE_X = -scale(8);
 
 const CDProgressBar: React.FC<ProgressBarProps> = ({ progress, onSeek, chapterMarkers = [] }) => {
   const thumbPosition = useSharedValue(progress);
@@ -293,37 +333,30 @@ const CDProgressBar: React.FC<ProgressBarProps> = ({ progress, onSeek, chapterMa
   });
 
   return (
-    <View style={styles.progressContainer}>
-      {/* Track background */}
-      <View style={styles.progressTrack}>
-        <View style={styles.progressBorder} />
-      </View>
+    <GestureDetector gesture={panGesture}>
+      <View style={styles.progressContainer}>
+        {/* Track background with fill inside */}
+        <View style={styles.progressTrack}>
+          <View style={styles.progressBorder} />
+          {/* Fill */}
+          <ReanimatedAnimated.View style={[styles.progressFill, fillStyle]} />
+        </View>
 
-      {/* Chapter markers */}
-      {chapterMarkers.map((marker, i) => (
-        <View
-          key={i}
-          style={[
-            styles.chapterMarker,
-            { left: `${marker}%` },
-          ]}
-        />
-      ))}
+        {/* Chapter markers */}
+        {chapterMarkers.map((marker, i) => (
+          <View
+            key={i}
+            style={[
+              styles.chapterMarker,
+              { left: `${marker}%` },
+            ]}
+          />
+        ))}
 
-      {/* Fill */}
-      <ReanimatedAnimated.View style={[styles.progressFill, fillStyle]} />
-
-      {/* Top shadow */}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.5)', 'transparent']}
-        style={styles.progressShadow}
-      />
-
-      {/* Thumb */}
-      <GestureDetector gesture={panGesture}>
+        {/* Thumb */}
         <ReanimatedAnimated.View style={[styles.progressThumb, thumbStyle]} />
-      </GestureDetector>
-    </View>
+      </View>
+    </GestureDetector>
   );
 };
 
@@ -390,11 +423,15 @@ export function CDPlayerScreen() {
   // Local state
   const [activeSheet, setActiveSheet] = useState<SheetType>('none');
   const [progressMode, setProgressMode] = useState<ProgressMode>('chapter');
+  const [scrubOffset, setScrubOffset] = useState<number | null>(null);
+  const [showSleepSheet, setShowSleepSheet] = useState(false);
+  const [showSpeedSheet, setShowSpeedSheet] = useState(false);
 
   // Book metadata
   const metadata = currentBook?.media?.metadata as any;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
+  const description = metadata?.description || '';
   const currentChapter = chapters[chapterIndex];
 
   // Calculate disc center Y position dynamically based on insets
@@ -425,7 +462,7 @@ export function CDPlayerScreen() {
 
   // Format sleep timer display
   const formatSleepTimer = (seconds: number | null): string => {
-    if (!seconds || seconds <= 0) return '15m';
+    if (!seconds || seconds <= 0) return 'Off';
     const mins = Math.ceil(seconds / 60);
     if (mins >= 60) {
       const hrs = Math.floor(mins / 60);
@@ -435,6 +472,7 @@ export function CDPlayerScreen() {
     return `${mins}m`;
   };
 
+  
   // Pan responder for swipe down
   const panResponder = useRef(
     PanResponder.create({
@@ -493,7 +531,7 @@ export function CDPlayerScreen() {
     handleClose();
     // Small delay to let the close animation finish
     setTimeout(() => {
-      navigation.navigate('BookDetail', { bookId: currentBook.id });
+      navigation.navigate('BookDetail', { id: currentBook.id });
     }, 250);
   }, [currentBook, handleClose, navigation]);
 
@@ -509,31 +547,7 @@ export function CDPlayerScreen() {
     seekTo?.(newPosition);
   }, [progressMode, chapterStart, chapterDuration, duration, seekTo]);
 
-  // Speed - apply immediately
-  const handleSpeedSelect = useCallback((speed: number) => {
-    haptics.selection();
-    setPlaybackRate?.(speed);
-    setActiveSheet('none');
-  }, [setPlaybackRate]);
-
-  // Sleep - apply immediately
-  const handleSleepSelect = useCallback((minutes: number) => {
-    haptics.selection();
-    if (minutes === 0) {
-      clearSleepTimer?.();
-    } else if (minutes === -1) {
-      // End of chapter: calculate remaining time in current chapter
-      const chapterRemaining = Math.max(0, chapterEnd - position);
-      const chapterRemainingMins = Math.ceil(chapterRemaining / 60);
-      if (chapterRemainingMins > 0) {
-        setSleepTimer?.(chapterRemainingMins);
-      }
-    } else {
-      setSleepTimer?.(minutes);
-    }
-    setActiveSheet('none');
-  }, [setSleepTimer, clearSleepTimer, chapterEnd, position]);
-
+  
   // Chapter select
   const handleChapterSelect = useCallback((chapterStart: number) => {
     haptics.selection();
@@ -562,72 +576,6 @@ export function CDPlayerScreen() {
   // ==========================================================================
   // RENDER HELPERS
   // ==========================================================================
-
-  const renderSpeedSheet = () => (
-    <View style={styles.sheet}>
-      <View style={styles.sheetHeader}>
-        <Text style={styles.sheetTitle}>Playback Speed</Text>
-        <TouchableOpacity onPress={() => setActiveSheet('none')} style={styles.sheetClose}>
-          <Ionicons name="close" size={24} color="#FFF" />
-        </TouchableOpacity>
-      </View>
-      <View style={styles.optionsGrid}>
-        {SPEED_OPTIONS.map((speed) => (
-          <TouchableOpacity
-            key={speed}
-            style={[
-              styles.optionButton,
-              playbackRate === speed && styles.optionButtonActive,
-            ]}
-            onPress={() => handleSpeedSelect(speed)}
-          >
-            <Text style={[
-              styles.optionText,
-              playbackRate === speed && styles.optionTextActive,
-            ]}>
-              {speed}x
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const renderSleepSheet = () => {
-    const currentSleepMins = sleepTimer ? Math.ceil(sleepTimer / 60) : 0;
-    return (
-      <View style={styles.sheet}>
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Sleep Timer</Text>
-          <TouchableOpacity onPress={() => setActiveSheet('none')} style={styles.sheetClose}>
-            <Ionicons name="close" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.optionsList}>
-          {SLEEP_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.listOption,
-                currentSleepMins === option.value && styles.listOptionActive,
-              ]}
-              onPress={() => handleSleepSelect(option.value)}
-            >
-              <Text style={[
-                styles.listOptionText,
-                currentSleepMins === option.value && styles.listOptionTextActive,
-              ]}>
-                {option.label}
-              </Text>
-              {currentSleepMins === option.value && (
-                <Ionicons name="checkmark" size={20} color={ACCENT_COLOR} />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    );
-  };
 
   const renderChaptersSheet = () => (
     <View style={[styles.sheet, styles.chaptersSheet]}>
@@ -751,8 +699,10 @@ export function CDPlayerScreen() {
       </View>
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + scale(10) }]}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        {/* Streaming / Settings row with centered arrow */}
         <View style={styles.headerRow}>
+          {/* Left - Source indicator */}
           <View style={styles.sourceIndicator}>
             <Ionicons
               name={isDownloaded ? 'checkmark-circle' : 'cloud-outline'}
@@ -763,7 +713,11 @@ export function CDPlayerScreen() {
               {isDownloaded ? 'Downloaded' : 'Streaming'}
             </Text>
           </View>
-          <View style={styles.swipeIndicator} />
+          {/* Center - Down arrow */}
+          <View style={styles.arrowCenter}>
+            <DownArrowIcon />
+          </View>
+          {/* Right - Settings */}
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() => setActiveSheet('settings')}
@@ -831,123 +785,169 @@ export function CDPlayerScreen() {
         />
       </View>
 
-      {/* Chapter & Time Row */}
-      <View style={styles.infoRow}>
-        <TouchableOpacity onPress={() => setActiveSheet('chapters')}>
-          <Text style={styles.chapter} numberOfLines={1}>
-            {currentChapter?.title || `Chapter ${chapterIndex + 1}`}
-          </Text>
-        </TouchableOpacity>
-        <Text style={styles.time}>{formatTime(position)}</Text>
-      </View>
-
-      {/* Progress Bar - can overlap with disc */}
-      <View style={styles.progressWrapper}>
-        <CDProgressBar progress={progressPercent} onSeek={handleSeek} chapterMarkers={chapterMarkers} />
-      </View>
-
-      {/* Pills Row */}
-      <View style={styles.pillsRow}>
-        <TouchableOpacity
-          onPress={() => setActiveSheet('sleep')}
-          style={styles.pillButton}
-          activeOpacity={0.7}
-          accessibilityLabel={sleepTimer && sleepTimer > 0
-            ? `Sleep timer active, ${formatSleepTimer(sleepTimer)} remaining`
-            : 'Set sleep timer'}
-          accessibilityRole="button"
-        >
-          <View style={styles.pillBorder} />
-          <MoonIcon />
-          {sleepTimer !== null && sleepTimer > 0 ? (
-            <View style={styles.timerCountdownContainer}>
-              <Text style={[styles.pillText, styles.pillTextActive]}>
-                {formatSleepTimer(sleepTimer)}
-              </Text>
-              <View style={styles.timerActiveDot} />
-            </View>
-          ) : (
-            <Text style={styles.pillText}>15m</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setActiveSheet('speed')}
-          style={[styles.pillButton, styles.speedPill]}
-          activeOpacity={0.7}
-          accessibilityLabel={`Playback speed ${playbackRate}x. Tap to change.`}
-          accessibilityRole="button"
-        >
-          <View style={styles.pillBorder} />
-          <Text style={[styles.pillTextSmall, playbackRate !== 1 && styles.pillTextActive]}>
-            {playbackRate === 1 ? '1x' : `${playbackRate}x`}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Playback Controls Row: Skip Back | Joystick | Skip Forward */}
-      <View style={styles.controlsRow}>
-        {/* Skip Back 30s */}
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={handleSkipBack}
-          activeOpacity={0.7}
-          accessibilityLabel="Skip back 30 seconds"
-          accessibilityRole="button"
-        >
-          <View style={styles.skipButtonInner}>
-            <Ionicons name="play-back" size={scale(24)} color="#FFF" />
-            <Text style={styles.skipButtonText}>30</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Joystick Scrub Button */}
-        <View
-          style={styles.scrubButtonContainer}
-          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-          accessibilityRole="button"
-          accessibilityHint="Tap to play or pause. Drag left or right to scrub through the audio."
-        >
-          <CoverPlayButton
-            size={80}
-            onScrubSpeedChange={(speed) => {
-              discScrubSpeed.value = speed;
-            }}
-          />
+      {/* Content area - positioned to appear in blurred zone */}
+      <View style={[styles.contentArea, { marginTop: -(DISC_SIZE * 0.45) }]}>
+        {/* Pills Row - Above Overview */}
+        <View style={styles.pillsRow}>
+          <TouchableOpacity
+            onPress={() => setShowSleepSheet(true)}
+            style={styles.pillButton}
+            activeOpacity={0.7}
+            accessibilityLabel={sleepTimer && sleepTimer > 0
+              ? `Sleep timer active, ${formatSleepTimer(sleepTimer)} remaining`
+              : 'Set sleep timer'}
+            accessibilityRole="button"
+          >
+            <View style={styles.pillBorder} />
+            <MoonIcon />
+            {sleepTimer !== null && sleepTimer > 0 ? (
+              <View style={styles.timerCountdownContainer}>
+                <Text style={[styles.pillText, styles.pillTextActive]}>
+                  {formatSleepTimer(sleepTimer)}
+                </Text>
+                <View style={styles.timerActiveDot} />
+              </View>
+            ) : (
+              <Text style={styles.pillText}>Off</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowSpeedSheet(true)}
+            style={[styles.pillButton, styles.speedPill]}
+            activeOpacity={0.7}
+            accessibilityLabel={`Playback speed ${playbackRate}x. Tap to change.`}
+            accessibilityRole="button"
+          >
+            <View style={styles.pillBorder} />
+            <Text style={[styles.pillTextSmall, playbackRate !== 1 && styles.pillTextActive]}>
+              {playbackRate === 1 ? '1x' : `${playbackRate}x`}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Skip Forward 30s */}
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={handleSkipForward}
-          activeOpacity={0.7}
-          accessibilityLabel="Skip forward 30 seconds"
-          accessibilityRole="button"
-        >
-          <View style={styles.skipButtonInner}>
-            <Text style={styles.skipButtonText}>30</Text>
-            <Ionicons name="play-forward" size={scale(24)} color="#FFF" />
+        {/* Overview Section - hidden for now */}
+        {false && description ? (
+          <View style={styles.overviewSection}>
+            <Text style={styles.overviewTitle}>Overview</Text>
+            <View style={styles.overviewDivider} />
+            <Text style={styles.overviewText} numberOfLines={5}>
+              {description}
+            </Text>
           </View>
-        </TouchableOpacity>
+        ) : null}
+
+        {/* Flex spacer to push controls to bottom */}
+        <View style={{ flex: 1 }} />
+
+        {/* Progress Bar with time labels */}
+        <View style={styles.progressWrapper}>
+          <View style={styles.progressTimeRow}>
+            <Text style={styles.progressTimeText}>{formatTime(position)}</Text>
+            <Text style={styles.progressTimeText}>{formatTime(duration)}</Text>
+          </View>
+          <CDProgressBar progress={progressPercent} onSeek={handleSeek} chapterMarkers={chapterMarkers} />
+        </View>
+
+        {/* Chapter & Remaining Time Row - Below Progress Bar */}
+        <View style={styles.infoRow}>
+          <TouchableOpacity onPress={() => setActiveSheet('chapters')}>
+            <Text style={styles.chapter} numberOfLines={1}>
+              {currentChapter?.title || `Chapter ${chapterIndex + 1}`}
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.chapterRemaining, scrubOffset !== null && styles.scrubOffsetText]}>
+            {scrubOffset !== null
+              ? formatScrubOffset(scrubOffset)
+              : `-${formatTime(Math.max(0, chapterEnd - position))}`}
+          </Text>
+        </View>
+
+        {/* Playback Controls - Skip at edges, Play in center */}
+        <View style={styles.controlsRow}>
+          {/* Skip Back 30s - far left */}
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipBack}
+            activeOpacity={0.7}
+            accessibilityLabel="Skip back 30 seconds"
+            accessibilityRole="button"
+          >
+            <RewindIcon />
+          </TouchableOpacity>
+
+          {/* Joystick Scrub Button with amber border - center */}
+          <View
+            style={styles.scrubButtonContainer}
+            accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            accessibilityRole="button"
+            accessibilityHint="Tap to play or pause. Drag left or right to scrub through the audio."
+          >
+            <View style={styles.playButtonBorder}>
+              <CoverPlayButton
+                size={70}
+                onScrubSpeedChange={(speed) => {
+                  discScrubSpeed.value = speed;
+                }}
+                onScrubOffsetChange={(offset, isScrubbing) => {
+                  setScrubOffset(isScrubbing ? offset : null);
+                }}
+              />
+            </View>
+          </View>
+
+          {/* Skip Forward 30s - far right */}
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipForward}
+            activeOpacity={0.7}
+            accessibilityLabel="Skip forward 30 seconds"
+            accessibilityRole="button"
+          >
+            <FastForwardIcon />
+          </TouchableOpacity>
+        </View>
+
+        {/* Scrub Speed Scale */}
+        <View style={styles.scrubScaleContainer}>
+          <View style={styles.scrubScaleItem}>
+            <Text style={styles.scrubScaleText}>5x</Text>
+            <View style={styles.scrubScaleLine} />
+          </View>
+          <View style={styles.scrubScaleItem}>
+            <Text style={styles.scrubScaleText}>0.5x</Text>
+            <View style={styles.scrubScaleLine} />
+          </View>
+          <View style={styles.scrubScaleItem}>
+            <Text style={styles.scrubScaleText}>0.5x</Text>
+            <View style={styles.scrubScaleLine} />
+          </View>
+          <View style={styles.scrubScaleItem}>
+            <Text style={styles.scrubScaleText}>5x</Text>
+            <View style={styles.scrubScaleLine} />
+          </View>
+        </View>
+
+        {/* Bottom padding to clear nav bar */}
+        <View style={{ height: insets.bottom + scale(100) }} />
       </View>
 
-      {/* Bottom safe area padding */}
-      <View style={{ height: insets.bottom + scale(20) }} />
-
-      {/* Bottom Sheets */}
+      {/* Inline Bottom Sheets (chapters, settings) */}
       {activeSheet !== 'none' && (
         <TouchableOpacity
           style={styles.sheetOverlay}
           activeOpacity={1}
           onPress={() => setActiveSheet('none')}
         >
-          <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 20 }]}>
-            {activeSheet === 'speed' && renderSpeedSheet()}
-            {activeSheet === 'sleep' && renderSleepSheet()}
+          <View style={[styles.sheetContainer, { marginBottom: insets.bottom + scale(90) }]}>
             {activeSheet === 'chapters' && renderChaptersSheet()}
             {activeSheet === 'settings' && renderSettingsSheet()}
           </View>
         </TouchableOpacity>
       )}
+
+      {/* Shared Sheet Components (sleep, speed) */}
+      <SleepTimerSheet visible={showSleepSheet} onClose={() => setShowSleepSheet(false)} />
+      <SpeedSheet visible={showSpeedSheet} onClose={() => setShowSpeedSheet(false)} />
     </Animated.View>
   );
 }
@@ -973,11 +973,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  swipeIndicator: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+  arrowCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   header: {
     alignItems: 'center',
@@ -989,7 +989,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    marginBottom: scale(12),
+    marginBottom: scale(4),
   },
   sourceIndicator: {
     flexDirection: 'row',
@@ -1123,12 +1123,41 @@ const styles = StyleSheet.create({
     height: DISC_SIZE * 0.24,
     marginTop: -(DISC_SIZE * 0.12),
   },
+  contentArea: {
+    flex: 1,
+    zIndex: 10,
+    paddingTop: scale(10),
+  },
+  overviewSection: {
+    paddingHorizontal: scale(22),
+    marginBottom: scale(10),
+  },
+  overviewTitle: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: scale(13),
+    fontWeight: '400',
+    letterSpacing: 0,
+    marginBottom: scale(10),
+  },
+  overviewDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: scale(14),
+    marginBottom: scale(5),
+  },
+  overviewText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: scale(12),
+    lineHeight: scale(18),
+    fontWeight: '400',
+  },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: scale(22),
-    marginTop: scale(-100),
-    zIndex: 10,
+    marginTop: scale(6),
+    marginBottom: scale(8),
   },
   chapter: {
     color: 'rgba(255,255,255,0.6)',
@@ -1142,20 +1171,44 @@ const styles = StyleSheet.create({
     letterSpacing: 0.28,
     fontVariant: ['tabular-nums'],
   },
+  chapterRemaining: {
+    color: ACCENT_COLOR,
+    fontSize: scale(14),
+    letterSpacing: 0.28,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '400',
+  },
+  scrubOffsetText: {
+    fontSize: scale(16),
+    fontWeight: '600',
+  },
+  progressTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: scale(6),
+  },
+  progressTimeText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: scale(9),
+    letterSpacing: 0.18,
+    fontVariant: ['tabular-nums'],
+  },
   progressWrapper: {
     paddingHorizontal: scale(22),
-    marginTop: scale(8),
-    zIndex: 10,
+    marginBottom: scale(4),
   },
   progressContainer: {
-    height: scale(12),
+    height: scale(16),
     width: '100%',
     position: 'relative',
+    justifyContent: 'center',
   },
   progressTrack: {
-    ...StyleSheet.absoluteFillObject,
+    height: scale(2),
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: scale(14),
+    position: 'relative',
+    overflow: 'hidden',
   },
   progressBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -1165,37 +1218,30 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     position: 'absolute',
-    top: 1,
-    left: 1,
-    height: scale(10),
+    top: 0,
+    left: 0,
+    height: scale(2),
     backgroundColor: ACCENT_COLOR,
     borderRadius: scale(14),
   },
   chapterMarker: {
     position: 'absolute',
-    top: 0,
-    width: 2,
-    height: scale(12),
+    top: scale(6),
+    width: 1,
+    height: scale(4),
     backgroundColor: 'rgba(255,255,255,0.4)',
-    marginLeft: -1,
     zIndex: 5,
   },
   progressShadow: {
-    position: 'absolute',
-    top: 0,
-    left: 1,
-    right: 1,
-    height: scale(5),
-    borderTopLeftRadius: scale(14),
-    borderTopRightRadius: scale(14),
+    display: 'none', // Hide shadow for thin bar
   },
   progressThumb: {
     position: 'absolute',
-    top: -scale(4),
-    width: scale(20),
-    height: scale(20),
+    top: 0,
+    width: scale(16),
+    height: scale(16),
     backgroundColor: ACCENT_COLOR,
-    borderRadius: scale(10),
+    borderRadius: scale(8),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
@@ -1206,8 +1252,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: scale(22),
-    marginTop: scale(16),
-    zIndex: 10,
+    marginBottom: scale(10),
   },
   pillButton: {
     flexDirection: 'row',
@@ -1247,6 +1292,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  playButtonBorder: {
+    width: scale(76),
+    height: scale(76),
+    borderRadius: scale(38),
+    borderWidth: 2,
+    borderColor: ACCENT_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    overflow: 'visible',
+  },
 
   // Bottom Sheet styles
   sheetOverlay: {
@@ -1259,7 +1315,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     paddingTop: 8,
+    paddingBottom: 20,
   },
   sheet: {
     padding: 20,
@@ -1406,36 +1465,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Controls Row with Skip Buttons
+  // Controls Row with Skip Buttons at edges
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: scale(30),
-    marginTop: scale(24),
-    zIndex: 10,
-    gap: scale(32),
+    marginTop: scale(8),
   },
   skipButton: {
-    width: scale(56),
-    height: scale(56),
-    borderRadius: scale(28),
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: scale(48),
+    height: scale(48),
     alignItems: 'center',
     justifyContent: 'center',
-    // Minimum 44pt touch target per spec
     minWidth: 44,
     minHeight: 44,
+    opacity: 0.8,
   },
-  skipButtonInner: {
+  // Scrub Speed Scale
+  scrubScaleContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(2),
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(30),
+    marginTop: scale(16),
   },
-  skipButtonText: {
-    color: '#FFF',
-    fontSize: scale(11),
-    fontWeight: '700',
+  scrubScaleItem: {
+    alignItems: 'center',
+  },
+  scrubScaleText: {
+    color: 'rgba(91,91,91,0.7)',
+    fontSize: scale(10),
+    fontVariant: ['tabular-nums'],
+    marginBottom: scale(4),
+  },
+  scrubScaleLine: {
+    width: 1,
+    height: scale(12),
+    backgroundColor: 'rgba(60,60,60,0.8)',
   },
 
   // Playing badge for reduced motion mode

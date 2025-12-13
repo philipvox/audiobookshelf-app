@@ -25,11 +25,12 @@ import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { SeriesHeartButton } from '@/shared/components';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#CCFF00';
+const ACCENT = '#F4B60C';
 const PADDING = 16;
 const GAP = 12;
 const COLUMNS = 2;
@@ -195,7 +196,7 @@ export function SeriesListScreen() {
         data={sortedSeries}
         keyExtractor={(item) => item.name}
         numColumns={2}
-        contentContainerStyle={[styles.grid, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.grid, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
         columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
         initialNumToRender={8}

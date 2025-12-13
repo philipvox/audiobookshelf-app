@@ -18,7 +18,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 export type FilterOption = 'all' | 'in-progress' | 'not-started' | 'completed';
 

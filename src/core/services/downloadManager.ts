@@ -102,6 +102,18 @@ class DownloadManager {
     });
     log(`Network monitoring enabled, canDownload: ${this.previousCanDownload}`);
 
+    // Clear any stuck downloads from previous session
+    // (active downloads in memory don't persist across app restarts)
+    const downloading = await sqliteCache.getDownloadsByStatus('downloading');
+    if (downloading.length > 0) {
+      log(`Found ${downloading.length} stuck downloads from previous session, resetting to pending...`);
+      for (const item of downloading) {
+        // Reset to pending so they can be retried
+        await sqliteCache.addToDownloadQueue(item.itemId, 0);
+        await sqliteCache.updateDownloadProgress(item.itemId, 0);
+      }
+    }
+
     // Resume any paused downloads
     await this.resumePausedDownloads();
 
@@ -466,6 +478,63 @@ class DownloadManager {
     log(`Cleared ${downloads.length} downloads`);
   }
 
+  /**
+   * Cancel all active and pending downloads, clear the queue
+   */
+  async cancelAllDownloads(): Promise<void> {
+    log('Cancelling all active and pending downloads...');
+
+    // Cancel any active downloads
+    for (const [itemId, download] of this.activeDownloads) {
+      log(`Cancelling active download: ${itemId}`);
+      try {
+        await download.cancelAsync();
+      } catch (e) {
+        // Ignore cancel errors
+      }
+      await sqliteCache.failDownload(itemId, 'Cancelled by user');
+    }
+    this.activeDownloads.clear();
+    this.progressInfo.clear();
+    this.isProcessingQueue = false;
+
+    // Fail all pending/downloading items in database
+    const pending = await sqliteCache.getDownloadsByStatus('pending');
+    const downloading = await sqliteCache.getDownloadsByStatus('downloading');
+
+    for (const item of [...pending, ...downloading]) {
+      log(`Cancelling queued item: ${item.itemId}`);
+      await sqliteCache.failDownload(item.itemId, 'Cancelled by user');
+    }
+
+    // Clear the queue
+    await sqliteCache.clearDownloadQueue();
+
+    this.notifyListeners();
+    log('All downloads cancelled');
+  }
+
+  /**
+   * Check if downloads are stuck and reset if needed
+   */
+  async resetIfStuck(): Promise<boolean> {
+    // If we have active downloads but no progress for 2 minutes, consider it stuck
+    if (this.activeDownloads.size > 0) {
+      log(`Resetting ${this.activeDownloads.size} stuck active downloads`);
+      await this.cancelAllDownloads();
+      return true;
+    }
+
+    // Also check if isProcessingQueue is stuck
+    if (this.isProcessingQueue) {
+      log('Resetting stuck processing queue flag');
+      this.isProcessingQueue = false;
+      return true;
+    }
+
+    return false;
+  }
+
   // ===========================================================================
   // QUEUE PROCESSING
   // ===========================================================================
@@ -494,6 +563,7 @@ class DownloadManager {
       const nextItemId = await sqliteCache.getNextDownload();
       if (!nextItemId) {
         log('Queue empty - nothing to download');
+        this.isProcessingQueue = false;
         return;
       }
 
@@ -526,6 +596,7 @@ class DownloadManager {
         await sqliteCache.removeFromDownloadQueue(nextItemId);
         await sqliteCache.failDownload(nextItemId, 'Item metadata not found');
         this.notifyListeners();
+        this.isProcessingQueue = false;
         // Continue processing queue in case there are more items
         setTimeout(() => this.processQueue(), 100);
         return;
@@ -537,9 +608,14 @@ class DownloadManager {
       // Remove from queue before starting
       await sqliteCache.removeFromDownloadQueue(nextItemId);
 
-      // Start download
+      // Release the processing lock before starting the actual download
+      // The download itself is tracked via activeDownloads
+      this.isProcessingQueue = false;
+
+      // Start download (this may take a long time)
       await this.startDownload(item);
-    } finally {
+    } catch (error) {
+      logError('Error processing queue:', error);
       this.isProcessingQueue = false;
     }
   }
@@ -585,9 +661,9 @@ class DownloadManager {
 
         this.activeDownloads.set(itemId, download);
 
-        // Create a timeout promise - 15 minutes for uncached files
+        // Create a timeout promise - 5 minutes for uncached files
         // The server may need to fetch from origin first
-        const timeoutMs = 15 * 60 * 1000; // 15 minutes per file
+        const timeoutMs = 5 * 60 * 1000; // 5 minutes per file
         log(`Starting download with ${timeoutMs / 1000}s timeout (waiting for server cache)...`);
 
         const startTime = Date.now();
