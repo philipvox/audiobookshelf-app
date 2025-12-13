@@ -17,7 +17,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Design constants - matching Anima design
 const TAB_BAR_HEIGHT = 56;
-const ACCENT_COLOR = '#c1f40c'; // Exact color from design
+const ACCENT_COLOR = '#F4B60C'; // Golden yellow accent
 const INACTIVE_COLOR = 'rgba(255, 255, 255, 0.6)';
 
 interface BottomTabBarProps {

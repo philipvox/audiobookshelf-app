@@ -1,8 +1,13 @@
 /**
  * src/features/book-detail/screens/BookDetailScreen.tsx
  *
- * Enhanced book detail screen with consistent action buttons,
- * series navigation, and clear state indicators.
+ * Redesigned book detail screen matching the new design spec:
+ * - Genre tags at top (yellow text)
+ * - Large centered title
+ * - Two-column author/narrator display with labels
+ * - Smaller cover (~50% width)
+ * - Two pill buttons (Download/Stream)
+ * - Overview & Chapters tabs with "Add to Queue" link
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -15,7 +20,6 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
-  Share,
   Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -23,31 +27,40 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { useBookDetails } from '../hooks/useBookDetails';
 import { OverviewTab } from '../components/OverviewTab';
 import { ChaptersTab } from '../components/ChaptersTab';
-import { ActionButtonsRow } from '../components/ActionButtonsRow';
 import { SeriesNavigator } from '../components/SeriesNavigator';
 import { ErrorView } from '@/shared/components';
 import { useCoverUrl } from '@/core/cache';
-import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { useDownloadStatus as useDownloadStatusHook } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
-// Design constants matching HomeScreen - minimal accent usage
-const ACCENT = '#c1f40c';
-const ACCENT_SUBTLE = 'rgba(193,244,12,0.6)'; // Muted accent for less prominence
+// Design constants
+const ACCENT = '#F4B60C';
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const COVER_SIZE = SCREEN_WIDTH * 0.45;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const COVER_SIZE = SCREEN_WIDTH * 0.5; // 50% width per design spec
+const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 type BookDetailRouteParams = {
   BookDetail: { id: string };
 };
 
-type TabType = 'overview' | 'chapters' | 'details';
+type TabType = 'overview' | 'chapters';
+
+// Format bytes to human readable string
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
 
 
 export function BookDetailScreen() {
@@ -183,31 +196,27 @@ export function BookDetailScreen() {
     }
   }, [queue, bookId, reorderQueue]);
 
-  const handleShare = useCallback(async () => {
-    if (!book) return;
-
-    const metadata = book.media?.metadata as any;
-    const title = metadata?.title || 'Unknown Title';
-    const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
-
-    // Build book URL
-    const serverUrl = apiClient.getBaseURL();
-    const bookUrl = serverUrl ? `${serverUrl}/item/${book.id}` : null;
-
-    let shareText = `Check out "${title}" by ${author}`;
-    if (bookUrl) {
-      shareText += `\n\n${bookUrl}`;
+  // Handle download button press
+  const handleDownloadPress = useCallback(() => {
+    if (isDownloading || isPending) {
+      if (isPaused) {
+        downloadManager.resumeDownload(bookId);
+      } else {
+        downloadManager.pauseDownload(bookId);
+      }
+    } else if (isDownloaded) {
+      Alert.alert(
+        'Delete Download',
+        'This will remove the downloaded file. You can download it again later.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => downloadManager.deleteDownload(bookId) },
+        ]
+      );
+    } else {
+      handleDownload();
     }
-
-    try {
-      await Share.share({
-        message: shareText,
-        url: bookUrl || undefined,
-      });
-    } catch (err) {
-      console.error('Share failed:', err);
-    }
-  }, [book]);
+  }, [isDownloading, isPending, isPaused, isDownloaded, bookId, handleDownload]);
 
   if (isLoading) {
     return (
@@ -264,7 +273,37 @@ export function BookDetailScreen() {
     return `${minutes}m`;
   };
 
-  const playButtonText = hasProgress ? 'Continue' : 'Play';
+  // Determine button states and text
+  const showDownloadProgress = isDownloading || isPending || isPaused;
+  const isCompleted = progress >= 0.95;
+
+  const getPlayButtonContent = () => {
+    if (isThisBookLoaded && isThisBookPlaying) {
+      return { text: 'Pause', icon: 'pause' as const };
+    }
+    if (!isDownloaded) {
+      return { text: 'Stream', icon: 'play' as const };
+    }
+    if (isCompleted) {
+      return { text: 'Play Again', icon: 'play' as const };
+    }
+    if (hasProgress) {
+      return { text: 'Resume', icon: 'play' as const };
+    }
+    return { text: 'Play', icon: 'play' as const };
+  };
+
+  const playContent = getPlayButtonContent();
+
+  const handlePlayPress = () => {
+    if (isThisBookLoaded && isThisBookPlaying) {
+      pause();
+    } else if (isDownloaded) {
+      handlePlay();
+    } else {
+      handleStream();
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -280,7 +319,7 @@ export function BookDetailScreen() {
             blurRadius={60}
           />
           <LinearGradient
-            colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)', 'rgba(0,0,0,0.95)']}
+            colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
             style={StyleSheet.absoluteFill}
           />
         </View>
@@ -292,126 +331,198 @@ export function BookDetailScreen() {
         />
       )}
 
-      {/* Header - Back button and share button */}
+      {/* Back button - minimal header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 8 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerButton} onPress={handleShare}>
-          <Ionicons name="share-outline" size={22} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cover and Info */}
-        <View style={styles.coverSection}>
-          {/* Title and Author above cover */}
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          <Text style={styles.author}>{author}</Text>
+        {/* Genre Tags at top */}
+        {genres.length > 0 && (
+          <View style={styles.genreTagsRow}>
+            {genres.slice(0, 3).map((genre: string, idx: number) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => (navigation as any).navigate('GenreDetail', { genreName: genre })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.genreTag}>{genre}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-          <View style={styles.coverContainer}>
-            <Image source={coverUrl} style={styles.cover} contentFit="cover" />
+        {/* Large Centered Title */}
+        <Text style={[styles.title, genres.length === 0 && styles.titleNoGenres]} numberOfLines={3}>{title}</Text>
+
+        {/* Author/Narrator Two-Column Section */}
+        <View style={styles.creditsRow}>
+          {/* Author Column */}
+          <View style={styles.creditColumn}>
+            <Text style={styles.creditLabel}>Written By:</Text>
+            <TouchableOpacity
+              onPress={() => {
+                const firstAuthor = author.split(',')[0].trim();
+                (navigation as any).navigate('AuthorDetail', { authorName: firstAuthor });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.creditName} numberOfLines={1}>{author}</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Narrator below cover */}
-          {narrator && <Text style={styles.narrator}>Narrated by {narrator}</Text>}
-
-          {/* Progress */}
-          {hasProgress && (
-            <View style={styles.progressSection}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-              </View>
-              <Text style={styles.progressText}>{progressPercent}% Complete</Text>
+          {/* Narrator Column */}
+          {narrator && (
+            <View style={styles.creditColumn}>
+              <Text style={styles.creditLabel}>Narrated By:</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const firstNarrator = narrator.split(',')[0].trim();
+                  (navigation as any).navigate('NarratorDetail', { narratorName: firstNarrator });
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.creditName} numberOfLines={1}>{narrator}</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Ionicons name="time-outline" size={18} color="rgba(255,255,255,0.5)" />
-            <Text style={styles.statValue}>{formatDuration(duration)}</Text>
+        {/* Cover Image - 50% width */}
+        <View style={styles.coverSection}>
+          <View style={styles.coverContainer}>
+            <Image source={coverUrl} style={styles.cover} contentFit="cover" />
           </View>
-          <View style={styles.statDivider} />
+        </View>
+
+        {/* Two Pill Buttons - Download and Stream/Play */}
+        <View style={styles.pillButtonsRow}>
+          {/* Download Button */}
+          {showDownloadProgress ? (
+            <TouchableOpacity
+              style={styles.pillButton}
+              onPress={handleDownloadPress}
+              activeOpacity={0.7}
+            >
+              <View style={styles.downloadProgressContainer}>
+                <View style={styles.downloadProgressRow}>
+                  {isPending ? (
+                    <ActivityIndicator size="small" color={ACCENT} style={{ marginRight: scale(6) }} />
+                  ) : isPaused ? (
+                    <Ionicons name="play" size={scale(16)} color={ACCENT} />
+                  ) : (
+                    <Ionicons name="pause" size={scale(16)} color={ACCENT} />
+                  )}
+                  <Text style={styles.pillButtonText}>
+                    {isPending ? 'Preparing...' : isPaused ? 'Paused' : `${Math.round(downloadProgress * 100)}%`}
+                  </Text>
+                </View>
+                <View style={styles.downloadProgressTrack}>
+                  <View style={[styles.downloadProgressFill, { width: `${downloadProgress * 100}%` }]} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.pillButton, isDownloaded && styles.pillButtonDownloaded]}
+              onPress={handleDownloadPress}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isDownloaded ? 'checkmark-circle' : 'arrow-down-outline'}
+                size={scale(18)}
+                color={isDownloaded ? ACCENT : '#fff'}
+              />
+              <Text style={[styles.pillButtonText, isDownloaded && styles.pillButtonTextAccent]}>
+                {isDownloaded ? 'Downloaded' : 'Download'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Stream/Play Button */}
           <TouchableOpacity
-            style={styles.statItem}
+            style={[styles.pillButton, styles.pillButtonPrimary]}
+            onPress={handlePlayPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={playContent.icon} size={scale(18)} color="#000" />
+            <Text style={styles.pillButtonTextDark}>{playContent.text}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Duration & Chapters Info Row */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoItem}>
+            <Ionicons name="time-outline" size={scale(16)} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.infoText}>{formatDuration(duration)}</Text>
+          </View>
+          <View style={styles.infoDivider} />
+          <TouchableOpacity
+            style={styles.infoItem}
             onPress={() => setActiveTab('chapters')}
             activeOpacity={0.7}
           >
-            <Ionicons name="list-outline" size={18} color="rgba(255,255,255,0.5)" />
-            <Text style={[styles.statValue, styles.statValueClickable]}>{chapters.length} Chapters</Text>
-            <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+            <Ionicons name="list-outline" size={scale(16)} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.infoText}>{chapters.length} Chapters</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Progress Bar (if in progress) */}
+        {hasProgress && (
+          <View style={styles.progressSection}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+            </View>
+            <Text style={styles.progressText}>{progressPercent}% Complete</Text>
+          </View>
+        )}
 
         {/* Series Navigation */}
         <SeriesNavigator book={book} />
 
-        {/* Action Buttons - Download, Play, Queue */}
-        <ActionButtonsRow
-          book={book}
-          // Download state
-          isDownloaded={isDownloaded}
-          isDownloading={isDownloading}
-          isPending={isPending}
-          isPaused={isPaused}
-          downloadProgress={downloadProgress}
-          bytesDownloaded={bytesDownloaded}
-          totalBytes={totalBytes}
-          fileSize={totalBytes}
-          // Playback state
-          isPlaying={isThisBookPlaying}
-          isLoaded={isThisBookLoaded}
-          currentPosition={currentPosition}
-          progress={progress}
-          duration={duration}
-          // Queue state
-          isInQueue={isInQueue}
-          queuePosition={queuePosition}
-          // Callbacks
-          onDownload={handleDownload}
-          onPauseDownload={handlePauseDownload}
-          onResumeDownload={handleResumeDownload}
-          onCancelDownload={handleCancelDownload}
-          onDeleteDownload={handleDeleteDownload}
-          onPlay={handlePlay}
-          onPause={handlePause}
-          onStream={handleStream}
-          onPlayFromBeginning={handlePlayFromBeginning}
-          onAddToQueue={handleAddToQueue}
-          onRemoveFromQueue={handleRemoveFromQueue}
-          onMoveToTop={handleMoveToTop}
-        />
-
-        {/* Tabs */}
+        {/* Tabs Row - Overview, Chapters, and Add to Queue link */}
         <View style={styles.tabsContainer}>
+          <View style={styles.tabsLeft}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
+              onPress={() => setActiveTab('overview')}
+            >
+              <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
+                Overview
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'chapters' && styles.tabActive]}
+              onPress={() => setActiveTab('chapters')}
+            >
+              <Text style={[styles.tabText, activeTab === 'chapters' && styles.tabTextActive]}>
+                Chapters
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Add to Queue link */}
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
-            onPress={() => setActiveTab('overview')}
+            style={styles.addToQueueLink}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (isInQueue) {
+                handleRemoveFromQueue();
+              } else {
+                handleAddToQueue();
+              }
+            }}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
-              Overview
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'chapters' && styles.tabActive]}
-            onPress={() => setActiveTab('chapters')}
-          >
-            <Text style={[styles.tabText, activeTab === 'chapters' && styles.tabTextActive]}>
-              Chapters
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'details' && styles.tabActive]}
-            onPress={() => setActiveTab('details')}
-          >
-            <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
-              Details
+            <Text style={[styles.addToQueueText, isInQueue && styles.addToQueueTextActive]}>
+              {isInQueue ? `In Queue #${queuePosition}` : 'Add to Queue'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -419,7 +530,7 @@ export function BookDetailScreen() {
         {/* Tab Content */}
         <View style={styles.tabContent}>
           {activeTab === 'overview' && (
-            <OverviewTab book={book} />
+            <OverviewTab book={book} showFullDetails />
           )}
           {activeTab === 'chapters' && (
             <ChaptersTab
@@ -428,56 +539,6 @@ export function BookDetailScreen() {
               bookId={bookId}
               book={book}
             />
-          )}
-          {activeTab === 'details' && (
-            <View style={styles.detailsTab}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>TITLE</Text>
-                <Text style={styles.detailValue}>{title}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>AUTHOR</Text>
-                <Text style={styles.detailValue}>{author}</Text>
-              </View>
-              {narrator && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>NARRATOR</Text>
-                  <Text style={styles.detailValue}>{narrator}</Text>
-                </View>
-              )}
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>DURATION</Text>
-                <Text style={styles.detailValue}>{formatDuration(duration)}</Text>
-              </View>
-              {metadata.publishedYear && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>PUBLISHED</Text>
-                  <Text style={styles.detailValue}>{metadata.publishedYear}</Text>
-                </View>
-              )}
-              {metadata.publisher && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>PUBLISHER</Text>
-                  <Text style={styles.detailValue}>{metadata.publisher}</Text>
-                </View>
-              )}
-              {genres.length > 0 && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>GENRES</Text>
-                  <View style={styles.genrePills}>
-                    {genres.map((genre: string, idx: number) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.genrePill}
-                        onPress={() => (navigation as any).navigate('GenreDetail', { genreName: genre })}
-                      >
-                        <Text style={styles.genrePillText}>#{genre.toLowerCase()}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-            </View>
           )}
         </View>
       </ScrollView>
@@ -498,8 +559,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#fff',
-    marginTop: 12,
-    fontSize: 12,
+    marginTop: scale(12),
+    fontSize: scale(12),
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
@@ -507,7 +568,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 
-  // Header
+  // Header - minimal, just back button
   header: {
     position: 'absolute',
     top: 0,
@@ -516,154 +577,237 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: scale(16),
+    paddingBottom: scale(12),
     zIndex: 100,
   },
   headerButton: {
-    width: 44,
-    height: 44,
+    width: scale(44),
+    height: scale(44),
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerSpacer: {
+    width: scale(44),
   },
 
   scrollView: {
     flex: 1,
   },
 
-  // Cover Section
+  // Genre Tags at top
+  genreTagsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: scale(100),
+    paddingHorizontal: scale(20),
+    gap: SCREEN_WIDTH * 0.05, // 5% screen width spacing
+    marginBottom: SCREEN_HEIGHT * 0.02, // 2% screen height
+  },
+  genreTag: {
+    fontSize: scale(12),
+    color: ACCENT,
+    fontWeight: '500',
+  },
+
+  // Large Centered Title
+  title: {
+    fontSize: scale(24),
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    paddingHorizontal: scale(20),
+    marginBottom: SCREEN_HEIGHT * 0.02,
+    letterSpacing: 0.3,
+  },
+  titleNoGenres: {
+    paddingTop: scale(100), // Add top padding when no genres
+  },
+
+  // Two-column Author/Narrator section
+  creditsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingHorizontal: scale(20),
+    gap: SCREEN_WIDTH * 0.08, // 8% screen width gap
+    marginBottom: SCREEN_HEIGHT * 0.025,
+  },
+  creditColumn: {
+    alignItems: 'center',
+  },
+  creditLabel: {
+    fontSize: scale(12),
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: SCREEN_HEIGHT * 0.005, // 0.5% screen height
+  },
+  creditName: {
+    fontSize: scale(14),
+    color: ACCENT,
+    fontWeight: '500',
+    maxWidth: SCREEN_WIDTH * 0.35,
+  },
+
+  // Cover Section - 50% width
   coverSection: {
     alignItems: 'center',
-    paddingTop: 100,
-    paddingHorizontal: 20,
+    paddingHorizontal: scale(20),
   },
   coverContainer: {
     width: COVER_SIZE,
     height: COVER_SIZE * 1.1,
-    borderRadius: 12,
+    borderRadius: COVER_SIZE * 0.02, // 2% of cover width
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 12,
-    marginTop: 16,
-    marginBottom: 16,
+    marginBottom: SCREEN_HEIGHT * 0.025,
   },
   cover: {
     width: '100%',
     height: '100%',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
+
+  // Two Pill Buttons Row
+  pillButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: scale(20),
+    gap: SCREEN_WIDTH * 0.03, // 3% screen width gap
+    marginBottom: SCREEN_HEIGHT * 0.03,
+  },
+  pillButton: {
+    width: SCREEN_WIDTH * 0.4, // 40% screen width each
+    height: SCREEN_HEIGHT * 0.05, // 5% screen height
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: scale(100), // Fully rounded pill
+    gap: scale(8),
+  },
+  pillButtonDownloaded: {
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(244,182,12,0.1)',
+  },
+  pillButtonPrimary: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT,
+  },
+  pillButtonText: {
+    fontSize: scale(14),
     color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: 0.3,
+    fontWeight: '600',
   },
-  author: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-    marginBottom: 4,
+  pillButtonTextAccent: {
+    color: ACCENT,
   },
-  narrator: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
+  pillButtonTextDark: {
+    fontSize: scale(14),
+    color: '#000',
+    fontWeight: '600',
   },
 
-  // Progress
+  // Download progress inside pill button
+  downloadProgressContainer: {
+    flex: 1,
+    paddingHorizontal: scale(12),
+  },
+  downloadProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: scale(4),
+    gap: scale(6),
+  },
+  downloadProgressTrack: {
+    height: scale(3),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  downloadProgressFill: {
+    height: '100%',
+    backgroundColor: ACCENT,
+    borderRadius: scale(2),
+  },
+
+  // Info Row (Duration & Chapters)
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: scale(20),
+    marginBottom: SCREEN_HEIGHT * 0.02,
+    gap: scale(16),
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+  },
+  infoDivider: {
+    width: 1,
+    height: scale(16),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  infoText: {
+    fontSize: scale(13),
+    color: 'rgba(255,255,255,0.7)',
+  },
+
+  // Progress Section
   progressSection: {
-    width: '100%',
-    marginTop: 20,
+    paddingHorizontal: scale(20),
+    marginBottom: SCREEN_HEIGHT * 0.02,
     alignItems: 'center',
   },
   progressBar: {
     width: '80%',
-    height: 4,
+    height: scale(4),
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
+    borderRadius: scale(2),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.7)', // Subtle white instead of green
-    borderRadius: 2,
+    backgroundColor: ACCENT,
+    borderRadius: scale(2),
   },
   progressText: {
-    fontSize: 11,
+    fontSize: scale(11),
     color: 'rgba(255,255,255,0.5)',
-    marginTop: 8,
-    letterSpacing: 0.2,
+    marginTop: scale(8),
   },
 
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    gap: 16,
-    flexWrap: 'wrap',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  statValue: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    letterSpacing: 0.2,
-  },
-  statValueClickable: {
-    textDecorationLine: 'underline',
-  },
-  // Genre Pills (in Details tab)
-  genrePills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  genrePill: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 100,
-  },
-  genrePillText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 0.2,
-  },
-
-  // Tabs
+  // Tabs Container with Add to Queue link
   tabsContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
   },
+  tabsLeft: {
+    flexDirection: 'row',
+  },
   tab: {
-    paddingVertical: 14,
-    marginRight: 24,
+    paddingVertical: scale(14),
+    marginRight: scale(24),
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
   tabActive: {
-    borderBottomColor: 'rgba(255,255,255,0.8)', // Subtle white instead of green
+    borderBottomColor: ACCENT,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: scale(14),
     color: 'rgba(255,255,255,0.5)',
     fontWeight: '500',
   },
@@ -671,26 +815,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  addToQueueLink: {
+    paddingVertical: scale(14),
+  },
+  addToQueueText: {
+    fontSize: scale(13),
+    color: ACCENT,
+    fontWeight: '500',
+  },
+  addToQueueTextActive: {
+    color: ACCENT,
+    fontWeight: '600',
+  },
   tabContent: {
-    paddingTop: 20,
-  },
-
-  // Details Tab
-  detailsTab: {
-    paddingHorizontal: 20,
-  },
-  detailRow: {
-    marginBottom: 20,
-  },
-  detailLabel: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.4)',
-    marginBottom: 4,
-    letterSpacing: 1,
-  },
-  detailValue: {
-    fontSize: 15,
-    color: '#fff',
-    lineHeight: 22,
+    paddingTop: scale(20),
   },
 });

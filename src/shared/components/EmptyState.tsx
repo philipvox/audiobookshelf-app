@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   },
   // NN/g: 44px minimum touch targets
   actionButton: {
-    backgroundColor: '#CCFF00',
+    backgroundColor: '#F4B60C',
     paddingVertical: scale(14),
     paddingHorizontal: scale(28),
     borderRadius: scale(12),

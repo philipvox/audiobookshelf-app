@@ -19,7 +19,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const ACTION_WIDTH = 80;
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 interface SwipeableQueueItemProps {
   book: LibraryItem;

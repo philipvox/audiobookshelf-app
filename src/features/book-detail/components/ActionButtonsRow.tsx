@@ -21,12 +21,14 @@ import {
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { LibraryItem } from '@/core/types';
+import { useIsComplete, useToggleComplete } from '@/features/completion';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 // Format bytes to human readable string
 function formatBytes(bytes: number): string {
@@ -115,9 +117,14 @@ export function ActionButtonsRow({
 }: ActionButtonsRowProps) {
   const [showQueueMenu, setShowQueueMenu] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const isCompleted = progress >= 0.95;
+  // Completion tracking
+  const isMarkedComplete = useIsComplete(book.id);
+  const toggleComplete = useToggleComplete();
+
+  const isCompleted = progress >= 0.95 || isMarkedComplete;
   const hasProgress = progress > 0 && !isCompleted;
   const showDownloadProgress = isDownloading || isPending || isPaused;
 
@@ -155,6 +162,13 @@ export function ActionButtonsRow({
       onAddToQueue();
     }
   }, [isInQueue, onAddToQueue]);
+
+  // Toggle completion
+  const handleToggleComplete = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowMoreMenu(false);
+    await toggleComplete(book.id);
+  }, [book.id, toggleComplete]);
 
   // Get play button text and subtext
   const getPlayButtonContent = () => {
@@ -266,6 +280,22 @@ export function ActionButtonsRow({
         )}
       </TouchableOpacity>
 
+      {/* More Options Button */}
+      <TouchableOpacity
+        style={[
+          styles.moreButton,
+          isMarkedComplete && styles.moreButtonComplete,
+        ]}
+        onPress={() => setShowMoreMenu(true)}
+        activeOpacity={0.7}
+      >
+        {isMarkedComplete ? (
+          <Ionicons name="checkmark-circle" size={scale(20)} color={ACCENT} />
+        ) : (
+          <Ionicons name="ellipsis-horizontal" size={scale(20)} color="rgba(255,255,255,0.7)" />
+        )}
+      </TouchableOpacity>
+
       {/* Queue Action Menu */}
       <Modal
         visible={showQueueMenu}
@@ -338,6 +368,50 @@ export function ActionButtonsRow({
               >
                 <Ionicons name="trash-outline" size={scale(20)} color="#ff6b6b" />
                 <Text style={[styles.menuItemText, { color: '#ff6b6b' }]}>Delete Download</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* More Options Menu */}
+      <Modal
+        visible={showMoreMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMoreMenu(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setShowMoreMenu(false)}>
+          <View style={[styles.menuContent, { paddingBottom: insets.bottom + scale(20) }]}>
+            <View style={styles.menuHandle} />
+            <Text style={styles.menuTitle}>More Options</Text>
+
+            {/* Mark Complete / Mark Incomplete */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleToggleComplete}
+            >
+              <Ionicons
+                name={isMarkedComplete ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                size={scale(20)}
+                color={isMarkedComplete ? '#ff6b6b' : ACCENT}
+              />
+              <Text style={[styles.menuItemText, { color: isMarkedComplete ? '#ff6b6b' : ACCENT }]}>
+                {isMarkedComplete ? 'Mark as Incomplete' : 'Mark as Complete'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Play from Beginning (if has progress) */}
+            {(hasProgress || isCompleted) && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMoreMenu(false);
+                  onPlayFromBeginning();
+                }}
+              >
+                <Ionicons name="play-skip-back-outline" size={scale(20)} color="#fff" />
+                <Text style={styles.menuItemText}>Play from Beginning</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -479,6 +553,19 @@ const styles = StyleSheet.create({
     fontSize: scale(12),
     fontWeight: '700',
     color: '#000',
+  },
+
+  // More Button
+  moreButton: {
+    width: scale(44),
+    height: scale(52),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: scale(12),
+  },
+  moreButtonComplete: {
+    backgroundColor: 'rgba(193,244,12,0.1)',
   },
 
   // Button text

@@ -1,152 +1,143 @@
 /**
  * src/features/home/screens/HomeScreen.tsx
  *
- * Redesigned Home Screen - the app's engagement hub
- * Answers: "What should I listen to next?"
+ * Redesigned Home Screen with CD disc-centric design
  *
- * Sections:
- * 1. Greeting (time-based)
- * 2. Compact Now Playing Card (~25% of screen)
- * 3. Continue Listening (in-progress books)
- * 4. Up Next (queue preview)
- * 5. Continue Series (active series)
- * 6. Downloaded books
+ * Layout:
+ * 1. HomeHeader (Title + Time / Author)
+ * 2. CD Disc Hero Section (70%w disc)
+ * 3. Pills Row (Sleep timer / Speed)
+ * 4. Continue Listening (24%w compact cards)
+ * 5. Recently Added (list rows in card container)
+ * 6. Your Series (series from downloads/in-progress)
+ *
+ * Note: Mini player is now global (rendered in AppNavigator)
  */
 
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
   StatusBar,
-  Text,
   RefreshControl,
-  ScrollView,
-  Dimensions,
   TouchableOpacity,
-  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { LibraryItem } from '@/core/types';
+import Animated, {
+  useSharedValue,
+  useAnimatedScrollHandler,
+} from 'react-native-reanimated';
+
 import { apiClient } from '@/core/api';
-import { usePlayerStore } from '@/features/player';
-import { useRobustSeekControl } from '@/features/player/hooks/useRobustSeekControl';
-import { useDownloads } from '@/core/hooks/useDownloads';
-import { useLibraryCache } from '@/core/cache/libraryCache';
-import { useAuth } from '@/core/auth/authContext';
-import { BookCard } from '@/shared/components/BookCard';
-import { useHomeData } from '../hooks/useHomeData';
-import { useQueue } from '@/features/queue/stores/queueStore';
-import { Greeting } from '../components/Greeting';
-import { CompactNowPlaying, NothingPlayingCard } from '../components/CompactNowPlaying';
+import { LibraryItem } from '@/core/types';
+import { usePlayerStore, SleepTimerSheet, SpeedSheet } from '@/features/player';
+import { useCoverUrl } from '@/core/cache';
+import { wp, hp, moderateScale, COLORS } from '@/shared/hooks/useResponsive';
+import { useImageColors } from '@/shared/hooks/useImageColors';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+
+// Components
+import { HomeHeader } from '../components/HomeHeader';
+import { HomeDiscSection } from '../components/HomeDiscSection';
+import { HomePillsRow } from '../components/HomePillsRow';
+import { ContinueListeningSection } from '../components/ContinueListeningSection';
+import { RecentlyAddedSection } from '../components/RecentlyAddedSection';
+import { YourSeriesSection } from '../components/YourSeriesSection';
 import { SectionHeader } from '../components/SectionHeader';
 import { EmptySection } from '../components/EmptySection';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
-const ACCENT = '#c1f40c';
-const REWIND_COLOR = '#ff4444';
+// Types
+import { SeriesWithBooks } from '../types';
 
-// Horizontal card dimensions
-const HORIZONTAL_CARD_WIDTH = scale(125);
-const HORIZONTAL_CARD_COVER = scale(110);
+// Hooks
+import { useHomeData } from '../hooks/useHomeData';
+
+const ACCENT = COLORS.accent;
 
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { user } = useAuth();
+  const scrollY = useSharedValue(0);
 
+  // Home data
   const {
     currentBook,
     currentProgress,
     recentlyListened,
+    recentBooks,
     userSeries,
     isRefreshing,
     refresh,
   } = useHomeData();
 
+  // Player state
   const {
     currentBook: playerCurrentBook,
     isPlaying,
     isLoading: isPlayerLoading,
     position,
     duration,
-    chapters,
+    playbackRate,
+    sleepTimer,
     loadBook,
     play,
     pause,
+    togglePlayer,
+    setPlaybackRate,
+    setSleepTimer,
+    clearSleepTimer,
+    seekTo,
   } = usePlayerStore();
 
-  const {
-    startContinuousSeek,
-    stopContinuousSeek,
-    seekDirection,
-    seekMagnitude,
-    isSeeking,
-  } = useRobustSeekControl();
+  // Cover URL for current book
+  const coverUrl = useCoverUrl(currentBook?.id || '');
 
-  // Queue state (for renderQueueCard)
-  const queue = useQueue();
+  // Extract colors from cover image
+  const imageColors = useImageColors(coverUrl);
+  const accentColor = imageColors?.dominant || COLORS.accent;
+  const backgroundTint = imageColors?.darkMuted || '#1a1f1a';
 
-  // Downloaded books from downloads hook
-  const { downloads } = useDownloads();
-  const getItem = useLibraryCache((s) => s.getItem);
-  const [downloadedBooks, setDownloadedBooks] = useState<LibraryItem[]>([]);
+  // Local state for sheet visibility
+  const [showSleepSheet, setShowSleepSheet] = useState(false);
+  const [showSpeedSheet, setShowSpeedSheet] = useState(false);
 
-  // Load full book data for completed downloads
-  useEffect(() => {
-    const loadDownloadedBooks = async () => {
-      const completedDownloads = downloads.filter((d) => d.status === 'complete');
-      const books: LibraryItem[] = [];
+  // Get book metadata
+  const getMetadata = (book: LibraryItem | null) => {
+    if (!book) return { title: null, author: null };
+    const metadata = book.media?.metadata as any;
+    const title = metadata?.title || null;
+    const author = metadata?.authorName || metadata?.authors?.[0]?.name || null;
+    return { title, author };
+  };
 
-      for (const download of completedDownloads.slice(0, 10)) {
-        const cachedBook = getItem(download.itemId);
-        if (cachedBook) {
-          books.push(cachedBook);
-        } else {
-          try {
-            const book = await apiClient.getItem(download.itemId);
-            books.push(book);
-          } catch {
-            // Skip if can't load
-          }
-        }
-      }
+  const { title, author } = getMetadata(currentBook);
 
-      setDownloadedBooks(books);
-    };
+  // ==========================================================================
+  // HANDLERS
+  // ==========================================================================
 
-    loadDownloadedBooks();
-  }, [downloads, getItem]);
-
-  // Get current chapter info
-  const currentChapterInfo = useMemo(() => {
-    if (!chapters || chapters.length === 0) return { current: undefined, total: undefined };
-
-    const currentPosition = isSeeking ? position : position;
-    const chapterIndex = chapters.findIndex((ch, idx) => {
-      const nextChapter = chapters[idx + 1];
-      return currentPosition >= ch.start && (!nextChapter || currentPosition < nextChapter.start);
-    });
-
-    if (chapterIndex >= 0) {
-      return { current: chapterIndex + 1, total: chapters.length };
-    }
-    return { current: 1, total: chapters.length };
-  }, [chapters, position, isSeeking]);
+  // Scroll handler for mini player visibility
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   // Navigation handlers
   const handleLibraryPress = () => navigation.navigate('Main', { screen: 'LibraryTab' });
-  const handleQueuePress = () => navigation.navigate('QueueScreen');
-  const handleSeriesPress = useCallback((seriesName: string) => {
-    navigation.navigate('SeriesDetail', { name: seriesName });
-  }, [navigation]);
 
-  // Player controls
+  // Open full player
+  const handleDiscPress = useCallback(() => {
+    if (currentBook) {
+      togglePlayer();
+    }
+  }, [currentBook, togglePlayer]);
+
+  // Play/Pause
   const handlePlayPause = useCallback(async () => {
     if (isPlaying) {
       await pause();
@@ -164,36 +155,13 @@ export function HomeScreen() {
     }
   }, [isPlaying, pause, play, currentBook, playerCurrentBook, loadBook]);
 
-  const handleSkipBackPressIn = useCallback(async () => {
-    await startContinuousSeek('backward');
-  }, [startContinuousSeek]);
+  // Skip back 30 seconds
+  const handleSkipBack = useCallback(() => {
+    const newPosition = Math.max(0, position - 30);
+    seekTo?.(newPosition);
+  }, [position, seekTo]);
 
-  const handleSkipBackPressOut = useCallback(async () => {
-    await stopContinuousSeek();
-  }, [stopContinuousSeek]);
-
-  const handleSkipForwardPressIn = useCallback(async () => {
-    await startContinuousSeek('forward');
-  }, [startContinuousSeek]);
-
-  const handleSkipForwardPressOut = useCallback(async () => {
-    await stopContinuousSeek();
-  }, [stopContinuousSeek]);
-
-  // Now Playing card tap opens player
-  const togglePlayer = usePlayerStore((s) => s.togglePlayer);
-  const handleNowPlayingPress = useCallback(() => {
-    if (currentBook) {
-      togglePlayer();
-    }
-  }, [currentBook, togglePlayer]);
-
-  // Book card press
-  const handleBookPress = useCallback((bookId: string) => {
-    navigation.navigate('BookDetail', { id: bookId });
-  }, [navigation]);
-
-  // Resume book immediately
+  // Resume a book from Continue Listening
   const handleResumeBook = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
@@ -203,289 +171,174 @@ export function HomeScreen() {
     }
   }, [loadBook]);
 
-  // Continue Listening - exclude current book, take first 15
+  // View book details
+  const handleBookPress = useCallback((bookId: string) => {
+    navigation.navigate('BookDetail', { id: bookId });
+  }, [navigation]);
+
+  // Play a recently added book
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    try {
+      const fullBook = await apiClient.getItem(book.id);
+      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+    } catch {
+      await loadBook(book, { autoPlay: true, showPlayer: false });
+    }
+  }, [loadBook]);
+
+  // Navigate to series detail
+  const handleSeriesPress = useCallback((series: SeriesWithBooks) => {
+    navigation.navigate('SeriesDetail', { seriesName: series.name });
+  }, [navigation]);
+
+  // Play first in-progress book from series
+  const handlePlaySeries = useCallback(async (series: SeriesWithBooks) => {
+    if (series.books.length > 0) {
+      const book = series.books[0];
+      try {
+        const fullBook = await apiClient.getItem(book.id);
+        await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+      } catch {
+        await loadBook(book, { autoPlay: true, showPlayer: false });
+      }
+    }
+  }, [loadBook]);
+
+  // Pills handlers
+  const handleSleepPress = () => setShowSleepSheet(true);
+  const handleSpeedPress = () => setShowSpeedSheet(true);
+
+  // Continue Listening - exclude current book
   const continueListeningBooks = useMemo(() => {
     if (!currentBook) return recentlyListened.slice(0, 15);
     return recentlyListened.filter(book => book.id !== currentBook.id).slice(0, 15);
   }, [recentlyListened, currentBook]);
 
-  // Up Next - first 5 from queue
-  const upNextBooks = useMemo(() => queue.slice(0, 5), [queue]);
-
-  // Continue Series - series with in-progress books
-  const continueSeriesData = useMemo(() => {
-    return userSeries.filter(s => s.booksInProgress > 0).slice(0, 5);
-  }, [userSeries]);
-
-  // Get author from book
-  const getBookAuthor = (book: LibraryItem): string => {
-    const metadata = book.media?.metadata as any;
-    if (!metadata) return '';
-    if (metadata.authorName) return metadata.authorName;
-    if (metadata.authors?.length > 0) {
-      return metadata.authors.map((a: any) => a.name).join(', ');
-    }
-    return '';
-  };
-
-  // Render horizontal book card with progress
-  const renderContinueListeningCard = useCallback(({ item }: { item: LibraryItem }) => {
-    const coverUrl = apiClient.getItemCoverUrl(item.id);
-    const title = item.media?.metadata?.title || 'Unknown';
-    const progress = (item as any).userMediaProgress?.progress || 0;
-    const progressPct = Math.round(progress * 100);
-
-    return (
-      <TouchableOpacity
-        style={styles.horizontalCard}
-        onPress={() => handleResumeBook(item)}
-        onLongPress={() => handleBookPress(item.id)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.horizontalCardCoverContainer}>
-          <Image
-            source={coverUrl}
-            style={styles.horizontalCardCover}
-            contentFit="cover"
-            transition={200}
-          />
-          {progressPct > 0 && (
-            <>
-              <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.8)']}
-                style={styles.cardGradient}
-              />
-              <View style={styles.horizontalCardProgress}>
-                <View style={[styles.horizontalCardProgressFill, { width: `${progressPct}%` }]} />
-              </View>
-              <Text style={styles.cardProgressText}>{progressPct}%</Text>
-            </>
-          )}
-        </View>
-        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{title}</Text>
-      </TouchableOpacity>
-    );
-  }, [handleResumeBook, handleBookPress]);
-
-  // Render queue card with position badge
-  const renderQueueCard = useCallback(({ item, index }: { item: any; index: number }) => {
-    const coverUrl = apiClient.getItemCoverUrl(item.bookId);
-    const title = item.book?.media?.metadata?.title || 'Unknown';
-    const author = getBookAuthor(item.book);
-
-    return (
-      <TouchableOpacity
-        style={styles.horizontalCard}
-        onPress={() => handleBookPress(item.bookId)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.horizontalCardCoverContainer}>
-          <Image
-            source={coverUrl}
-            style={styles.horizontalCardCover}
-            contentFit="cover"
-            transition={200}
-          />
-          <View style={styles.queueNumberBadge}>
-            <Text style={styles.queueNumberText}>{index + 1}</Text>
-          </View>
-        </View>
-        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{title}</Text>
-        <Text style={styles.horizontalCardAuthor} numberOfLines={1}>{author}</Text>
-      </TouchableOpacity>
-    );
-  }, [handleBookPress]);
-
-  // Render series card with stacked covers
-  const renderSeriesCard = useCallback(({ item }: { item: typeof userSeries[0] }) => {
-    const books = item.books.slice(0, 3);
-    const firstBook = books[0];
-    const coverUrl = firstBook ? apiClient.getItemCoverUrl(firstBook.id) : undefined;
-    const totalBooks = item.totalBooks;
-    const completedBooks = item.booksCompleted || 0;
-    const nextBook = completedBooks + 1;
-
-    return (
-      <TouchableOpacity
-        style={styles.horizontalCard}
-        onPress={() => handleSeriesPress(item.name)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.seriesCardContainer}>
-          {/* Stacked covers */}
-          {books.length > 2 && (
-            <View style={[styles.stackedCover, styles.stackedCover3]}>
-              <Image source={apiClient.getItemCoverUrl(books[2].id)} style={styles.stackedCoverImage} contentFit="cover" />
-            </View>
-          )}
-          {books.length > 1 && (
-            <View style={[styles.stackedCover, styles.stackedCover2]}>
-              <Image source={apiClient.getItemCoverUrl(books[1].id)} style={styles.stackedCoverImage} contentFit="cover" />
-            </View>
-          )}
-          {coverUrl ? (
-            <View style={styles.stackedCoverMain}>
-              <Image source={coverUrl} style={styles.horizontalCardCover} contentFit="cover" transition={200} />
-            </View>
-          ) : (
-            <View style={[styles.horizontalCardCover, styles.placeholderCover]}>
-              <Ionicons name="library" size={scale(32)} color={ACCENT} />
-            </View>
-          )}
-          {/* Progress badge */}
-          <View style={styles.seriesProgressBadge}>
-            <Text style={styles.seriesProgressText}>Book {nextBook} of {totalBooks}</Text>
-          </View>
-        </View>
-        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.seriesBookCount}>{item.booksInProgress} in progress</Text>
-      </TouchableOpacity>
-    );
-  }, [handleSeriesPress, userSeries]);
-
-  // Calculate progress
+  // Progress value
   const progressValue = duration > 0 ? position / duration : 0;
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Background gradient */}
-      <LinearGradient
-        colors={['#1a1f1a', '#0d0f0d', '#000']}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* TopNav is now rendered at the navigator level */}
-
-      <ScrollView
+      {/* Scrollable content with background */}
+      <Animated.ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + TOP_NAV_HEIGHT + 8, paddingBottom: 100 + insets.bottom },
+          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={ACCENT} />
         }
       >
-        {/* Greeting */}
-        <Greeting username={user?.username} />
+        {/* Background: Blurred cover + gradient overlay - scrolls with content */}
+        <View style={styles.backgroundContainer}>
+          {coverUrl && (
+            <Image
+              source={coverUrl}
+              style={StyleSheet.absoluteFill}
+              blurRadius={50}
+              contentFit="cover"
+            />
+          )}
+          {/* Gradient: smooth fade to black */}
+          <LinearGradient
+            colors={[
+              'rgba(0,0,0,0)',      // Transparent at top
+              'rgba(0,0,0,0)',      // Stay transparent longer
+              'rgba(0,0,0,0.2)',    // Very gentle fade start
+              'rgba(0,0,0,0.5)',    // Gradual
+              'rgba(0,0,0,0.8)',    // Getting darker
+              'rgba(0,0,0,1)',      // Solid black
+            ]}
+            locations={[0, 0.25, 0.4, 0.55, 0.7, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
 
-        {/* Compact Now Playing Card */}
-        {currentBook ? (
-          <CompactNowPlaying
-            book={currentBook}
-            isPlaying={isPlaying}
-            isLoading={isPlayerLoading}
-            progress={progressValue}
-            currentTime={position}
-            duration={duration}
-            currentChapter={currentChapterInfo.current}
-            totalChapters={currentChapterInfo.total}
-            isSeeking={isSeeking}
-            seekDirection={seekDirection}
-            seekMagnitude={seekMagnitude}
-            onPress={handleNowPlayingPress}
-            onPlayPause={handlePlayPause}
-            onSkipBackPressIn={handleSkipBackPressIn}
-            onSkipBackPressOut={handleSkipBackPressOut}
-            onSkipForwardPressIn={handleSkipForwardPressIn}
-            onSkipForwardPressOut={handleSkipForwardPressOut}
+        {/* Content overlaid on background - pulled up with negative margin */}
+        <View style={[styles.contentOverlay, { paddingTop: insets.top + 8 }]}>
+          {/* Header: Title + Time / Author */}
+          <HomeHeader
+          title={title}
+          author={author}
+          currentTime={position}
+          isPlaying={isPlaying}
+        />
+
+        {/* CD Disc Hero Section */}
+        <HomeDiscSection
+          coverUrl={coverUrl}
+          isPlaying={isPlaying}
+          playbackRate={playbackRate}
+          onPress={handleDiscPress}
+        />
+
+        {/* Pills Row: Sleep / Speed */}
+        <HomePillsRow
+          sleepTimer={sleepTimer}
+          playbackSpeed={playbackRate}
+          onSleepPress={handleSleepPress}
+          onSpeedPress={handleSpeedPress}
+          visible={!!currentBook}
+        />
+
+        {/* Continue Listening Section */}
+        {continueListeningBooks.length > 0 ? (
+          <ContinueListeningSection
+            books={continueListeningBooks}
+            onBookPress={handleResumeBook}
+            onBookLongPress={(book) => handleBookPress(book.id)}
+            onViewAll={handleLibraryPress}
           />
         ) : (
-          <NothingPlayingCard onBrowse={handleLibraryPress} />
-        )}
-
-        {/* =============== CONTINUE LISTENING SECTION =============== */}
-        <View style={styles.horizontalSection}>
-          <SectionHeader
-            title="Continue Listening"
-            onViewAll={handleLibraryPress}
-            showViewAll={continueListeningBooks.length > 0}
-          />
-          {continueListeningBooks.length > 0 ? (
-            <FlatList
-              data={continueListeningBooks}
-              renderItem={renderContinueListeningCard}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
+          <View style={styles.section}>
+            <SectionHeader
+              title="Continue Listening"
+              onViewAll={handleLibraryPress}
+              showViewAll={false}
             />
-          ) : (
             <EmptySection
               title="Start listening"
               description="Your in-progress books will appear here"
               ctaLabel="Browse Library"
               onCTAPress={handleLibraryPress}
             />
-          )}
-        </View>
+          </View>
+        )}
 
-        {/* =============== UP NEXT (QUEUE) SECTION =============== */}
-        <View style={styles.horizontalSection}>
-          <SectionHeader
-            title="Up Next"
-            onViewAll={handleQueuePress}
-            showViewAll={upNextBooks.length > 0}
+        {/* Recently Added Section */}
+        {recentBooks.length > 0 && (
+          <RecentlyAddedSection
+            books={recentBooks}
+            onBookPress={(book) => handleBookPress(book.id)}
+            onPlayPress={handlePlayBook}
+            maxItems={5}
           />
-          {upNextBooks.length > 0 ? (
-            <FlatList
-              data={upNextBooks}
-              renderItem={renderQueueCard}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
-            />
-          ) : (
-            <EmptySection
-              title="Your queue is empty"
-              description="Add books to plan your listening"
-              ctaLabel="Browse Library"
-              onCTAPress={handleLibraryPress}
-            />
-          )}
+        )}
+
+        {/* Your Series Section */}
+        {userSeries.length > 0 && (
+          <YourSeriesSection
+            series={userSeries}
+            onSeriesPress={handleSeriesPress}
+            onPlayPress={handlePlaySeries}
+            maxItems={5}
+          />
+        )}
         </View>
+      </Animated.ScrollView>
 
-        {/* =============== CONTINUE SERIES SECTION =============== */}
-        {continueSeriesData.length > 0 && (
-          <View style={styles.horizontalSection}>
-            <SectionHeader
-              title="Continue Series"
-              onViewAll={handleLibraryPress}
-              showViewAll={true}
-            />
-            <FlatList
-              data={continueSeriesData}
-              renderItem={renderSeriesCard}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
-            />
-          </View>
-        )}
-
-        {/* =============== DOWNLOADED BOOKS SECTION =============== */}
-        {downloadedBooks.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader
-              title="Downloaded"
-              onViewAll={handleLibraryPress}
-              showViewAll={true}
-            />
-            {downloadedBooks.slice(0, 5).map((book) => (
-              <BookCard
-                key={book.id}
-                book={book}
-                onPress={() => handleBookPress(book.id)}
-                showListeningProgress={true}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+      {/* Shared Sheet Components */}
+      <SleepTimerSheet visible={showSleepSheet} onClose={() => setShowSleepSheet(false)} />
+      <SpeedSheet visible={showSpeedSheet} onClose={() => setShowSpeedSheet(false)} />
     </View>
   );
 }
@@ -498,170 +351,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
-
-  // Section
+  backgroundContainer: {
+    height: hp(65), // Background takes up top portion
+    overflow: 'hidden',
+  },
+  contentOverlay: {
+    marginTop: -hp(65), // Pull content up to overlay on background
+  },
   section: {
-    marginTop: scale(24),
-    paddingHorizontal: scale(20),
-  },
-
-  // =============== HORIZONTAL SECTIONS ===============
-  horizontalSection: {
-    marginTop: scale(24),
-  },
-  horizontalList: {
-    paddingHorizontal: scale(20),
-    gap: scale(12),
-  },
-
-  // =============== HORIZONTAL CARDS ===============
-  horizontalCard: {
-    width: HORIZONTAL_CARD_WIDTH,
-  },
-  horizontalCardCoverContainer: {
-    width: HORIZONTAL_CARD_COVER,
-    height: HORIZONTAL_CARD_COVER,
-    borderRadius: scale(10),
-    overflow: 'hidden',
-    marginBottom: scale(10),
-    position: 'relative',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  horizontalCardCover: {
-    width: '100%',
-    height: '100%',
-  },
-  cardGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 50,
-  },
-  placeholderCover: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  horizontalCardProgress: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  horizontalCardProgressFill: {
-    height: '100%',
-    backgroundColor: ACCENT,
-  },
-  cardProgressText: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    fontSize: scale(11),
-    fontWeight: '700',
-    color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  horizontalCardTitle: {
-    fontSize: scale(12),
-    fontWeight: '500',
-    color: '#fff',
-    lineHeight: scale(16),
-  },
-  horizontalCardAuthor: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 2,
-  },
-
-  // Queue number badge
-  queueNumberBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: ACCENT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  queueNumberText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#000',
-  },
-
-  // =============== SERIES CARDS ===============
-  seriesCardContainer: {
-    width: HORIZONTAL_CARD_COVER,
-    height: HORIZONTAL_CARD_COVER,
-    marginBottom: scale(10),
-    position: 'relative',
-  },
-  stackedCover: {
-    position: 'absolute',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  stackedCover3: {
-    top: 8,
-    left: 16,
-    width: HORIZONTAL_CARD_COVER - 16,
-    height: HORIZONTAL_CARD_COVER - 16,
-    opacity: 0.4,
-  },
-  stackedCover2: {
-    top: 4,
-    left: 8,
-    width: HORIZONTAL_CARD_COVER - 8,
-    height: HORIZONTAL_CARD_COVER - 8,
-    opacity: 0.6,
-  },
-  stackedCoverMain: {
-    width: HORIZONTAL_CARD_COVER,
-    height: HORIZONTAL_CARD_COVER,
-    borderRadius: scale(10),
-    overflow: 'hidden',
-    position: 'relative',
-    zIndex: 1,
-  },
-  stackedCoverImage: {
-    width: '100%',
-    height: '100%',
-  },
-  seriesProgressBadge: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    zIndex: 2,
-  },
-  seriesProgressText: {
-    fontSize: scale(9),
-    fontWeight: '600',
-    color: ACCENT,
-  },
-  seriesBookCount: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
+    marginTop: wp(4),
   },
 });
 

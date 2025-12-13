@@ -19,7 +19,7 @@ import { useShallow } from 'zustand/react/shallow';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 // Height of the nav content (without safe area)
 export const TOP_NAV_CONTENT_HEIGHT = 52;
@@ -67,14 +67,12 @@ function TopNavInner() {
     return unsubscribe;
   }, [navigation]);
 
-  // Hide TopNav when full-screen player is open
-  if (isPlayerVisible) return null;
-
-  // Determine active states
+  // Determine active states (computed after all hooks)
   const isProfile = currentRouteName === 'ProfileTab';
   const isDiscover = currentRouteName === 'DiscoverTab' || currentRouteName === 'BrowseScreen';
   const isLibrary = currentRouteName === 'LibraryTab';
   const isHome = currentRouteName === 'HomeTab' || currentRouteName === 'Main';
+  const totalHeight = insets.top + TOP_NAV_CONTENT_HEIGHT;
 
   // Navigation handlers
   const handleProfilePress = useCallback(() => {
@@ -93,7 +91,8 @@ function TopNavInner() {
     navigation.navigate('QueueScreen');
   }, [navigation]);
 
-  const totalHeight = insets.top + TOP_NAV_CONTENT_HEIGHT;
+  // Hide TopNav when full-screen player is open (after all hooks)
+  if (isPlayerVisible) return null;
 
   return (
     <View style={styles.wrapper} pointerEvents="box-none">

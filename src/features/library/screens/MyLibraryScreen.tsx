@@ -1,20 +1,16 @@
 /**
  * src/features/library/screens/MyLibraryScreen.tsx
  *
- * My Library screen - shows downloaded content with filtering and sorting.
+ * My Library screen with tab-based navigation.
  *
- * Sections:
- * 1. Filter chips (All, In Progress, Not Started, Completed)
- * 2. Sort picker + book count
- * 3. Downloading section (if active)
- * 4. Continue Listening (in-progress books)
- * 5. Downloaded books (list view)
- * 6. Your Series (with progress)
- * 7. Storage summary
- * 8. Browse Library CTA
+ * Tabs:
+ * 1. All - All books with download/stream indicators
+ * 2. Downloaded - Downloaded content with management
+ * 3. In Progress - Continue listening with hero card
+ * 4. Favorites - Liked books, authors, series, narrators
  */
 
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +22,7 @@ import {
   RefreshControl,
   FlatList,
   Alert,
+  Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,18 +30,21 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useLibraryCache, useCoverUrl } from '@/core/cache';
+import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { formatBytes } from '@/shared/utils/format';
 import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { DownloadItem } from '@/features/downloads/components/DownloadItem';
 import { SectionHeader } from '@/features/home/components/SectionHeader';
-import { FilterChips, FilterOption } from '../components/FilterChips';
 import { SortPicker, SortOption } from '../components/SortPicker';
 import { StorageSummary } from '../components/StorageSummary';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { useMyLibraryStore } from '../stores/myLibraryStore';
+import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
+import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
@@ -53,12 +53,21 @@ const COLORS = {
   background: '#000000',
   textPrimary: '#FFFFFF',
   textSecondary: 'rgba(255, 255, 255, 0.6)',
-  accent: '#c1f40c',
+  accent: '#F4B60C',
   cardBg: 'rgba(255, 255, 255, 0.08)',
 };
 
 const HORIZONTAL_CARD_WIDTH = scale(110);
 const HORIZONTAL_CARD_COVER = scale(100);
+
+// Tab types
+type TabType = 'all' | 'downloaded' | 'in-progress' | 'favorites';
+
+interface TabConfig {
+  id: TabType;
+  label: string;
+  icon: string;
+}
 
 // Helper to extract metadata safely
 function getMetadata(item: LibraryItem): any {
@@ -147,6 +156,7 @@ interface EnrichedBook {
   totalBytes: number;
   lastPlayedAt?: number;
   addedAt?: number;
+  isDownloaded?: boolean;
 }
 
 interface SeriesGroup {
@@ -158,6 +168,65 @@ interface SeriesGroup {
   inProgressCount: number;
 }
 
+// Tab configuration
+const TABS: TabConfig[] = [
+  { id: 'all', label: 'All', icon: 'library-outline' },
+  { id: 'downloaded', label: 'Downloaded', icon: 'cloud-download-outline' },
+  { id: 'in-progress', label: 'In Progress', icon: 'play-circle-outline' },
+  { id: 'favorites', label: 'Favorites', icon: 'heart-outline' },
+];
+
+// Tab bar component
+const TabBar = React.memo(function TabBar({
+  activeTab,
+  onTabChange,
+  counts,
+}: {
+  activeTab: TabType;
+  onTabChange: (tab: TabType) => void;
+  counts: Record<TabType, number>;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tabBar}
+      style={styles.tabBarContainer}
+    >
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        const count = counts[tab.id];
+        return (
+          <Pressable
+            key={tab.id}
+            style={[styles.tab, isActive && styles.tabActive]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onTabChange(tab.id);
+            }}
+          >
+            <Ionicons
+              name={isActive ? (tab.icon.replace('-outline', '') as any) : (tab.icon as any)}
+              size={scale(16)}
+              color={isActive ? COLORS.accent : COLORS.textSecondary}
+            />
+            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+              {tab.label}
+            </Text>
+            {count > 0 && (
+              <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
+                  {count}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+});
+
 export function MyLibraryScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -165,8 +234,17 @@ export function MyLibraryScreen() {
   const { downloads, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
   const { loadBook } = usePlayerStore();
 
-  // Filter and sort state
-  const [filter, setFilter] = useState<FilterOption>('all');
+  // Favorites from stores
+  const libraryIds = useMyLibraryStore((state) => state.libraryIds);
+  const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
+  const favoriteAuthors = usePreferencesStore((state) => state.favoriteAuthors);
+  const favoriteNarrators = usePreferencesStore((state) => state.favoriteNarrators);
+
+  // Continue listening data
+  const { items: continueListeningItems } = useContinueListening();
+
+  // Tab and sort state
+  const [activeTab, setActiveTab] = useState<TabType>('all');
   const [sort, setSort] = useState<SortOption>('recently-played');
 
   // Separate active downloads from completed
@@ -226,32 +304,98 @@ export function MyLibraryScreen() {
     });
   }, [completedDownloads, getItem, isLoaded]);
 
-  // Calculate filter counts
-  const filterCounts = useMemo(() => {
-    const all = enrichedBooks.length;
-    const inProgress = enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95).length;
-    const notStarted = enrichedBooks.filter(b => b.progress === 0).length;
-    const completed = enrichedBooks.filter(b => b.progress >= 0.95).length;
-    return { all, inProgress, notStarted, completed };
-  }, [enrichedBooks]);
+  // Get favorited books (heart icon) from cache
+  const favoritedBooks = useMemo((): EnrichedBook[] => {
+    if (!isLoaded || !cachedItems) return [];
 
-  // Apply filter
-  const filteredBooks = useMemo(() => {
-    switch (filter) {
+    const result: EnrichedBook[] = [];
+
+    for (const bookId of libraryIds) {
+      const item = getItem(bookId);
+      if (!item) continue;
+
+      const metadata = getMetadata(item);
+      const seriesName = metadata.seriesName || '';
+      const sequenceMatch = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
+      const cleanSeriesName = sequenceMatch ? sequenceMatch[1].trim() : seriesName;
+      const sequence = sequenceMatch ? parseFloat(sequenceMatch[2]) : undefined;
+
+      // Check if also downloaded
+      const download = completedDownloads.find(d => d.itemId === bookId);
+
+      result.push({
+        id: bookId,
+        item,
+        title: metadata.title || 'Unknown Title',
+        author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+        seriesName: cleanSeriesName,
+        sequence,
+        progress: getProgress(item),
+        duration: getDuration(item),
+        totalBytes: download?.totalBytes || 0,
+        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        addedAt: item.addedAt,
+        isDownloaded: !!download,
+      });
+    }
+
+    return result;
+  }, [libraryIds, cachedItems, isLoaded, completedDownloads, getItem]);
+
+  // "All" = union of downloaded + favorited books (deduplicated)
+  const allLibraryBooks = useMemo<EnrichedBook[]>(() => {
+    const bookMap = new Map<string, EnrichedBook>();
+
+    // Add all downloaded books
+    for (const book of enrichedBooks) {
+      bookMap.set(book.id, { ...book, isDownloaded: true });
+    }
+
+    // Add favorited books (mark if also downloaded)
+    for (const book of favoritedBooks) {
+      if (!bookMap.has(book.id)) {
+        bookMap.set(book.id, book);
+      }
+    }
+
+    return Array.from(bookMap.values());
+  }, [enrichedBooks, favoritedBooks]);
+
+  // Calculate tab counts
+  const tabCounts = useMemo(() => {
+    // In-progress from downloaded books only
+    const inProgressCount = enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95).length;
+    const downloadedCount = enrichedBooks.length;
+    const favoritesCount = libraryIds.length + favoriteSeriesNames.length +
+                           favoriteAuthors.length + favoriteNarrators.length;
+    const allCount = allLibraryBooks.length;
+
+    return {
+      'all': allCount,
+      'downloaded': downloadedCount,
+      'in-progress': inProgressCount,
+      'favorites': favoritesCount,
+    } as Record<TabType, number>;
+  }, [allLibraryBooks.length, enrichedBooks, libraryIds.length,
+      favoriteSeriesNames.length, favoriteAuthors.length, favoriteNarrators.length]);
+
+  // Get books for current tab
+  const currentTabBooks = useMemo(() => {
+    switch (activeTab) {
+      case 'downloaded':
+        return enrichedBooks;
       case 'in-progress':
         return enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
-      case 'not-started':
-        return enrichedBooks.filter(b => b.progress === 0);
-      case 'completed':
-        return enrichedBooks.filter(b => b.progress >= 0.95);
+      case 'favorites':
+        return favoritedBooks;
       default:
-        return enrichedBooks;
+        return allLibraryBooks;
     }
-  }, [enrichedBooks, filter]);
+  }, [activeTab, enrichedBooks, favoritedBooks, allLibraryBooks]);
 
   // Apply sort
   const sortedBooks = useMemo(() => {
-    const sorted = [...filteredBooks];
+    const sorted = [...currentTabBooks];
 
     switch (sort) {
       case 'recently-played':
@@ -271,25 +415,44 @@ export function MyLibraryScreen() {
       default:
         return sorted;
     }
-  }, [filteredBooks, sort]);
+  }, [currentTabBooks, sort]);
 
-  // Separate in-progress books for Continue Listening section
+  // In-progress books for Continue Listening section
   const inProgressBooks = useMemo(() => {
-    if (filter === 'not-started' || filter === 'completed') return [];
+    if (activeTab === 'favorites') return [];
     return sortedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
-  }, [sortedBooks, filter]);
+  }, [sortedBooks, activeTab]);
 
-  // Downloaded books section (exclude in-progress unless filtered to in-progress)
-  const downloadedBooksList = useMemo(() => {
-    if (filter === 'in-progress') return sortedBooks;
-    return sortedBooks.filter(b => b.progress === 0 || b.progress >= 0.95);
-  }, [sortedBooks, filter]);
+  // Get favorite authors/series/narrators data
+  const favoriteAuthorData = useMemo(() => {
+    if (!isLoaded) return [];
+    const allAuthorsMap = getAllAuthors();
+    return favoriteAuthors
+      .map(name => allAuthorsMap.find(a => a.name === name))
+      .filter(Boolean);
+  }, [favoriteAuthors, isLoaded]);
+
+  const favoriteSeriesData = useMemo(() => {
+    if (!isLoaded) return [];
+    const allSeriesMap = getAllSeries();
+    return favoriteSeriesNames
+      .map(name => allSeriesMap.find(s => s.name === name))
+      .filter(Boolean);
+  }, [favoriteSeriesNames, isLoaded]);
+
+  const favoriteNarratorData = useMemo(() => {
+    if (!isLoaded) return [];
+    const allNarratorsMap = getAllNarrators();
+    return favoriteNarrators
+      .map(name => allNarratorsMap.find(n => n.name === name))
+      .filter(Boolean);
+  }, [favoriteNarrators, isLoaded]);
 
   // Group books by series
   const seriesGroups = useMemo<SeriesGroup[]>(() => {
     const seriesMap = new Map<string, EnrichedBook[]>();
 
-    for (const book of filteredBooks) {
+    for (const book of sortedBooks) {
       if (book.seriesName) {
         const existing = seriesMap.get(book.seriesName) || [];
         existing.push(book);
@@ -311,7 +474,7 @@ export function MyLibraryScreen() {
         inProgressCount: books.filter(b => b.progress > 0 && b.progress < 0.95).length,
       };
     });
-  }, [filteredBooks, getSeries]);
+  }, [sortedBooks, getSeries]);
 
   // Refresh handler
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -427,10 +590,11 @@ export function MyLibraryScreen() {
     );
   }, [handleResumeBook, handleBookPress]);
 
-  // Render downloaded book row
-  const renderBookRow = useCallback((book: EnrichedBook) => {
+  // Render book row with download/stream indicator
+  const renderBookRow = useCallback((book: EnrichedBook, showIndicator = true) => {
     const coverUrl = apiClient.getItemCoverUrl(book.id);
     const isCompleted = book.progress >= 0.95;
+    const isDownloaded = book.isDownloaded || book.totalBytes > 0;
 
     return (
       <TouchableOpacity
@@ -441,9 +605,16 @@ export function MyLibraryScreen() {
       >
         <View style={styles.bookCoverContainer}>
           <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
-          <View style={styles.downloadedBadge}>
-            <CheckIcon size={10} color="#FFFFFF" />
-          </View>
+          {/* Download/Stream indicator */}
+          {showIndicator && (
+            <View style={[styles.statusBadge, isDownloaded ? styles.downloadedBadge : styles.streamBadge]}>
+              <Ionicons
+                name={isDownloaded ? 'checkmark' : 'cloud-outline'}
+                size={scale(10)}
+                color="#FFFFFF"
+              />
+            </View>
+          )}
           {isCompleted && (
             <View style={styles.completedBadge}>
               <Ionicons name="checkmark-circle" size={14} color={COLORS.accent} />
@@ -454,7 +625,12 @@ export function MyLibraryScreen() {
         <View style={styles.bookInfo}>
           <Text style={styles.bookTitle} numberOfLines={1}>{book.title}</Text>
           <Text style={styles.bookAuthor} numberOfLines={1}>{book.author}</Text>
-          <Text style={styles.bookMeta}>{formatDuration(book.duration)}</Text>
+          <View style={styles.bookMetaRow}>
+            <Text style={styles.bookMeta}>{formatDuration(book.duration)}</Text>
+            {book.progress > 0 && book.progress < 0.95 && (
+              <Text style={styles.bookProgress}>{Math.round(book.progress * 100)}%</Text>
+            )}
+          </View>
         </View>
 
         <TouchableOpacity
@@ -467,6 +643,85 @@ export function MyLibraryScreen() {
       </TouchableOpacity>
     );
   }, [handleBookPress, handlePlayBook]);
+
+  // Render favorite author card
+  const renderAuthorCard = useCallback((author: any) => {
+    if (!author) return null;
+    const bookCount = author.books?.length || 0;
+
+    return (
+      <TouchableOpacity
+        key={author.name}
+        style={styles.personCard}
+        onPress={() => navigation.navigate('AuthorDetail', { name: author.name })}
+        activeOpacity={0.7}
+      >
+        <View style={styles.personAvatar}>
+          {author.imageUrl ? (
+            <Image source={author.imageUrl} style={styles.personImage} contentFit="cover" />
+          ) : (
+            <Ionicons name="person" size={scale(24)} color={COLORS.textSecondary} />
+          )}
+        </View>
+        <Text style={styles.personName} numberOfLines={1}>{author.name}</Text>
+        <Text style={styles.personMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+      </TouchableOpacity>
+    );
+  }, [navigation]);
+
+  // Render favorite narrator card
+  const renderNarratorCard = useCallback((narrator: any) => {
+    if (!narrator) return null;
+    const bookCount = narrator.books?.length || 0;
+
+    return (
+      <TouchableOpacity
+        key={narrator.name}
+        style={styles.personCard}
+        onPress={() => navigation.navigate('NarratorDetail', { name: narrator.name })}
+        activeOpacity={0.7}
+      >
+        <View style={styles.personAvatar}>
+          <Ionicons name="mic" size={scale(24)} color={COLORS.textSecondary} />
+        </View>
+        <Text style={styles.personName} numberOfLines={1}>{narrator.name}</Text>
+        <Text style={styles.personMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+      </TouchableOpacity>
+    );
+  }, [navigation]);
+
+  // Render favorite series card
+  const renderFavoriteSeriesCard = useCallback((series: any) => {
+    if (!series) return null;
+    const bookCount = series.books?.length || 0;
+    const firstBookId = series.books?.[0]?.id;
+
+    return (
+      <TouchableOpacity
+        key={series.name}
+        style={styles.favoriteSeriesCard}
+        onPress={() => handleSeriesPress(series.name)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.seriesImageContainer}>
+          {firstBookId ? (
+            <Image
+              source={apiClient.getItemCoverUrl(firstBookId)}
+              style={styles.seriesImage}
+              contentFit="cover"
+            />
+          ) : (
+            <Ionicons name="library" size={scale(24)} color={COLORS.textSecondary} />
+          )}
+        </View>
+        <View style={styles.favoriteSeriesInfo}>
+          <Text style={styles.favoriteSeriesName} numberOfLines={1}>{series.name}</Text>
+          <Text style={styles.favoriteSeriesMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={scale(16)} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+    );
+  }, [handleSeriesPress]);
 
   // Render series card
   const renderSeriesCard = useCallback((series: SeriesGroup) => {
@@ -520,14 +775,160 @@ export function MyLibraryScreen() {
     );
   }, [handleSeriesPress]);
 
+  // Check if there's any content in the library (downloaded or favorited)
+  const hasAnyContent = allLibraryBooks.length > 0 || activeDownloads.length > 0 ||
+                        favoriteSeriesNames.length > 0 || favoriteAuthors.length > 0 ||
+                        favoriteNarrators.length > 0;
+
+  // Render Favorites tab content
+  const renderFavoritesContent = () => {
+    const hasFavoriteBooks = favoritedBooks.length > 0;
+    const hasFavoriteAuthors = favoriteAuthorData.length > 0;
+    const hasFavoriteSeries = favoriteSeriesData.length > 0;
+    const hasFavoriteNarrators = favoriteNarratorData.length > 0;
+    const hasAnyFavorites = hasFavoriteBooks || hasFavoriteAuthors || hasFavoriteSeries || hasFavoriteNarrators;
+
+    if (!hasAnyFavorites) {
+      return (
+        <View style={styles.emptyTabContainer}>
+          <Ionicons name="heart-outline" size={scale(48)} color="rgba(255,255,255,0.3)" />
+          <Text style={styles.emptyTabTitle}>No favorites yet</Text>
+          <Text style={styles.emptyTabSubtitle}>
+            Tap the heart icon on books, authors, series, or narrators to add them to your favorites.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        {/* Favorite Books */}
+        {hasFavoriteBooks && (
+          <View style={styles.section}>
+            <SectionHeader title={`Favorite Books (${favoritedBooks.length})`} showViewAll={false} />
+            {favoritedBooks.map(book => renderBookRow(book))}
+          </View>
+        )}
+
+        {/* Favorite Authors */}
+        {hasFavoriteAuthors && (
+          <View style={styles.section}>
+            <SectionHeader title={`Favorite Authors (${favoriteAuthorData.length})`} showViewAll={false} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            >
+              {favoriteAuthorData.map(author => renderAuthorCard(author))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Favorite Series */}
+        {hasFavoriteSeries && (
+          <View style={styles.section}>
+            <SectionHeader title={`Favorite Series (${favoriteSeriesData.length})`} showViewAll={false} />
+            {favoriteSeriesData.map(series => renderFavoriteSeriesCard(series))}
+          </View>
+        )}
+
+        {/* Favorite Narrators */}
+        {hasFavoriteNarrators && (
+          <View style={styles.section}>
+            <SectionHeader title={`Favorite Narrators (${favoriteNarratorData.length})`} showViewAll={false} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            >
+              {favoriteNarratorData.map(narrator => renderNarratorCard(narrator))}
+            </ScrollView>
+          </View>
+        )}
+      </>
+    );
+  };
+
+  // Render In Progress tab content
+  const renderInProgressContent = () => {
+    const inProgressItems = enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
+
+    if (inProgressItems.length === 0) {
+      return (
+        <View style={styles.emptyTabContainer}>
+          <Ionicons name="play-circle-outline" size={scale(48)} color="rgba(255,255,255,0.3)" />
+          <Text style={styles.emptyTabTitle}>Nothing in progress</Text>
+          <Text style={styles.emptyTabSubtitle}>
+            Start listening to a book and your progress will appear here.
+          </Text>
+        </View>
+      );
+    }
+
+    // Sort by most recently played
+    const sortedItems = [...inProgressItems].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+    const heroItem = sortedItems[0];
+    const otherItems = sortedItems.slice(1);
+
+    return (
+      <>
+        {/* Hero Continue Listening Card */}
+        {heroItem && (
+          <View style={styles.heroSection}>
+            <TouchableOpacity
+              style={styles.heroCard}
+              onPress={() => handleResumeBook(heroItem)}
+              activeOpacity={0.9}
+            >
+              <Image
+                source={apiClient.getItemCoverUrl(heroItem.id)}
+                style={styles.heroCover}
+                contentFit="cover"
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.9)']}
+                style={styles.heroGradient}
+              />
+              <View style={styles.heroContent}>
+                <Text style={styles.heroLabel}>CONTINUE LISTENING</Text>
+                <Text style={styles.heroTitle} numberOfLines={2}>{heroItem.title}</Text>
+                <Text style={styles.heroAuthor}>{heroItem.author}</Text>
+                <View style={styles.heroProgressContainer}>
+                  <View style={styles.heroProgressBar}>
+                    <View style={[styles.heroProgressFill, { width: `${Math.round(heroItem.progress * 100)}%` }]} />
+                  </View>
+                  <Text style={styles.heroProgressText}>
+                    {formatTimeRemaining(heroItem.duration * (1 - heroItem.progress))}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.heroPlayButton}
+                onPress={() => handleResumeBook(heroItem)}
+              >
+                <Ionicons name="play" size={scale(28)} color="#000" />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Other In Progress Items */}
+        {otherItems.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title={`More In Progress (${otherItems.length})`} showViewAll={false} />
+            {otherItems.map(book => renderBookRow(book))}
+          </View>
+        )}
+      </>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      {/* TopNav is now rendered at the navigator level */}
-
       {/* Content */}
-      {!hasContent ? (
+      {!hasAnyContent ? (
         <View style={[styles.emptyContainer, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}>
           <DownloadIcon size={scale(64)} />
           <Text style={styles.emptyTitle}>Your library is empty</Text>
@@ -555,97 +956,134 @@ export function MyLibraryScreen() {
           {/* Screen Title */}
           <Text style={styles.screenTitle}>My Library</Text>
 
-          {/* Filter Chips */}
-          <FilterChips
-            selected={filter}
-            onSelect={setFilter}
-            counts={filterCounts}
-          />
+          {/* Tab Bar */}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} counts={tabCounts} />
 
-          {/* Sort Picker + Book Count */}
-          <SortPicker
-            selected={sort}
-            onSelect={setSort}
-            bookCount={filteredBooks.length}
-          />
+          {/* Sort Picker (not shown on Favorites tab) */}
+          {activeTab !== 'favorites' && activeTab !== 'in-progress' && (
+            <SortPicker
+              selected={sort}
+              onSelect={setSort}
+              bookCount={sortedBooks.length}
+            />
+          )}
 
-          {/* =============== DOWNLOADING SECTION =============== */}
-          {activeDownloads.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeaderWithAction}>
-                <Text style={styles.sectionTitle}>
-                  Downloading ({activeDownloads.length})
-                </Text>
-                {hasDownloading && (
-                  <TouchableOpacity onPress={handlePauseAll}>
-                    <Text style={styles.sectionAction}>Pause All</Text>
-                  </TouchableOpacity>
-                )}
-                {!hasDownloading && hasPaused && (
-                  <TouchableOpacity onPress={handleResumeAll}>
-                    <Text style={styles.sectionAction}>Resume All</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={styles.downloadList}>
-                {activeDownloads.map((download) => (
-                  <DownloadItem
-                    key={download.itemId}
-                    download={download}
-                    onPause={() => pauseDownload(download.itemId)}
-                    onResume={() => resumeDownload(download.itemId)}
-                    onDelete={() => deleteDownload(download.itemId)}
+          {/* =============== TAB CONTENT =============== */}
+          {activeTab === 'favorites' ? (
+            renderFavoritesContent()
+          ) : activeTab === 'in-progress' ? (
+            renderInProgressContent()
+          ) : (
+            <>
+              {/* =============== 1. DOWNLOADING SECTION =============== */}
+              {activeDownloads.length > 0 && (activeTab === 'all' || activeTab === 'downloaded') && (
+                <View style={styles.section}>
+                  <View style={styles.sectionHeaderWithAction}>
+                    <Text style={styles.sectionTitle}>
+                      Downloading ({activeDownloads.length})
+                    </Text>
+                    {hasDownloading && (
+                      <TouchableOpacity onPress={handlePauseAll}>
+                        <Text style={styles.sectionAction}>Pause All</Text>
+                      </TouchableOpacity>
+                    )}
+                    {!hasDownloading && hasPaused && (
+                      <TouchableOpacity onPress={handleResumeAll}>
+                        <Text style={styles.sectionAction}>Resume All</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={styles.downloadList}>
+                    {activeDownloads.map((download) => (
+                      <DownloadItem
+                        key={download.itemId}
+                        download={download}
+                        onPause={() => pauseDownload(download.itemId)}
+                        onResume={() => resumeDownload(download.itemId)}
+                        onDelete={() => deleteDownload(download.itemId)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* =============== 2. BOOKS SECTION =============== */}
+              {sortedBooks.length > 0 && (
+                <View style={styles.section}>
+                  <SectionHeader
+                    title={activeTab === 'downloaded'
+                      ? `Downloaded Books (${sortedBooks.length})`
+                      : `Books (${sortedBooks.length})`
+                    }
+                    showViewAll={false}
                   />
-                ))}
-              </View>
-            </View>
-          )}
+                  {sortedBooks.map(book => renderBookRow(book, activeTab === 'all'))}
+                </View>
+              )}
 
-          {/* =============== CONTINUE LISTENING SECTION =============== */}
-          {inProgressBooks.length > 0 && filter !== 'not-started' && filter !== 'completed' && (
-            <View style={styles.horizontalSection}>
-              <SectionHeader
-                title={`Continue Listening (${inProgressBooks.length})`}
-                showViewAll={false}
-              />
-              <FlatList
-                data={inProgressBooks}
-                renderItem={renderContinueListeningCard}
-                keyExtractor={(item) => item.id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalList}
-              />
-            </View>
-          )}
+              {/* =============== 3. SERIES SECTION =============== */}
+              {activeTab === 'all' && favoriteSeriesData.length > 0 && (
+                <View style={styles.section}>
+                  <SectionHeader
+                    title={`Series (${favoriteSeriesData.length})`}
+                    showViewAll={false}
+                  />
+                  {favoriteSeriesData.map(series => renderFavoriteSeriesCard(series))}
+                </View>
+              )}
+              {seriesGroups.length > 0 && activeTab === 'downloaded' && (
+                <View style={styles.section}>
+                  <SectionHeader
+                    title={`Downloaded Series (${seriesGroups.length})`}
+                    showViewAll={false}
+                  />
+                  {seriesGroups.map(renderSeriesCard)}
+                </View>
+              )}
 
-          {/* =============== DOWNLOADED BOOKS SECTION =============== */}
-          {downloadedBooksList.length > 0 && (
-            <View style={styles.section}>
-              <SectionHeader
-                title={`Downloaded (${downloadedBooksList.length})`}
-                showViewAll={false}
-              />
-              {downloadedBooksList.map(renderBookRow)}
-            </View>
-          )}
+              {/* =============== 4. AUTHORS SECTION (All tab) =============== */}
+              {activeTab === 'all' && favoriteAuthorData.length > 0 && (
+                <View style={styles.section}>
+                  <SectionHeader
+                    title={`Authors (${favoriteAuthorData.length})`}
+                    showViewAll={false}
+                  />
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalList}
+                  >
+                    {favoriteAuthorData.map(author => renderAuthorCard(author))}
+                  </ScrollView>
+                </View>
+              )}
 
-          {/* =============== YOUR SERIES SECTION =============== */}
-          {seriesGroups.length > 0 && (
-            <View style={styles.section}>
-              <SectionHeader
-                title={`Your Series (${seriesGroups.length})`}
-                showViewAll={false}
-              />
-              {seriesGroups.map(renderSeriesCard)}
-            </View>
-          )}
+              {/* =============== 5. NARRATORS SECTION (All tab) =============== */}
+              {activeTab === 'all' && favoriteNarratorData.length > 0 && (
+                <View style={styles.section}>
+                  <SectionHeader
+                    title={`Narrators (${favoriteNarratorData.length})`}
+                    showViewAll={false}
+                  />
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalList}
+                  >
+                    {favoriteNarratorData.map(narrator => renderNarratorCard(narrator))}
+                  </ScrollView>
+                </View>
+              )}
 
-          {/* =============== STORAGE SUMMARY =============== */}
-          <StorageSummary
-            usedBytes={totalStorageUsed}
-            onManagePress={handleManageStorage}
-          />
+              {/* =============== STORAGE SUMMARY (Downloaded tab) =============== */}
+              {activeTab === 'downloaded' && (
+                <StorageSummary
+                  usedBytes={totalStorageUsed}
+                  onManagePress={handleManageStorage}
+                />
+              )}
+            </>
+          )}
 
           {/* =============== BROWSE CTA =============== */}
           <View style={styles.bottomCta}>
@@ -699,16 +1137,16 @@ const styles = StyleSheet.create({
   libraryButtonActive: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(193, 244, 12, 0.2)',
+    backgroundColor: 'rgba(244, 182, 12, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 100,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#c1f40c',
+    borderColor: '#F4B60C',
   },
   libraryButtonTextActive: {
-    color: '#c1f40c',
+    color: '#F4B60C',
     fontSize: 10,
     letterSpacing: 0.2,
     fontWeight: '600',
@@ -726,7 +1164,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: 'rgba(193, 244, 12, 0.5)',
+    borderColor: 'rgba(244, 182, 12, 0.5)',
     backgroundColor: 'transparent',
   },
   libraryIconFront: {
@@ -737,15 +1175,15 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: '#c1f40c',
-    backgroundColor: 'rgba(193, 244, 12, 0.1)',
+    borderColor: '#F4B60C',
+    backgroundColor: 'rgba(244, 182, 12, 0.1)',
   },
 
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: scale(100),
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
 
   // Screen title
@@ -755,6 +1193,56 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     paddingHorizontal: scale(20),
     marginBottom: scale(8),
+  },
+
+  // Tab bar
+  tabBarContainer: {
+    marginBottom: scale(16),
+  },
+  tabBar: {
+    paddingHorizontal: scale(20),
+    gap: scale(8),
+    flexDirection: 'row',
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(10),
+    borderRadius: scale(20),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    gap: scale(6),
+  },
+  tabActive: {
+    backgroundColor: 'rgba(244, 182, 12, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 182, 12, 0.3)',
+  },
+  tabText: {
+    fontSize: scale(13),
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  tabTextActive: {
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
+  tabBadge: {
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(8),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  tabBadgeActive: {
+    backgroundColor: 'rgba(244, 182, 12, 0.2)',
+  },
+  tabBadgeText: {
+    fontSize: scale(10),
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  tabBadgeTextActive: {
+    color: COLORS.accent,
   },
 
   // Sections
@@ -872,16 +1360,21 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: scale(8),
   },
-  downloadedBadge: {
+  statusBadge: {
     position: 'absolute',
     bottom: scale(4),
     right: scale(4),
     width: scale(18),
     height: scale(18),
     borderRadius: scale(9),
-    backgroundColor: COLORS.accent,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  downloadedBadge: {
+    backgroundColor: COLORS.accent,
+  },
+  streamBadge: {
+    backgroundColor: 'rgba(100, 150, 255, 0.9)',
   },
   completedBadge: {
     position: 'absolute',
@@ -901,10 +1394,20 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: scale(2),
   },
+  bookMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    marginTop: scale(4),
+  },
   bookMeta: {
     fontSize: scale(12),
     color: COLORS.textSecondary,
-    marginTop: scale(4),
+  },
+  bookProgress: {
+    fontSize: scale(12),
+    color: COLORS.accent,
+    fontWeight: '500',
   },
   playButton: {
     width: scale(40),
@@ -1039,6 +1542,175 @@ const styles = StyleSheet.create({
     fontSize: scale(14),
     fontWeight: '500',
     color: COLORS.accent,
+  },
+
+  // Empty tab state
+  emptyTabContainer: {
+    alignItems: 'center',
+    paddingVertical: scale(60),
+    paddingHorizontal: scale(40),
+  },
+  emptyTabTitle: {
+    fontSize: scale(18),
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginTop: scale(16),
+    marginBottom: scale(8),
+  },
+  emptyTabSubtitle: {
+    fontSize: scale(14),
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: scale(20),
+  },
+
+  // Hero section (In Progress tab)
+  heroSection: {
+    paddingHorizontal: scale(20),
+    marginBottom: scale(24),
+  },
+  heroCard: {
+    width: '100%',
+    height: scale(200),
+    borderRadius: scale(16),
+    overflow: 'hidden',
+    backgroundColor: COLORS.cardBg,
+  },
+  heroCover: {
+    width: '100%',
+    height: '100%',
+  },
+  heroGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '70%',
+  },
+  heroContent: {
+    position: 'absolute',
+    left: scale(16),
+    bottom: scale(16),
+    right: scale(70),
+  },
+  heroLabel: {
+    fontSize: scale(10),
+    fontWeight: '700',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    marginBottom: scale(4),
+  },
+  heroTitle: {
+    fontSize: scale(18),
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: scale(2),
+  },
+  heroAuthor: {
+    fontSize: scale(13),
+    color: COLORS.textSecondary,
+    marginBottom: scale(8),
+  },
+  heroProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+  },
+  heroProgressBar: {
+    flex: 1,
+    height: scale(4),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  heroProgressFill: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+    borderRadius: scale(2),
+  },
+  heroProgressText: {
+    fontSize: scale(11),
+    color: COLORS.textSecondary,
+  },
+  heroPlayButton: {
+    position: 'absolute',
+    right: scale(16),
+    bottom: scale(16),
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
+    backgroundColor: COLORS.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Person cards (authors, narrators)
+  personCard: {
+    width: scale(90),
+    alignItems: 'center',
+  },
+  personAvatar: {
+    width: scale(70),
+    height: scale(70),
+    borderRadius: scale(35),
+    backgroundColor: COLORS.cardBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: scale(8),
+    overflow: 'hidden',
+  },
+  personImage: {
+    width: '100%',
+    height: '100%',
+  },
+  personName: {
+    fontSize: scale(12),
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  personMeta: {
+    fontSize: scale(10),
+    color: COLORS.textSecondary,
+    marginTop: scale(2),
+  },
+
+  // Favorite series card
+  favoriteSeriesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: scale(20),
+    marginBottom: scale(10),
+    padding: scale(12),
+    backgroundColor: COLORS.cardBg,
+    borderRadius: scale(12),
+    gap: scale(12),
+  },
+  seriesImageContainer: {
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(8),
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  seriesImage: {
+    width: '100%',
+    height: '100%',
+  },
+  favoriteSeriesInfo: {
+    flex: 1,
+  },
+  favoriteSeriesName: {
+    fontSize: scale(14),
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  favoriteSeriesMeta: {
+    fontSize: scale(12),
+    color: COLORS.textSecondary,
+    marginTop: scale(2),
   },
 });
 

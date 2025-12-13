@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   // NN/g: 44px minimum touch targets
   primaryButton: {
-    backgroundColor: '#CCFF00',
+    backgroundColor: '#F4B60C',
     paddingVertical: scale(14),
     paddingHorizontal: scale(24),
     borderRadius: scale(12),

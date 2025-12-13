@@ -1,0 +1,397 @@
+/**
+ * src/features/player/sheets/SleepTimerSheet.tsx
+ *
+ * Unified Sleep Timer bottom sheet component.
+ * Use this component from any screen to control sleep timer.
+ * All state is managed via playerStore.
+ */
+
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  Modal,
+} from 'react-native';
+import Slider from '@react-native-community/slider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
+import { haptics } from '@/core/native/haptics';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const ACCENT_COLOR = '#F4B60C';
+
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+const SLEEP_PRESETS = [15, 30, 45, 60, 90];
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface SleepTimerSheetProps {
+  visible: boolean;
+  onClose: () => void;
+}
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
+export function SleepTimerSheet({ visible, onClose }: SleepTimerSheetProps) {
+  const insets = useSafeAreaInsets();
+
+  // Player store state
+  const sleepTimer = usePlayerStore((s) => s.sleepTimer);
+  const position = usePlayerStore((s) => s.position);
+  const chapters = usePlayerStore((s) => s.chapters);
+  const setSleepTimer = usePlayerStore((s) => s.setSleepTimer);
+  const clearSleepTimer = usePlayerStore((s) => s.clearSleepTimer);
+  const chapterIndex = useCurrentChapterIndex();
+
+  // Local state for UI
+  const [sliderValue, setSliderValue] = useState(15);
+  const [endOfChapter, setEndOfChapter] = useState(false);
+
+  // Sync local state when sheet opens
+  useEffect(() => {
+    if (visible) {
+      if (sleepTimer && sleepTimer > 0) {
+        const mins = Math.ceil(sleepTimer / 60);
+        setSliderValue(mins);
+        setEndOfChapter(false);
+      } else {
+        setSliderValue(15);
+        setEndOfChapter(false);
+      }
+    }
+  }, [visible, sleepTimer]);
+
+  // ==========================================================================
+  // HELPERS
+  // ==========================================================================
+
+  const formatSleepTime = (mins: number): string => {
+    if (mins === 0) return 'Off';
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    const remaining = mins % 60;
+    if (remaining === 0) return `${hours} hour${hours > 1 ? 's' : ''}`;
+    return `${hours}h ${remaining}m`;
+  };
+
+  const getChapterRemainingMins = (): number => {
+    if (chapters.length === 0) return 0;
+    const currentChapter = chapters[chapterIndex];
+    if (!currentChapter) return 0;
+    const remaining = Math.max(0, currentChapter.end - position);
+    return Math.ceil(remaining / 60);
+  };
+
+  // ==========================================================================
+  // HANDLERS
+  // ==========================================================================
+
+  const handleApply = useCallback(() => {
+    haptics.selection();
+    if (endOfChapter) {
+      // Set timer to end of current chapter
+      const chapterRemaining = getChapterRemainingMins();
+      if (chapterRemaining > 0) {
+        setSleepTimer(chapterRemaining);
+      }
+    } else if (sliderValue > 0) {
+      setSleepTimer(sliderValue);
+    } else {
+      clearSleepTimer();
+    }
+    onClose();
+  }, [endOfChapter, sliderValue, setSleepTimer, clearSleepTimer, onClose, chapters, chapterIndex, position]);
+
+  const handleClear = useCallback(() => {
+    haptics.selection();
+    clearSleepTimer();
+    onClose();
+  }, [clearSleepTimer, onClose]);
+
+  const handlePresetPress = useCallback((preset: number) => {
+    haptics.selection();
+    setSliderValue(preset);
+    setEndOfChapter(false);
+  }, []);
+
+  const handleEndOfChapterPress = useCallback(() => {
+    haptics.selection();
+    setEndOfChapter(!endOfChapter);
+    if (!endOfChapter) {
+      setSliderValue(0);
+    }
+  }, [endOfChapter]);
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
+  const displayValue = endOfChapter ? 'End of Chapter' : formatSleepTime(sliderValue);
+  const chapterRemaining = getChapterRemainingMins();
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View
+          style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}
+          onStartShouldSetResponder={() => true}
+        >
+          {/* Header */}
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Sleep Timer</Text>
+            <TouchableOpacity
+              style={styles.headerAction}
+              onPress={sliderValue > 0 || endOfChapter ? handleApply : handleClear}
+            >
+              <Text style={styles.headerActionText}>
+                {sliderValue > 0 || endOfChapter ? 'Start' : 'Off'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Value Display */}
+          <Text style={styles.valueText}>{displayValue}</Text>
+
+          {/* Slider */}
+          <View style={styles.sliderContainer}>
+            <Slider
+              style={styles.slider}
+              minimumValue={0}
+              maximumValue={120}
+              step={5}
+              value={sliderValue}
+              onValueChange={(value) => {
+                setSliderValue(value);
+                setEndOfChapter(false);
+              }}
+              minimumTrackTintColor={ACCENT_COLOR}
+              maximumTrackTintColor="rgba(255,255,255,0.2)"
+              thumbTintColor={ACCENT_COLOR}
+            />
+            <View style={styles.sliderLabels}>
+              <Text style={styles.sliderLabel}>Off</Text>
+              <Text style={styles.sliderLabel}>30m</Text>
+              <Text style={styles.sliderLabel}>1h</Text>
+              <Text style={styles.sliderLabel}>1.5h</Text>
+              <Text style={styles.sliderLabel}>2h</Text>
+            </View>
+          </View>
+
+          {/* Preset Buttons */}
+          <View style={styles.presetRow}>
+            {SLEEP_PRESETS.map((preset) => {
+              const isActive = sliderValue === preset && !endOfChapter;
+              return (
+                <TouchableOpacity
+                  key={preset}
+                  style={[
+                    styles.presetButton,
+                    isActive && styles.presetButtonActive,
+                  ]}
+                  onPress={() => handlePresetPress(preset)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.presetText,
+                    isActive && styles.presetTextActive,
+                  ]}>
+                    {preset < 60 ? `${preset}m` : `${preset / 60}h`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* End of Chapter Button */}
+          <TouchableOpacity
+            style={[
+              styles.endOfChapterButton,
+              endOfChapter && styles.endOfChapterButtonActive,
+            ]}
+            onPress={handleEndOfChapterPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="bookmark-outline"
+              size={20}
+              color={endOfChapter ? '#000' : '#FFF'}
+            />
+            <Text style={[
+              styles.endOfChapterText,
+              endOfChapter && styles.endOfChapterTextActive,
+            ]}>
+              End of Chapter
+            </Text>
+            {chapterRemaining > 0 && (
+              <Text style={[
+                styles.endOfChapterEstimate,
+                endOfChapter && styles.endOfChapterEstimateActive,
+              ]}>
+                (~{chapterRemaining}m)
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Cancel Timer (only if active) */}
+          {sleepTimer !== null && sleepTimer > 0 && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleClear}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel Timer</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+// =============================================================================
+// STYLES
+// =============================================================================
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  headerAction: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: ACCENT_COLOR,
+    borderRadius: 16,
+  },
+  headerActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  valueText: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#FFF',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  sliderContainer: {
+    marginBottom: 20,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginTop: -4,
+  },
+  sliderLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  presetRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  presetButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  presetButtonActive: {
+    backgroundColor: ACCENT_COLOR,
+  },
+  presetText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  presetTextActive: {
+    color: '#000',
+  },
+  endOfChapterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 12,
+  },
+  endOfChapterButtonActive: {
+    backgroundColor: ACCENT_COLOR,
+  },
+  endOfChapterText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  endOfChapterTextActive: {
+    color: '#000',
+  },
+  endOfChapterEstimate: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  endOfChapterEstimateActive: {
+    color: 'rgba(0,0,0,0.5)',
+  },
+  cancelButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,80,80,0.2)',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF5050',
+  },
+});
+
+export default SleepTimerSheet;

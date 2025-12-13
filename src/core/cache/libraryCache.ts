@@ -169,12 +169,24 @@ function buildIndexes(items: LibraryItem[]) {
   }
 
   // Sort books within series by sequence
+  // Helper to get sequence from metadata (checks series array first, then seriesName)
+  const getBookSequence = (item: LibraryItem): number => {
+    const metadata = getMetadata(item);
+    // First check series array (preferred - has explicit sequence)
+    if (metadata.series?.length > 0) {
+      const primarySeries = metadata.series[0];
+      if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
+        const parsed = parseFloat(primarySeries.sequence);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+    // Fallback: check seriesName for #N pattern
+    const match = metadata.seriesName?.match(/#([\d.]+)/);
+    return match ? parseFloat(match[1]) : 999;
+  };
+
   for (const seriesInfo of series.values()) {
-    seriesInfo.books.sort((a, b) => {
-      const aSeq = parseFloat(getMetadata(a).seriesName?.match(/#([\d.]+)/)?.[1] || '999');
-      const bSeq = parseFloat(getMetadata(b).seriesName?.match(/#([\d.]+)/)?.[1] || '999');
-      return aSeq - bSeq;
-    });
+    seriesInfo.books.sort((a, b) => getBookSequence(a) - getBookSequence(b));
   }
 
   return {

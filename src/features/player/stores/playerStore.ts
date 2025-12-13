@@ -296,6 +296,10 @@ const TRANSITION_GUARD_MS = 500; // Prevent queue races during book transitions
 // Track books we've already checked for auto-download to prevent repeated triggers
 const autoDownloadCheckedBooks = new Set<string>();
 
+// Download completion listener - to switch from streaming to local when download completes
+let downloadListenerUnsubscribe: (() => void) | null = null;
+let currentStreamingBookId: string | null = null; // Track which book is currently streaming (not offline)
+
 // =============================================================================
 // LISTENING SESSION TRACKING
 // =============================================================================
@@ -360,6 +364,94 @@ async function endListeningSession(endPosition: number) {
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+
+/**
+ * Sets up a listener for download completion of the currently streaming book.
+ * When the download completes, automatically switches to local playback.
+ */
+async function setupDownloadCompletionListener(bookId: string): Promise<void> {
+  // Clean up any existing listener
+  if (downloadListenerUnsubscribe) {
+    downloadListenerUnsubscribe();
+    downloadListenerUnsubscribe = null;
+  }
+
+  currentStreamingBookId = bookId;
+
+  const { downloadManager } = await import('@/core/services/downloadManager');
+
+  downloadListenerUnsubscribe = downloadManager.subscribe((tasks) => {
+    // Find the task for our currently streaming book
+    const task = tasks.find((t) => t.itemId === currentStreamingBookId);
+
+    if (task?.status === 'complete' && currentStreamingBookId) {
+      log(`Download completed for currently streaming book: ${currentStreamingBookId}`);
+      log('Switching to local playback...');
+
+      // Get current state
+      const state = usePlayerStore.getState();
+      const { currentBook, position, isPlaying } = state;
+
+      // Verify we're still playing the same book
+      if (currentBook?.id === currentStreamingBookId) {
+        // Clear the streaming book tracker
+        const bookToReload = currentBook;
+        const savedPosition = position;
+        const wasPlaying = isPlaying;
+        currentStreamingBookId = null;
+
+        // Clean up the listener since we're about to reload
+        if (downloadListenerUnsubscribe) {
+          downloadListenerUnsubscribe();
+          downloadListenerUnsubscribe = null;
+        }
+
+        // Small delay to ensure download is fully finalized
+        setTimeout(async () => {
+          try {
+            log(`Reloading book at position ${savedPosition.toFixed(1)}s to use local files`);
+
+            // Show a toast notification
+            try {
+              const { Toast } = await import('react-native-toast-message');
+              Toast.show({
+                type: 'success',
+                text1: 'Download Complete',
+                text2: 'Switched to offline playback',
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            } catch {
+              // Toast not available
+            }
+
+            // Reload the book from local files
+            await state.loadBook(bookToReload, {
+              startPosition: savedPosition,
+              autoPlay: wasPlaying,
+              showPlayer: state.isPlayerVisible,
+            });
+          } catch (err) {
+            logError('Failed to switch to local playback:', err);
+          }
+        }, 500);
+      }
+    }
+  });
+
+  log(`Download completion listener set up for book: ${bookId}`);
+}
+
+/**
+ * Cleans up the download completion listener.
+ */
+function cleanupDownloadCompletionListener(): void {
+  if (downloadListenerUnsubscribe) {
+    downloadListenerUnsubscribe();
+    downloadListenerUnsubscribe = null;
+  }
+  currentStreamingBookId = null;
+}
 
 async function getDownloadPath(bookId: string): Promise<string | null> {
   try {
@@ -681,6 +773,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
         if (isOffline && localPath) {
           // OFFLINE PLAYBACK - use local files
+          // No need to listen for downloads since we're already playing locally
+          cleanupDownloadCompletionListener();
           chapters = extractChaptersFromBook(book);
           log('OFFLINE PLAYBACK MODE');
 
@@ -800,6 +894,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           }
 
           sessionService.startAutoSync(() => get().position);
+
+          // Set up listener to detect when this book's download completes
+          // so we can seamlessly switch to local playback
+          setupDownloadCompletionListener(book.id);
         } else {
           // Neither offline nor session available
           throw new Error('Cannot play: no local file and session failed');
@@ -970,6 +1068,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // Reset guards
       lastFinishedBookId = null;
+
+      // Clear download completion listener
+      cleanupDownloadCompletionListener();
 
       // Clear seeking interval
       if (seekInterval) {

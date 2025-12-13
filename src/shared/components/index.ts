@@ -86,3 +86,8 @@ export { CoverPlayButton } from './CoverPlayButton';
 // =============================================================================
 export { CassetteRefreshControl, useCassetteRefresh } from './CassetteRefreshControl';
 export { CassetteRefreshView } from './CassetteRefreshView';
+
+// =============================================================================
+// NAVIGATION
+// =============================================================================
+export { AlphabetScrubber } from './AlphabetScrubber';

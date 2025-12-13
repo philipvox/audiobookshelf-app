@@ -93,6 +93,9 @@ class AppInitializer {
 
       // Session restoration (optimized parallel reads)
       this.restoreSession(authService),
+
+      // Hydrate completion store from SQLite
+      this.hydrateCompletionStore(),
     ]);
 
     const result: InitResult = {
@@ -136,6 +139,16 @@ class AppInitializer {
     } catch (err) {
       console.warn('[AppInitializer] Session restoration failed:', err);
       return { user: null, serverUrl: null };
+    }
+  }
+
+  private async hydrateCompletionStore(): Promise<void> {
+    try {
+      const { useCompletionStore } = await import('@/features/completion');
+      await useCompletionStore.getState().hydrate();
+      console.log('[AppInitializer] Completion store hydrated');
+    } catch (err) {
+      console.warn('[AppInitializer] Completion store hydration failed:', err);
     }
   }
 

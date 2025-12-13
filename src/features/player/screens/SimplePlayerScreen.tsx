@@ -267,6 +267,17 @@ export function SimplePlayerScreen() {
     }, 250);
   }, [seriesName, handleClose, navigation]);
 
+  // Navigate to book details
+  const handleTitlePress = useCallback(() => {
+    if (!currentBook) return;
+    haptics.selection();
+    handleClose();
+    // Small delay to let the close animation finish
+    setTimeout(() => {
+      navigation.navigate('BookDetail', { id: currentBook.id });
+    }, 250);
+  }, [currentBook, handleClose, navigation]);
+
   // Scrubber
   const handleScrub = useCallback((percent: number) => {
     const newPosition = (percent / 100) * duration;
@@ -340,7 +351,7 @@ export function SimplePlayerScreen() {
                 {option.label}
               </Text>
               {currentSleepMins === option.value && (
-                <Ionicons name="checkmark" size={20} color="#C8FF00" />
+                <Ionicons name="checkmark" size={20} color="#F4B60C" />
               )}
             </TouchableOpacity>
           ))}
@@ -383,7 +394,7 @@ export function SimplePlayerScreen() {
               </Text>
             </View>
             {index === chapterIndex && (
-              <Ionicons name="volume-high" size={16} color="#C8FF00" />
+              <Ionicons name="volume-high" size={16} color="#F4B60C" />
             )}
           </TouchableOpacity>
         ))}
@@ -439,7 +450,9 @@ export function SimplePlayerScreen() {
 
         {/* Book Info */}
         <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={2}>{title}</Text>
+          <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
+            <Text style={styles.bookTitle} numberOfLines={2}>{title}</Text>
+          </TouchableOpacity>
           <Text style={styles.bookAuthor} numberOfLines={1}>{author}</Text>
           {seriesWithSequence && (
             <TouchableOpacity
@@ -447,7 +460,7 @@ export function SimplePlayerScreen() {
               onPress={handleSeriesPress}
               activeOpacity={0.7}
             >
-              <Ionicons name="library-outline" size={12} color="#C8FF00" />
+              <Ionicons name="library-outline" size={12} color="#F4B60C" />
               <Text style={styles.seriesText} numberOfLines={1}>
                 {seriesWithSequence}
               </Text>
@@ -548,7 +561,7 @@ export function SimplePlayerScreen() {
             onPress={() => setActiveSheet('sleep')}
           >
             <View style={styles.actionIconContainer}>
-              <Ionicons name="moon-outline" size={22} color={sleepTimer ? '#C8FF00' : '#FFF'} />
+              <Ionicons name="moon-outline" size={22} color={sleepTimer ? '#F4B60C' : '#FFF'} />
               {sleepTimerState.isShakeDetectionActive && (
                 <View style={styles.shakeBadge}>
                   <Ionicons name="phone-portrait-outline" size={10} color="#000" />
@@ -689,7 +702,7 @@ const styles = StyleSheet.create({
   seriesText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#C8FF00',
+    color: '#F4B60C',
     maxWidth: 200,
   },
   chapterName: {
@@ -712,7 +725,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: '#C8FF00',
+    backgroundColor: '#F4B60C',
     borderRadius: 2,
   },
   scrubberThumb: {
@@ -761,7 +774,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#C8FF00',
+    backgroundColor: '#F4B60C',
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 16,
@@ -783,7 +796,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionLabelActive: {
-    color: '#C8FF00',
+    color: '#F4B60C',
   },
   actionIconContainer: {
     position: 'relative',
@@ -792,7 +805,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -8,
-    backgroundColor: '#C8FF00',
+    backgroundColor: '#F4B60C',
     borderRadius: 8,
     width: 16,
     height: 16,
@@ -801,7 +814,7 @@ const styles = StyleSheet.create({
   },
   shakeHint: {
     fontSize: 9,
-    color: '#C8FF00',
+    color: '#F4B60C',
     marginTop: 2,
   },
 
@@ -870,7 +883,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionButtonActive: {
-    backgroundColor: '#C8FF00',
+    backgroundColor: '#F4B60C',
   },
   optionText: {
     fontSize: 16,
@@ -901,7 +914,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   listOptionTextActive: {
-    color: '#C8FF00',
+    color: '#F4B60C',
     fontWeight: '600',
   },
 
@@ -934,7 +947,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   chapterTitleActive: {
-    color: '#C8FF00',
+    color: '#F4B60C',
     fontWeight: '600',
   },
   chapterDuration: {

@@ -1,8 +1,10 @@
 export { SimplePlayerScreen } from './screens/SimplePlayerScreen';
-export { usePlayerStore } from './stores/playerStore';
+export { CDPlayerScreen } from './screens/CDPlayerScreen';
+export { usePlayerStore, useSleepTimerState, useCurrentChapterIndex, useBookProgress } from './stores/playerStore';
 export { audioService } from './services/audioService';
 export { backgroundSyncService } from './services/backgroundSyncService';
 export { progressService } from './services/progressService';
+export { SleepTimerSheet, SpeedSheet } from './sheets';
 export * from './constants';
 export * from './utils';
 

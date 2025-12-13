@@ -19,7 +19,7 @@ import { usePlayerStore } from '@/features/player';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 interface ChaptersTabProps {
   chapters: BookChapter[];

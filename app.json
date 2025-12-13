@@ -89,7 +89,7 @@
             "useLegacyPackaging": false
           },
           "ios": {
-            "deploymentTarget": "15.1",
+            "deploymentTarget": "16.0",
             "useFrameworks": "static"
           }
         }

@@ -14,6 +14,7 @@ import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { useLibraryCache } from '@/core/cache';
+import { useDownloads } from '@/core/hooks/useDownloads';
 import {
   UseHomeDataReturn,
   PlaybackProgress,
@@ -40,7 +41,14 @@ export function useHomeData(): UseHomeDataReturn {
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
 
   // Get series data from library cache
-  const { getSeries, isLoaded: isCacheLoaded } = useLibraryCache();
+  const { getSeries, getItem, isLoaded: isCacheLoaded } = useLibraryCache();
+
+  // Get downloaded books
+  const { downloads } = useDownloads();
+  const completedDownloads = useMemo(
+    () => downloads.filter((d) => d.status === 'complete'),
+    [downloads]
+  );
 
   // Local cache of book data - persists across re-renders to avoid flicker
   const bookCacheRef = useRef<Map<string, LibraryItem>>(new Map());
@@ -245,9 +253,26 @@ export function useHomeData(): UseHomeDataReturn {
     return libraryBooks.filter((item) => item.id !== currentBook.id);
   }, [libraryBooks, currentBook]);
 
-  // Extract series from favorite series + in-progress books
+  // Extract series from downloaded books + in-progress books + favorites
   const userSeries: SeriesWithBooks[] = useMemo(() => {
     const seriesMap = new Map<string, SeriesWithBooks>();
+
+    // Helper to extract series name from metadata
+    const extractSeriesName = (item: LibraryItem): string | null => {
+      const metadata = (item.media?.metadata as any) || {};
+      // Try seriesName first (e.g., "Series Name #1")
+      if (metadata.seriesName) {
+        const match = metadata.seriesName.match(/^(.+?)\s*#[\d.]+$/);
+        return match ? match[1].trim() : metadata.seriesName;
+      }
+      // Try series array
+      const seriesInfo = metadata.series;
+      if (seriesInfo?.length) {
+        const firstSeries = seriesInfo[0];
+        return typeof firstSeries === 'object' ? firstSeries.name : firstSeries;
+      }
+      return null;
+    };
 
     // First, add favorite series from library cache
     if (isCacheLoaded) {
@@ -267,6 +292,36 @@ export function useHomeData(): UseHomeDataReturn {
       });
     }
 
+    // Add series from downloaded books
+    completedDownloads.forEach((download) => {
+      const item = getItem(download.itemId);
+      if (!item) return;
+
+      const seriesName = extractSeriesName(item);
+      if (!seriesName) return;
+
+      if (seriesMap.has(seriesName)) {
+        const series = seriesMap.get(seriesName)!;
+        if (series.books.length < 4 && !series.books.find(b => b.id === item.id)) {
+          series.books.push(item);
+        }
+        return;
+      }
+
+      // Try to get full series info from cache
+      const cachedSeries = isCacheLoaded ? getSeries(seriesName) : null;
+
+      seriesMap.set(seriesName, {
+        id: seriesName,
+        name: seriesName,
+        books: cachedSeries ? cachedSeries.books.slice(0, 4) : [item],
+        totalBooks: cachedSeries?.bookCount || 1,
+        booksCompleted: 0,
+        booksInProgress: 0,
+        isFavorite: favoriteSeriesNames.includes(seriesName),
+      });
+    });
+
     // Then add series from in-progress items
     inProgressItems.forEach((item) => {
       const seriesInfo = (item.media?.metadata as any)?.series;
@@ -278,7 +333,7 @@ export function useHomeData(): UseHomeDataReturn {
 
       if (!seriesId || !seriesName) return;
 
-      // Skip if already added as favorite
+      // Skip if already added
       if (seriesMap.has(seriesName)) {
         const series = seriesMap.get(seriesName)!;
         if (series.books.length < 4 && !series.books.find(b => b.id === item.id)) {
@@ -299,7 +354,7 @@ export function useHomeData(): UseHomeDataReturn {
       });
     });
 
-    // Sort favorites first
+    // Sort favorites first, then by whether they have downloaded books
     const seriesArray = Array.from(seriesMap.values());
     seriesArray.sort((a, b) => {
       if (a.isFavorite && !b.isFavorite) return -1;
@@ -308,7 +363,7 @@ export function useHomeData(): UseHomeDataReturn {
     });
 
     return seriesArray.slice(0, 10);
-  }, [inProgressItems, favoriteSeriesNames, isCacheLoaded, getSeries]);
+  }, [inProgressItems, completedDownloads, favoriteSeriesNames, isCacheLoaded, getSeries, getItem]);
 
   // Convert playlists to display format
   const userPlaylists: PlaylistDisplay[] = useMemo(() => {

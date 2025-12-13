@@ -33,7 +33,7 @@ const PauseButtonImage = require('../assets/pause-button.png');
 const COVER_SIZE = scale(80);
 const BUTTON_SIZE = scale(44);
 const CARD_PADDING = scale(16);
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 interface CompactNowPlayingProps {
   book: LibraryItem;

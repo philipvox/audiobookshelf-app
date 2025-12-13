@@ -23,12 +23,12 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueue, useQueueStore } from '../stores/queueStore';
 import { SwipeableQueueItem } from '../components/SwipeableQueueItem';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 
 // Format duration to human readable
 function formatDuration(seconds: number): string {
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: scale(16),
     paddingTop: scale(8),
-    paddingBottom: scale(100),
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
   emptyContainer: {
     flex: 1,

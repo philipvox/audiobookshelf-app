@@ -26,7 +26,7 @@ import {
   getWeekdayName,
 } from '../hooks/useListeningStats';
 import { ShareStatsCard } from '../components/ShareStatsCard';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -38,8 +38,8 @@ const COLORS = {
   text: '#FFFFFF',
   textSecondary: '#AAAAAA',
   textTertiary: '#888888',
-  accent: '#CCFF00',
-  accentDim: 'rgba(204, 255, 0, 0.3)',
+  accent: '#F4B60C',
+  accentDim: 'rgba(244, 182, 12, 0.3)',
   streakActive: '#FF9500',
   success: '#22c55e',
 };
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: 140,
+    paddingBottom: SCREEN_BOTTOM_PADDING,
   },
   header: {
     paddingHorizontal: 20,

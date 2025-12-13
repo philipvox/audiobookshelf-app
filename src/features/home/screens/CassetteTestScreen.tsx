@@ -244,8 +244,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
   extBtnActive: {
-    backgroundColor: '#C8FF00',
-    borderColor: '#C8FF00',
+    backgroundColor: '#F4B60C',
+    borderColor: '#F4B60C',
   },
   extBtnText: {
     color: '#fff',

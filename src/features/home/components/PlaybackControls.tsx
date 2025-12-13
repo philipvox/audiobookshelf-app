@@ -110,12 +110,12 @@ export function PlaybackControls({
         style={styles.playButton}
       >
         {isLoading ? (
-          <ActivityIndicator size={playIconSize} color="#CCFF00" />
+          <ActivityIndicator size={playIconSize} color="#F4B60C" />
         ) : (
           <Ionicons
             name={isPlaying ? 'pause' : 'play'}
             size={playIconSize}
-            color="#CCFF00"
+            color="#F4B60C"
           />
         )}
       </TouchableOpacity>

@@ -331,6 +331,14 @@ class SQLiteCache {
           books_touched TEXT NOT NULL DEFAULT '[]'
         );
 
+        -- Marked complete (manual completion independent of progress)
+        CREATE TABLE IF NOT EXISTS marked_complete (
+          item_id TEXT PRIMARY KEY,
+          is_complete INTEGER NOT NULL DEFAULT 1,
+          marked_at INTEGER NOT NULL,
+          synced INTEGER DEFAULT 0
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
@@ -350,6 +358,7 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_sessions_book_id ON listening_sessions(book_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_start ON listening_sessions(start_timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date DESC);
+        CREATE INDEX IF NOT EXISTS idx_marked_complete_synced ON marked_complete(synced);
       `);
 
       // Migration: Add last_played_at column if it doesn't exist
@@ -1276,6 +1285,16 @@ class SQLiteCache {
     }
   }
 
+  async clearDownloadQueue(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM download_queue');
+      console.log('[SQLiteCache] Cleared download queue');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearDownloadQueue error:', err);
+    }
+  }
+
   // ============================================================================
   // SYNC LOG
   // ============================================================================
@@ -2116,6 +2135,112 @@ class SQLiteCache {
       console.log('[SQLiteCache] Cleared all listening stats');
     } catch (err) {
       console.warn('[SQLiteCache] clearListeningStats error:', err);
+    }
+  }
+
+  // ============================================================================
+  // MARKED COMPLETE (Manual completion independent of progress)
+  // ============================================================================
+
+  /**
+   * Set a book's manual completion status
+   */
+  async setMarkedComplete(itemId: string, isComplete: boolean): Promise<void> {
+    const db = await this.ensureReady();
+    const now = Date.now();
+
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO marked_complete (item_id, is_complete, marked_at, synced)
+         VALUES (?, ?, ?, 0)`,
+        [itemId, isComplete ? 1 : 0, now]
+      );
+      console.log(`[SQLiteCache] Marked ${itemId} as ${isComplete ? 'complete' : 'incomplete'}`);
+    } catch (err) {
+      console.warn('[SQLiteCache] setMarkedComplete error:', err);
+    }
+  }
+
+  /**
+   * Check if a book is marked as complete
+   */
+  async isMarkedComplete(itemId: string): Promise<boolean> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{ is_complete: number }>(
+        'SELECT is_complete FROM marked_complete WHERE item_id = ?',
+        [itemId]
+      );
+      return row?.is_complete === 1;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Get all books marked as complete (or incomplete)
+   */
+  async getMarkedCompleteBooks(): Promise<{ itemId: string; isComplete: boolean; markedAt: number }[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        is_complete: number;
+        marked_at: number;
+      }>('SELECT item_id, is_complete, marked_at FROM marked_complete ORDER BY marked_at DESC');
+
+      return rows.map((r) => ({
+        itemId: r.item_id,
+        isComplete: r.is_complete === 1,
+        markedAt: r.marked_at,
+      }));
+    } catch (err) {
+      console.warn('[SQLiteCache] getMarkedCompleteBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get unsynced completion records
+   */
+  async getUnsyncedCompletions(): Promise<{ itemId: string; isComplete: boolean }[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<{
+        item_id: string;
+        is_complete: number;
+      }>('SELECT item_id, is_complete FROM marked_complete WHERE synced = 0');
+
+      return rows.map((r) => ({
+        itemId: r.item_id,
+        isComplete: r.is_complete === 1,
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  /**
+   * Mark a completion record as synced
+   */
+  async markCompleteSynced(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('UPDATE marked_complete SET synced = 1 WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] markCompleteSynced error:', err);
+    }
+  }
+
+  /**
+   * Remove a book from completion tracking
+   */
+  async removeMarkedComplete(itemId: string): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM marked_complete WHERE item_id = ?', [itemId]);
+    } catch (err) {
+      console.warn('[SQLiteCache] removeMarkedComplete error:', err);
     }
   }
 }

@@ -25,14 +25,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { BookCard } from '@/shared/components/BookCard';
-import { TOP_NAV_HEIGHT } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const BG_COLOR = '#1a1a1a';
 const CARD_COLOR = 'rgba(255,255,255,0.08)';
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 const PADDING = 16;
 
 type SortOption =
@@ -316,7 +316,7 @@ export function GenreDetailScreen() {
 
       <ScrollView
         style={styles.content}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={

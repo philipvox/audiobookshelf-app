@@ -1,93 +1,196 @@
 /**
  * src/features/library/screens/GenresListScreen.tsx
  *
- * Browse all genres from the library.
- * Uses library cache for instant loading.
- * Shows genre cards with 4 book cover grid.
+ * Redesigned Genre Browse page with:
+ * - Two-level hierarchy (meta-categories → individual genres)
+ * - Your Genres section (personalized from listening history)
+ * - Popular Genres section
+ * - Collapsible meta-category sections
+ * - View mode toggle (grouped/flat)
+ * - Sparse genre handling
  */
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
   RefreshControl,
   TextInput,
+  SectionList,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllGenres } from '@/core/cache';
-import { apiClient } from '@/core/api';
+import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import {
+  META_CATEGORIES,
+  MetaCategory,
+  GenreWithData,
+  getMetaCategoryForGenre,
+  MIN_BOOKS_TO_SHOW,
+} from '../constants/genreCategories';
+import {
+  MetaCategorySection,
+  YourGenresSection,
+  PopularGenresSection,
+} from '../components/GenreSections';
+import { GenreListItem } from '../components/GenreCards';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BG_COLOR = '#000000';
 const CARD_COLOR = '#2a2a2a';
-const ACCENT = '#CCFF00';
-const PADDING = 16;
-const GAP = 12;
-const COLUMNS = 2;
-const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / COLUMNS;
-const COVER_GRID_SIZE = CARD_WIDTH - 24; // Padding inside card
-const COVER_SIZE = (COVER_GRID_SIZE - 8) / 2; // 2x2 grid with gap
+const ACCENT = '#F4B60C';
 
-type SortType = 'name' | 'count';
-type SortDirection = 'asc' | 'desc';
+type ViewMode = 'grouped' | 'flat';
 
 export function GenresListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortType>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [viewMode, setViewMode] = useState<ViewMode>('grouped');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { refreshCache, isLoaded, filterItems } = useLibraryCache();
+  const { items: inProgressItems } = useContinueListening();
 
   const allGenres = useMemo(() => getAllGenres(), [isLoaded]);
 
-  // Filter genres by search query
-  const filteredGenres = useMemo(() => {
-    if (!searchQuery.trim()) return allGenres;
-    const lowerQuery = searchQuery.toLowerCase();
-    return allGenres.filter(g => g.toLowerCase().includes(lowerQuery));
-  }, [allGenres, searchQuery]);
-
-  // Get book counts and covers for each genre
-  const genresWithData = useMemo(() => {
-    return filteredGenres.map((genre) => {
+  // Get genres with data (book count, covers, meta-category)
+  const genresWithData = useMemo((): GenreWithData[] => {
+    return allGenres.map((genre) => {
       const books = filterItems({ genres: [genre] });
-      // Get up to 4 book covers
       const coverIds = books.slice(0, 4).map(b => b.id);
+      const metaCategory = getMetaCategoryForGenre(genre);
       return {
         name: genre,
         bookCount: books.length,
         coverIds,
+        metaCategoryId: metaCategory?.id || null,
       };
+    }).filter(g => g.bookCount >= MIN_BOOKS_TO_SHOW); // Filter sparse genres
+  }, [allGenres, filterItems]);
+
+  // Filter genres by search query
+  const filteredGenres = useMemo(() => {
+    if (!searchQuery.trim()) return genresWithData;
+    const lowerQuery = searchQuery.toLowerCase();
+    return genresWithData.filter(g => g.name.toLowerCase().includes(lowerQuery));
+  }, [genresWithData, searchQuery]);
+
+  // Get "Your Genres" - genres from books user is listening to
+  const yourGenres = useMemo((): GenreWithData[] => {
+    // Get unique book IDs from in-progress items
+    const listenedBookIds = new Set(inProgressItems.map(item => item.id));
+
+    if (listenedBookIds.size === 0) return [];
+
+    // Count genre occurrences in listened books
+    const genreCounts = new Map<string, number>();
+
+    genresWithData.forEach(genre => {
+      const books = filterItems({ genres: [genre.name] });
+      const listenedCount = books.filter(b => listenedBookIds.has(b.id)).length;
+      if (listenedCount > 0) {
+        genreCounts.set(genre.name, listenedCount);
+      }
     });
-  }, [filteredGenres, filterItems]);
 
-  const sortedGenres = useMemo(() => {
-    const sorted = [...genresWithData];
-    const direction = sortDirection === 'asc' ? 1 : -1;
+    // Get top genres by listened count
+    return genresWithData
+      .filter(g => genreCounts.has(g.name))
+      .sort((a, b) => (genreCounts.get(b.name) || 0) - (genreCounts.get(a.name) || 0))
+      .slice(0, 5);
+  }, [genresWithData, filterItems, inProgressItems]);
 
-    switch (sortBy) {
-      case 'name':
-        sorted.sort((a, b) => direction * a.name.localeCompare(b.name));
-        break;
-      case 'count':
-        sorted.sort((a, b) => direction * (a.bookCount - b.bookCount));
-        break;
+  // Get popular genres (top 6 by book count)
+  const popularGenres = useMemo((): GenreWithData[] => {
+    return [...genresWithData]
+      .sort((a, b) => b.bookCount - a.bookCount)
+      .slice(0, 6);
+  }, [genresWithData]);
+
+  // Group genres by meta-category
+  const genresByCategory = useMemo(() => {
+    const grouped = new Map<MetaCategory, GenreWithData[]>();
+
+    // Initialize all categories
+    META_CATEGORIES.forEach(cat => grouped.set(cat, []));
+
+    // Assign genres
+    filteredGenres.forEach(genre => {
+      const category = META_CATEGORIES.find(c => c.id === genre.metaCategoryId);
+      if (category) {
+        const existing = grouped.get(category) || [];
+        existing.push(genre);
+        grouped.set(category, existing);
+      } else {
+        // Fallback to Fiction
+        const fiction = META_CATEGORIES[0];
+        const existing = grouped.get(fiction) || [];
+        existing.push(genre);
+        grouped.set(fiction, existing);
+      }
+    });
+
+    // Sort genres within each category
+    grouped.forEach((genres, category) => {
+      genres.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return grouped;
+  }, [filteredGenres]);
+
+  // Get total books per category
+  const categoryTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    genresByCategory.forEach((genres, category) => {
+      totals.set(category.id, genres.reduce((sum, g) => sum + g.bookCount, 0));
+    });
+    return totals;
+  }, [genresByCategory]);
+
+  // Flat list sections (A-Z) for SectionList
+  const flatSections = useMemo(() => {
+    const sorted = [...filteredGenres].sort((a, b) => a.name.localeCompare(b.name));
+    const sections: { title: string; data: GenreWithData[] }[] = [];
+
+    sorted.forEach(genre => {
+      const letter = genre.name[0].toUpperCase();
+      const existing = sections.find(s => s.title === letter);
+      if (existing) {
+        existing.data.push(genre);
+      } else {
+        sections.push({ title: letter, data: [genre] });
+      }
+    });
+
+    return sections;
+  }, [filteredGenres]);
+
+  // Available letters for alphabet index
+  const availableLetters = useMemo(() => {
+    return flatSections.map(s => s.title);
+  }, [flatSections]);
+
+  // Handle alphabet letter press - scroll to section
+  const handleLetterPress = useCallback((letter: string) => {
+    const sectionIndex = flatSections.findIndex(s => s.title === letter);
+    if (sectionIndex >= 0 && sectionListRef.current) {
+      sectionListRef.current.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        animated: true,
+        viewPosition: 0,
+      });
     }
-
-    return sorted;
-  }, [genresWithData, sortBy, sortDirection]);
+  }, [flatSections]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -101,14 +204,17 @@ export function GenresListScreen() {
     navigation.navigate('GenreDetail', { genreName });
   };
 
-  const handleSortPress = (type: SortType) => {
-    if (sortBy === type) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(type);
-      setSortDirection('asc');
-    }
-  };
+  const handleToggleCategory = useCallback((categoryId: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -118,6 +224,8 @@ export function GenresListScreen() {
       setIsRefreshing(false);
     }
   }, [refreshCache]);
+
+  const isSearching = searchQuery.trim().length > 0;
 
   if (!isLoaded) {
     return (
@@ -129,6 +237,118 @@ export function GenresListScreen() {
       </View>
     );
   }
+
+  // Render grouped view
+  const renderGroupedView = () => (
+    <ScrollView
+      style={styles.content}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          tintColor={ACCENT}
+        />
+      }
+    >
+      {/* Your Genres Section */}
+      {!isSearching && yourGenres.length > 0 && (
+        <YourGenresSection
+          genres={yourGenres}
+          onGenrePress={handleGenrePress}
+        />
+      )}
+
+      {/* Popular Genres Section */}
+      {!isSearching && (
+        <PopularGenresSection
+          genres={popularGenres}
+          onGenrePress={handleGenrePress}
+        />
+      )}
+
+      {/* Browse by Category Header */}
+      {!isSearching && (
+        <View style={styles.browseHeader}>
+          <Text style={styles.browseTitle}>BROWSE BY CATEGORY</Text>
+        </View>
+      )}
+
+      {/* Meta-Category Sections */}
+      {META_CATEGORIES.map(category => {
+        const genres = genresByCategory.get(category) || [];
+        if (genres.length === 0) return null;
+
+        return (
+          <MetaCategorySection
+            key={category.id}
+            metaCategory={category}
+            genres={genres}
+            totalBooks={categoryTotals.get(category.id) || 0}
+            isExpanded={expandedCategories.has(category.id)}
+            onToggle={() => handleToggleCategory(category.id)}
+            onGenrePress={handleGenrePress}
+          />
+        );
+      })}
+
+      {/* Empty State */}
+      {filteredGenres.length === 0 && (
+        <View style={styles.emptyState}>
+          <Icon name="search" size={48} color="rgba(255,255,255,0.3)" set="ionicons" />
+          <Text style={styles.emptyText}>No genres found</Text>
+          <Text style={styles.emptySubtext}>Try a different search term</Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  // Render flat A-Z view with SectionList and custom alphabet index
+  const renderFlatView = () => (
+    <View style={styles.flatContainer}>
+      <SectionList
+        ref={sectionListRef}
+        sections={flatSections}
+        keyExtractor={(item) => item.name}
+        stickySectionHeadersEnabled
+        contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: 28 }}
+        showsVerticalScrollIndicator={false}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{section.title}</Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <GenreListItem
+            genre={item}
+            onPress={() => handleGenrePress(item.name)}
+          />
+        )}
+        onScrollToIndexFailed={() => {}}
+        getItemLayout={(data, index) => ({
+          length: 56,
+          offset: 56 * index,
+          index,
+        })}
+      />
+
+      {/* Custom Evenly Distributed Alphabet Index */}
+      {availableLetters.length > 1 && (
+        <View style={[styles.alphabetIndex, { bottom: SCREEN_BOTTOM_PADDING + insets.bottom + 60 }]}>
+          {availableLetters.map((letter) => (
+            <TouchableOpacity
+              key={letter}
+              style={styles.alphabetLetterButton}
+              onPress={() => handleLetterPress(letter)}
+            >
+              <Text style={styles.alphabetLetter}>{letter}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -142,7 +362,6 @@ export function GenresListScreen() {
         <View style={styles.searchContainer}>
           <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
           <TextInput
-            ref={inputRef}
             style={styles.searchInput}
             placeholder="Search genres..."
             placeholderTextColor="rgba(255,255,255,0.4)"
@@ -160,88 +379,37 @@ export function GenresListScreen() {
         </View>
       </View>
 
-      {/* Sort Bar */}
-      <View style={styles.sortBar}>
-        <Text style={styles.resultCount}>{sortedGenres.length} genres</Text>
-        <View style={styles.sortButtons}>
+      {/* View Mode Toggle & Count */}
+      <View style={styles.controlBar}>
+        <Text style={styles.resultCount}>{filteredGenres.length} genres</Text>
+        <View style={styles.viewToggle}>
           <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('name')}
+            style={[styles.toggleButton, viewMode === 'grouped' && styles.toggleButtonActive]}
+            onPress={() => setViewMode('grouped')}
           >
             <Icon
-              name={sortBy === 'name' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
-              size={14}
-              color={sortBy === 'name' ? '#000' : 'rgba(255,255,255,0.6)'}
+              name="grid-outline"
+              size={16}
+              color={viewMode === 'grouped' ? '#000' : 'rgba(255,255,255,0.6)'}
               set="ionicons"
             />
-            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
-              {sortBy === 'name' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Name'}
-            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'count' && styles.sortButtonActive]}
-            onPress={() => handleSortPress('count')}
+            style={[styles.toggleButton, viewMode === 'flat' && styles.toggleButtonActive]}
+            onPress={() => setViewMode('flat')}
           >
             <Icon
-              name={sortBy === 'count' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'library-outline'}
-              size={14}
-              color={sortBy === 'count' ? '#000' : 'rgba(255,255,255,0.6)'}
+              name="list-outline"
+              size={16}
+              color={viewMode === 'flat' ? '#000' : 'rgba(255,255,255,0.6)'}
               set="ionicons"
             />
-            <Text style={[styles.sortButtonText, sortBy === 'count' && styles.sortButtonTextActive]}>Books</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <FlatList
-        data={sortedGenres}
-        keyExtractor={(item) => item.name}
-        numColumns={2}
-        contentContainerStyle={[styles.grid, { paddingBottom: 100 + insets.bottom }]}
-        columnWrapperStyle={styles.columnWrapper}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={ACCENT}
-          />
-        }
-        renderItem={({ item: genre }) => (
-          <TouchableOpacity
-            style={styles.genreCard}
-            onPress={() => handleGenrePress(genre.name)}
-            activeOpacity={0.7}
-          >
-            {/* 2x2 Cover Grid */}
-            <View style={styles.coverGrid}>
-              {[0, 1, 2, 3].map((idx) => (
-                <View key={idx} style={styles.coverSlot}>
-                  {genre.coverIds[idx] ? (
-                    <Image
-                      source={apiClient.getItemCoverUrl(genre.coverIds[idx])}
-                      style={styles.coverImage}
-                      contentFit="cover"
-                      transition={150}
-                    />
-                  ) : (
-                    <View style={styles.coverPlaceholder} />
-                  )}
-                </View>
-              ))}
-            </View>
-
-            {/* Genre Name and Count */}
-            <View style={styles.cardFooter}>
-              <Text style={styles.genreName} numberOfLines={1}>{genre.name}</Text>
-              <Text style={styles.bookCount}>{genre.bookCount}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Content */}
+      {viewMode === 'grouped' || isSearching ? renderGroupedView() : renderFlatView()}
     </View>
   );
 }
@@ -292,95 +460,96 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 16,
   },
-  sortBar: {
+  controlBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: PADDING,
+    paddingHorizontal: 16,
     paddingBottom: 12,
   },
   resultCount: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
   },
-  sortButtons: {
+  viewToggle: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
     backgroundColor: CARD_COLOR,
+    borderRadius: 8,
+    padding: 2,
   },
-  sortButtonActive: {
+  toggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  toggleButtonActive: {
     backgroundColor: ACCENT,
-  },
-  sortButtonText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '500',
-  },
-  sortButtonTextActive: {
-    color: '#000',
   },
   content: {
     flex: 1,
   },
-  grid: {
-    paddingHorizontal: PADDING,
+  scrollContent: {
+    paddingTop: 8,
   },
-  columnWrapper: {
-    gap: GAP,
-    marginBottom: GAP,
+  flatContainer: {
+    flex: 1,
   },
-  genreCard: {
-    width: CARD_WIDTH,
-    marginBottom: 8,
-  },
-  coverGrid: {
-    width: COVER_GRID_SIZE,
-    height: COVER_GRID_SIZE,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  coverSlot: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  coverImage: {
-    width: '100%',
-    height: '100%',
-  },
-  coverPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  cardFooter: {
-    flexDirection: 'row',
+  alphabetIndex: {
+    position: 'absolute',
+    right: 2,
+    top: 8,
+    width: 24,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  genreName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
+  alphabetLetterButton: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 24,
+    minHeight: 14,
   },
-  bookCount: {
+  alphabetLetter: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: ACCENT,
+  },
+  sectionHeader: {
+    backgroundColor: BG_COLOR,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  sectionHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: ACCENT,
+  },
+  browseHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  browseTitle: {
     fontSize: 12,
+    fontWeight: '600',
     color: 'rgba(255,255,255,0.5)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    letterSpacing: 1,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
   },
 });

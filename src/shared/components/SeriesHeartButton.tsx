@@ -9,7 +9,7 @@ import { TouchableOpacity, StyleSheet, ViewStyle, Animated } from 'react-native'
 import Svg, { Path } from 'react-native-svg';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 
-const VIBRANT_GREEN = '#C8FF00';
+const VIBRANT_GREEN = '#F4B60C';
 const GRAY = '#808080';
 
 const HeartIcon = ({

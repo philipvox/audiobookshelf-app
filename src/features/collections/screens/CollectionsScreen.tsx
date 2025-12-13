@@ -28,13 +28,14 @@ import { Image } from 'expo-image';
 import { useCollections } from '../hooks/useCollections';
 import { Collection } from '@/core/types';
 import { apiClient } from '@/core/api';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = (size: number) => (size / 402) * SCREEN_WIDTH;
 
 const BG_COLOR = '#1a1a1a';
 const CARD_COLOR = 'rgba(255,255,255,0.08)';
-const ACCENT = '#c1f40c';
+const ACCENT = '#F4B60C';
 const CARD_WIDTH = (SCREEN_WIDTH - scale(48)) / 2;
 
 // Format duration helper
@@ -250,7 +251,7 @@ export function CollectionsScreen() {
           keyExtractor={(item) => item.id}
           numColumns={2}
           columnWrapperStyle={styles.row}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={ACCENT} />

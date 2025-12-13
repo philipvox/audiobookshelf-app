@@ -52,7 +52,7 @@ const COLORS = {
   textPrimary: '#FFFFFF',
   textSecondary: 'rgba(255, 255, 255, 0.6)',
   textTertiary: 'rgba(255, 255, 255, 0.4)',
-  accent: '#CCFF00',
+  accent: '#F4B60C',
   download: '#4CAF50',
   queue: '#2196F3',
   delete: '#F44336',

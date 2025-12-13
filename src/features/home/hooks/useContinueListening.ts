@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
 import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
+import { useCompletionStore } from '@/features/completion';
 
 interface ItemsInProgressResponse {
   libraryItems: (LibraryItem & { 
@@ -21,6 +22,9 @@ interface ItemsInProgressResponse {
 }
 
 export function useContinueListening() {
+  // Get completed books from completion store
+  const isComplete = useCompletionStore((state) => state.isComplete);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: queryKeys.user.inProgress(),
     queryFn: async () => {
@@ -37,15 +41,20 @@ export function useContinueListening() {
   // and may have userMediaProgress attached
   const items = (data || [])
     .filter(item => {
+      // Skip books marked as complete
+      if (isComplete(item.id)) {
+        return false;
+      }
+
       // Has progress data
       const progress = item.userMediaProgress?.progress;
       const hasProgress = progress !== undefined && progress > 0 && progress < 1;
-      
+
       // Or has progressLastUpdate (means it's in progress)
       const hasProgressUpdate = !!item.progressLastUpdate;
-      
+
       // console.log('[ContinueListening] Item:', item.media?.metadata?.title, 'progress:', progress, 'lastUpdate:', item.progressLastUpdate);
-      
+
       return hasProgress || hasProgressUpdate;
     })
     .sort((a, b) => {

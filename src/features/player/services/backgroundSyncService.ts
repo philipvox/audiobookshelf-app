@@ -224,7 +224,16 @@ class BackgroundSyncService {
       log(`  Synced: ${item.itemId} @ ${formatDuration(item.position)}`);
       return true;
     } catch (error: any) {
-      // Handle failure (network errors, etc.)
+      // Handle 404 - resource doesn't exist on server, no point retrying
+      if (error.message === 'Resource not found' || error.status === 404) {
+        audioLog.warn(`Item ${item.itemId} not found on server (404), removing from sync queue`);
+        this.syncQueue.delete(item.itemId);
+        // Mark as synced to prevent future retries for this non-existent item
+        await sqliteCache.markProgressSynced(item.itemId);
+        return false;
+      }
+
+      // Handle other failures (network errors, etc.)
       item.retryCount++;
       item.lastAttempt = Date.now();
 
