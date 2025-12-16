@@ -778,28 +778,7 @@ export function CDPlayerScreen() {
         <Text style={styles.author} numberOfLines={1}>{author}</Text>
       </View>
 
-      {/* Shadow gradient above blur - simulates shadow under the holder */}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.5)']}
-        style={[styles.holderShadow, { top: discCenterY - scale(30) }]}
-      />
-
-      {/* Blur overlay - starts from center of disc, extends to bottom */}
-      {/* Skia BackdropBlur provides true frosted glass effect on both platforms */}
-      <View style={[styles.discBlurOverlay, { top: discCenterY }]}>
-        <Canvas style={StyleSheet.absoluteFill}>
-          <BackdropBlur
-            blur={15}
-            clip={rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - discCenterY)}
-          >
-            <Fill color="rgba(0,0,0,0.3)" />
-          </BackdropBlur>
-        </Canvas>
-        {/* Subtle white line at top of blur */}
-        <View style={styles.blurTopLine} />
-      </View>
-
-      {/* CD Disc */}
+      {/* CD Disc - rendered first so blur can be applied on top */}
       <View style={styles.discContainer}>
         <CDDisc
           coverUrl={coverUrl}
@@ -825,7 +804,28 @@ export function CDPlayerScreen() {
         )}
       </View>
 
-      {/* Center gray ring and black hole - under blur */}
+      {/* Shadow gradient above blur - simulates shadow under the holder */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.5)']}
+        style={[styles.holderShadow, { top: discCenterY - scale(30) }]}
+      />
+
+      {/* Blur overlay - starts from center of disc, extends to bottom */}
+      {/* Skia BackdropBlur blurs content rendered before it in the tree */}
+      <View style={[styles.discBlurOverlay, { top: discCenterY }]}>
+        <Canvas style={StyleSheet.absoluteFill}>
+          <BackdropBlur
+            blur={40}
+            clip={rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - discCenterY)}
+          >
+            <Fill color="rgba(0,0,0,0.3)" />
+          </BackdropBlur>
+        </Canvas>
+        {/* Subtle white line at top of blur */}
+        <View style={styles.blurTopLine} />
+      </View>
+
+      {/* Center gray ring and black hole - above blur */}
       <View style={[styles.discCenterOverlay, { top: discCenterY }]}>
         <View style={styles.discGrayRingStatic}>
           <View style={styles.discHoleStatic} />
