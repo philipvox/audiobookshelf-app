@@ -21,7 +21,8 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path } from 'react-native-svg';
+import MaskedView from '@react-native-masked-view/masked-view';
+import Svg, { Path, Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import ReanimatedAnimated, {
   useAnimatedStyle,
   withTiming,
@@ -818,33 +819,35 @@ export function CDPlayerScreen() {
         style={[styles.holderShadow, { top: discCenterY - scale(30) }]}
       />
 
-      {/* Blurred CD Disc - clipped to bottom half only, synced rotation */}
-      <View
-        style={[
-          styles.blurredDiscContainer,
-          {
-            top: discCenterY,
-            height: SCREEN_HEIGHT - discCenterY,
+      {/* Blurred CD Disc - clipped to bottom half, with radial edge fade */}
+      <View style={[styles.blurredDiscContainer, { top: discCenterY }]}>
+        <MaskedView
+          style={{ width: DISC_SIZE, height: DISC_SIZE / 2 }}
+          maskElement={
+            <Svg width={DISC_SIZE} height={DISC_SIZE} style={{ marginTop: -(DISC_SIZE / 2) }}>
+              <Defs>
+                <RadialGradient id="edgeFade" cx="50%" cy="50%" r="50%">
+                  <Stop offset="0" stopColor="white" stopOpacity="1" />
+                  <Stop offset="0.75" stopColor="white" stopOpacity="1" />
+                  <Stop offset="1" stopColor="white" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={DISC_SIZE / 2} cy={DISC_SIZE / 2} r={DISC_SIZE / 2} fill="url(#edgeFade)" />
+            </Svg>
           }
-        ]}
-      >
-        <View style={{ marginTop: -(DISC_SIZE / 2), alignItems: 'center' }}>
-          <CDDisc
-            coverUrl={coverUrl}
-            rotation={discRotation}
-            isPrimary={false}
-            isBlurred={true}
-            reducedMotion={reducedMotion ?? false}
-          />
-        </View>
+        >
+          <View style={{ marginTop: -(DISC_SIZE / 2), alignItems: 'center' }}>
+            <CDDisc
+              coverUrl={coverUrl}
+              rotation={discRotation}
+              isPrimary={false}
+              isBlurred={true}
+              reducedMotion={reducedMotion ?? false}
+            />
+          </View>
+        </MaskedView>
         {/* Dark overlay on top of blurred disc */}
         <View style={styles.blurDarkOverlay} />
-        {/* Bottom fade - softens the edge where disc meets background */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)', colors.backgroundPrimary]}
-          locations={[0, 0.5, 1]}
-          style={styles.blurBottomFade}
-        />
         {/* Glass line at top */}
         <View style={styles.blurTopLine} />
       </View>
@@ -1205,20 +1208,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    overflow: 'hidden',  // Critical: clips the disc to show only bottom half
     alignItems: 'center',
     zIndex: 6,  // Above sharp disc, below spindle
   },
   blurDarkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  blurBottomFade: {
     position: 'absolute',
+    top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    height: DISC_SIZE * 0.4,
+    height: DISC_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   blurTopLine: {
     position: 'absolute',
