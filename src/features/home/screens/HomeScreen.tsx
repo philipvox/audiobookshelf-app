@@ -39,7 +39,7 @@ import { usePlayerStore, SleepTimerSheet, SpeedSheet } from '@/features/player';
 import { useCoverUrl } from '@/core/cache';
 import { colors, wp, hp } from '@/shared/theme';
 import { useImageColors } from '@/shared/hooks/useImageColors';
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING, BOTTOM_NAV_HEIGHT, MINI_PLAYER_HEIGHT } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 
 // Components
@@ -404,6 +404,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     overflow: 'hidden',
+    marginBottom: BOTTOM_NAV_HEIGHT + MINI_PLAYER_HEIGHT + 36,
   },
 });
 
