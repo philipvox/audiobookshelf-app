@@ -68,8 +68,8 @@ const DEFAULT_SETTINGS: JoystickSeekSettings = {
   enabled: true,
   minSpeed: 1,
   maxSpeed: 300,
-  curvePreset: 'fine',
-  curveExponent: 1.5,
+  curvePreset: 'custom',
+  curveExponent: 4.0,
   deadzone: 12,
   hapticEnabled: true,
 };
