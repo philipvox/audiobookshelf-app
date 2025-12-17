@@ -220,7 +220,7 @@ export const useJoystickSeekStore = create<JoystickSeekState>()(
       },
 
       setCurveExponent: (exponent) => {
-        const clampedExponent = Math.max(0.2, Math.min(2.0, exponent));
+        const clampedExponent = Math.max(0.2, Math.min(4.0, exponent));
         const preset = getPresetFromExponent(clampedExponent);
         set({ curveExponent: clampedExponent, curvePreset: preset });
       },

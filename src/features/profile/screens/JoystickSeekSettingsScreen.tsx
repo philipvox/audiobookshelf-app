@@ -67,6 +67,11 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
   const isDragging = useSharedValue(false);
   const startExponent = useSharedValue(exponent);
 
+  // Wrapper function for haptics (runOnJS can't handle object methods directly)
+  const triggerHaptic = useCallback(() => {
+    haptics.selection();
+  }, []);
+
   // Handle drag gesture on curve
   const panGesture = useMemo(() => {
     if (!onExponentChange) return null;
@@ -75,20 +80,20 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
       .onStart(() => {
         isDragging.value = true;
         startExponent.value = exponent;
-        runOnJS(haptics.selection)();
+        runOnJS(triggerHaptic)();
       })
       .onUpdate((e) => {
         // Dragging up = lower exponent (more linear), down = higher exponent (more curved)
         // Map vertical movement to exponent change
         const deltaY = -e.translationY / graphHeight;
-        const newExponent = Math.max(0.2, Math.min(2.0, startExponent.value + deltaY * 1.5));
+        const newExponent = Math.max(0.2, Math.min(4.0, startExponent.value + deltaY * 3.0));
         runOnJS(onExponentChange)(newExponent);
       })
       .onEnd(() => {
         isDragging.value = false;
-        runOnJS(haptics.selection)();
+        runOnJS(triggerHaptic)();
       });
-  }, [onExponentChange, exponent, graphHeight]);
+  }, [onExponentChange, exponent, graphHeight, triggerHaptic]);
 
   // Generate curve path
   const curvePath = useMemo(() => {
@@ -731,7 +736,7 @@ export function JoystickSeekSettingsScreen() {
                   <Slider
                     style={styles.slider}
                     minimumValue={0.2}
-                    maximumValue={2.0}
+                    maximumValue={4.0}
                     step={0.05}
                     value={curveExponent}
                     onValueChange={(value) => {
