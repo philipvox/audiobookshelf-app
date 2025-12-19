@@ -22,7 +22,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '@/core/api';
 import { colors, wp, hp, moderateScale, layout, cardTokens } from '@/shared/theme';
@@ -152,7 +152,7 @@ const SeriesRow = ({
           </Text>
           {isComplete && (
             <View style={styles.completeBadge}>
-              <Ionicons name="checkmark" size={12} color="#000" />
+              <Check size={12} color="#000" strokeWidth={3} />
             </View>
           )}
         </View>
@@ -179,7 +179,7 @@ const SeriesRow = ({
 
       {/* Chevron for navigation - Research: Series are containers, not playable */}
       <View style={styles.chevron}>
-        <Ionicons name="chevron-forward" size={wp(5)} color="rgba(255,255,255,0.5)" />
+        <ChevronRight size={wp(5)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
       </View>
     </TouchableOpacity>
   );

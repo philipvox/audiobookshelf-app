@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { User, Compass, List } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
@@ -116,10 +116,11 @@ function TopNavInner() {
             onPress={handleProfilePress}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name={isProfile ? 'person' : 'person-outline'}
+            <User
               size={22}
               color={isProfile ? colors.accent : colors.textPrimary}
+              strokeWidth={isProfile ? 2.5 : 2}
+              fill={isProfile ? colors.accent : 'none'}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -127,10 +128,10 @@ function TopNavInner() {
             onPress={handleDiscoverPress}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name={isDiscover ? 'compass' : 'compass-outline'}
+            <Compass
               size={22}
               color={isDiscover ? colors.accent : colors.textPrimary}
+              strokeWidth={isDiscover ? 2.5 : 2}
             />
           </TouchableOpacity>
         </View>
@@ -140,7 +141,7 @@ function TopNavInner() {
           {/* Queue indicator - shows when queue has items */}
           {hasQueue && (
             <TouchableOpacity style={styles.queueButton} onPress={handleQueuePress} activeOpacity={0.7}>
-              <Ionicons name="list" size={14} color="#000" />
+              <List size={14} color="#000" strokeWidth={2.5} />
               <Text style={styles.queueText}>{queue.length}</Text>
             </TouchableOpacity>
           )}

@@ -12,7 +12,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Library } from 'lucide-react-native';
 import { colors, radius, cardTokens, scale } from '@/shared/theme';
 
 interface StackedCoversProps {
@@ -49,7 +49,7 @@ export function StackedCovers({
   if (count === 0) {
     return (
       <View style={[styles.placeholder, { width: size, height: size, borderRadius }, style]}>
-        <Ionicons name="library" size={size * 0.4} color="rgba(255,255,255,0.3)" />
+        <Library size={size * 0.4} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
       </View>
     );
   }

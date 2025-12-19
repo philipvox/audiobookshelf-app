@@ -1,9 +1,14 @@
 /**
  * src/features/reading-history-wizard/screens/MarkBooksScreen.tsx
  *
- * Hierarchical swipe interface for marking books as finished.
- * Flow: Authors/Series → Series (if author) → Books
- * Swipe right = yes/mark, swipe left = skip
+ * Redesigned swipe interface for marking books as finished.
+ * Features:
+ * - Portrait card aspect ratio (2:3) matching book covers
+ * - Card stack visual with 3 cards (peek behind effect)
+ * - Swipe overlays with color-coded feedback
+ * - Progress bar showing library completion
+ * - Pill-style view tabs
+ * - Redesigned stats row and action buttons
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
@@ -13,15 +18,29 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  PartyPopper,
+  X,
+  Check,
+  CheckCircle,
+  Clock,
+  Circle,
+  Undo2,
+  ArrowRight,
+  ArrowLeft,
+  User,
+  Library,
+  BookOpen,
+  ChevronDown,
+} from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeIn,
-  SlideInRight,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -37,23 +56,79 @@ import { useLibraryCache, getAllAuthors, getAllSeries } from '@/core/cache/libra
 import { useQueueStore } from '@/features/queue/stores/queueStore';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, scale, spacing } from '@/shared/theme';
+import { colors, wp, hp, moderateScale, spacing } from '@/shared/theme';
 
-const ACCENT = colors.accent;
-const SCREEN_WIDTH = 340;
-const CARD_WIDTH = scale(280);
-const CARD_HEIGHT = scale(280); // Square cards
-const SWIPE_THRESHOLD = 100;
+// =============================================================================
+// LAYOUT CONSTANTS (from spec)
+// =============================================================================
 
-// Types
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const LAYOUT = {
+  // Card dimensions
+  CARD_WIDTH: wp(65),
+  get CARD_HEIGHT() { return this.CARD_WIDTH * 1.5; }, // 2:3 aspect ratio
+  CARD_RADIUS: wp(65) * 0.04,
+
+  // Card stack
+  STACK_OFFSET_Y: wp(2),
+  STACK_SCALE_STEP: 0.05,
+  STACK_OPACITY_STEP: 0.3,
+
+  // Swipe thresholds
+  SWIPE_THRESHOLD: wp(25),
+  SWIPE_UP_THRESHOLD: hp(10),
+
+  // Action buttons
+  ACTION_BUTTON_SIZE: wp(14),
+  ACTION_BUTTON_SMALL: wp(12),
+
+  // Spacing
+  HORIZONTAL_PADDING: wp(5.5),
+};
+
+// =============================================================================
+// COLORS (from spec)
+// =============================================================================
+
+const COLORS = {
+  accent: '#F3B60C',
+  accentDim: 'rgba(243, 182, 12, 0.15)',
+
+  textPrimary: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.7)',
+  textTertiary: 'rgba(255, 255, 255, 0.5)',
+  textHint: 'rgba(255, 255, 255, 0.35)',
+
+  surface: 'rgba(255, 255, 255, 0.05)',
+  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
+
+  success: '#22C55E',
+  info: '#3B82F6',
+  skip: 'rgba(255, 255, 255, 0.3)',
+
+  // Badge colors
+  badgeBook: '#F3B60C',
+  badgeAuthor: '#8B5CF6',
+  badgeSeries: '#3B82F6',
+
+  background: '#0A0A0A',
+};
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
 type CardType = 'author' | 'series' | 'book';
 type ViewLevel = 'top' | 'author-series' | 'series-books' | 'author-books';
+type TabView = 'books' | 'authors' | 'series';
 
 interface CardData {
   type: CardType;
   id: string;
   title: string;
   subtitle?: string;
+  meta?: string;
   count?: number;
   coverUrl?: string | null;
   bookIds?: string[];
@@ -61,18 +136,19 @@ interface CardData {
   unmarkedCount?: number;
 }
 
-type TabView = 'books' | 'authors' | 'series';
-
 interface UndoEntry {
   action: 'mark' | 'skip' | 'mark-all';
   cardType: CardType;
   ids: string[];
   title: string;
   level: ViewLevel;
-  context?: string; // For breadcrumb restoration
+  context?: string;
 }
 
-// Helper to get metadata
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
 function getMetadata(item: LibraryItem): any {
   return (item.media?.metadata as any) || {};
 }
@@ -90,177 +166,528 @@ function getSeriesName(item: LibraryItem): string {
   return name.replace(/\s*#[\d.]+$/, '').trim();
 }
 
-const SWIPE_UP_THRESHOLD = 80;
+function getDuration(item: LibraryItem): string {
+  const duration = (item.media as any)?.duration || 0;
+  const hours = Math.floor(duration / 3600);
+  const minutes = Math.floor((duration % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
 
-// Swipeable Card Component
-function SwipeableCard({
-  card,
-  onSwipeLeft,
-  onSwipeRight,
-  onSwipeUp,
-}: {
+function getGenres(item: LibraryItem): string[] {
+  return getMetadata(item).genres || [];
+}
+
+// =============================================================================
+// PROGRESS BAR COMPONENT
+// =============================================================================
+
+interface ProgressBarProps {
+  processed: number;
+  total: number;
+  finished: number;
+}
+
+function ProgressBar({ processed, total, finished }: ProgressBarProps) {
+  const progress = total > 0 ? (processed / total) * 100 : 0;
+  const remaining = total - processed;
+
+  let label = '';
+  if (progress === 0) {
+    label = 'Start marking books you\'ve finished';
+  } else if (progress >= 100) {
+    label = `All done! ${finished} books marked as finished`;
+  } else {
+    label = `${Math.round(progress)}% through library • ${finished} finished • ${remaining} remaining`;
+  }
+
+  return (
+    <View style={styles.progressContainer}>
+      <View style={styles.progressTrack}>
+        <Animated.View
+          style={[
+            styles.progressFill,
+            { width: `${Math.min(progress, 100)}%` }
+          ]}
+        />
+      </View>
+      <Text style={styles.progressLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// =============================================================================
+// VIEW TABS COMPONENT
+// =============================================================================
+
+interface ViewTabsProps {
+  activeTab: TabView;
+  onTabChange: (tab: TabView) => void;
+  counts: { books: number; authors: number; series: number };
+}
+
+function ViewTabs({ activeTab, onTabChange, counts }: ViewTabsProps) {
+  const tabs: { key: TabView; label: string; count: number }[] = [
+    { key: 'books', label: 'Books', count: counts.books },
+    { key: 'authors', label: 'Authors', count: counts.authors },
+    { key: 'series', label: 'Series', count: counts.series },
+  ];
+
+  return (
+    <View style={styles.tabsContainer}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tabPill, isActive && styles.tabPillActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              onTabChange(tab.key);
+            }}
+          >
+            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+              {tab.label} {tab.count}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// =============================================================================
+// STATS ROW COMPONENT
+// =============================================================================
+
+interface StatsRowProps {
+  finished: number;
+  queued: number;
+  remaining: number;
+  onFinishedPress: () => void;
+}
+
+function StatsRow({ finished, queued, remaining, onFinishedPress }: StatsRowProps) {
+  return (
+    <View style={styles.statsContainer}>
+      <TouchableOpacity style={styles.statItem} onPress={onFinishedPress}>
+        <View style={styles.statIconRow}>
+          <CheckCircle size={wp(4.5)} color={COLORS.success} strokeWidth={2} />
+          <Text style={styles.statValue}>{finished}</Text>
+        </View>
+        <Text style={[styles.statLabel, { color: COLORS.accent }]}>Finished →</Text>
+      </TouchableOpacity>
+
+      <View style={styles.statDivider} />
+
+      <View style={styles.statItem}>
+        <View style={styles.statIconRow}>
+          <Clock size={wp(4.5)} color={COLORS.info} strokeWidth={2} />
+          <Text style={styles.statValue}>{queued}</Text>
+        </View>
+        <Text style={styles.statLabel}>Queued</Text>
+      </View>
+
+      <View style={styles.statDivider} />
+
+      <View style={styles.statItem}>
+        <View style={styles.statIconRow}>
+          <Circle size={wp(4.5)} color={COLORS.textTertiary} strokeWidth={2} />
+          <Text style={styles.statValue}>{remaining}</Text>
+        </View>
+        <Text style={styles.statLabel}>Remaining</Text>
+      </View>
+    </View>
+  );
+}
+
+// =============================================================================
+// ACTION BUTTONS COMPONENT
+// =============================================================================
+
+interface ActionButtonsProps {
+  onSkip: () => void;
+  onUndo: () => void;
+  onQueue?: () => void;
+  onFinished: () => void;
+  canUndo: boolean;
+  undoCount: number;
+  cardType: CardType;
+}
+
+function ActionButtons({
+  onSkip,
+  onUndo,
+  onQueue,
+  onFinished,
+  canUndo,
+  undoCount,
+  cardType,
+}: ActionButtonsProps) {
+  const handlePress = (action: () => void) => {
+    Haptics.selectionAsync();
+    action();
+  };
+
+  const rightHint = cardType === 'book'
+    ? 'Finished →'
+    : 'View books →';
+
+  return (
+    <View style={styles.actionContainer}>
+      <View style={styles.actionRow}>
+        {/* Skip */}
+        <TouchableOpacity
+          style={[styles.actionButton, styles.skipButton]}
+          onPress={() => handlePress(onSkip)}
+        >
+          <X size={wp(6)} color={COLORS.skip} strokeWidth={2.5} />
+        </TouchableOpacity>
+
+        {/* Undo */}
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            styles.undoButton,
+            !canUndo && styles.actionButtonDisabled,
+          ]}
+          onPress={() => canUndo && handlePress(onUndo)}
+          disabled={!canUndo}
+        >
+          <Undo2
+            size={wp(5)}
+            color={canUndo ? COLORS.textTertiary : 'rgba(255,255,255,0.2)'}
+            strokeWidth={2}
+          />
+          {undoCount > 0 && (
+            <View style={styles.undoBadge}>
+              <Text style={styles.undoBadgeText}>{undoCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Queue (books only) */}
+        {cardType === 'book' && onQueue && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.queueButton]}
+            onPress={() => handlePress(onQueue)}
+          >
+            <Clock size={wp(6)} color={COLORS.info} strokeWidth={2} />
+          </TouchableOpacity>
+        )}
+
+        {/* Finished/View */}
+        <TouchableOpacity
+          style={[styles.actionButton, styles.finishedButton]}
+          onPress={() => handlePress(onFinished)}
+        >
+          {cardType === 'book' ? (
+            <Check size={wp(7)} color="#000000" strokeWidth={3} />
+          ) : (
+            <ArrowRight size={wp(7)} color="#000000" strokeWidth={2.5} />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Hints */}
+      <View style={styles.hintsRow}>
+        <Text style={styles.hintText}>← Skip</Text>
+        {cardType === 'book' && <Text style={styles.hintText}>↑ Queue</Text>}
+        <Text style={styles.hintText}>{rightHint}</Text>
+      </View>
+    </View>
+  );
+}
+
+// =============================================================================
+// SWIPE CARD COMPONENT
+// =============================================================================
+
+interface SwipeCardProps {
   card: CardData;
   onSwipeLeft: () => void;
   onSwipeRight: () => void;
   onSwipeUp?: () => void;
-}) {
+  stackIndex: number;
+}
+
+function SwipeCard({
+  card,
+  onSwipeLeft,
+  onSwipeRight,
+  onSwipeUp,
+  stackIndex,
+}: SwipeCardProps) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
-  const rotation = useSharedValue(0);
+  const isGestureActive = useSharedValue(false);
 
-  const handleSwipeComplete = useCallback(
-    (direction: 'left' | 'right' | 'up') => {
-      if (direction === 'right') {
-        onSwipeRight();
-      } else if (direction === 'up') {
-        onSwipeUp?.();
-      } else {
-        onSwipeLeft();
-      }
-    },
-    [onSwipeLeft, onSwipeRight, onSwipeUp]
-  );
+  const triggerThresholdHaptic = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const triggerActionHaptic = useCallback((type: 'finished' | 'skip' | 'queue') => {
+    if (type === 'finished') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else if (type === 'queue') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
 
   const panGesture = Gesture.Pan()
+    .enabled(stackIndex === 0)
+    .onStart(() => {
+      'worklet';
+      isGestureActive.value = true;
+    })
     .onUpdate((event) => {
       'worklet';
-      // Prioritize vertical swipe if moving mostly up
-      const isSwipingUp = event.translationY < -30 && Math.abs(event.translationY) > Math.abs(event.translationX);
-      if (isSwipingUp) {
+      const isSwipingUp =
+        event.translationY < -30 &&
+        Math.abs(event.translationY) > Math.abs(event.translationX);
+
+      if (isSwipingUp && onSwipeUp) {
         translateY.value = event.translationY;
         translateX.value = 0;
-        rotation.value = 0;
       } else {
         translateX.value = event.translationX;
         translateY.value = event.translationY * 0.3;
-        rotation.value = interpolate(
-          event.translationX,
-          [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-          [-12, 0, 12],
-          Extrapolation.CLAMP
-        );
+      }
+
+      // Threshold haptic
+      const threshold = LAYOUT.SWIPE_THRESHOLD;
+      if (
+        (Math.abs(event.translationX) > threshold - 5 &&
+          Math.abs(event.translationX) < threshold + 5) ||
+        (event.translationY < -(LAYOUT.SWIPE_UP_THRESHOLD - 5) &&
+          event.translationY > -(LAYOUT.SWIPE_UP_THRESHOLD + 5))
+      ) {
+        runOnJS(triggerThresholdHaptic)();
       }
     })
     .onEnd((event) => {
       'worklet';
-      // Check for swipe up first (add to queue)
-      if (event.translationY < -SWIPE_UP_THRESHOLD && Math.abs(event.translationY) > Math.abs(event.translationX)) {
-        translateY.value = withTiming(-500, { duration: 250 });
-        runOnJS(handleSwipeComplete)('up');
-      } else if (event.translationX > SWIPE_THRESHOLD) {
-        translateX.value = withTiming(SCREEN_WIDTH * 1.5, { duration: 250 });
-        runOnJS(handleSwipeComplete)('right');
-      } else if (event.translationX < -SWIPE_THRESHOLD) {
-        translateX.value = withTiming(-SCREEN_WIDTH * 1.5, { duration: 250 });
-        runOnJS(handleSwipeComplete)('left');
+      isGestureActive.value = false;
+
+      const isSwipingUp =
+        event.translationY < -LAYOUT.SWIPE_UP_THRESHOLD &&
+        Math.abs(event.translationY) > Math.abs(event.translationX);
+
+      if (isSwipingUp && onSwipeUp) {
+        translateY.value = withTiming(-SCREEN_HEIGHT, { duration: 350 });
+        runOnJS(triggerActionHaptic)('queue');
+        runOnJS(onSwipeUp)();
+      } else if (event.translationX > LAYOUT.SWIPE_THRESHOLD) {
+        translateX.value = withTiming(SCREEN_WIDTH * 1.5, { duration: 300 });
+        runOnJS(triggerActionHaptic)('finished');
+        runOnJS(onSwipeRight)();
+      } else if (event.translationX < -LAYOUT.SWIPE_THRESHOLD) {
+        translateX.value = withTiming(-SCREEN_WIDTH * 1.5, { duration: 300 });
+        runOnJS(triggerActionHaptic)('skip');
+        runOnJS(onSwipeLeft)();
       } else {
         translateX.value = withSpring(0, { damping: 15 });
         translateY.value = withSpring(0, { damping: 15 });
-        rotation.value = withSpring(0, { damping: 15 });
       }
     });
 
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { rotate: `${rotation.value}deg` },
-    ],
-  }));
+  // Card transform style
+  const cardStyle = useAnimatedStyle(() => {
+    const rotate = interpolate(
+      translateX.value,
+      [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
+      [-15, 0, 15],
+      Extrapolation.CLAMP
+    );
 
+    // Stack positioning
+    const stackScale = 1 - stackIndex * LAYOUT.STACK_SCALE_STEP;
+    const stackTranslateY = stackIndex * LAYOUT.STACK_OFFSET_Y;
+    const stackOpacity = 1 - stackIndex * LAYOUT.STACK_OPACITY_STEP;
+
+    return {
+      transform: [
+        { translateX: stackIndex === 0 ? translateX.value : 0 },
+        { translateY: stackIndex === 0 ? translateY.value + stackTranslateY : stackTranslateY },
+        { rotate: stackIndex === 0 ? `${rotate}deg` : '0deg' },
+        { scale: stackScale },
+      ],
+      opacity: stackOpacity,
+      zIndex: 10 - stackIndex,
+    };
+  });
+
+  // Overlay styles
   const rightOverlayStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [0, SWIPE_THRESHOLD], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(
+      translateX.value,
+      [0, LAYOUT.SWIPE_THRESHOLD],
+      [0, 0.5],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const leftOverlayStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [-SWIPE_THRESHOLD, 0], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(
+      translateX.value,
+      [-LAYOUT.SWIPE_THRESHOLD, 0],
+      [0.5, 0],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const upOverlayStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateY.value, [-SWIPE_UP_THRESHOLD, 0], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(
+      translateY.value,
+      [-LAYOUT.SWIPE_UP_THRESHOLD, 0],
+      [0.5, 0],
+      Extrapolation.CLAMP
+    ),
   }));
 
-  const getIcon = () => {
-    switch (card.type) {
-      case 'author': return 'person';
-      case 'series': return 'library';
-      case 'book': return 'book';
-    }
+  // Badge colors
+  const badgeColors: Record<CardType, { bg: string; text: string }> = {
+    book: { bg: COLORS.badgeBook, text: '#000000' },
+    author: { bg: COLORS.badgeAuthor, text: '#FFFFFF' },
+    series: { bg: COLORS.badgeSeries, text: '#FFFFFF' },
   };
 
-  const getActionText = () => {
-    switch (card.type) {
-      case 'author': return 'VIEW BOOKS';
-      case 'series': return 'VIEW SERIES';
-      case 'book': return 'FINISHED';
-    }
-  };
+  const overlayText = card.type === 'book' ? '✓ FINISHED' : '→ VIEW';
 
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.card, cardStyle]}>
-        {/* Cover/Icon */}
+        {/* Cover Image */}
         {card.coverUrl ? (
           <Image source={card.coverUrl} style={styles.cardCover} contentFit="cover" />
         ) : (
           <View style={[styles.cardCover, styles.cardCoverPlaceholder]}>
-            <Ionicons name={getIcon()} size={scale(80)} color="rgba(255,255,255,0.3)" />
+            {card.type === 'author' ? (
+              <User size={wp(20)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+            ) : card.type === 'series' ? (
+              <Library size={wp(20)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+            ) : (
+              <BookOpen size={wp(20)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+            )}
           </View>
         )}
 
-        {/* Gradient */}
+        {/* Gradient Overlay */}
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.95)']}
+          colors={['transparent', 'rgba(0,0,0,0.85)']}
           style={styles.cardGradient}
         />
 
-        {/* Info */}
-        <View style={styles.cardInfo}>
-          {/* Type badge */}
-          <View style={[styles.typeBadge, card.type === 'author' && styles.authorBadge, card.type === 'series' && styles.seriesBadge]}>
-            <Ionicons name={getIcon()} size={scale(12)} color="#fff" />
-            <Text style={styles.typeBadgeText}>{card.type.toUpperCase()}</Text>
-          </View>
+        {/* Badge */}
+        <View style={[styles.cardBadge, { backgroundColor: badgeColors[card.type].bg }]}>
+          <Text style={[styles.cardBadgeText, { color: badgeColors[card.type].text }]}>
+            {card.type.toUpperCase()}
+          </Text>
+          <ChevronDown
+            size={moderateScale(10)}
+            color={badgeColors[card.type].text}
+            strokeWidth={2.5}
+          />
+        </View>
 
-          <Text style={styles.cardTitle} numberOfLines={2}>{card.title}</Text>
+        {/* Swipe Overlays */}
+        <Animated.View style={[styles.swipeOverlay, styles.rightOverlay, rightOverlayStyle]}>
+          <Text style={styles.swipeOverlayText}>{overlayText}</Text>
+        </Animated.View>
+
+        <Animated.View style={[styles.swipeOverlay, styles.leftOverlay, leftOverlayStyle]}>
+          <Text style={styles.swipeOverlayText}>✕ SKIP</Text>
+        </Animated.View>
+
+        {onSwipeUp && (
+          <Animated.View style={[styles.swipeOverlay, styles.upOverlay, upOverlayStyle]}>
+            <Text style={styles.swipeOverlayText}>+ QUEUE</Text>
+          </Animated.View>
+        )}
+
+        {/* Text Content */}
+        <View style={styles.cardContent}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {card.title}
+          </Text>
           {card.subtitle && (
-            <Text style={styles.cardSubtitle} numberOfLines={1}>{card.subtitle}</Text>
+            <Text style={styles.cardSubtitle} numberOfLines={1}>
+              {card.subtitle}
+            </Text>
           )}
-          {card.count !== undefined && (
-            <Text style={styles.cardCount}>
+          {card.meta && (
+            <Text style={styles.cardMeta} numberOfLines={1}>
+              {card.meta}
+            </Text>
+          )}
+          {card.count !== undefined && card.type !== 'book' && (
+            <Text style={styles.cardMeta}>
               {card.count} {card.type === 'author' ? (card.seriesNames?.length ? 'series' : 'books') : 'books'}
             </Text>
           )}
         </View>
-
-        {/* Swipe overlays */}
-        <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
-          <View style={styles.overlayBadge}>
-            <Ionicons name="checkmark" size={scale(36)} color="#000" />
-            <Text style={styles.overlayText}>{getActionText()}</Text>
-          </View>
-        </Animated.View>
-
-        <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayStyle]}>
-          <View style={[styles.overlayBadge, styles.skipBadge]}>
-            <Ionicons name="close" size={scale(36)} color="#fff" />
-            <Text style={[styles.overlayText, styles.skipText]}>SKIP</Text>
-          </View>
-        </Animated.View>
-
-        {/* Swipe up overlay - only for books */}
-        {card.type === 'book' && (
-          <Animated.View style={[styles.overlay, styles.upOverlay, upOverlayStyle]}>
-            <View style={[styles.overlayBadge, styles.queueBadge]}>
-              <Ionicons name="add" size={scale(36)} color="#fff" />
-              <Text style={[styles.overlayText, styles.queueText]}>ADD TO QUEUE</Text>
-            </View>
-          </Animated.View>
-        )}
       </Animated.View>
     </GestureDetector>
   );
 }
+
+// =============================================================================
+// EMPTY STATE COMPONENT
+// =============================================================================
+
+interface EmptyStateProps {
+  markedCount: number;
+  viewLevel: ViewLevel;
+  onViewHistory: () => void;
+  onStartOver: () => void;
+  onBackToTop: () => void;
+}
+
+function EmptyState({
+  markedCount,
+  viewLevel,
+  onViewHistory,
+  onStartOver,
+  onBackToTop,
+}: EmptyStateProps) {
+  return (
+    <Animated.View style={styles.emptyState} entering={FadeIn.duration(300)}>
+      <View style={styles.emptyIconContainer}>
+        <PartyPopper size={moderateScale(48)} color={colors.accent} strokeWidth={1.5} />
+      </View>
+      <Text style={styles.emptyTitle}>
+        {viewLevel === 'top' ? 'All caught up!' : 'Section complete!'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        You've gone through all {viewLevel === 'top' ? 'books' : 'items'} in this view.
+      </Text>
+
+      <TouchableOpacity style={styles.emptyButtonPrimary} onPress={onViewHistory}>
+        <Text style={styles.emptyButtonPrimaryText}>
+          View History ({markedCount})
+        </Text>
+      </TouchableOpacity>
+
+      {viewLevel !== 'top' ? (
+        <TouchableOpacity style={styles.emptyButtonSecondary} onPress={onBackToTop}>
+          <Text style={styles.emptyButtonSecondaryText}>Back to All</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.emptyButtonSecondary} onPress={onStartOver}>
+          <Text style={styles.emptyButtonSecondaryText}>Start Over</Text>
+        </TouchableOpacity>
+      )}
+    </Animated.View>
+  );
+}
+
+// =============================================================================
+// MAIN SCREEN COMPONENT
+// =============================================================================
 
 export function MarkBooksScreen() {
   const insets = useSafeAreaInsets();
@@ -283,10 +710,8 @@ export function MarkBooksScreen() {
   // Queue store
   const addToQueue = useQueueStore((s) => s.addToQueue);
 
-  // Books added to queue this session
+  // Session state
   const [queuedBooks, setQueuedBooks] = useState<Set<string>>(new Set());
-
-  // Navigation state
   const [viewLevel, setViewLevel] = useState<ViewLevel>('top');
   const [currentAuthor, setCurrentAuthor] = useState<string | null>(null);
   const [currentSeries, setCurrentSeries] = useState<string | null>(null);
@@ -298,17 +723,15 @@ export function MarkBooksScreen() {
   const [skippedSeries, setSkippedSeries] = useState<Set<string>>(new Set());
   const [skippedBooks, setSkippedBooks] = useState<Set<string>>(new Set());
 
-  // Undo history (unlimited for session)
+  // Undo history
   const [undoHistory, setUndoHistory] = useState<UndoEntry[]>([]);
 
-  // Get authors with their series
+  // Data aggregation
   const authorsData = useMemo(() => {
     const authors = getAllAuthors();
     return authors.map((author) => {
-      // Find series for this author
-      const authorBooks = author.books;
       const seriesSet = new Set<string>();
-      authorBooks.forEach((book) => {
+      author.books.forEach((book) => {
         const series = getSeriesName(book);
         if (series) seriesSet.add(series);
       });
@@ -319,12 +742,11 @@ export function MarkBooksScreen() {
     }).filter((a) => a.books.length > 0);
   }, []);
 
-  // Calculate author affinity scores based on marked books
-  // Authors with more marked books get higher priority
+  const seriesData = useMemo(() => getAllSeries(), []);
+
+  // Affinity scores
   const authorAffinityScores = useMemo(() => {
     const scores: Record<string, number> = {};
-
-    // Count marked books per author
     markedBooks.forEach((_, bookId) => {
       const item = items.find((i) => i.id === bookId);
       if (item) {
@@ -334,17 +756,11 @@ export function MarkBooksScreen() {
         }
       }
     });
-
     return scores;
   }, [markedBooks, items]);
 
-  // Get all series
-  const seriesData = useMemo(() => getAllSeries(), []);
-
-  // Calculate series affinity scores based on marked books
   const seriesAffinityScores = useMemo(() => {
     const scores: Record<string, number> = {};
-
     markedBooks.forEach((_, bookId) => {
       const item = items.find((i) => i.id === bookId);
       if (item) {
@@ -354,59 +770,69 @@ export function MarkBooksScreen() {
         }
       }
     });
-
     return scores;
   }, [markedBooks, items]);
 
-  // Build cards based on current view level
+  // Tab counts
+  const tabCounts = useMemo(() => {
+    const unmarkedBooks = items.filter(
+      (b) => !skippedBooks.has(b.id) && !markedBooks.has(b.id)
+    ).length;
+
+    const unmarkedAuthors = authorsData.filter((a) => {
+      if (skippedAuthors.has(a.name)) return false;
+      return a.books.some((b) => !markedBooks.has(b.id));
+    }).length;
+
+    const unmarkedSeries = seriesData.filter((s) => {
+      if (skippedSeries.has(s.name)) return false;
+      return s.books.some((b) => !markedBooks.has(b.id));
+    }).length;
+
+    return {
+      books: unmarkedBooks,
+      authors: unmarkedAuthors,
+      series: unmarkedSeries,
+    };
+  }, [items, authorsData, seriesData, skippedBooks, skippedAuthors, skippedSeries, markedBooks]);
+
+  // Build cards
   const cards = useMemo((): CardData[] => {
     if (viewLevel === 'top') {
       if (activeTab === 'books') {
-        // Books tab - show all individual books
-        const bookCards: CardData[] = items
+        const bookCards = items
           .filter((book) => !skippedBooks.has(book.id) && !markedBooks.has(book.id))
           .map((book) => {
             const authorName = getAuthorName(book);
             const seriesName = getSeriesName(book);
+            const duration = getDuration(book);
+            const genres = getGenres(book);
             return {
               type: 'book' as CardType,
               id: book.id,
               title: getTitle(book),
               subtitle: authorName || undefined,
+              meta: [duration, genres[0]].filter(Boolean).join(' • '),
               coverUrl: getCoverUrl(book.id),
-              // Store author/series for sorting
               _authorName: authorName,
               _seriesName: seriesName,
             } as CardData & { _authorName?: string; _seriesName?: string };
           });
 
-        // Smart sort: prioritize books by authors/series you've been marking
         return bookCards.sort((a, b) => {
           const aExt = a as CardData & { _authorName?: string; _seriesName?: string };
           const bExt = b as CardData & { _authorName?: string; _seriesName?: string };
-
-          // Calculate combined affinity score (author + series)
-          const authorAffinityA = aExt._authorName ? (authorAffinityScores[aExt._authorName] || 0) : 0;
-          const authorAffinityB = bExt._authorName ? (authorAffinityScores[bExt._authorName] || 0) : 0;
-          const seriesAffinityA = aExt._seriesName ? (seriesAffinityScores[aExt._seriesName] || 0) : 0;
-          const seriesAffinityB = bExt._seriesName ? (seriesAffinityScores[bExt._seriesName] || 0) : 0;
-
-          const totalAffinityA = authorAffinityA + seriesAffinityA;
-          const totalAffinityB = authorAffinityB + seriesAffinityB;
-
-          if (totalAffinityA !== totalAffinityB) {
-            return totalAffinityB - totalAffinityA;
-          }
-
-          // Secondary: sort by title
+          const totalA = (authorAffinityScores[aExt._authorName || ''] || 0) +
+                         (seriesAffinityScores[aExt._seriesName || ''] || 0);
+          const totalB = (authorAffinityScores[bExt._authorName || ''] || 0) +
+                         (seriesAffinityScores[bExt._seriesName || ''] || 0);
+          if (totalA !== totalB) return totalB - totalA;
           return a.title.localeCompare(b.title);
         });
       } else if (activeTab === 'authors') {
-        // Show authors
-        const authorCards: CardData[] = authorsData
+        return authorsData
           .filter((a) => !skippedAuthors.has(a.name))
           .map((author) => {
-            // Calculate unmarked books count for this author
             const unmarkedBooks = author.books.filter((b) => !markedBooks.has(b.id));
             return {
               type: 'author' as CardType,
@@ -419,30 +845,18 @@ export function MarkBooksScreen() {
               unmarkedCount: unmarkedBooks.length,
             };
           })
-          // Only show authors with unmarked books
-          .filter((a) => a.unmarkedCount > 0);
-
-        // Smart sort: processed items go to back, then by affinity
-        return authorCards.sort((a, b) => {
-          // Processed authors go to the back
-          const aProcessed = processedAuthors.has(a.id);
-          const bProcessed = processedAuthors.has(b.id);
-          if (aProcessed !== bProcessed) {
-            return aProcessed ? 1 : -1;
-          }
-
-          // Then by affinity (authors with marked books first)
-          const affinityA = authorAffinityScores[a.id] || 0;
-          const affinityB = authorAffinityScores[b.id] || 0;
-          if (affinityA !== affinityB) {
-            return affinityB - affinityA;
-          }
-
-          return (b.count || 0) - (a.count || 0);
-        });
+          .filter((a) => (a.unmarkedCount || 0) > 0)
+          .sort((a, b) => {
+            const aProcessed = processedAuthors.has(a.id);
+            const bProcessed = processedAuthors.has(b.id);
+            if (aProcessed !== bProcessed) return aProcessed ? 1 : -1;
+            const affinityA = authorAffinityScores[a.id] || 0;
+            const affinityB = authorAffinityScores[b.id] || 0;
+            if (affinityA !== affinityB) return affinityB - affinityA;
+            return (b.count || 0) - (a.count || 0);
+          });
       } else {
-        // Series tab - show all series
-        const seriesCards: CardData[] = seriesData
+        return seriesData
           .filter((s) => !skippedSeries.has(s.name))
           .map((series) => {
             const unmarkedBooks = series.books.filter((b) => !markedBooks.has(b.id));
@@ -457,32 +871,20 @@ export function MarkBooksScreen() {
               unmarkedCount: unmarkedBooks.length,
             };
           })
-          // Only show series with unmarked books
-          .filter((s) => s.unmarkedCount > 0);
-
-        // Smart sort: processed items go to back, then by affinity
-        return seriesCards.sort((a, b) => {
-          // Processed series go to the back
-          const aProcessed = processedSeries.has(a.id);
-          const bProcessed = processedSeries.has(b.id);
-          if (aProcessed !== bProcessed) {
-            return aProcessed ? 1 : -1;
-          }
-
-          // Then by affinity
-          const affinityA = seriesAffinityScores[a.id] || 0;
-          const affinityB = seriesAffinityScores[b.id] || 0;
-          if (affinityA !== affinityB) {
-            return affinityB - affinityA;
-          }
-
-          return (b.count || 0) - (a.count || 0);
-        });
+          .filter((s) => (s.unmarkedCount || 0) > 0)
+          .sort((a, b) => {
+            const aProcessed = processedSeries.has(a.id);
+            const bProcessed = processedSeries.has(b.id);
+            if (aProcessed !== bProcessed) return aProcessed ? 1 : -1;
+            const affinityA = seriesAffinityScores[a.id] || 0;
+            const affinityB = seriesAffinityScores[b.id] || 0;
+            if (affinityA !== affinityB) return affinityB - affinityA;
+            return (b.count || 0) - (a.count || 0);
+          });
       }
     }
 
     if (viewLevel === 'author-series' && currentAuthor) {
-      // Show series for current author
       const author = authorsData.find((a) => a.name === currentAuthor);
       if (!author) return [];
 
@@ -502,7 +904,6 @@ export function MarkBooksScreen() {
           };
         });
 
-      // Also show "Other Books" if author has books not in series
       const booksNotInSeries = author.books.filter((b) => !getSeriesName(b));
       if (booksNotInSeries.length > 0) {
         seriesCards.push({
@@ -520,7 +921,6 @@ export function MarkBooksScreen() {
     }
 
     if (viewLevel === 'author-books' && currentAuthor) {
-      // Show all books by author (when author has no series)
       const author = authorsData.find((a) => a.name === currentAuthor);
       if (!author) return [];
 
@@ -531,15 +931,14 @@ export function MarkBooksScreen() {
           id: book.id,
           title: getTitle(book),
           subtitle: currentAuthor,
+          meta: getDuration(book),
           coverUrl: getCoverUrl(book.id),
         }));
     }
 
     if (viewLevel === 'series-books' && currentSeries) {
-      // Show books in current series
       const series = seriesData.find((s) => s.name === currentSeries);
       if (!series) {
-        // Check for "Other Books" pseudo-series
         if (currentSeries.endsWith('-other') && currentAuthor) {
           const author = authorsData.find((a) => a.name === currentAuthor);
           const booksNotInSeries = author?.books.filter((b) => !getSeriesName(b)) || [];
@@ -550,6 +949,7 @@ export function MarkBooksScreen() {
               id: book.id,
               title: getTitle(book),
               subtitle: currentAuthor || undefined,
+              meta: getDuration(book),
               coverUrl: getCoverUrl(book.id),
             }));
         }
@@ -563,58 +963,52 @@ export function MarkBooksScreen() {
           id: book.id,
           title: getTitle(book),
           subtitle: currentSeries,
+          meta: getDuration(book),
           coverUrl: getCoverUrl(book.id),
         }));
     }
 
     return [];
-  }, [viewLevel, activeTab, currentAuthor, currentSeries, items, authorsData, seriesData, skippedAuthors, skippedSeries, skippedBooks, markedBooks, authorAffinityScores, seriesAffinityScores, processedAuthors, processedSeries]);
+  }, [
+    viewLevel, activeTab, currentAuthor, currentSeries, items, authorsData, seriesData,
+    skippedAuthors, skippedSeries, skippedBooks, markedBooks,
+    authorAffinityScores, seriesAffinityScores, processedAuthors, processedSeries,
+  ]);
 
-  const currentCard = cards[0];
-  const markedCount = markedBooks.size;
-
-  // Start session on mount
+  // Start session
   useEffect(() => {
     startSession();
   }, [startSession]);
 
+  // Handlers
   const handleSwipeRight = useCallback(() => {
+    const currentCard = cards[0];
     if (!currentCard) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (currentCard.type === 'author') {
       const author = authorsData.find((a) => a.name === currentCard.id);
-      // Mark as processed when drilling in - goes to back next time
       markAuthorProcessed(currentCard.id);
+
+      setUndoHistory((prev) => [...prev, {
+        action: 'skip',
+        cardType: 'author',
+        ids: [currentCard.id],
+        title: currentCard.title,
+        level: viewLevel,
+      }]);
+
       if (author?.seriesNames && author.seriesNames.length > 0) {
-        // Author has series - drill down
-        setUndoHistory((prev) => [...prev, {
-          action: 'skip', // Will be used to restore navigation
-          cardType: 'author',
-          ids: [currentCard.id],
-          title: currentCard.title,
-          level: viewLevel,
-        }]);
         setCurrentAuthor(currentCard.id);
         setBreadcrumb([currentCard.title]);
         setViewLevel('author-series');
       } else {
-        // Author has no series - show books directly
-        setUndoHistory((prev) => [...prev, {
-          action: 'skip',
-          cardType: 'author',
-          ids: [currentCard.id],
-          title: currentCard.title,
-          level: viewLevel,
-        }]);
         setCurrentAuthor(currentCard.id);
         setBreadcrumb([currentCard.title]);
         setViewLevel('author-books');
       }
     } else if (currentCard.type === 'series') {
-      // Mark as processed when drilling in
       markSeriesProcessed(currentCard.id);
-      // Drill into series books
+
       setUndoHistory((prev) => [...prev, {
         action: 'skip',
         cardType: 'series',
@@ -623,11 +1017,11 @@ export function MarkBooksScreen() {
         level: viewLevel,
         context: currentAuthor || undefined,
       }]);
+
       setCurrentSeries(currentCard.id);
       setBreadcrumb((prev) => [...prev, currentCard.title]);
       setViewLevel('series-books');
     } else if (currentCard.type === 'book') {
-      // Mark book as finished
       setUndoHistory((prev) => [...prev, {
         action: 'mark',
         cardType: 'book',
@@ -637,11 +1031,11 @@ export function MarkBooksScreen() {
       }]);
       markBook(currentCard.id, 'tap');
     }
-  }, [currentCard, authorsData, viewLevel, currentAuthor, markBook, markAuthorProcessed, markSeriesProcessed]);
+  }, [cards, authorsData, viewLevel, currentAuthor, markBook, markAuthorProcessed, markSeriesProcessed]);
 
   const handleSwipeLeft = useCallback(() => {
+    const currentCard = cards[0];
     if (!currentCard) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     setUndoHistory((prev) => [...prev, {
       action: 'skip',
@@ -653,59 +1047,30 @@ export function MarkBooksScreen() {
 
     if (currentCard.type === 'author') {
       setSkippedAuthors((prev) => new Set(prev).add(currentCard.id));
-      markAuthorProcessed(currentCard.id); // Goes to back next time
+      markAuthorProcessed(currentCard.id);
     } else if (currentCard.type === 'series') {
       setSkippedSeries((prev) => new Set(prev).add(currentCard.id));
-      markSeriesProcessed(currentCard.id); // Goes to back next time
+      markSeriesProcessed(currentCard.id);
     } else {
       setSkippedBooks((prev) => new Set(prev).add(currentCard.id));
     }
-  }, [currentCard, viewLevel, markAuthorProcessed, markSeriesProcessed]);
+  }, [cards, viewLevel, markAuthorProcessed, markSeriesProcessed]);
 
   const handleSwipeUp = useCallback(() => {
+    const currentCard = cards[0];
     if (!currentCard || currentCard.type !== 'book') return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Find the book item
     const item = items.find((i) => i.id === currentCard.id);
     if (item) {
       addToQueue(item);
       setQueuedBooks((prev) => new Set(prev).add(currentCard.id));
     }
-
-    // Skip this book after adding to queue
     setSkippedBooks((prev) => new Set(prev).add(currentCard.id));
-  }, [currentCard, items, addToQueue]);
-
-  const handleMarkAll = useCallback(() => {
-    if (!currentCard?.bookIds) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    const idsToMark = currentCard.bookIds.filter((id) => !markedBooks.has(id));
-
-    setUndoHistory((prev) => [...prev, {
-      action: 'mark-all',
-      cardType: currentCard.type,
-      ids: idsToMark,
-      title: currentCard.title,
-      level: viewLevel,
-    }]);
-
-    idsToMark.forEach((id) => markBook(id, 'tap'));
-
-    // Skip this card after marking all and mark as processed
-    if (currentCard.type === 'author') {
-      setSkippedAuthors((prev) => new Set(prev).add(currentCard.id));
-      markAuthorProcessed(currentCard.id);
-    } else if (currentCard.type === 'series') {
-      setSkippedSeries((prev) => new Set(prev).add(currentCard.id));
-      markSeriesProcessed(currentCard.id);
-    }
-  }, [currentCard, markedBooks, viewLevel, markBook, markAuthorProcessed, markSeriesProcessed]);
+  }, [cards, items, addToQueue]);
 
   const handleUndo = useCallback(() => {
     if (undoHistory.length === 0) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const lastEntry = undoHistory[undoHistory.length - 1];
 
@@ -713,7 +1078,6 @@ export function MarkBooksScreen() {
       lastEntry.ids.forEach((id) => unmarkBook(id));
     } else if (lastEntry.action === 'mark-all') {
       lastEntry.ids.forEach((id) => unmarkBook(id));
-      // Also un-skip the card
       if (lastEntry.cardType === 'author') {
         setSkippedAuthors((prev) => {
           const newSet = new Set(prev);
@@ -729,9 +1093,7 @@ export function MarkBooksScreen() {
       }
     } else if (lastEntry.action === 'skip') {
       if (lastEntry.cardType === 'author') {
-        // Check if this was a navigation or a skip
         if (lastEntry.level !== viewLevel) {
-          // Was navigation - go back
           setViewLevel(lastEntry.level);
           if (lastEntry.level === 'top') {
             setCurrentAuthor(null);
@@ -788,14 +1150,35 @@ export function MarkBooksScreen() {
     }
   }, [viewLevel, currentAuthor]);
 
-  const handleDone = useCallback(async () => {
+  const handleClose = useCallback(async () => {
     await endSession();
     navigation.goBack();
   }, [endSession, navigation]);
 
+  const handleViewHistory = useCallback(() => {
+    navigation.navigate('ReadingHistory');
+  }, [navigation]);
+
+  const handleStartOver = useCallback(() => {
+    setSkippedBooks(new Set());
+    setSkippedAuthors(new Set());
+    setSkippedSeries(new Set());
+    setUndoHistory([]);
+  }, []);
+
+  const handleBackToTop = useCallback(() => {
+    setViewLevel('top');
+    setCurrentAuthor(null);
+    setCurrentSeries(null);
+    setBreadcrumb([]);
+  }, []);
+
+  // Derived state
+  const currentCard = cards[0];
+  const markedCount = markedBooks.size;
+  const processedCount = markedCount + skippedBooks.size;
   const isDone = cards.length === 0;
   const canUndo = undoHistory.length > 0;
-  const showMarkAll = currentCard && (currentCard.type === 'author' || currentCard.type === 'series') && currentCard.bookIds;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -804,214 +1187,208 @@ export function MarkBooksScreen() {
       {/* Header */}
       <View style={styles.header}>
         {viewLevel !== 'top' ? (
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Ionicons name="arrow-back" size={scale(24)} color={colors.textPrimary} />
+          <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
+            <ArrowLeft size={moderateScale(22)} color={COLORS.textPrimary} strokeWidth={2} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.closeButton} onPress={handleDone}>
-            <Ionicons name="close" size={scale(28)} color={colors.textPrimary} />
+          <TouchableOpacity style={styles.headerButton} onPress={handleClose}>
+            <X size={moderateScale(24)} color={COLORS.textPrimary} strokeWidth={2} />
           </TouchableOpacity>
         )}
 
-        <View style={styles.headerCenter}>
-          {breadcrumb.length > 0 ? (
-            <Text style={styles.breadcrumb} numberOfLines={1}>
-              {breadcrumb.join(' › ')}
-            </Text>
-          ) : (
-            <View style={styles.tabContainer}>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'books' && styles.tabActive]}
-                onPress={() => setActiveTab('books')}
-              >
-                <Ionicons name="book" size={scale(14)} color={activeTab === 'books' ? ACCENT : colors.textSecondary} />
-                <Text style={[styles.tabText, activeTab === 'books' && styles.tabTextActive]}>Books</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'authors' && styles.tabActive]}
-                onPress={() => setActiveTab('authors')}
-              >
-                <Ionicons name="person" size={scale(14)} color={activeTab === 'authors' ? ACCENT : colors.textSecondary} />
-                <Text style={[styles.tabText, activeTab === 'authors' && styles.tabTextActive]}>Authors</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'series' && styles.tabActive]}
-                onPress={() => setActiveTab('series')}
-              >
-                <Ionicons name="library" size={scale(14)} color={activeTab === 'series' ? ACCENT : colors.textSecondary} />
-                <Text style={[styles.tabText, activeTab === 'series' && styles.tabTextActive]}>Series</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        <Text style={styles.headerTitle}>
+          {breadcrumb.length > 0 ? breadcrumb.join(' › ') : 'Mark as Finished'}
+        </Text>
 
-        <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
-          <Text style={styles.doneText}>Done</Text>
+        <TouchableOpacity style={styles.headerButton} onPress={handleViewHistory}>
+          <Text style={styles.historyLink}>History →</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Progress Bar */}
+      <ProgressBar
+        processed={processedCount}
+        total={items.length}
+        finished={markedCount}
+      />
+
+      {/* View Tabs (only at top level) */}
+      {viewLevel === 'top' && (
+        <ViewTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          counts={tabCounts}
+        />
+      )}
 
       {/* Card Stack */}
       <View style={styles.cardContainer}>
         {isDone ? (
-          <Animated.View style={styles.doneState} entering={FadeIn.duration(300)}>
-            <Ionicons name="checkmark-circle" size={scale(80)} color={ACCENT} />
-            <Text style={styles.doneTitle}>
-              {viewLevel === 'top' ? 'All Done!' : 'Section Complete!'}
-            </Text>
-            <Text style={styles.doneSubtitle}>
-              {markedCount} books marked as finished
-            </Text>
-            {viewLevel !== 'top' && (
-              <TouchableOpacity style={styles.backToTopButton} onPress={() => {
-                setViewLevel('top');
-                setCurrentAuthor(null);
-                setCurrentSeries(null);
-                setBreadcrumb([]);
-              }}>
-                <Text style={styles.backToTopText}>Back to Authors</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.finishButton} onPress={handleDone}>
-              <Text style={styles.finishButtonText}>Finish</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        ) : currentCard && (
-          <Animated.View key={currentCard.id} entering={SlideInRight.duration(200)}>
-            <SwipeableCard
-              card={currentCard}
-              onSwipeLeft={handleSwipeLeft}
-              onSwipeRight={handleSwipeRight}
-              onSwipeUp={handleSwipeUp}
-            />
-          </Animated.View>
+          <EmptyState
+            markedCount={markedCount}
+            viewLevel={viewLevel}
+            onViewHistory={handleViewHistory}
+            onStartOver={handleStartOver}
+            onBackToTop={handleBackToTop}
+          />
+        ) : (
+          <View style={styles.cardStack}>
+            {/* Show up to 3 cards in stack */}
+            {cards.slice(0, 3).reverse().map((card, reverseIndex) => {
+              const stackIndex = Math.min(2, cards.length - 1) - reverseIndex;
+              return (
+                <SwipeCard
+                  key={card.id}
+                  card={card}
+                  onSwipeLeft={handleSwipeLeft}
+                  onSwipeRight={handleSwipeRight}
+                  onSwipeUp={card.type === 'book' ? handleSwipeUp : undefined}
+                  stackIndex={stackIndex}
+                />
+              );
+            })}
+          </View>
         )}
       </View>
 
       {/* Bottom Controls */}
       <View style={[styles.bottomControls, { paddingBottom: insets.bottom + spacing.md }]}>
-        {/* Stats */}
-        <View style={styles.stats}>
-          <TouchableOpacity
-            style={styles.statItem}
-            onPress={() => navigation.navigate('ReadingHistory')}
-          >
-            <Text style={styles.statNumber}>{markedCount}</Text>
-            <Text style={[styles.statLabel, { color: ACCENT }]}>Finished →</Text>
-          </TouchableOpacity>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{queuedBooks.size}</Text>
-            <Text style={styles.statLabel}>Queued</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{cards.length}</Text>
-            <Text style={styles.statLabel}>Remaining</Text>
-          </View>
-        </View>
+        {/* Stats Row */}
+        <StatsRow
+          finished={markedCount}
+          queued={queuedBooks.size}
+          remaining={cards.length}
+          onFinishedPress={handleViewHistory}
+        />
 
-        {/* Action buttons */}
+        {/* Action Buttons */}
         {!isDone && currentCard && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={[styles.actionButton, styles.skipButton]} onPress={handleSwipeLeft}>
-              <Ionicons name="close" size={scale(28)} color="#F44336" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.undoButton, !canUndo && styles.undoButtonDisabled]}
-              onPress={handleUndo}
-              disabled={!canUndo}
-            >
-              <Ionicons name="arrow-undo" size={scale(22)} color={canUndo ? colors.textPrimary : 'rgba(255,255,255,0.2)'} />
-            </TouchableOpacity>
-
-            {showMarkAll && (
-              <TouchableOpacity style={[styles.actionButton, styles.markAllButton]} onPress={handleMarkAll}>
-                <Ionicons name="checkmark-done" size={scale(24)} color={ACCENT} />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity style={[styles.actionButton, styles.nextButton]} onPress={handleSwipeRight}>
-              <Ionicons name={currentCard.type === 'book' ? 'checkmark' : 'arrow-forward'} size={scale(28)} color={ACCENT} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Hint */}
-        {currentCard && (
-          <Text style={styles.hint}>
-            {currentCard.type === 'book' ? '→ Finished  ↑ Queue  ← Skip' :
-             currentCard.type === 'author' ? 'Swipe right to view books' :
-             'Swipe right to view series'}
-          </Text>
+          <ActionButtons
+            onSkip={handleSwipeLeft}
+            onUndo={handleUndo}
+            onQueue={currentCard.type === 'book' ? handleSwipeUp : undefined}
+            onFinished={handleSwipeRight}
+            canUndo={canUndo}
+            undoCount={undoHistory.length}
+            cardType={currentCard.type}
+          />
         )}
       </View>
     </View>
   );
 }
 
+// =============================================================================
+// STYLES
+// =============================================================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    backgroundColor: COLORS.background,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    height: hp(6),
   },
-  closeButton: {
-    width: scale(44),
-    height: scale(44),
+  headerButton: {
+    width: wp(10),
+    height: wp(10),
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backButton: {
-    width: scale(44),
-    height: scale(44),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    marginHorizontal: spacing.sm,
   },
   headerTitle: {
-    fontSize: scale(16),
+    flex: 1,
+    fontSize: moderateScale(17),
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: COLORS.textPrimary,
     textAlign: 'center',
   },
-  breadcrumb: {
-    fontSize: scale(14),
-    color: colors.textSecondary,
+  historyLink: {
+    fontSize: moderateScale(14),
+    fontWeight: '500',
+    color: COLORS.accent,
+  },
+
+  // Progress Bar
+  progressContainer: {
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1),
+  },
+  progressTrack: {
+    height: hp(0.6),
+    backgroundColor: COLORS.surface,
+    borderRadius: hp(0.3),
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+    borderRadius: hp(0.3),
+  },
+  progressLabel: {
+    fontSize: moderateScale(11),
+    color: COLORS.textTertiary,
+    marginTop: wp(1.5),
     textAlign: 'center',
   },
-  doneButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+
+  // View Tabs
+  tabsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: wp(2),
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.5),
   },
-  doneText: {
-    fontSize: scale(16),
+  tabPill: {
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1),
+    borderRadius: hp(2),
+    backgroundColor: COLORS.surface,
+  },
+  tabPillActive: {
+    backgroundColor: COLORS.accent,
+  },
+  tabText: {
+    fontSize: moderateScale(14),
+    fontWeight: '500',
+    color: COLORS.textTertiary,
+  },
+  tabTextActive: {
     fontWeight: '600',
-    color: ACCENT,
+    color: '#000000',
   },
+
+  // Card Container
   cardContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardStack: {
+    width: LAYOUT.CARD_WIDTH,
+    height: LAYOUT.CARD_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Card
   card: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: scale(20),
+    position: 'absolute',
+    width: LAYOUT.CARD_WIDTH,
+    height: LAYOUT.CARD_HEIGHT,
+    borderRadius: LAYOUT.CARD_RADIUS,
     overflow: 'hidden',
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: COLORS.surface,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
     elevation: 10,
   },
   cardCover: {
@@ -1021,7 +1398,7 @@ const styles = StyleSheet.create({
   cardCoverPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.backgroundTertiary,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   cardGradient: {
     position: 'absolute',
@@ -1030,229 +1407,221 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: '50%',
   },
-  cardInfo: {
+  cardBadge: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: spacing.md,
-  },
-  typeBadge: {
+    top: wp(3),
+    left: wp(3),
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: scale(10),
-    alignSelf: 'flex-start',
-    marginBottom: spacing.xs,
+    gap: wp(1),
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(1),
+    borderRadius: wp(1),
   },
-  authorBadge: {
-    backgroundColor: 'rgba(33, 150, 243, 0.5)',
-  },
-  seriesBadge: {
-    backgroundColor: 'rgba(156, 39, 176, 0.5)',
-  },
-  typeBadgeText: {
-    fontSize: scale(10),
+  cardBadgeText: {
+    fontSize: moderateScale(10),
     fontWeight: '700',
-    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  cardContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: wp(4),
   },
   cardTitle: {
-    fontSize: scale(18),
-    fontWeight: '700',
-    color: colors.textPrimary,
+    fontSize: moderateScale(18),
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
   cardSubtitle: {
-    fontSize: scale(12),
-    color: colors.textSecondary,
-    marginTop: 2,
+    fontSize: moderateScale(14),
+    color: COLORS.textSecondary,
+    marginTop: wp(1),
   },
-  cardCount: {
-    fontSize: scale(12),
-    color: ACCENT,
-    marginTop: 2,
-    fontWeight: '600',
+  cardMeta: {
+    fontSize: moderateScale(12),
+    color: COLORS.textTertiary,
+    marginTop: wp(0.5),
   },
-  overlay: {
+
+  // Swipe Overlays
+  swipeOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: LAYOUT.CARD_RADIUS,
   },
   rightOverlay: {
-    backgroundColor: 'rgba(76, 175, 80, 0.4)',
+    backgroundColor: 'rgba(34, 197, 94, 0.5)',
   },
   leftOverlay: {
-    backgroundColor: 'rgba(244, 67, 54, 0.4)',
-  },
-  overlayBadge: {
-    backgroundColor: ACCENT,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: scale(12),
-    alignItems: 'center',
-    transform: [{ rotate: '-12deg' }],
-  },
-  skipBadge: {
-    backgroundColor: 'rgba(244, 67, 54, 0.9)',
-  },
-  overlayText: {
-    fontSize: scale(14),
-    fontWeight: '800',
-    color: '#000',
-    marginTop: spacing.xs,
-  },
-  skipText: {
-    color: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   upOverlay: {
-    backgroundColor: 'rgba(33, 150, 243, 0.4)',
+    backgroundColor: 'rgba(59, 130, 246, 0.5)',
   },
-  queueBadge: {
-    backgroundColor: 'rgba(33, 150, 243, 0.9)',
+  swipeOverlayText: {
+    fontSize: moderateScale(24),
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
-  queueText: {
-    color: '#fff',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  tab: {
+
+  // Stats Row
+  statsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: scale(16),
-    backgroundColor: colors.backgroundSecondary,
-  },
-  tabActive: {
-    backgroundColor: `${ACCENT}20`,
+    justifyContent: 'center',
+    marginHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.5),
+    paddingHorizontal: wp(4),
+    backgroundColor: COLORS.surface,
+    borderRadius: wp(3),
     borderWidth: 1,
-    borderColor: ACCENT,
-  },
-  tabText: {
-    fontSize: scale(13),
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  tabTextActive: {
-    color: ACCENT,
-    fontWeight: '600',
-  },
-  bottomControls: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  stats: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    borderColor: COLORS.surfaceBorder,
   },
   statItem: {
+    flex: 1,
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
   },
-  statNumber: {
-    fontSize: scale(22),
-    fontWeight: '700',
-    color: colors.textPrimary,
+  statIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(1.5),
+  },
+  statValue: {
+    fontSize: moderateScale(16),
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
   statLabel: {
-    fontSize: scale(11),
-    color: colors.textSecondary,
+    fontSize: moderateScale(11),
+    fontWeight: '500',
+    color: COLORS.textTertiary,
+    marginTop: wp(0.5),
   },
   statDivider: {
     width: 1,
-    height: scale(24),
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    height: hp(3),
+    backgroundColor: COLORS.surfaceBorder,
   },
-  actionButtons: {
+
+  // Action Buttons
+  actionContainer: {
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingTop: hp(2),
+  },
+  actionRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: wp(6),
   },
   actionButton: {
-    width: scale(56),
-    height: scale(56),
-    borderRadius: scale(28),
+    width: LAYOUT.ACTION_BUTTON_SIZE,
+    height: LAYOUT.ACTION_BUTTON_SIZE,
+    borderRadius: LAYOUT.ACTION_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 1,
   },
   skipButton: {
-    borderColor: '#F44336',
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-  },
-  nextButton: {
-    borderColor: ACCENT,
-    backgroundColor: `${ACCENT}20`,
-  },
-  markAllButton: {
-    borderColor: ACCENT,
-    backgroundColor: `${ACCENT}30`,
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
+    borderColor: COLORS.skip,
   },
   undoButton: {
-    width: scale(46),
-    height: scale(46),
-    borderRadius: scale(23),
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: LAYOUT.ACTION_BUTTON_SMALL,
+    height: LAYOUT.ACTION_BUTTON_SMALL,
+    borderRadius: LAYOUT.ACTION_BUTTON_SMALL / 2,
+    borderColor: COLORS.textTertiary,
   },
-  undoButtonDisabled: {
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'transparent',
+  queueButton: {
+    borderColor: COLORS.info,
   },
-  hint: {
-    fontSize: scale(12),
-    color: colors.textTertiary,
-    textAlign: 'center',
-    marginTop: spacing.md,
+  finishedButton: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
-  doneState: {
+  actionButtonDisabled: {
+    opacity: 0.3,
+  },
+  undoBadge: {
+    position: 'absolute',
+    top: -wp(1),
+    right: -wp(1),
+    backgroundColor: COLORS.accent,
+    borderRadius: wp(2),
+    paddingHorizontal: wp(1.5),
+    paddingVertical: wp(0.5),
+    minWidth: wp(4),
     alignItems: 'center',
-    padding: spacing.xxl,
   },
-  doneTitle: {
-    fontSize: scale(26),
+  undoBadgeText: {
+    fontSize: moderateScale(9),
     fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: spacing.lg,
+    color: '#000000',
   },
-  doneSubtitle: {
-    fontSize: scale(15),
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
+  hintsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: wp(3),
+    paddingHorizontal: wp(4),
   },
-  backToTopButton: {
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+  hintText: {
+    fontSize: moderateScale(12),
+    color: COLORS.textHint,
   },
-  backToTopText: {
-    fontSize: scale(14),
-    color: colors.textSecondary,
+
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    padding: wp(8),
+  },
+  emptyIconContainer: {
+    marginBottom: hp(1),
+  },
+  emptyTitle: {
+    fontSize: moderateScale(24),
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginTop: hp(2),
+  },
+  emptySubtitle: {
+    fontSize: moderateScale(14),
+    color: COLORS.textSecondary,
+    marginTop: hp(1),
+    textAlign: 'center',
+  },
+  emptyButtonPrimary: {
+    marginTop: hp(3),
+    paddingHorizontal: wp(8),
+    paddingVertical: hp(1.5),
+    backgroundColor: COLORS.accent,
+    borderRadius: wp(6),
+  },
+  emptyButtonPrimaryText: {
+    fontSize: moderateScale(16),
+    fontWeight: '600',
+    color: '#000000',
+  },
+  emptyButtonSecondary: {
+    marginTop: hp(2),
+    paddingHorizontal: wp(6),
+    paddingVertical: hp(1),
+  },
+  emptyButtonSecondaryText: {
+    fontSize: moderateScale(14),
+    color: COLORS.textSecondary,
     textDecorationLine: 'underline',
   },
-  finishButton: {
-    marginTop: spacing.lg,
-    backgroundColor: ACCENT,
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.md,
-    borderRadius: scale(25),
-  },
-  finishButtonText: {
-    fontSize: scale(16),
-    fontWeight: '600',
-    color: '#000',
+
+  // Bottom Controls
+  bottomControls: {
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingTop: hp(1),
   },
 });
 

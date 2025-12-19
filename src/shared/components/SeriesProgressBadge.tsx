@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check } from 'lucide-react-native';
 import { ProgressDots } from './ProgressDots';
 import { colors, scale, spacing } from '@/shared/theme';
 
@@ -64,7 +64,7 @@ export function SeriesProgressBadge({
     return (
       <View style={[styles.container, compact && styles.containerCompact]}>
         <View style={styles.completeBadge}>
-          <Ionicons name="checkmark" size={scale(12)} color="#000" />
+          <Check size={scale(12)} color="#000" strokeWidth={3} />
         </View>
         <Text style={styles.completeText}>Complete</Text>
       </View>

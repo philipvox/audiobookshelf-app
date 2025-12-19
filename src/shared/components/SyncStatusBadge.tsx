@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { RefreshCw, CloudOff, AlertCircle, Cloud, Check } from 'lucide-react-native';
 import { useSyncStatus } from '@/core/hooks/useSyncStatus';
 import { colors } from '@/shared/theme';
 import Animated, {
@@ -58,7 +58,7 @@ export function SyncStatusBadge({
         return {
           icon: (
             <Animated.View style={spinStyle}>
-              <Feather name="refresh-cw" size={iconSize} color="#4CAF50" />
+              <RefreshCw size={iconSize} color="#4CAF50" strokeWidth={2} />
             </Animated.View>
           ),
           text: 'Syncing...',
@@ -67,14 +67,14 @@ export function SyncStatusBadge({
         };
       case 'offline':
         return {
-          icon: <Feather name="cloud-off" size={iconSize} color="#FF9800" />,
+          icon: <CloudOff size={iconSize} color="#FF9800" strokeWidth={2} />,
           text: pendingCount > 0 ? `Offline (${pendingCount})` : 'Offline',
           color: '#FF9800',
           bgColor: 'rgba(255, 152, 0, 0.15)',
         };
       case 'error':
         return {
-          icon: <Feather name="alert-circle" size={iconSize} color="#F44336" />,
+          icon: <AlertCircle size={iconSize} color="#F44336" strokeWidth={2} />,
           text: 'Sync error',
           color: '#F44336',
           bgColor: 'rgba(244, 67, 54, 0.15)',
@@ -82,14 +82,14 @@ export function SyncStatusBadge({
       default:
         if (pendingCount > 0) {
           return {
-            icon: <Feather name="cloud" size={iconSize} color={colors.textSecondary} />,
+            icon: <Cloud size={iconSize} color={colors.textSecondary} strokeWidth={2} />,
             text: `${pendingCount} pending`,
             color: colors.textSecondary,
             bgColor: 'rgba(255, 255, 255, 0.08)',
           };
         }
         return {
-          icon: <Feather name="check" size={iconSize} color="#4CAF50" />,
+          icon: <Check size={iconSize} color="#4CAF50" strokeWidth={2} />,
           text: 'Synced',
           color: '#4CAF50',
           bgColor: 'rgba(76, 175, 80, 0.1)',

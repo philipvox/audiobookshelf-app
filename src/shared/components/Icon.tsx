@@ -1,26 +1,30 @@
 /**
  * Icon component wrapper for consistent icon usage
+ * Uses Lucide icons as the primary icon set
  */
 
 import React from 'react';
-import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as LucideIcons from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { colors } from '@/shared/theme';
 
-type IconSet = 'ionicons' | 'feather' | 'material';
-
 interface IconProps {
-  name: string;
+  name: keyof typeof LucideIcons;
   size?: number;
   color?: string;
-  set?: IconSet;
+  strokeWidth?: number;
 }
 
-export function Icon({ name, size = 24, color = colors.textPrimary, set = 'ionicons' }: IconProps) {
-  const IconComponent = {
-    ionicons: Ionicons,
-    feather: Feather,
-    material: MaterialCommunityIcons,
-  }[set];
+export function Icon({ name, size = 24, color = colors.textPrimary, strokeWidth = 2 }: IconProps) {
+  const IconComponent = LucideIcons[name] as LucideIcon;
 
-  return <IconComponent name={name as any} size={size} color={color} />;
+  if (!IconComponent) {
+    console.warn(`Icon "${name}" not found in Lucide icons`);
+    return null;
+  }
+
+  return <IconComponent size={size} color={color} strokeWidth={strokeWidth} />;
 }
+
+export { LucideIcons };
+export type { LucideIcon };

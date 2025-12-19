@@ -20,7 +20,22 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  Search,
+  XCircle,
+  Music,
+  Clock,
+  ArrowUp,
+  ArrowDown,
+  User,
+  Timer,
+  ChevronDown,
+  Check,
+  X,
+  BookOpen,
+} from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache, getCoverUrl } from '@/core/cache';
 import { BookCard } from '@/shared/components/BookCard';
@@ -45,7 +60,7 @@ type SortOption =
 interface SortConfig {
   id: SortOption;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  Icon: LucideIcon;
 }
 
 type GenreDetailParams = {
@@ -53,13 +68,13 @@ type GenreDetailParams = {
 };
 
 const SORT_OPTIONS: SortConfig[] = [
-  { id: 'recentlyAdded', label: 'Recently Added', icon: 'time-outline' },
-  { id: 'titleAsc', label: 'Title A-Z', icon: 'arrow-up' },
-  { id: 'titleDesc', label: 'Title Z-A', icon: 'arrow-down' },
-  { id: 'authorAsc', label: 'Author A-Z', icon: 'person-outline' },
-  { id: 'authorDesc', label: 'Author Z-A', icon: 'person-outline' },
-  { id: 'durationAsc', label: 'Duration (Short to Long)', icon: 'timer-outline' },
-  { id: 'durationDesc', label: 'Duration (Long to Short)', icon: 'timer-outline' },
+  { id: 'recentlyAdded', label: 'Recently Added', Icon: Clock },
+  { id: 'titleAsc', label: 'Title A-Z', Icon: ArrowUp },
+  { id: 'titleDesc', label: 'Title Z-A', Icon: ArrowDown },
+  { id: 'authorAsc', label: 'Author A-Z', Icon: User },
+  { id: 'authorDesc', label: 'Author Z-A', Icon: User },
+  { id: 'durationAsc', label: 'Duration (Short to Long)', Icon: Timer },
+  { id: 'durationDesc', label: 'Duration (Long to Short)', Icon: Timer },
 ];
 
 function formatDuration(seconds: number): string {
@@ -86,7 +101,7 @@ function StackedCovers({ bookIds, size = 32 }: StackedCoversProps) {
     // Fallback to music icon if no books
     return (
       <View style={[stackedStyles.fallback, { width: scale(48), height: scale(48) }]}>
-        <Ionicons name="musical-notes" size={scale(24)} color={ACCENT} />
+        <Music size={scale(24)} color={ACCENT} strokeWidth={2} />
       </View>
     );
   }
@@ -291,10 +306,10 @@ export function GenreDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={scale(18)} color="rgba(255,255,255,0.5)" />
+          <Search size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
@@ -308,7 +323,7 @@ export function GenreDetailScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={scale(18)} color="rgba(255,255,255,0.5)" />
+              <XCircle size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
             </TouchableOpacity>
           )}
         </View>
@@ -328,9 +343,9 @@ export function GenreDetailScreen() {
       {/* Sort Dropdown Button */}
       <View style={styles.sortBar}>
         <TouchableOpacity style={styles.sortDropdown} onPress={handleOpenSortModal}>
-          <Ionicons name={currentSortConfig.icon} size={scale(16)} color={ACCENT} />
+          <currentSortConfig.Icon size={scale(16)} color={ACCENT} strokeWidth={2} />
           <Text style={styles.sortDropdownText}>{currentSortConfig.label}</Text>
-          <Ionicons name="chevron-down" size={scale(16)} color="rgba(255,255,255,0.5)" />
+          <ChevronDown size={scale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -346,7 +361,7 @@ export function GenreDetailScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sort By</Text>
               <TouchableOpacity onPress={() => setShowSortModal(false)}>
-                <Ionicons name="close" size={scale(24)} color="rgba(255,255,255,0.5)" />
+                <X size={scale(24)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
               </TouchableOpacity>
             </View>
             {SORT_OPTIONS.map((option) => (
@@ -356,10 +371,10 @@ export function GenreDetailScreen() {
                 onPress={() => handleSelectSort(option.id)}
               >
                 <View style={styles.sortOptionLeft}>
-                  <Ionicons
-                    name={option.icon}
+                  <option.Icon
                     size={scale(18)}
                     color={sortOption === option.id ? ACCENT : 'rgba(255,255,255,0.6)'}
+                    strokeWidth={2}
                   />
                   <Text
                     style={[
@@ -371,7 +386,7 @@ export function GenreDetailScreen() {
                   </Text>
                 </View>
                 {sortOption === option.id && (
-                  <Ionicons name="checkmark" size={scale(20)} color={ACCENT} />
+                  <Check size={scale(20)} color={ACCENT} strokeWidth={2.5} />
                 )}
               </TouchableOpacity>
             ))}
@@ -403,7 +418,7 @@ export function GenreDetailScreen() {
 
         {sortedBooks.length === 0 && (
           <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={scale(48)} color="rgba(255,255,255,0.2)" />
+            <BookOpen size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
             <Text style={styles.emptyTitle}>No books found</Text>
             <Text style={styles.emptySubtitle}>
               {searchQuery ? 'Try a different search term' : 'No books in this genre'}

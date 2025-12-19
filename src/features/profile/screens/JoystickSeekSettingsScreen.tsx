@@ -19,7 +19,17 @@ import {
 import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  ArrowUpDown,
+  Gamepad2,
+  Maximize,
+  TrendingUp,
+  Activity,
+  Play,
+  SkipForward,
+  SkipBack,
+} from 'lucide-react-native';
 import Svg, { Path, Line, Text as SvgText, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -253,7 +263,7 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
       {/* Drag hint (when interactive) */}
       {onExponentChange && (
         <View style={styles.dragHint}>
-          <Ionicons name="swap-vertical" size={12} color="rgba(255,255,255,0.4)" />
+          <ArrowUpDown size={12} color="rgba(255,255,255,0.4)" strokeWidth={2} />
           <Text style={styles.dragHintText}>Drag to adjust curve</Text>
         </View>
       )}
@@ -509,11 +519,15 @@ function TestArea({ settings, onTestPositionChange }: TestAreaProps) {
       <View style={styles.testAreaCircle}>
         <GestureDetector gesture={gesture}>
           <Animated.View style={[styles.testButton, buttonStyle]}>
-            <Ionicons
-              name={isTesting ? (testDirection === 'forward' ? 'play-forward' : 'play-back') : 'play'}
-              size={scale(24)}
-              color="#000"
-            />
+            {isTesting ? (
+              testDirection === 'forward' ? (
+                <SkipForward size={scale(24)} color="#000" strokeWidth={2} />
+              ) : (
+                <SkipBack size={scale(24)} color="#000" strokeWidth={2} />
+              )
+            ) : (
+              <Play size={scale(24)} color="#000" fill="#000" strokeWidth={0} />
+            )}
           </Animated.View>
         </GestureDetector>
       </View>
@@ -608,7 +622,7 @@ export function JoystickSeekSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Joystick Seek</Text>
         <View style={styles.headerSpacer} />
@@ -631,7 +645,7 @@ export function JoystickSeekSettingsScreen() {
             <View style={styles.settingsRow}>
               <View style={styles.rowLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="game-controller-outline" size={scale(18)} color="rgba(255,255,255,0.8)" />
+                  <Gamepad2 size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
                 </View>
                 <View style={styles.rowContent}>
                   <Text style={styles.rowLabel}>Enable Joystick Seek</Text>
@@ -695,7 +709,7 @@ export function JoystickSeekSettingsScreen() {
                   <View style={styles.sliderHeader}>
                     <View style={styles.rowLeft}>
                       <View style={styles.iconContainer}>
-                        <Ionicons name="resize-outline" size={scale(18)} color="rgba(255,255,255,0.8)" />
+                        <Maximize size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
                       </View>
                       <View style={styles.rowContent}>
                         <Text style={styles.rowLabel}>Deadzone</Text>
@@ -724,7 +738,7 @@ export function JoystickSeekSettingsScreen() {
                   <View style={styles.sliderHeader}>
                     <View style={styles.rowLeft}>
                       <View style={styles.iconContainer}>
-                        <Ionicons name="trending-up-outline" size={scale(18)} color="rgba(255,255,255,0.8)" />
+                        <TrendingUp size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
                       </View>
                       <View style={styles.rowContent}>
                         <Text style={styles.rowLabel}>Curve Exponent</Text>
@@ -752,7 +766,7 @@ export function JoystickSeekSettingsScreen() {
                 <View style={[styles.settingsRow, styles.settingsRowLast]}>
                   <View style={styles.rowLeft}>
                     <View style={styles.iconContainer}>
-                      <Ionicons name="pulse-outline" size={scale(18)} color="rgba(255,255,255,0.8)" />
+                      <Activity size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
                     </View>
                     <View style={styles.rowContent}>
                       <Text style={styles.rowLabel}>Haptic Feedback</Text>

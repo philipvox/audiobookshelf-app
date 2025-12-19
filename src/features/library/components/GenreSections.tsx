@@ -18,7 +18,7 @@ import {
   Platform,
   UIManager,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronDown, ChevronRight } from 'lucide-react-native';
 import {
   GenreCardLarge,
   GenreCardCompact,
@@ -100,11 +100,11 @@ export function MetaCategorySection({
             </Text>
           </View>
         </View>
-        <Ionicons
-          name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-          size={20}
-          color="rgba(255,255,255,0.5)"
-        />
+        {isExpanded ? (
+          <ChevronDown size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+        ) : (
+          <ChevronRight size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+        )}
       </TouchableOpacity>
 
       {/* Expanded Content */}

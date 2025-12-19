@@ -18,7 +18,7 @@ import {
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, LayoutGrid, AlertCircle, BookOpen, Clock, CheckCircle } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCollectionDetails } from '../hooks/useCollectionDetails';
@@ -59,7 +59,7 @@ function StackedCovers({ coverUrls }: { coverUrls: string[] }) {
     return (
       <View style={[styles.stackedCovers, { height: coverHeight + scale(20) }]}>
         <View style={[styles.placeholderStack, { width: coverWidth, height: coverHeight }]}>
-          <Ionicons name="albums" size={scale(40)} color="rgba(255,255,255,0.3)" />
+          <LayoutGrid size={scale(40)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
         </View>
       </View>
     );
@@ -143,7 +143,7 @@ export function CollectionDetailScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.loadingContainer}>
-          <Ionicons name="albums" size={scale(48)} color="rgba(255,255,255,0.2)" />
+          <LayoutGrid size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
           <Text style={styles.loadingText}>Loading collection...</Text>
         </View>
       </View>
@@ -157,11 +157,11 @@ export function CollectionDetailScreen() {
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
         </View>
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={scale(48)} color="rgba(255,255,255,0.2)" />
+          <AlertCircle size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
           <Text style={styles.errorTitle}>Collection not found</Text>
           <Text style={styles.errorSubtitle}>This collection may have been removed</Text>
           <TouchableOpacity style={styles.retryButton} onPress={refetch}>
@@ -194,7 +194,7 @@ export function CollectionDetailScreen() {
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <BlurView intensity={40} style={styles.blurButton}>
-              <Ionicons name="chevron-back" size={scale(22)} color="#fff" />
+              <ChevronLeft size={scale(22)} color="#fff" strokeWidth={2} />
             </BlurView>
           </TouchableOpacity>
         </View>
@@ -215,7 +215,7 @@ export function CollectionDetailScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Ionicons name="book" size={scale(18)} color={ACCENT} />
+            <BookOpen size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
               <Text style={styles.statValue}>{books.length}</Text>
               <Text style={styles.statLabel}>Books</Text>
@@ -223,7 +223,7 @@ export function CollectionDetailScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Ionicons name="time" size={scale(18)} color={ACCENT} />
+            <Clock size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
               <Text style={styles.statValue}>{formatDuration(totalDuration)}</Text>
               <Text style={styles.statLabel}>Total</Text>
@@ -231,7 +231,7 @@ export function CollectionDetailScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Ionicons name="checkmark-circle" size={scale(18)} color={ACCENT} />
+            <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
               <Text style={styles.statValue}>
                 {completedBooks}/{books.length}
@@ -285,7 +285,7 @@ export function CollectionDetailScreen() {
         <>
           {renderHeader()}
           <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={scale(48)} color="rgba(255,255,255,0.2)" />
+            <BookOpen size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
             <Text style={styles.emptyTitle}>No books yet</Text>
             <Text style={styles.emptySubtitle}>
               Add books to this collection in AudiobookShelf

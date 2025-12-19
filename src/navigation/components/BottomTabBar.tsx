@@ -10,7 +10,7 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Search, Pause, Play, Home } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import {
   colors,
@@ -55,10 +55,10 @@ export function BottomTabBar({ currentRoute, onNavigate, bottomOffset = 0 }: Bot
           onPress={() => onNavigate('Search')}
           activeOpacity={0.7}
         >
-          <Ionicons
-            name={isSearchActive ? 'search' : 'search-outline'}
+          <Search
             size={sizes.iconLg}
             color={isSearchActive ? colors.accent : colors.textSecondary}
+            strokeWidth={isSearchActive ? 2.5 : 2}
           />
         </TouchableOpacity>
 
@@ -69,11 +69,21 @@ export function BottomTabBar({ currentRoute, onNavigate, bottomOffset = 0 }: Bot
           activeOpacity={0.7}
           disabled={!hasAudio}
         >
-          <Ionicons
-            name={isPlaying ? 'pause' : 'play'}
-            size={sizes.iconLg}
-            color={hasAudio ? colors.backgroundPrimary : colors.textMuted}
-          />
+          {isPlaying ? (
+            <Pause
+              size={sizes.iconLg}
+              color={hasAudio ? colors.backgroundPrimary : colors.textMuted}
+              strokeWidth={2}
+              fill={hasAudio ? colors.backgroundPrimary : colors.textMuted}
+            />
+          ) : (
+            <Play
+              size={sizes.iconLg}
+              color={hasAudio ? colors.backgroundPrimary : colors.textMuted}
+              strokeWidth={0}
+              fill={hasAudio ? colors.backgroundPrimary : colors.textMuted}
+            />
+          )}
         </TouchableOpacity>
 
         {/* Home */}
@@ -82,10 +92,11 @@ export function BottomTabBar({ currentRoute, onNavigate, bottomOffset = 0 }: Bot
           onPress={() => onNavigate('HomeTab')}
           activeOpacity={0.7}
         >
-          <Ionicons
-            name={isHomeActive ? 'home' : 'home-outline'}
+          <Home
             size={sizes.iconLg}
             color={isHomeActive ? colors.accent : colors.textSecondary}
+            strokeWidth={isHomeActive ? 2.5 : 2}
+            fill={isHomeActive ? colors.accent : 'none'}
           />
         </TouchableOpacity>
       </View>

@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check, CheckCircle } from 'lucide-react-native';
 import { useIsComplete } from '../stores/completionStore';
 import { colors, scale } from '@/shared/theme';
 
@@ -64,7 +64,7 @@ export function CompleteBadge({ bookId, size = 'medium', style }: CompleteBadgeP
         style,
       ]}
     >
-      <Ionicons name="checkmark" size={config.icon} color="#000" />
+      <Check size={config.icon} color="#000" strokeWidth={3} />
     </View>
   );
 }
@@ -109,7 +109,7 @@ export function CompleteBadgeOverlay({ bookId, size = 'medium', style }: Complet
           },
         ]}
       >
-        <Ionicons name="checkmark-circle" size={config.icon} color={ACCENT} />
+        <CheckCircle size={config.icon} color={ACCENT} strokeWidth={2} />
       </View>
     </View>
   );
@@ -129,7 +129,7 @@ export function CompleteBanner({ bookId, style }: Omit<CompleteBadgeProps, 'size
 
   return (
     <View style={[styles.banner, style]}>
-      <Ionicons name="checkmark-circle" size={scale(12)} color="#000" />
+      <CheckCircle size={scale(12)} color="#000" strokeWidth={2} />
     </View>
   );
 }

@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, ChevronRight, User, CheckCircle, Play, ArrowUp, ArrowDown } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -311,7 +311,7 @@ export function AuthorDetailScreen() {
           />
           {isCompleted && (
             <View style={styles.completedBadge}>
-              <Ionicons name="checkmark-circle" size={scale(16)} color={ACCENT} />
+              <CheckCircle size={scale(16)} color={ACCENT} strokeWidth={2} />
             </View>
           )}
         </View>
@@ -354,7 +354,7 @@ export function AuthorDetailScreen() {
           style={styles.playButton}
           onPress={() => handlePlayBook(book)}
         >
-          <Ionicons name={progress > 0 ? 'play' : 'play'} size={scale(18)} color="#000" />
+          <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -446,13 +446,13 @@ export function AuthorDetailScreen() {
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Author</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.emptyContainer}>
-          <Ionicons name="person-outline" size={scale(48)} color="rgba(255,255,255,0.3)" />
+          <User size={scale(48)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>Author not found</Text>
           <Text style={styles.emptySubtitle}>This author may have been removed</Text>
         </View>
@@ -467,7 +467,7 @@ export function AuthorDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Author</Text>
         <View style={styles.headerButton} />
@@ -575,7 +575,7 @@ export function AuthorDetailScreen() {
                       {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={scale(20)} color="rgba(255,255,255,0.4)" />
+                  <ChevronRight size={scale(20)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
                 </TouchableOpacity>
               ))}
           </View>
@@ -594,11 +594,11 @@ export function AuthorDetailScreen() {
                     onPress={() => handleSortPress(type)}
                   >
                     {sortBy === type && (
-                      <Ionicons
-                        name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                        size={scale(12)}
-                        color="#000"
-                      />
+                      sortDirection === 'asc' ? (
+                        <ArrowUp size={scale(12)} color="#000" strokeWidth={2} />
+                      ) : (
+                        <ArrowDown size={scale(12)} color="#000" strokeWidth={2} />
+                      )
                     )}
                     <Text style={[styles.sortButtonText, sortBy === type && styles.sortButtonTextActive]}>
                       {type === 'title' ? 'Title' :

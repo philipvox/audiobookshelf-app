@@ -16,7 +16,7 @@ import {
   StatusBar,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Headphones } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -118,7 +118,7 @@ export function QueueScreen() {
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Queue</Text>
           <View style={styles.headerSpacer} />
@@ -127,7 +127,7 @@ export function QueueScreen() {
         {/* Empty State */}
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="headset-outline" size={scale(48)} color="rgba(255,255,255,0.3)" />
+            <Headphones size={scale(48)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           </View>
           <Text style={styles.emptyTitle}>Nothing in your queue</Text>
           <Text style={styles.emptySubtitle}>
@@ -148,7 +148,7 @@ export function QueueScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Queue</Text>
         <View style={styles.headerSpacer} />

@@ -22,7 +22,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Play, MoreVertical } from 'lucide-react-native';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { colors, wp, hp, moderateScale, layout } from '@/shared/theme';
@@ -140,7 +140,7 @@ const BookRow = ({
         accessibilityRole="button"
       >
         <View style={styles.playCircle}>
-          <Ionicons name="play" size={wp(3)} color="#fff" style={{ marginLeft: 2 }} />
+          <Play size={wp(3)} color="#fff" fill="#fff" strokeWidth={0} style={{ marginLeft: 2 }} />
         </View>
       </TouchableOpacity>
 
@@ -155,7 +155,7 @@ const BookRow = ({
         accessibilityLabel={`More options for ${title}`}
         accessibilityRole="button"
       >
-        <Ionicons name="ellipsis-vertical" size={wp(5)} color="rgba(255,255,255,0.7)" />
+        <MoreVertical size={wp(5)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
       </TouchableOpacity>
     </TouchableOpacity>
   );

@@ -15,7 +15,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Library, BookOpen } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
 import { GenreWithData, getMetaCategoryForGenre } from '../constants/genreCategories';
 import { colors, wp, spacing, radius } from '@/shared/theme';
@@ -67,7 +67,7 @@ export function GenreCardLarge({ genre, onPress }: GenreCardLargeProps) {
           ))
         ) : (
           <View style={[styles.fanPlaceholder, { backgroundColor: accentColor + '30' }]}>
-            <Ionicons name="library-outline" size={32} color={accentColor} />
+            <Library size={32} color={accentColor} strokeWidth={1.5} />
           </View>
         )}
       </View>
@@ -112,7 +112,7 @@ export function GenreCardCompact({ genre, onPress }: GenreCardCompactProps) {
           />
         ) : (
           <View style={styles.compactPlaceholder}>
-            <Ionicons name="book-outline" size={20} color="rgba(255,255,255,0.3)" />
+            <BookOpen size={20} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           </View>
         )}
       </View>
@@ -161,7 +161,7 @@ export function GenreListItem({ genre, onPress }: GenreListItemProps) {
           />
         ) : (
           <View style={styles.listCoverPlaceholder}>
-            <Ionicons name="book-outline" size={16} color="rgba(255,255,255,0.3)" />
+            <BookOpen size={16} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           </View>
         )}
       </View>
@@ -214,7 +214,7 @@ export function PopularGenreCard({ genre, onPress }: PopularGenreCardProps) {
           ))
         ) : (
           <View style={[styles.popularPlaceholder, { backgroundColor: accentColor + '20' }]}>
-            <Ionicons name="library-outline" size={24} color={accentColor} />
+            <Library size={24} color={accentColor} strokeWidth={1.5} />
           </View>
         )}
       </View>

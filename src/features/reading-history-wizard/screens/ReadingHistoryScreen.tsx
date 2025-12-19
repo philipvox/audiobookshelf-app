@@ -1,8 +1,11 @@
 /**
  * src/features/reading-history-wizard/screens/ReadingHistoryScreen.tsx
  *
- * Manage reading history - view and edit finished books.
- * Shows all books marked as finished with ability to unmark.
+ * Redesigned reading history screen with:
+ * - Stats summary header
+ * - Sort pill filters
+ * - Compact list items with duration
+ * - Selection mode with footer
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
@@ -16,7 +19,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  CheckCircle,
+  Circle,
+  Book,
+  CloudCheck,
+  CloudUpload,
+  CheckSquare,
+  Square,
+  ArrowLeft,
+  BookOpen,
+} from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -24,19 +37,61 @@ import { useGalleryStore } from '../stores/galleryStore';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, scale, spacing } from '@/shared/theme';
+import { wp, hp, moderateScale, spacing } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+// =============================================================================
+// COLORS (matching MarkBooksScreen)
+// =============================================================================
+
+const COLORS = {
+  accent: '#F3B60C',
+  accentDim: 'rgba(243, 182, 12, 0.15)',
+
+  textPrimary: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.7)',
+  textTertiary: 'rgba(255, 255, 255, 0.5)',
+  textHint: 'rgba(255, 255, 255, 0.35)',
+
+  surface: 'rgba(255, 255, 255, 0.05)',
+  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
+
+  success: '#22C55E',
+  danger: '#EF4444',
+
+  background: '#0A0A0A',
+};
+
+// =============================================================================
+// LAYOUT CONSTANTS
+// =============================================================================
+
+const LAYOUT = {
+  HORIZONTAL_PADDING: wp(5.5),
+  COVER_SIZE: wp(12),
+  COVER_RADIUS: wp(12) * 0.125,
+  CHECKBOX_SIZE: wp(5.5),
+};
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 interface HistoryBook {
   id: string;
   title: string;
   authorName: string;
   seriesName?: string;
+  duration: number;
   coverUrl: string | null;
   markedAt: number;
   synced: boolean;
 }
+
+type SortOption = 'recent' | 'title' | 'author' | 'duration';
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
 function getMetadata(item: LibraryItem): any {
   return (item.media?.metadata as any) || {};
@@ -55,6 +110,30 @@ function getSeriesName(item: LibraryItem): string {
   return name.replace(/\s*#[\d.]+$/, '').trim();
 }
 
+function getSeriesSequence(item: LibraryItem): string {
+  const name = getMetadata(item).seriesName || '';
+  const match = name.match(/#([\d.]+)$/);
+  return match ? match[1] : '';
+}
+
+function getDuration(item: LibraryItem): number {
+  return (item.media as any)?.duration || 0;
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatTotalHours(seconds: number): string {
+  const hours = Math.round(seconds / 3600);
+  return `~${hours} hours`;
+}
+
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
@@ -62,13 +141,214 @@ function formatDate(timestamp: number): string {
 
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-type SortOption = 'recent' | 'title' | 'author';
-type FilterOption = 'all' | 'synced' | 'pending';
+// =============================================================================
+// SORT PILLS COMPONENT
+// =============================================================================
+
+interface SortPillsProps {
+  sortBy: SortOption;
+  onSortChange: (sort: SortOption) => void;
+}
+
+function SortPills({ sortBy, onSortChange }: SortPillsProps) {
+  const options: { key: SortOption; label: string }[] = [
+    { key: 'recent', label: 'Recent' },
+    { key: 'title', label: 'Title' },
+    { key: 'author', label: 'Author' },
+    { key: 'duration', label: 'Duration' },
+  ];
+
+  return (
+    <View style={styles.sortContainer}>
+      {options.map((option) => {
+        const isActive = sortBy === option.key;
+        return (
+          <TouchableOpacity
+            key={option.key}
+            style={[styles.sortPill, isActive && styles.sortPillActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              onSortChange(option.key);
+            }}
+          >
+            <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// =============================================================================
+// STATS SUMMARY COMPONENT
+// =============================================================================
+
+interface StatsSummaryProps {
+  totalBooks: number;
+  totalDuration: number;
+  syncedCount: number;
+}
+
+function StatsSummary({ totalBooks, totalDuration, syncedCount }: StatsSummaryProps) {
+  return (
+    <View style={styles.statsContainer}>
+      <Text style={styles.statsPrimary}>
+        {totalBooks} books finished • {formatTotalHours(totalDuration)}
+      </Text>
+      <Text style={styles.statsSecondary}>
+        {syncedCount} synced to server
+      </Text>
+    </View>
+  );
+}
+
+// =============================================================================
+// LIST ITEM COMPONENT
+// =============================================================================
+
+interface HistoryListItemProps {
+  book: HistoryBook;
+  isSelecting: boolean;
+  isSelected: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+}
+
+function HistoryListItem({
+  book,
+  isSelecting,
+  isSelected,
+  onPress,
+  onLongPress,
+}: HistoryListItemProps) {
+  const seriesInfo = book.seriesName
+    ? `${book.seriesName} • ${formatDuration(book.duration)}`
+    : formatDuration(book.duration);
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(150)}
+      layout={Layout.springify()}
+    >
+      <TouchableOpacity
+        style={[styles.listItem, isSelected && styles.listItemSelected]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        activeOpacity={0.7}
+      >
+        {/* Selection checkbox */}
+        {isSelecting && (
+          <View style={styles.checkboxContainer}>
+            {isSelected ? (
+              <CheckCircle size={LAYOUT.CHECKBOX_SIZE} color={COLORS.accent} strokeWidth={2} />
+            ) : (
+              <Circle size={LAYOUT.CHECKBOX_SIZE} color={COLORS.textTertiary} strokeWidth={2} />
+            )}
+          </View>
+        )}
+
+        {/* Cover */}
+        {book.coverUrl ? (
+          <Image source={book.coverUrl} style={styles.listCover} contentFit="cover" />
+        ) : (
+          <View style={[styles.listCover, styles.listCoverPlaceholder]}>
+            <Book size={wp(5)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          </View>
+        )}
+
+        {/* Info */}
+        <View style={styles.listInfo}>
+          <Text style={styles.listTitle} numberOfLines={1}>
+            {book.title}
+          </Text>
+          <Text style={styles.listSubtitle} numberOfLines={1}>
+            {book.authorName}
+          </Text>
+          <Text style={styles.listMeta} numberOfLines={1}>
+            {seriesInfo}
+          </Text>
+        </View>
+
+        {/* Date & Sync */}
+        <View style={styles.listRight}>
+          <Text style={styles.listDate}>{formatDate(book.markedAt)}</Text>
+          {book.synced ? (
+            <CloudCheck size={wp(4)} color={COLORS.success} strokeWidth={2} />
+          ) : (
+            <CloudUpload size={wp(4)} color={COLORS.textTertiary} strokeWidth={2} />
+          )}
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// =============================================================================
+// SELECTION FOOTER COMPONENT
+// =============================================================================
+
+interface SelectionFooterProps {
+  selectedCount: number;
+  totalCount: number;
+  onSelectAll: () => void;
+  onCancel: () => void;
+  onRemove: () => void;
+}
+
+function SelectionFooter({
+  selectedCount,
+  totalCount,
+  onSelectAll,
+  onCancel,
+  onRemove,
+}: SelectionFooterProps) {
+  const allSelected = selectedCount === totalCount && totalCount > 0;
+
+  return (
+    <Animated.View
+      style={styles.selectionFooter}
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(150)}
+    >
+      <View style={styles.selectionFooterLeft}>
+        <TouchableOpacity style={styles.selectAllButton} onPress={onSelectAll}>
+          {allSelected ? (
+            <CheckSquare size={wp(5)} color={COLORS.textPrimary} strokeWidth={2} />
+          ) : (
+            <Square size={wp(5)} color={COLORS.textPrimary} strokeWidth={2} />
+          )}
+        </TouchableOpacity>
+        <Text style={styles.selectionCount}>{selectedCount} selected</Text>
+      </View>
+
+      <View style={styles.selectionFooterRight}>
+        <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.removeButton, selectedCount === 0 && styles.removeButtonDisabled]}
+          onPress={onRemove}
+          disabled={selectedCount === 0}
+        >
+          <Text style={styles.removeButtonText}>Remove</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+}
+
+// =============================================================================
+// MAIN SCREEN COMPONENT
+// =============================================================================
 
 export function ReadingHistoryScreen() {
   const insets = useSafeAreaInsets();
@@ -81,7 +361,6 @@ export function ReadingHistoryScreen() {
 
   // UI State
   const [sortBy, setSortBy] = useState<SortOption>('recent');
-  const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -97,6 +376,7 @@ export function ReadingHistoryScreen() {
           title: getTitle(item),
           authorName: getAuthorName(item),
           seriesName: getSeriesName(item) || undefined,
+          duration: getDuration(item),
           coverUrl: getCoverUrl(bookId),
           markedAt: marked.markedAt,
           synced: marked.synced,
@@ -104,30 +384,46 @@ export function ReadingHistoryScreen() {
       }
     });
 
-    // Filter
-    let filtered = books;
-    if (filterBy === 'synced') {
-      filtered = books.filter((b) => b.synced);
-    } else if (filterBy === 'pending') {
-      filtered = books.filter((b) => !b.synced);
-    }
-
     // Sort
     switch (sortBy) {
       case 'recent':
-        filtered.sort((a, b) => b.markedAt - a.markedAt);
+        books.sort((a, b) => b.markedAt - a.markedAt);
         break;
       case 'title':
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
+        books.sort((a, b) => a.title.localeCompare(b.title));
         break;
       case 'author':
-        filtered.sort((a, b) => a.authorName.localeCompare(b.authorName));
+        books.sort((a, b) => a.authorName.localeCompare(b.authorName));
+        break;
+      case 'duration':
+        books.sort((a, b) => b.duration - a.duration);
         break;
     }
 
-    return filtered;
-  }, [markedBooks, items, sortBy, filterBy]);
+    return books;
+  }, [markedBooks, items, sortBy]);
 
+  // Stats
+  const stats = useMemo(() => {
+    let totalDuration = 0;
+    let syncedCount = 0;
+
+    markedBooks.forEach((marked, bookId) => {
+      const item = items.find((i) => i.id === bookId);
+      if (item) {
+        totalDuration += getDuration(item);
+        if (marked.synced) syncedCount++;
+      }
+    });
+
+    return {
+      totalBooks: markedBooks.size,
+      totalDuration,
+      syncedCount,
+    };
+  }, [markedBooks, items]);
+
+  // Handlers
   const handleClose = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
@@ -146,7 +442,7 @@ export function ReadingHistoryScreen() {
   }, []);
 
   const handleLongPress = useCallback((bookId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsSelecting(true);
     setSelectedIds(new Set([bookId]));
   }, []);
@@ -156,12 +452,20 @@ export function ReadingHistoryScreen() {
     setSelectedIds(new Set());
   }, []);
 
-  const handleUnmarkSelected = useCallback(() => {
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === historyBooks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(historyBooks.map((b) => b.id)));
+    }
+  }, [selectedIds.size, historyBooks]);
+
+  const handleRemoveSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
     Alert.alert(
       'Remove from History',
-      `Mark ${selectedIds.size} book${selectedIds.size > 1 ? 's' : ''} as unread?`,
+      `Remove ${selectedIds.size} book${selectedIds.size > 1 ? 's' : ''} from your reading history?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -178,164 +482,65 @@ export function ReadingHistoryScreen() {
     );
   }, [selectedIds, unmarkBook]);
 
-  const handleSelectAll = useCallback(() => {
-    if (selectedIds.size === historyBooks.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(historyBooks.map((b) => b.id)));
+  const handleItemPress = useCallback((bookId: string) => {
+    if (isSelecting) {
+      handleToggleSelect(bookId);
     }
-  }, [selectedIds.size, historyBooks]);
+  }, [isSelecting, handleToggleSelect]);
 
-  const renderBook = useCallback(({ item }: { item: HistoryBook }) => {
-    const isSelected = selectedIds.has(item.id);
-
-    return (
-      <Animated.View
-        entering={FadeIn.duration(200)}
-        exiting={FadeOut.duration(150)}
-        layout={Layout.springify()}
-      >
-        <TouchableOpacity
-          style={[styles.bookItem, isSelected && styles.bookItemSelected]}
-          onPress={() => isSelecting ? handleToggleSelect(item.id) : null}
-          onLongPress={() => handleLongPress(item.id)}
-          activeOpacity={0.7}
-        >
-          {/* Selection checkbox */}
-          {isSelecting && (
-            <View style={styles.checkbox}>
-              {isSelected ? (
-                <Ionicons name="checkmark-circle" size={scale(24)} color={ACCENT} />
-              ) : (
-                <Ionicons name="ellipse-outline" size={scale(24)} color={colors.textSecondary} />
-              )}
-            </View>
-          )}
-
-          {/* Cover */}
-          {item.coverUrl ? (
-            <Image source={item.coverUrl} style={styles.cover} contentFit="cover" />
-          ) : (
-            <View style={[styles.cover, styles.coverPlaceholder]}>
-              <Ionicons name="book" size={scale(20)} color="rgba(255,255,255,0.3)" />
-            </View>
-          )}
-
-          {/* Info */}
-          <View style={styles.bookInfo}>
-            <Text style={styles.bookTitle} numberOfLines={1}>{item.title}</Text>
-            <Text style={styles.bookAuthor} numberOfLines={1}>{item.authorName}</Text>
-            {item.seriesName && (
-              <Text style={styles.bookSeries} numberOfLines={1}>{item.seriesName}</Text>
-            )}
-          </View>
-
-          {/* Meta */}
-          <View style={styles.bookMeta}>
-            <Text style={styles.bookDate}>{formatDate(item.markedAt)}</Text>
-            {!item.synced && (
-              <View style={styles.pendingBadge}>
-                <Ionicons name="cloud-upload-outline" size={scale(12)} color={colors.textSecondary} />
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  }, [isSelecting, selectedIds, handleToggleSelect, handleLongPress]);
-
-  const totalCount = markedBooks.size;
-  const syncedCount = Array.from(markedBooks.values()).filter((b) => b.synced).length;
+  const renderItem = useCallback(({ item }: { item: HistoryBook }) => (
+    <HistoryListItem
+      book={item}
+      isSelecting={isSelecting}
+      isSelected={selectedIds.has(item.id)}
+      onPress={() => handleItemPress(item.id)}
+      onLongPress={() => handleLongPress(item.id)}
+    />
+  ), [isSelecting, selectedIds, handleItemPress, handleLongPress]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-          <Ionicons name="close" size={scale(28)} color={colors.textPrimary} />
+        <TouchableOpacity style={styles.headerButton} onPress={handleClose}>
+          <ArrowLeft size={moderateScale(22)} color={COLORS.textPrimary} strokeWidth={2} />
         </TouchableOpacity>
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Reading History</Text>
-          <Text style={styles.headerSubtitle}>
-            {totalCount} finished • {syncedCount} synced
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Reading History</Text>
 
-        {isSelecting ? (
-          <TouchableOpacity style={styles.headerAction} onPress={handleCancelSelection}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerAction} />
-        )}
-      </View>
-
-      {/* Sort/Filter Bar */}
-      <View style={styles.controlBar}>
-        <View style={styles.sortButtons}>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'recent' && styles.sortButtonActive]}
-            onPress={() => setSortBy('recent')}
-          >
-            <Text style={[styles.sortButtonText, sortBy === 'recent' && styles.sortButtonTextActive]}>
-              Recent
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'title' && styles.sortButtonActive]}
-            onPress={() => setSortBy('title')}
-          >
-            <Text style={[styles.sortButtonText, sortBy === 'title' && styles.sortButtonTextActive]}>
-              Title
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'author' && styles.sortButtonActive]}
-            onPress={() => setSortBy('author')}
-          >
-            <Text style={[styles.sortButtonText, sortBy === 'author' && styles.sortButtonTextActive]}>
-              Author
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Selection Bar */}
-      {isSelecting && (
-        <Animated.View
-          style={styles.selectionBar}
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => {
+            if (!isSelecting && historyBooks.length > 0) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsSelecting(true);
+            }
+          }}
         >
-          <TouchableOpacity style={styles.selectAllButton} onPress={handleSelectAll}>
-            <Ionicons
-              name={selectedIds.size === historyBooks.length ? 'checkbox' : 'square-outline'}
-              size={scale(20)}
-              color={colors.textPrimary}
-            />
-            <Text style={styles.selectAllText}>
-              {selectedIds.size === historyBooks.length ? 'Deselect All' : 'Select All'}
-            </Text>
-          </TouchableOpacity>
+          {!isSelecting && historyBooks.length > 0 && (
+            <Text style={styles.selectLink}>Select</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity
-            style={[styles.removeButton, selectedIds.size === 0 && styles.removeButtonDisabled]}
-            onPress={handleUnmarkSelected}
-            disabled={selectedIds.size === 0}
-          >
-            <Ionicons name="trash-outline" size={scale(18)} color="#F44336" />
-            <Text style={styles.removeButtonText}>
-              Remove ({selectedIds.size})
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
+      {/* Stats Summary */}
+      {stats.totalBooks > 0 && (
+        <StatsSummary
+          totalBooks={stats.totalBooks}
+          totalDuration={stats.totalDuration}
+          syncedCount={stats.syncedCount}
+        />
+      )}
+
+      {/* Sort Pills */}
+      {historyBooks.length > 0 && (
+        <SortPills sortBy={sortBy} onSortChange={setSortBy} />
       )}
 
       {/* Book List */}
       {historyBooks.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="book-outline" size={scale(60)} color={colors.textSecondary} />
+          <BookOpen size={wp(15)} color={COLORS.textTertiary} strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>No Books Yet</Text>
           <Text style={styles.emptySubtitle}>
             Books you mark as finished will appear here
@@ -345,214 +550,249 @@ export function ReadingHistoryScreen() {
         <FlatList
           data={historyBooks}
           keyExtractor={(item) => item.id}
-          renderItem={renderBook}
+          renderItem={renderItem}
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: insets.bottom + spacing.lg },
+            { paddingBottom: isSelecting ? hp(12) : insets.bottom + spacing.lg },
           ]}
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      {/* Hint */}
-      {!isSelecting && historyBooks.length > 0 && (
-        <View style={[styles.hint, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Text style={styles.hintText}>Long press to select and remove</Text>
+      {/* Selection Footer */}
+      {isSelecting && (
+        <View style={[styles.selectionFooterWrapper, { paddingBottom: insets.bottom }]}>
+          <SelectionFooter
+            selectedCount={selectedIds.size}
+            totalCount={historyBooks.length}
+            onSelectAll={handleSelectAll}
+            onCancel={handleCancelSelection}
+            onRemove={handleRemoveSelected}
+          />
         </View>
       )}
     </View>
   );
 }
 
+// =============================================================================
+// STYLES
+// =============================================================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    backgroundColor: COLORS.background,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    height: hp(6),
   },
-  closeButton: {
-    width: scale(44),
-    height: scale(44),
+  headerButton: {
+    width: wp(12),
+    height: wp(10),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
   headerTitle: {
-    fontSize: scale(17),
+    flex: 1,
+    fontSize: moderateScale(17),
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
   },
-  headerSubtitle: {
-    fontSize: scale(12),
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  headerAction: {
-    width: scale(60),
-    alignItems: 'flex-end',
-  },
-  cancelText: {
-    fontSize: scale(15),
-    color: ACCENT,
+  selectLink: {
+    fontSize: moderateScale(14),
     fontWeight: '500',
+    color: COLORS.accent,
   },
-  controlBar: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  sortButtons: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  sortButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: scale(14),
-    backgroundColor: colors.backgroundSecondary,
-  },
-  sortButtonActive: {
-    backgroundColor: `${ACCENT}20`,
+
+  // Stats Summary
+  statsContainer: {
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.5),
+    backgroundColor: COLORS.surface,
+    marginHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    marginTop: hp(1),
+    borderRadius: wp(3),
     borderWidth: 1,
-    borderColor: ACCENT,
+    borderColor: COLORS.surfaceBorder,
   },
-  sortButtonText: {
-    fontSize: scale(13),
-    color: colors.textSecondary,
-  },
-  sortButtonTextActive: {
-    color: ACCENT,
+  statsPrimary: {
+    fontSize: moderateScale(14),
     fontWeight: '600',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
   },
-  selectionBar: {
+  statsSecondary: {
+    fontSize: moderateScale(12),
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: wp(0.5),
+  },
+
+  // Sort Pills
+  sortContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: wp(2),
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.5),
+  },
+  sortPill: {
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(0.8),
+    borderRadius: hp(1.5),
+    backgroundColor: COLORS.surface,
+  },
+  sortPillActive: {
+    backgroundColor: COLORS.accent,
+  },
+  sortPillText: {
+    fontSize: moderateScale(12),
+    fontWeight: '500',
+    color: COLORS.textTertiary,
+  },
+  sortPillTextActive: {
+    fontWeight: '600',
+    color: '#000000',
+  },
+
+  // List
+  listContent: {
+    paddingTop: hp(1),
+  },
+  listItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.backgroundSecondary,
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.2),
+    gap: wp(3),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceBorder,
+  },
+  listItemSelected: {
+    backgroundColor: COLORS.accentDim,
+  },
+  checkboxContainer: {
+    marginRight: wp(1),
+  },
+  listCover: {
+    width: LAYOUT.COVER_SIZE,
+    height: LAYOUT.COVER_SIZE,
+    borderRadius: LAYOUT.COVER_RADIUS,
+    backgroundColor: COLORS.surface,
+  },
+  listCoverPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listInfo: {
+    flex: 1,
+    gap: wp(0.5),
+  },
+  listTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  listSubtitle: {
+    fontSize: moderateScale(12),
+    color: COLORS.textSecondary,
+  },
+  listMeta: {
+    fontSize: moderateScale(11),
+    color: COLORS.textTertiary,
+  },
+  listRight: {
+    alignItems: 'flex-end',
+    gap: wp(1),
+  },
+  listDate: {
+    fontSize: moderateScale(11),
+    color: COLORS.textSecondary,
+  },
+
+  // Selection Footer
+  selectionFooterWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.background,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceBorder,
+  },
+  selectionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingVertical: hp(1.5),
+  },
+  selectionFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
   },
   selectAllButton: {
+    padding: wp(1),
+  },
+  selectionCount: {
+    fontSize: moderateScale(14),
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  selectionFooterRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: wp(3),
   },
-  selectAllText: {
-    fontSize: scale(14),
-    color: colors.textPrimary,
+  cancelButton: {
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1),
+  },
+  cancelButtonText: {
+    fontSize: moderateScale(14),
+    color: COLORS.textSecondary,
   },
   removeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: scale(14),
-    backgroundColor: 'rgba(244, 67, 54, 0.15)',
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1),
+    backgroundColor: COLORS.danger,
+    borderRadius: wp(2),
   },
   removeButtonDisabled: {
     opacity: 0.4,
   },
   removeButtonText: {
-    fontSize: scale(13),
-    color: '#F44336',
-    fontWeight: '500',
-  },
-  listContent: {
-    paddingTop: spacing.sm,
-  },
-  bookItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-  },
-  bookItemSelected: {
-    backgroundColor: `${ACCENT}10`,
-  },
-  checkbox: {
-    marginRight: spacing.xs,
-  },
-  cover: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(6),
-    backgroundColor: colors.backgroundSecondary,
-  },
-  coverPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookInfo: {
-    flex: 1,
-  },
-  bookTitle: {
-    fontSize: scale(15),
+    fontSize: moderateScale(14),
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
-  bookAuthor: {
-    fontSize: scale(13),
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  bookSeries: {
-    fontSize: scale(12),
-    color: ACCENT,
-    marginTop: 2,
-    fontStyle: 'italic',
-  },
-  bookMeta: {
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-  },
-  bookDate: {
-    fontSize: scale(11),
-    color: colors.textSecondary,
-  },
-  pendingBadge: {
-    padding: 2,
-  },
+
+  // Empty State
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xxl,
+    padding: wp(8),
   },
   emptyTitle: {
-    fontSize: scale(20),
+    fontSize: moderateScale(20),
     fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: spacing.lg,
+    color: COLORS.textPrimary,
+    marginTop: hp(2),
   },
   emptySubtitle: {
-    fontSize: scale(14),
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
+    fontSize: moderateScale(14),
+    color: COLORS.textSecondary,
+    marginTop: hp(1),
     textAlign: 'center',
-  },
-  hint: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingTop: spacing.sm,
-    backgroundColor: colors.backgroundPrimary,
-  },
-  hintText: {
-    fontSize: scale(12),
-    color: colors.textTertiary,
   },
 });
 

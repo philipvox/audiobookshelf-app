@@ -13,7 +13,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
+import { List } from 'lucide-react-native';
 import { colors, wp, moderateScale, radius } from '@/shared/theme';
 import { useQueueCount } from '@/features/queue/stores/queueStore';
 
@@ -106,10 +106,10 @@ export function HomePillsRow({
             : 'Queue is empty'}
           accessibilityRole="button"
         >
-          <Ionicons
-            name="list"
+          <List
             size={ICON_SIZE}
             color={hasQueueItems ? ACCENT : colors.textPrimary}
+            strokeWidth={2}
           />
           {hasQueueItems && (
             <Text style={[styles.pillText, styles.pillTextActive]}>

@@ -11,7 +11,7 @@
 import React, { memo, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check } from 'lucide-react-native';
 import { SeriesInfo } from '../services/seriesAdapter';
 import { apiClient } from '@/core/api';
 import { colors, scale, spacing, radius, elevation, cardTokens } from '@/shared/theme';
@@ -199,7 +199,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
         {/* Complete badge */}
         {isComplete && (
           <View style={styles.completeBadge}>
-            <Ionicons name="checkmark" size={scale(12)} color="#000" />
+            <Check size={scale(12)} color="#000" strokeWidth={3} />
           </View>
         )}
       </View>

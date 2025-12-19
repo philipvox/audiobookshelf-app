@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react-native';
 import { errorService, wrapError } from './errorService';
 import { AppError } from './types';
 
@@ -100,12 +100,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 function ScreenErrorView({ error, onRetry }: { error: AppError; onRetry: () => void }) {
   return (
     <View style={styles.screenContainer}>
-      <Ionicons name="alert-circle-outline" size={64} color="#ff4444" />
+      <AlertCircle size={64} color="#ff4444" strokeWidth={1.5} />
       <Text style={styles.screenTitle}>Something went wrong</Text>
       <Text style={styles.screenMessage}>{error.userMessage}</Text>
 
       <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-        <Ionicons name="refresh" size={20} color="#000" />
+        <RefreshCw size={20} color="#000" strokeWidth={2} />
         <Text style={styles.retryButtonText}>Try Again</Text>
       </TouchableOpacity>
 
@@ -129,7 +129,7 @@ function ComponentErrorView({ error, onRetry }: { error: AppError; onRetry: () =
   return (
     <View style={styles.componentContainer}>
       <View style={styles.componentContent}>
-        <Ionicons name="warning-outline" size={24} color="#ff9800" />
+        <AlertTriangle size={24} color="#ff9800" strokeWidth={2} />
         <View style={styles.componentText}>
           <Text style={styles.componentMessage} numberOfLines={2}>
             {error.userMessage}

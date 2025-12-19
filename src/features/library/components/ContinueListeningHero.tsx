@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Play } from 'lucide-react-native';
 import { LibraryItem, BookChapter } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { colors, scale } from '@/shared/theme';
@@ -180,7 +180,7 @@ export const ContinueListeningHero = memo(function ContinueListeningHero({
           accessibilityLabel={`Resume playing ${title}`}
           accessibilityHint="Double tap to resume playback"
         >
-          <Ionicons name="play" size={scale(28)} color="#000" />
+          <Play size={scale(28)} color="#000" fill="#000" strokeWidth={0} />
         </TouchableOpacity>
       </TouchableOpacity>
     </View>

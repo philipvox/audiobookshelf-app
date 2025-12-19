@@ -17,7 +17,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Check, CheckCircle, Volume2, Play, Pause, ArrowDown } from 'lucide-react-native';
 import Svg, { Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { LibraryItem } from '@/core/types';
@@ -160,17 +160,17 @@ export function SeriesBookRow({
         {/* Status indicator on cover */}
         {isCompleted && !isNowPlaying && (
           <View style={[styles.statusBadge, styles.statusBadgeCompleted]}>
-            <Ionicons name="checkmark" size={scale(10)} color="#000" />
+            <Check size={scale(10)} color="#000" strokeWidth={3} />
           </View>
         )}
         {isDownloaded && !isCompleted && !isNowPlaying && (
           <View style={styles.statusBadge}>
-            <Ionicons name="checkmark" size={scale(10)} color="#000" />
+            <Check size={scale(10)} color="#000" strokeWidth={3} />
           </View>
         )}
         {isNowPlaying && (
           <View style={[styles.statusBadge, styles.statusBadgePlaying]}>
-            <Ionicons name="volume-high" size={scale(10)} color="#000" />
+            <Volume2 size={scale(10)} color="#000" strokeWidth={2} />
           </View>
         )}
       </View>
@@ -204,7 +204,7 @@ export function SeriesBookRow({
         {isCompleted ? (
           // Completed state
           <View style={styles.statusRow}>
-            <Ionicons name="checkmark-circle" size={scale(14)} color={ACCENT} />
+            <CheckCircle size={scale(14)} color={ACCENT} strokeWidth={2} />
             <Text style={styles.completedText}>Done</Text>
             <Text style={styles.durationTextDim}>· {formatDurationReadable(duration)}</Text>
           </View>
@@ -240,11 +240,11 @@ export function SeriesBookRow({
             onPress={handlePlayPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons
-              name={isNowPlaying && isPlaying ? 'pause' : 'play'}
-              size={scale(18)}
-              color={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'}
-            />
+            {isNowPlaying && isPlaying ? (
+              <Pause size={scale(18)} color="#000" strokeWidth={2} />
+            ) : (
+              <Play size={scale(18)} color={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'} fill={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'} strokeWidth={0} />
+            )}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -252,7 +252,7 @@ export function SeriesBookRow({
             onPress={handleDownloadPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="arrow-down" size={scale(18)} color="rgba(255,255,255,0.5)" />
+            <ArrowDown size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
           </TouchableOpacity>
         )}
       </View>
