@@ -1,0 +1,275 @@
+/**
+ * src/features/reading-history-wizard/components/SwipeableBookCard.tsx
+ *
+ * Tinder-style swipeable book card.
+ * Swipe right = mark as finished
+ * Swipe left = skip
+ */
+
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { getCoverUrl } from '@/core/cache';
+import { colors, scale, spacing } from '@/shared/theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH * 0.85;
+const CARD_HEIGHT = CARD_WIDTH * 1.4;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
+
+interface SwipeableBookCardProps {
+  bookId: string;
+  title: string;
+  authorName?: string;
+  seriesName?: string;
+  onSwipeLeft: () => void;
+  onSwipeRight: () => void;
+}
+
+export function SwipeableBookCard({
+  bookId,
+  title,
+  authorName,
+  seriesName,
+  onSwipeLeft,
+  onSwipeRight,
+}: SwipeableBookCardProps) {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const rotation = useSharedValue(0);
+  const scale_value = useSharedValue(1);
+
+  const coverUrl = getCoverUrl(bookId);
+
+  const handleSwipeComplete = useCallback(
+    (direction: 'left' | 'right') => {
+      if (direction === 'right') {
+        onSwipeRight();
+      } else {
+        onSwipeLeft();
+      }
+    },
+    [onSwipeLeft, onSwipeRight]
+  );
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      'worklet';
+      translateX.value = event.translationX;
+      translateY.value = event.translationY * 0.5;
+      rotation.value = interpolate(
+        event.translationX,
+        [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
+        [-15, 0, 15],
+        Extrapolation.CLAMP
+      );
+    })
+    .onEnd((event) => {
+      'worklet';
+      if (event.translationX > SWIPE_THRESHOLD) {
+        // Swipe right - mark as finished
+        translateX.value = withTiming(SCREEN_WIDTH * 1.5, { duration: 300 });
+        runOnJS(handleSwipeComplete)('right');
+      } else if (event.translationX < -SWIPE_THRESHOLD) {
+        // Swipe left - skip
+        translateX.value = withTiming(-SCREEN_WIDTH * 1.5, { duration: 300 });
+        runOnJS(handleSwipeComplete)('left');
+      } else {
+        // Return to center
+        translateX.value = withSpring(0, { damping: 15 });
+        translateY.value = withSpring(0, { damping: 15 });
+        rotation.value = withSpring(0, { damping: 15 });
+      }
+    });
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { rotate: `${rotation.value}deg` },
+      { scale: scale_value.value },
+    ],
+  }));
+
+  // Overlay opacity based on swipe direction
+  const rightOverlayStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateX.value,
+      [0, SWIPE_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    ),
+  }));
+
+  const leftOverlayStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateX.value,
+      [-SWIPE_THRESHOLD, 0],
+      [1, 0],
+      Extrapolation.CLAMP
+    ),
+  }));
+
+  return (
+    <GestureDetector gesture={panGesture}>
+      <Animated.View style={[styles.card, cardStyle]}>
+        {/* Cover Image */}
+        {coverUrl ? (
+          <Image
+            source={coverUrl}
+            style={styles.cover}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={[styles.cover, styles.coverPlaceholder]}>
+            <Ionicons
+              name="book"
+              size={scale(80)}
+              color="rgba(255,255,255,0.3)"
+            />
+          </View>
+        )}
+
+        {/* Gradient overlay for text */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.9)']}
+          style={styles.gradient}
+        />
+
+        {/* Book Info */}
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={2}>
+            {title}
+          </Text>
+          {authorName && (
+            <Text style={styles.author} numberOfLines={1}>
+              {authorName}
+            </Text>
+          )}
+          {seriesName && (
+            <Text style={styles.series} numberOfLines={1}>
+              {seriesName}
+            </Text>
+          )}
+        </View>
+
+        {/* Swipe indicators */}
+        <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
+          <View style={styles.overlayBadge}>
+            <Ionicons name="checkmark" size={scale(40)} color="#000" />
+            <Text style={styles.overlayText}>FINISHED</Text>
+          </View>
+        </Animated.View>
+
+        <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayStyle]}>
+          <View style={[styles.overlayBadge, styles.skipBadge]}>
+            <Ionicons name="close" size={scale(40)} color="#fff" />
+            <Text style={[styles.overlayText, styles.skipText]}>SKIP</Text>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: scale(20),
+    overflow: 'hidden',
+    backgroundColor: colors.backgroundSecondary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  cover: {
+    width: '100%',
+    height: '100%',
+  },
+  coverPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundTertiary,
+  },
+  gradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+  },
+  info: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: spacing.lg,
+  },
+  title: {
+    fontSize: scale(22),
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  author: {
+    fontSize: scale(16),
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  series: {
+    fontSize: scale(14),
+    color: colors.accent,
+    fontStyle: 'italic',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rightOverlay: {
+    backgroundColor: 'rgba(76, 175, 80, 0.3)',
+  },
+  leftOverlay: {
+    backgroundColor: 'rgba(244, 67, 54, 0.3)',
+  },
+  overlayBadge: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: scale(12),
+    alignItems: 'center',
+    transform: [{ rotate: '-15deg' }],
+    borderWidth: 3,
+    borderColor: '#000',
+  },
+  skipBadge: {
+    backgroundColor: 'rgba(244, 67, 54, 0.9)',
+    borderColor: '#fff',
+  },
+  overlayText: {
+    fontSize: scale(18),
+    fontWeight: '800',
+    color: '#000',
+    marginTop: spacing.xs,
+  },
+  skipText: {
+    color: '#fff',
+  },
+});
+
+export default SwipeableBookCard;

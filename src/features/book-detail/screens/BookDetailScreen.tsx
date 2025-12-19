@@ -35,9 +35,11 @@ import { SeriesNavigator } from '../components/SeriesNavigator';
 import { ErrorView } from '@/shared/components';
 import { useCoverUrl } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
+import { userApi } from '@/core/api/endpoints/user';
 import { useDownloadStatus as useDownloadStatusHook } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
+import { useGalleryStore } from '@/features/reading-history-wizard';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, scale, wp, hp, spacing, radius, layout } from '@/shared/theme';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
@@ -197,6 +199,67 @@ export function BookDetailScreen() {
       reorderQueue(currentIndex, 0);
     }
   }, [queue, bookId, reorderQueue]);
+
+  // Mark as finished/not started handlers
+  const [isMarkingFinished, setIsMarkingFinished] = useState(false);
+  const markBookInGallery = useGalleryStore((s) => s.markBook);
+  const unmarkBookInGallery = useGalleryStore((s) => s.unmarkBook);
+
+  const handleMarkAsFinished = useCallback(async () => {
+    if (isMarkingFinished) return;
+    setIsMarkingFinished(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      // Update local reading history (galleryStore)
+      markBookInGallery(bookId);
+
+      // Update server-side progress
+      await userApi.markAsFinished(bookId);
+
+      // Refetch to update progress display
+      refetch();
+    } catch (err) {
+      console.error('Failed to mark as finished:', err);
+      Alert.alert('Error', 'Failed to mark book as finished. Please try again.');
+    } finally {
+      setIsMarkingFinished(false);
+    }
+  }, [bookId, isMarkingFinished, refetch, markBookInGallery]);
+
+  const handleMarkAsNotStarted = useCallback(async () => {
+    if (isMarkingFinished) return;
+    Alert.alert(
+      'Reset Progress',
+      'This will reset your progress for this book. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            setIsMarkingFinished(true);
+            try {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+              // Remove from local reading history (galleryStore)
+              await unmarkBookInGallery(bookId);
+
+              // Reset server-side progress
+              await userApi.markAsNotStarted(bookId);
+
+              refetch();
+            } catch (err) {
+              console.error('Failed to reset progress:', err);
+              Alert.alert('Error', 'Failed to reset progress. Please try again.');
+            } finally {
+              setIsMarkingFinished(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [bookId, isMarkingFinished, refetch, unmarkBookInGallery]);
 
   // Handle download button press
   const handleDownloadPress = useCallback(() => {
@@ -517,7 +580,61 @@ export function BookDetailScreen() {
         {/* Series Navigation */}
         <SeriesNavigator book={book} />
 
-        {/* Tabs Row - Overview, Chapters, and Add to Queue link */}
+        {/* Action Links Row */}
+        <View style={styles.actionLinksRow}>
+          {/* Add to Queue */}
+          <TouchableOpacity
+            style={styles.actionLink}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (isInQueue) {
+                handleRemoveFromQueue();
+              } else {
+                handleAddToQueue();
+              }
+            }}
+            activeOpacity={0.7}
+            accessibilityLabel={isInQueue ? `In queue at position ${queuePosition}` : 'Add to queue'}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name={isInQueue ? 'checkmark-circle' : 'add-circle-outline'}
+              size={scale(18)}
+              color={isInQueue ? ACCENT : 'rgba(255,255,255,0.7)'}
+            />
+            <Text style={[styles.actionLinkText, isInQueue && styles.actionLinkTextActive]}>
+              {isInQueue ? `Queue #${queuePosition}` : 'Add to Queue'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.actionLinkDivider} />
+
+          {/* Mark as Finished / Reset Progress */}
+          <TouchableOpacity
+            style={styles.actionLink}
+            onPress={isCompleted ? handleMarkAsNotStarted : handleMarkAsFinished}
+            disabled={isMarkingFinished}
+            activeOpacity={0.7}
+            accessibilityLabel={isCompleted ? 'Reset progress' : 'Mark as finished'}
+            accessibilityRole="button"
+          >
+            {isMarkingFinished ? (
+              <ActivityIndicator size="small" color={ACCENT} />
+            ) : (
+              <Ionicons
+                name={isCompleted ? 'refresh-outline' : 'checkmark-done-outline'}
+                size={scale(18)}
+                color={isCompleted ? ACCENT : 'rgba(255,255,255,0.7)'}
+              />
+            )}
+            <Text style={[styles.actionLinkText, isCompleted && styles.actionLinkTextActive]}>
+              {isCompleted ? 'Completed' : 'Mark Finished'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tabs Row - Overview, Chapters */}
         <View style={styles.tabsContainer}>
           <View style={styles.tabsLeft}>
             <TouchableOpacity
@@ -543,27 +660,6 @@ export function BookDetailScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Add to Queue link */}
-          <TouchableOpacity
-            style={styles.addToQueueLink}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (isInQueue) {
-                handleRemoveFromQueue();
-              } else {
-                handleAddToQueue();
-              }
-            }}
-            activeOpacity={0.7}
-            accessibilityLabel={isInQueue ? `In queue at position ${queuePosition}` : 'Add to queue'}
-            accessibilityRole="button"
-            accessibilityHint={isInQueue ? 'Double tap to remove from queue' : 'Double tap to add to queue'}
-          >
-            <Text style={[styles.addToQueueText, isInQueue && styles.addToQueueTextActive]}>
-              {isInQueue ? `In Queue #${queuePosition}` : 'Add to Queue'}
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* Tab Content */}
@@ -854,17 +950,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  addToQueueLink: {
-    paddingVertical: scale(14),
+  // Action Links Row (Queue, Mark Finished, etc.)
+  actionLinksRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(20),
+    marginTop: scale(8),
+    marginBottom: scale(4),
   },
-  addToQueueText: {
+  actionLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  actionLinkText: {
     fontSize: scale(13),
-    color: ACCENT,
+    color: 'rgba(255,255,255,0.7)',
     fontWeight: '500',
   },
-  addToQueueTextActive: {
+  actionLinkTextActive: {
     color: ACCENT,
     fontWeight: '600',
+  },
+  actionLinkDivider: {
+    width: 1,
+    height: scale(20),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: scale(8),
   },
   tabContent: {
     paddingTop: scale(20),

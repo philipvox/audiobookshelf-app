@@ -33,6 +33,7 @@ import {
   ScoredBook,
 } from '@/features/mood-discovery/types';
 import { useMoodRecommendations } from '@/features/mood-discovery/hooks/useMoodRecommendations';
+import { useReadingHistory } from '@/features/reading-history-wizard';
 
 // Time constants
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -129,12 +130,6 @@ function getMoodHeroReason(session: MoodSession): string {
   return 'Matches your mood';
 }
 
-// Check if a book has been listened to (any progress)
-function hasBeenListened(item: LibraryItem): boolean {
-  const progress = (item as any).userMediaProgress?.progress || 0;
-  return progress > 0;
-}
-
 export function useDiscoverData(
   selectedGenre: string = 'All',
   moodSession?: MoodSession | null
@@ -143,6 +138,9 @@ export function useDiscoverData(
   const { items: inProgressItems, isLoading: isLoadingProgress, refetch: refetchProgress } = useContinueListening();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
+
+  // Get reading history for filtering finished books and preference boosts
+  const { isFinished, hasBeenStarted, getPreferenceBoost, hasHistory } = useReadingHistory();
 
   // Get personalized recommendations based on reading history
   const { groupedRecommendations, hasPreferences } = useRecommendations(libraryItems, 30);
@@ -237,7 +235,7 @@ export function useDiscoverData(
     const oneWeekAgo = Date.now() - ONE_WEEK_MS;
     let newItems = libraryItems
       .filter(item => (item.addedAt || 0) * 1000 > oneWeekAgo)
-      .filter(item => !hasBeenListened(item)) // Exclude listened books
+      .filter(item => !isFinished(item.id)) // Exclude finished books (local + server)
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 
     // Apply genre filter
@@ -265,7 +263,7 @@ export function useDiscoverData(
       priority: 3,
       refreshPolicy: 'daily',
     };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession]);
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession, isFinished]);
 
   // Short & Sweet row (books under 5 hours, only unlistened)
   const shortBooksRow = useMemo((): ContentRow | null => {
@@ -276,7 +274,7 @@ export function useDiscoverData(
         const duration = (item.media as any)?.duration || 0;
         return duration > 0 && duration < SHORT_BOOK_THRESHOLD;
       })
-      .filter(item => !hasBeenListened(item)) // Exclude listened books
+      .filter(item => !isFinished(item.id)) // Exclude finished books (local + server)
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 
     // Apply genre filter
@@ -305,7 +303,7 @@ export function useDiscoverData(
       priority: 8,
       refreshPolicy: 'daily',
     };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession]);
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession, isFinished]);
 
   // Long Listens row (books over 10 hours, only unlistened)
   const longBooksRow = useMemo((): ContentRow | null => {
@@ -316,7 +314,7 @@ export function useDiscoverData(
         const duration = (item.media as any)?.duration || 0;
         return duration >= LONG_BOOK_THRESHOLD;
       })
-      .filter(item => !hasBeenListened(item)) // Exclude listened books
+      .filter(item => !isFinished(item.id)) // Exclude finished books (local + server)
       .sort((a, b) => {
         const durationA = (a.media as any)?.duration || 0;
         const durationB = (b.media as any)?.duration || 0;
@@ -349,14 +347,14 @@ export function useDiscoverData(
       priority: 9,
       refreshPolicy: 'daily',
     };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession]);
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession, isFinished]);
 
   // Not Started row (books never played at all)
   const notStartedRow = useMemo((): ContentRow | null => {
     if (!isLoaded || !libraryItems.length) return null;
 
     let unplayed = libraryItems
-      .filter(item => !hasBeenListened(item))
+      .filter(item => !isFinished(item.id))
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 
     // Apply genre filter
@@ -385,7 +383,7 @@ export function useDiscoverData(
       priority: 5,
       refreshPolicy: 'daily',
     };
-  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession]);
+  }, [libraryItems, isLoaded, selectedGenre, filterByGenre, filterByMood, convertToBookSummary, hasMoodSession, moodSession, isFinished]);
 
   // Continue Series row (next book in series user is reading)
   const continueSeriesRow = useMemo((): ContentRow | null => {
@@ -421,7 +419,7 @@ export function useDiscoverData(
         const series = metadata.series?.[0];
         if (!series?.name || series.name !== seriesName) return false;
         const seq = parseFloat(series.sequence) || 0;
-        return seq > progress.sequence && !hasBeenListened(item);
+        return seq > progress.sequence && !isFinished(item.id);
       });
 
       if (nextInSeries) {
@@ -452,7 +450,7 @@ export function useDiscoverData(
       priority: 4, // High priority, after recommendations
       refreshPolicy: 'realtime',
     };
-  }, [libraryItems, inProgressItems, isLoaded, convertToBookSummary, hasMoodSession, moodSession, filterByMood]);
+  }, [libraryItems, inProgressItems, isLoaded, convertToBookSummary, hasMoodSession, moodSession, filterByMood, isFinished]);
 
   // Personalized recommendations rows (based on reading history and preferences)
   const recommendationRows = useMemo((): ContentRow[] => {
@@ -475,9 +473,9 @@ export function useDiscoverData(
   const hero = useMemo((): HeroRecommendation | null => {
     if (!isLoaded || !libraryItems.length) return null;
 
-    // Get unlistened books
-    const unlistenedBooks = libraryItems.filter(item => !hasBeenListened(item));
-    if (unlistenedBooks.length === 0) return null;
+    // Get unfinished books
+    const unfinishedBooks = libraryItems.filter(item => !isFinished(item.id));
+    if (unfinishedBooks.length === 0) return null;
 
     let heroBook: LibraryItem | null = null;
     let heroType: HeroRecommendation['type'] = 'personalized';
@@ -500,9 +498,9 @@ export function useDiscoverData(
         heroBook = groupedRecommendations[0].items[0];
         reason = 'Recommended for you';
       }
-      // Otherwise use newest unlistened book
+      // Otherwise use newest unfinished book
       else {
-        const sorted = [...unlistenedBooks].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        const sorted = [...unfinishedBooks].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
         heroBook = sorted[0];
         heroType = 'new';
         reason = 'New to your library';
@@ -516,7 +514,7 @@ export function useDiscoverData(
       reason,
       type: heroType,
     };
-  }, [libraryItems, isLoaded, convertToBookSummary, groupedRecommendations, hasMoodSession, moodSession, moodRecommendations]);
+  }, [libraryItems, isLoaded, convertToBookSummary, groupedRecommendations, hasMoodSession, moodSession, moodRecommendations, isFinished]);
 
   // Organize rows by priority
   const rows = useMemo((): ContentRow[] => {
