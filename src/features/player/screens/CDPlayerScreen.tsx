@@ -49,6 +49,7 @@ import { useQueueCount } from '@/features/queue/stores/queueStore';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useCoverUrl } from '@/core/cache';
 import { useIsOfflineAvailable } from '@/core/hooks/useDownloads';
+import { useNormalizedChapters } from '@/shared/hooks';
 import { CoverPlayButton, JogState } from '@/shared/components/CoverPlayButton';
 import { haptics } from '@/core/native/haptics';
 import { colors, spacing, radius, scale, wp, hp, layout } from '@/shared/theme';
@@ -421,6 +422,8 @@ export function CDPlayerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const wasVisibleRef = useRef(false); // Track previous visibility to prevent stutter
+  const isAnimatingRef = useRef(false); // Track if animation is in progress
 
   // Store state
   const {
@@ -457,6 +460,8 @@ export function CDPlayerScreen() {
   const setSleepTimer = usePlayerStore((s) => s.setSleepTimer);
   const clearSleepTimer = usePlayerStore((s) => s.clearSleepTimer);
   const seekTo = usePlayerStore((s) => s.seekTo);
+  const nextChapter = usePlayerStore((s) => s.nextChapter);
+  const prevChapter = usePlayerStore((s) => s.prevChapter);
 
   // Skip interval settings
   const skipForwardInterval = usePlayerStore((s) => s.skipForwardInterval ?? 30);
@@ -504,6 +509,10 @@ export function CDPlayerScreen() {
   const description = metadata?.description || '';
   const currentChapter = chapters[chapterIndex];
 
+  // Get normalized chapter names based on user settings
+  const normalizedChapters = useNormalizedChapters(chapters, { bookTitle: title });
+  const currentNormalizedChapter = normalizedChapters[chapterIndex];
+
   // Calculate disc center Y position dynamically based on insets
   // Header: insets.top + scale(10) padding + headerRow (scale(44) button + scale(12) margin) + title (~scale(18)) + author (scale(6) margin + scale(16)) + disc margin scale(10)
   const headerHeight = insets.top + scale(10) + scale(44) + scale(12) + scale(18) + scale(6) + scale(16) + scale(10);
@@ -535,16 +544,28 @@ export function CDPlayerScreen() {
     return chapters.map((ch: any) => (ch.start / duration) * 100);
   }, [progressMode, chapters, duration]);
 
-  // Format sleep timer display
+  // Format sleep timer display - live countdown with seconds
   const formatSleepTimer = (seconds: number | null): string => {
     if (!seconds || seconds <= 0) return 'Off';
-    const mins = Math.ceil(seconds / 60);
-    if (mins >= 60) {
-      const hrs = Math.floor(mins / 60);
-      const remainMins = mins % 60;
-      return remainMins > 0 ? `${hrs}h ${remainMins}m` : `${hrs}h`;
+
+    // For timers > 1 hour, show hours and minutes
+    if (seconds >= 3600) {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
     }
-    return `${mins}m`;
+
+    // For timers > 5 minutes, show minutes and seconds
+    if (seconds >= 300) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // For timers <= 5 minutes, show live countdown MM:SS
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   
@@ -576,16 +597,35 @@ export function CDPlayerScreen() {
     })
   ).current;
 
-  // Animation on open
+  // Animation on open - only animate when transitioning from hidden to visible
+  // CRITICAL: Prevent animation restart during rapid state changes (causes flashing)
   React.useEffect(() => {
     if (isPlayerVisible && currentBook) {
-      slideAnim.setValue(SCREEN_HEIGHT);
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 55,
-        friction: 12,
-        useNativeDriver: true,
-      }).start();
+      // Only animate if we weren't visible before AND no animation is in progress
+      // This prevents the flashing issue when isPlayerVisible toggles rapidly
+      if (!wasVisibleRef.current && !isAnimatingRef.current) {
+        isAnimatingRef.current = true;
+        slideAnim.setValue(SCREEN_HEIGHT);
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 55,
+          friction: 12,
+          useNativeDriver: true,
+        }).start(() => {
+          isAnimatingRef.current = false;
+        });
+      }
+      wasVisibleRef.current = true;
+    } else {
+      // Only reset if player is actually closed (not during rapid toggles)
+      // Use a small delay to prevent reset during quick state changes
+      const timeoutId = setTimeout(() => {
+        if (!isPlayerVisible) {
+          wasVisibleRef.current = false;
+          isAnimatingRef.current = false;
+        }
+      }, 50);
+      return () => clearTimeout(timeoutId);
     }
   }, [isPlayerVisible, currentBook?.id]);
 
@@ -636,7 +676,7 @@ export function CDPlayerScreen() {
 
   // Skip backward using configured interval
   const handleSkipBack = useCallback(() => {
-    haptics.impact('light');
+    haptics.skip();  // Use category-specific haptic for playback controls
     const newPosition = Math.max(0, position - skipBackInterval);
     seekTo?.(newPosition);
     // Spin disc backward for visual feedback (90 degrees)
@@ -645,12 +685,28 @@ export function CDPlayerScreen() {
 
   // Skip forward using configured interval
   const handleSkipForward = useCallback(() => {
-    haptics.impact('light');
+    haptics.skip();  // Use category-specific haptic for playback controls
     const newPosition = Math.min(duration, position + skipForwardInterval);
     seekTo?.(newPosition);
     // Spin disc forward for visual feedback (90 degrees)
     discSpinBurst.value = 90;
   }, [position, duration, skipForwardInterval, seekTo, discSpinBurst]);
+
+  // Long-press: Skip to previous chapter
+  const handlePrevChapter = useCallback(() => {
+    haptics.chapterChange();  // Use chapter-specific haptic
+    prevChapter?.();
+    // Spin disc backward for visual feedback (180 degrees for chapter jump)
+    discSpinBurst.value = -180;
+  }, [prevChapter, discSpinBurst]);
+
+  // Long-press: Skip to next chapter
+  const handleNextChapter = useCallback(() => {
+    haptics.chapterChange();  // Use chapter-specific haptic
+    nextChapter?.();
+    // Spin disc forward for visual feedback (180 degrees for chapter jump)
+    discSpinBurst.value = 180;
+  }, [nextChapter, discSpinBurst]);
 
   // ==========================================================================
   // RENDER HELPERS
@@ -670,9 +726,9 @@ export function CDPlayerScreen() {
         </TouchableOpacity>
       </View>
       <ScrollView style={styles.chaptersList} showsVerticalScrollIndicator={false}>
-        {chapters.map((chapter: any, index: number) => {
+        {normalizedChapters.map((chapter, index: number) => {
           const isCurrentChapter = index === chapterIndex;
-          const chapterTitle = chapter.title || `Chapter ${index + 1}`;
+          const chapterTitle = chapter.displayTitle || `Chapter ${index + 1}`;
           const chapterDuration = formatTime(chapter.end - chapter.start);
 
           return (
@@ -809,10 +865,17 @@ export function CDPlayerScreen() {
               {isDownloaded ? 'Downloaded' : 'Streaming'}
             </Text>
           </View>
-          {/* Center - Down arrow */}
-          <View style={styles.arrowCenter}>
+          {/* Center - Down arrow (tap to close) */}
+          <TouchableOpacity
+            style={styles.arrowButton}
+            onPress={handleClose}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close player"
+          >
             <DownArrowIcon />
-          </View>
+          </TouchableOpacity>
           {/* Right - Settings */}
           <TouchableOpacity
             style={styles.settingsButton}
@@ -1062,7 +1125,7 @@ export function CDPlayerScreen() {
         <View style={styles.infoRow}>
           <TouchableOpacity onPress={() => setActiveSheet('chapters')}>
             <Text style={styles.chapter} numberOfLines={1}>
-              {currentChapter?.title || `Chapter ${chapterIndex + 1}`}
+              {currentNormalizedChapter?.displayTitle || `Chapter ${chapterIndex + 1}`}
             </Text>
           </TouchableOpacity>
           <Text style={[styles.chapterRemaining, scrubOffset !== null && styles.scrubOffsetText]}>
@@ -1091,12 +1154,14 @@ export function CDPlayerScreen() {
 
         {/* Playback Controls - Skip at edges, Play in center */}
         <View style={styles.controlsRow}>
-          {/* Skip Back - far left */}
+          {/* Skip Back - far left (tap: time skip, long press: prev chapter) */}
           <TouchableOpacity
             style={styles.skipButton}
             onPress={handleSkipBack}
+            onLongPress={handlePrevChapter}
+            delayLongPress={400}
             activeOpacity={0.7}
-            accessibilityLabel={`Skip back ${skipBackInterval} seconds`}
+            accessibilityLabel={`Skip back ${skipBackInterval} seconds. Long press for previous chapter`}
             accessibilityRole="button"
           >
             <RewindIcon />
@@ -1124,12 +1189,14 @@ export function CDPlayerScreen() {
             </View>
           </View>
 
-          {/* Skip Forward - far right */}
+          {/* Skip Forward - far right (tap: time skip, long press: next chapter) */}
           <TouchableOpacity
             style={styles.skipButton}
             onPress={handleSkipForward}
+            onLongPress={handleNextChapter}
+            delayLongPress={400}
             activeOpacity={0.7}
-            accessibilityLabel={`Skip forward ${skipForwardInterval} seconds`}
+            accessibilityLabel={`Skip forward ${skipForwardInterval} seconds. Long press for next chapter`}
             accessibilityRole="button"
           >
             <FastForwardIcon />
@@ -1211,6 +1278,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  arrowButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(8),
   },
   header: {
     alignItems: 'center',

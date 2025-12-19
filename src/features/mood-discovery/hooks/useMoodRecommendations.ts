@@ -25,6 +25,7 @@ import {
   LENGTH_OPTIONS,
 } from '../types';
 import { useActiveSession } from '../stores/moodSessionStore';
+import { useReadingHistory } from '@/features/reading-history-wizard';
 
 // ============================================================================
 // SCORING CONSTANTS
@@ -378,6 +379,10 @@ interface UseMoodRecommendationsOptions {
   minMatchPercent?: number;
   limit?: number;
   includeUntagged?: boolean;
+  /** Whether to exclude finished books (default: true) */
+  excludeFinished?: boolean;
+  /** Whether to apply preference boosts from reading history (default: true) */
+  applyPreferenceBoosts?: boolean;
 }
 
 interface UseMoodRecommendationsResult {
@@ -390,6 +395,9 @@ interface UseMoodRecommendationsResult {
 
 /**
  * Hook to get mood-based book recommendations.
+ * Now integrates with reading history to:
+ * - Exclude finished books (locally marked or server progress >= 95%)
+ * - Boost books by authors/series/genres the user has enjoyed
  */
 export function useMoodRecommendations(
   options: UseMoodRecommendationsOptions = {}
@@ -398,12 +406,17 @@ export function useMoodRecommendations(
     minMatchPercent = 0,
     limit = 50,
     includeUntagged = false,
+    excludeFinished = true,
+    applyPreferenceBoosts = true,
   } = options;
 
   const activeSession = useActiveSession();
   const session = options.session ?? activeSession;
   const items = useLibraryCache((s) => s.items);
   const isLoaded = useLibraryCache((s) => s.isLoaded);
+
+  // Get reading history for filtering and boosts
+  const { isFinished, getPreferenceBoost, hasHistory } = useReadingHistory();
 
   // Defer heavy computation
   const deferredMood = useDeferredValue(session?.mood ?? '');
@@ -426,6 +439,11 @@ export function useMoodRecommendations(
     const unscored: LibraryItem[] = [];
 
     for (const item of items) {
+      // Skip finished books if requested
+      if (excludeFinished && isFinished(item.id)) {
+        continue;
+      }
+
       const metadata = getMetadata(item);
       const genres: string[] = metadata.genres || [];
       const description: string = metadata.description || '';
@@ -444,7 +462,15 @@ export function useMoodRecommendations(
       }
 
       const score = calculateMoodScore(item, session);
-      const matchPercent = scoreToPercent(score, session);
+      let matchPercent = scoreToPercent(score, session);
+
+      // Apply preference boosts from reading history
+      if (applyPreferenceBoosts && hasHistory) {
+        const boost = getPreferenceBoost(item);
+        // Add preference boost (max +15% to match percent)
+        const preferenceBoost = Math.min(15, boost.totalBoost / 5);
+        matchPercent = Math.min(100, matchPercent + preferenceBoost);
+      }
 
       // Filter by minimum match percent
       if (matchPercent >= minMatchPercent) {
@@ -486,6 +512,11 @@ export function useMoodRecommendations(
     minMatchPercent,
     limit,
     includeUntagged,
+    excludeFinished,
+    applyPreferenceBoosts,
+    isFinished,
+    getPreferenceBoost,
+    hasHistory,
   ]);
 
   return result;
