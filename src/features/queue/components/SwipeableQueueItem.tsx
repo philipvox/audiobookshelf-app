@@ -10,7 +10,7 @@ import React, { useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Animated as RNAnimated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Menu, Trash2, ArrowUp, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
@@ -83,7 +83,7 @@ export function SwipeableQueueItem({
           style={[styles.rightAction, { transform: [{ translateX }], opacity }]}
         >
           <Pressable style={styles.removeAction} onPress={handleRemove}>
-            <Ionicons name="trash-outline" size={scale(22)} color="#fff" />
+            <Trash2 size={scale(22)} color="#fff" strokeWidth={2} />
             <Text style={styles.actionText}>Remove</Text>
           </Pressable>
         </RNAnimated.View>
@@ -106,7 +106,7 @@ export function SwipeableQueueItem({
       <Pressable style={styles.container} onPress={onPress}>
         {/* Drag handle */}
         <View style={styles.dragHandle}>
-          <Ionicons name="menu" size={scale(18)} color="rgba(255,255,255,0.4)" />
+          <Menu size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
         </View>
 
         {/* Cover */}
@@ -130,7 +130,7 @@ export function SwipeableQueueItem({
               onPress={handlePlayNext}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="arrow-up" size={scale(16)} color={ACCENT} />
+              <ArrowUp size={scale(16)} color={ACCENT} strokeWidth={2} />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -138,7 +138,7 @@ export function SwipeableQueueItem({
             onPress={handleRemove}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="close" size={scale(18)} color="rgba(255,255,255,0.5)" />
+            <X size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </Pressable>

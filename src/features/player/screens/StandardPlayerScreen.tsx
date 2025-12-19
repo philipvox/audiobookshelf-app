@@ -17,7 +17,19 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Moon,
+  ChevronDown,
+  Settings,
+  BookOpen,
+  SkipBack,
+  SkipForward,
+  Play,
+  Pause,
+  Gauge,
+  List,
+  Layers,
+} from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
   useAnimatedStyle,
@@ -68,7 +80,7 @@ const formatSleepTimer = (seconds: number): string => {
 // =============================================================================
 
 const MoonIcon = () => (
-  <Ionicons name="moon-outline" size={scale(14)} color="#fff" />
+  <Moon size={scale(14)} color="#fff" strokeWidth={2} />
 );
 
 // =============================================================================
@@ -230,7 +242,7 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Ionicons name="chevron-down" size={scale(28)} color="white" />
+            <ChevronDown size={scale(28)} color="white" strokeWidth={2} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -239,7 +251,7 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel="Player settings"
             accessibilityRole="button"
           >
-            <Ionicons name="settings-outline" size={scale(24)} color="white" />
+            <Settings size={scale(24)} color="white" strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
@@ -255,7 +267,7 @@ const StandardPlayerScreen: React.FC = () => {
             />
           ) : (
             <View style={[styles.cover, styles.coverPlaceholder]}>
-              <Ionicons name="book-outline" size={scale(60)} color="rgba(255,255,255,0.3)" />
+              <BookOpen size={scale(60)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
             </View>
           )}
           {/* Speed badge */}
@@ -317,7 +329,7 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel={`Skip back ${skipBackInterval} seconds`}
             accessibilityRole="button"
           >
-            <Ionicons name="play-back" size={scale(44)} color="white" />
+            <SkipBack size={scale(44)} color="white" strokeWidth={1.5} />
             <Text style={styles.skipLabel}>{skipBackInterval}</Text>
           </TouchableOpacity>
 
@@ -327,12 +339,11 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
             accessibilityRole="button"
           >
-            <Ionicons
-              name={isPlaying ? 'pause' : 'play'}
-              size={scale(36)}
-              color={colors.backgroundPrimary}
-              style={!isPlaying && { marginLeft: scale(4) }}
-            />
+            {isPlaying ? (
+              <Pause size={scale(36)} color={colors.backgroundPrimary} strokeWidth={2} fill={colors.backgroundPrimary} />
+            ) : (
+              <Play size={scale(36)} color={colors.backgroundPrimary} strokeWidth={0} fill={colors.backgroundPrimary} style={{ marginLeft: scale(4) }} />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -341,7 +352,7 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel={`Skip forward ${skipForwardInterval} seconds`}
             accessibilityRole="button"
           >
-            <Ionicons name="play-forward" size={scale(44)} color="white" />
+            <SkipForward size={scale(44)} color="white" strokeWidth={1.5} />
             <Text style={styles.skipLabel}>{skipForwardInterval}</Text>
           </TouchableOpacity>
         </View>
@@ -364,7 +375,7 @@ const StandardPlayerScreen: React.FC = () => {
             onPress={() => setActiveSheet('speed')}
             accessibilityLabel="Playback speed"
           >
-            <Ionicons name="speedometer-outline" size={scale(18)} color="white" />
+            <Gauge size={scale(18)} color="white" strokeWidth={2} />
             <Text style={[styles.actionLabel, playbackRate !== 1 && styles.actionLabelActive]}>
               {playbackRate}x
             </Text>
@@ -375,7 +386,7 @@ const StandardPlayerScreen: React.FC = () => {
             onPress={handleChapterTap}
             accessibilityLabel="Chapters"
           >
-            <Ionicons name="list-outline" size={scale(18)} color="white" />
+            <List size={scale(18)} color="white" strokeWidth={2} />
             <Text style={styles.actionLabel}>Chapters</Text>
           </TouchableOpacity>
 
@@ -385,7 +396,7 @@ const StandardPlayerScreen: React.FC = () => {
             accessibilityLabel="Queue"
           >
             <View>
-              <Ionicons name="albums-outline" size={scale(18)} color={queueCount > 0 ? colors.accent : 'white'} />
+              <Layers size={scale(18)} color={queueCount > 0 ? colors.accent : 'white'} strokeWidth={2} />
               {queueCount > 0 && (
                 <View style={styles.queueBadge}>
                   <Text style={styles.queueBadgeText}>{queueCount}</Text>

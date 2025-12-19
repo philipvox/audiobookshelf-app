@@ -9,7 +9,7 @@ import React, { memo, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { LayoutGrid, BookOpen } from 'lucide-react-native';
 import { Collection } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { colors, scale, spacing, radius, elevation } from '@/shared/theme';
@@ -40,12 +40,12 @@ export const CollectionCard = memo(function CollectionCard({ collection }: Colle
           <Image source={coverUrl} style={styles.cover} contentFit="cover" transition={200} />
         ) : (
           <View style={[styles.cover, styles.placeholderCover]}>
-            <Ionicons name="albums" size={scale(32)} color="rgba(255,255,255,0.3)" />
+            <LayoutGrid size={scale(32)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           </View>
         )}
 
         <View style={styles.countBadge}>
-          <Ionicons name="book" size={scale(10)} color="#000" />
+          <BookOpen size={scale(10)} color="#000" strokeWidth={2.5} />
           <Text style={styles.countText}>{bookCount}</Text>
         </View>
       </View>

@@ -73,7 +73,61 @@ const ListIcon = ({ size = 64, color = colors.textMuted }: { size?: number; colo
   </Svg>
 );
 
-export type EmptyStateIcon = 'book' | 'search' | 'heart' | 'download' | 'list';
+const UserIcon = ({ size = 64, color = colors.textMuted }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={1.5} />
+    <Path
+      d="M4 20c0-3.314 3.134-6 7-6h2c3.866 0 7 2.686 7 6"
+      stroke={color}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+const MicIcon = ({ size = 64, color = colors.textMuted }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="9" y="2" width="6" height="11" rx="3" stroke={color} strokeWidth={1.5} />
+    <Path d="M5 10a7 7 0 0014 0" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+    <Path d="M12 17v4M8 21h8" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+  </Svg>
+);
+
+const LibraryIcon = ({ size = 64, color = colors.textMuted }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="4" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
+    <Rect x="10" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
+    <Rect x="16" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
+  </Svg>
+);
+
+const CelebrateIcon = ({ size = 64, color = colors.textMuted }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M5.8 11.3L2 22l10.7-3.8" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M4 3v.01M22 8v.01M18 2v.01M15 3v.01M20 14v.01" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Path d="M8.5 8.5l-1-1M6.5 12.5l-1-1M12.5 6.5l-1-1" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+    <Path d="M9 6a6 6 0 019 9" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+  </Svg>
+);
+
+const CollectionIcon = ({ size = 64, color = colors.textMuted }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="3" y="3" width="18" height="18" rx="2" stroke={color} strokeWidth={1.5} />
+    <Path d="M3 9h18M9 21V9" stroke={color} strokeWidth={1.5} />
+  </Svg>
+);
+
+export type EmptyStateIcon =
+  | 'book'
+  | 'search'
+  | 'heart'
+  | 'download'
+  | 'list'
+  | 'user'
+  | 'mic'
+  | 'library'
+  | 'celebrate'
+  | 'collection';
 
 const ICONS: Record<EmptyStateIcon, React.FC<{ size?: number; color?: string }>> = {
   book: BookIcon,
@@ -81,13 +135,30 @@ const ICONS: Record<EmptyStateIcon, React.FC<{ size?: number; color?: string }>>
   heart: HeartIcon,
   download: DownloadIcon,
   list: ListIcon,
+  user: UserIcon,
+  mic: MicIcon,
+  library: LibraryIcon,
+  celebrate: CelebrateIcon,
+  collection: CollectionIcon,
+};
+
+// Emoji to icon mapping for backward compatibility
+const EMOJI_TO_ICON: Record<string, EmptyStateIcon> = {
+  '📚': 'library',
+  '📖': 'book',
+  '🔍': 'search',
+  '👤': 'user',
+  '🎙️': 'mic',
+  '❤️': 'heart',
+  '🎉': 'celebrate',
+  '📁': 'collection',
 };
 
 interface EmptyStateProps {
   /** Main message/title */
   title: string;
-  /** Built-in icon name or custom React node */
-  icon?: EmptyStateIcon | React.ReactNode;
+  /** Built-in icon name, emoji (auto-mapped), or custom React node */
+  icon?: EmptyStateIcon | string | React.ReactNode;
   /** Optional description below the title */
   description?: string;
   /** Action button title */
@@ -120,9 +191,20 @@ export function EmptyState({
   style,
 }: EmptyStateProps) {
   const renderIcon = () => {
-    if (typeof icon === 'string' && icon in ICONS) {
-      const IconComponent = ICONS[icon as EmptyStateIcon];
-      return <IconComponent size={scale(64)} />;
+    if (typeof icon === 'string') {
+      // Check if it's a valid icon name
+      if (icon in ICONS) {
+        const IconComponent = ICONS[icon as EmptyStateIcon];
+        return <IconComponent size={scale(64)} />;
+      }
+      // Check if it's an emoji that can be mapped
+      if (icon in EMOJI_TO_ICON) {
+        const mappedIcon = EMOJI_TO_ICON[icon];
+        const IconComponent = ICONS[mappedIcon];
+        return <IconComponent size={scale(64)} />;
+      }
+      // Fallback for any unrecognized string (including unknown emojis)
+      return <BookIcon size={scale(64)} />;
     }
     if (React.isValidElement(icon)) {
       return icon;

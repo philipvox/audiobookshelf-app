@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Mic, CheckCircle, Play, ArrowUp, ArrowDown } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -255,7 +255,7 @@ export function NarratorDetailScreen() {
           />
           {isCompleted && (
             <View style={styles.completedBadge}>
-              <Ionicons name="checkmark-circle" size={scale(16)} color={ACCENT} />
+              <CheckCircle size={scale(16)} color={ACCENT} strokeWidth={2} />
             </View>
           )}
         </View>
@@ -298,7 +298,7 @@ export function NarratorDetailScreen() {
           style={styles.playButton}
           onPress={() => handlePlayBook(book)}
         >
-          <Ionicons name="play" size={scale(18)} color="#000" />
+          <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -390,13 +390,13 @@ export function NarratorDetailScreen() {
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Narrator</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.emptyContainer}>
-          <Ionicons name="mic-outline" size={scale(48)} color="rgba(255,255,255,0.3)" />
+          <Mic size={scale(48)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>Narrator not found</Text>
           <Text style={styles.emptySubtitle}>This narrator may have been removed</Text>
         </View>
@@ -411,7 +411,7 @@ export function NarratorDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Narrator</Text>
         <View style={styles.headerButton} />
@@ -425,7 +425,7 @@ export function NarratorDetailScreen() {
         {/* Narrator Header */}
         <View style={styles.entityHeader}>
           <View style={styles.avatarContainer}>
-            <Ionicons name="mic" size={scale(48)} color="#fff" />
+            <Mic size={scale(48)} color="#fff" strokeWidth={1.5} />
           </View>
           <Text style={styles.entityName}>{narratorInfo.name}</Text>
           <Text style={styles.entityStats}>
@@ -501,11 +501,11 @@ export function NarratorDetailScreen() {
                     onPress={() => handleSortPress(type)}
                   >
                     {sortBy === type && (
-                      <Ionicons
-                        name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                        size={scale(12)}
-                        color="#000"
-                      />
+                      sortDirection === 'asc' ? (
+                        <ArrowUp size={scale(12)} color="#000" strokeWidth={2} />
+                      ) : (
+                        <ArrowDown size={scale(12)} color="#000" strokeWidth={2} />
+                      )
                     )}
                     <Text style={[styles.sortButtonText, sortBy === type && styles.sortButtonTextActive]}>
                       {type === 'title' ? 'Title' :

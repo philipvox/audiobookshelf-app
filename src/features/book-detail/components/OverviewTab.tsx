@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { User, Mic, Library, Tag, Calendar, Building, Globe } from 'lucide-react-native';
 import { LibraryItem } from '@/core/types';
 import { colors, scale, spacing, radius } from '@/shared/theme';
 
@@ -110,7 +110,7 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
         {/* Authors */}
         {authors.length > 0 && (
           <View style={styles.metadataRow}>
-            <Ionicons name="person-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <User size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
             <View style={styles.chipContainer}>
               {authors.map((author, idx) => (
                 <TouchableOpacity
@@ -132,7 +132,7 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
         {/* Narrators */}
         {narrators.length > 0 && (
           <View style={styles.metadataRow}>
-            <Ionicons name="mic-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <Mic size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
             <View style={styles.chipContainer}>
               {narrators.map((narrator, idx) => (
                 <TouchableOpacity
@@ -154,7 +154,7 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
         {/* Series */}
         {seriesName && (
           <View style={styles.metadataRow}>
-            <Ionicons name="library-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <Library size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
             <TouchableOpacity
               style={styles.chip}
               onPress={handleSeriesPress}
@@ -171,7 +171,7 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
         {/* Genres */}
         {genres.length > 0 && (
           <View style={styles.metadataRow}>
-            <Ionicons name="pricetag-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+            <Tag size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
             <View style={styles.chipContainer}>
               {genres.slice(0, 4).map((genre, idx) => (
                 <TouchableOpacity
@@ -198,19 +198,19 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
           <>
             {metadata.publishedYear && (
               <View style={styles.metadataRow}>
-                <Ionicons name="calendar-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Calendar size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
                 <Text style={styles.detailText}>{metadata.publishedYear}</Text>
               </View>
             )}
             {metadata.publisher && (
               <View style={styles.metadataRow}>
-                <Ionicons name="business-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Building size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
                 <Text style={styles.detailText}>{metadata.publisher}</Text>
               </View>
             )}
             {metadata.language && (
               <View style={styles.metadataRow}>
-                <Ionicons name="globe-outline" size={scale(14)} color="rgba(255,255,255,0.4)" />
+                <Globe size={scale(14)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
                 <Text style={styles.detailText}>{metadata.language}</Text>
               </View>
             )}

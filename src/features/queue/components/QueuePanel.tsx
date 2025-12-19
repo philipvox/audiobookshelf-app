@@ -19,7 +19,7 @@ import DraggableFlatList, {
   ScaleDecorator,
 } from 'react-native-draggable-flatlist';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Menu, ArrowUp, X, Layers, SkipForward } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
@@ -88,10 +88,10 @@ function DraggableQueueItem({
       <View style={[styles.itemContainer, isActive && styles.itemActive]}>
         {/* Drag handle */}
         <Pressable style={styles.dragHandle} onLongPress={handleDrag}>
-          <Ionicons
-            name="menu"
+          <Menu
             size={scale(18)}
             color={isActive ? colors.accent : 'rgba(255,255,255,0.4)'}
+            strokeWidth={2}
           />
         </Pressable>
 
@@ -116,7 +116,7 @@ function DraggableQueueItem({
               onPress={handlePlayNext}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="arrow-up" size={scale(16)} color={colors.accent} />
+              <ArrowUp size={scale(16)} color={colors.accent} strokeWidth={2.5} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -124,7 +124,7 @@ function DraggableQueueItem({
             onPress={handleRemove}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="close" size={scale(18)} color="rgba(255,255,255,0.5)" />
+            <X size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>
@@ -225,14 +225,14 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Up Next</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color={colors.textPrimary} />
+            <X size={24} color={colors.textPrimary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
         <View style={styles.emptyContainer}>
-          <Ionicons
-            name="albums-outline"
+          <Layers
             size={scale(48)}
             color={colors.textMuted}
+            strokeWidth={1.5}
           />
           <Text style={styles.emptyText}>Your queue is empty</Text>
           <Text style={styles.emptySubtext}>
@@ -248,10 +248,10 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
         {/* Autoplay toggle even when empty */}
         <View style={styles.autoplayRow}>
           <View style={styles.autoplayInfo}>
-            <Ionicons
-              name="play-skip-forward-outline"
+            <SkipForward
               size={scale(18)}
               color={colors.textSecondary}
+              strokeWidth={2}
             />
             <Text style={styles.autoplayLabel}>Autoplay series</Text>
           </View>
@@ -277,7 +277,7 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
           </View>
         </View>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
+          <X size={24} color={colors.textPrimary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 

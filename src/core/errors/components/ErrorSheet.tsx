@@ -15,7 +15,7 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AlertCircle, RefreshCw, CloudOff, LogIn, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity, RecoveryStrategy } from '../types';
 
@@ -37,10 +37,10 @@ const SEVERITY_COLORS: Record<ErrorSeverity, string> = {
   critical: '#d32f2f',
 };
 
-const RECOVERY_BUTTONS: Record<RecoveryStrategy, { text: string; icon: string } | null> = {
-  retry: { text: 'Try Again', icon: 'refresh' },
-  offline: { text: 'Work Offline', icon: 'cloud-offline' },
-  reauth: { text: 'Log In Again', icon: 'log-in' },
+const RECOVERY_BUTTONS: Record<RecoveryStrategy, { text: string; Icon: LucideIcon } | null> = {
+  retry: { text: 'Try Again', Icon: RefreshCw },
+  offline: { text: 'Work Offline', Icon: CloudOff },
+  reauth: { text: 'Log In Again', Icon: LogIn },
   manual: null,
   none: null,
 };
@@ -78,7 +78,7 @@ export function ErrorSheet({
           {/* Header */}
           <View style={styles.header}>
             <View style={[styles.iconCircle, { backgroundColor: `${color}20` }]}>
-              <Ionicons name="alert-circle" size={32} color={color} />
+              <AlertCircle size={32} color={color} strokeWidth={2} />
             </View>
             <Text style={styles.title}>Something went wrong</Text>
             <Text style={styles.subtitle}>{getCategoryLabel(error.category)}</Text>
@@ -120,10 +120,10 @@ export function ErrorSheet({
                 style={[styles.primaryButton, { backgroundColor: color }]}
                 onPress={onRetry}
               >
-                <Ionicons
-                  name={recoveryButton.icon as any}
+                <recoveryButton.Icon
                   size={20}
                   color="#fff"
+                  strokeWidth={2}
                   style={styles.buttonIcon}
                 />
                 <Text style={styles.primaryButtonText}>{recoveryButton.text}</Text>

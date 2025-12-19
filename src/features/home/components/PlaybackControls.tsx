@@ -1,13 +1,13 @@
 /**
  * src/features/home/components/PlaybackControls.tsx
  *
- * Playback controls - standard Ionicons
+ * Playback controls using Lucide icons
  * Order: Rewind | Fast Forward | Play
  */
 
 import React, { useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { SkipBack, SkipForward, Play, Pause } from 'lucide-react-native';
 import { haptics } from '@/core/native/haptics';
 import {
   colors,
@@ -93,7 +93,7 @@ export function PlaybackControls({
         accessibilityRole="button"
         accessibilityHint="Double tap to skip back. Long press for continuous rewind."
       >
-        <Ionicons name="play-back" size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} />
+        <SkipBack size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} strokeWidth={2} />
       </TouchableOpacity>
 
       {/* Fast Forward */}
@@ -108,7 +108,7 @@ export function PlaybackControls({
         accessibilityRole="button"
         accessibilityHint="Double tap to skip forward. Long press for continuous fast forward."
       >
-        <Ionicons name="play-forward" size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} />
+        <SkipForward size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} strokeWidth={2} />
       </TouchableOpacity>
 
       {/* Play/Pause - shows spinner when loading */}
@@ -123,12 +123,10 @@ export function PlaybackControls({
       >
         {isLoading ? (
           <ActivityIndicator size={playIconSize} color={colors.accent} />
+        ) : isPlaying ? (
+          <Pause size={playIconSize} color={colors.accent} strokeWidth={2} fill={colors.accent} />
         ) : (
-          <Ionicons
-            name={isPlaying ? 'pause' : 'play'}
-            size={playIconSize}
-            color={colors.accent}
-          />
+          <Play size={playIconSize} color={colors.accent} strokeWidth={0} fill={colors.accent} />
         )}
       </TouchableOpacity>
     </View>

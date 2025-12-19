@@ -17,7 +17,18 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  Download,
+  Wifi,
+  Library,
+  RefreshCw,
+  Trash2,
+  Info,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
@@ -38,7 +49,7 @@ function formatBytes(bytes: number): string {
 
 // Settings Row Component
 interface SettingsRowProps {
-  icon: keyof typeof Ionicons.glyphMap;
+  Icon: LucideIcon;
   label: string;
   value?: string;
   valueColor?: string;
@@ -50,7 +61,7 @@ interface SettingsRowProps {
 }
 
 function SettingsRow({
-  icon,
+  Icon,
   label,
   value,
   valueColor,
@@ -64,10 +75,10 @@ function SettingsRow({
     <View style={styles.settingsRow}>
       <View style={styles.rowLeft}>
         <View style={[styles.iconContainer, danger && styles.iconContainerDanger]}>
-          <Ionicons
-            name={icon}
+          <Icon
             size={scale(18)}
             color={danger ? '#ff4b4b' : 'rgba(255,255,255,0.8)'}
+            strokeWidth={2}
           />
         </View>
         <View style={styles.rowContent}>
@@ -90,7 +101,7 @@ function SettingsRow({
           />
         ) : null}
         {onPress ? (
-          <Ionicons name="chevron-forward" size={scale(18)} color="rgba(255,255,255,0.3)" />
+          <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
         ) : null}
       </View>
     </View>
@@ -117,7 +128,7 @@ function StorageMeter({ used, label }: { used: number; label: string }) {
   return (
     <View style={styles.storageMeter}>
       <View style={styles.storageIcon}>
-        <Ionicons name="folder" size={scale(24)} color={ACCENT} />
+        <Folder size={scale(24)} color={ACCENT} strokeWidth={2} />
       </View>
       <View style={styles.storageInfo}>
         <Text style={styles.storageValue}>{formatBytes(used)}</Text>
@@ -220,7 +231,7 @@ export function StorageSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Storage</Text>
         <View style={styles.headerSpacer} />
@@ -241,20 +252,20 @@ export function StorageSettingsScreen() {
           <SectionHeader title="Downloads" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="download-outline"
+              Icon={Download}
               label="Manage Downloads"
               value={`${downloadCount} book${downloadCount !== 1 ? 's' : ''}`}
               onPress={handleManageDownloads}
             />
             <SettingsRow
-              icon="wifi-outline"
+              Icon={Wifi}
               label="WiFi Only"
               switchValue={wifiOnlyEnabled}
               onSwitchChange={handleWifiOnlyToggle}
               note="Pause downloads when not on WiFi"
             />
             <SettingsRow
-              icon="library-outline"
+              Icon={Library}
               label="Auto-Download Series"
               switchValue={autoDownloadSeriesEnabled}
               onSwitchChange={handleAutoDownloadSeriesToggle}
@@ -268,7 +279,7 @@ export function StorageSettingsScreen() {
           <SectionHeader title="Cache" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="refresh-outline"
+              Icon={RefreshCw}
               label="Refresh Library Cache"
               value={isRefreshingCache ? 'Refreshing...' : undefined}
               valueColor="rgba(255,255,255,0.5)"
@@ -283,7 +294,7 @@ export function StorageSettingsScreen() {
           <SectionHeader title="Danger Zone" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="trash-outline"
+              Icon={Trash2}
               label="Clear All Downloads"
               onPress={isClearingDownloads ? undefined : handleClearAllDownloads}
               value={isClearingDownloads ? 'Clearing...' : undefined}
@@ -296,7 +307,7 @@ export function StorageSettingsScreen() {
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Ionicons name="information-circle-outline" size={scale(16)} color="rgba(255,255,255,0.4)" />
+          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
           <Text style={styles.infoText}>
             Downloads are stored locally on your device. Clearing downloads will not affect your listening progress, which is synced with the server.
           </Text>

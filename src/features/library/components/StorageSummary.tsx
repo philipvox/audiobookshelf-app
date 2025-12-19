@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { CloudDownload, ChevronRight } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system';
 import { colors, scale } from '@/shared/theme';
 
@@ -61,7 +61,7 @@ export function StorageSummary({ usedBytes, bookCount = 0, onManagePress }: Stor
       {/* Header row */}
       <View style={styles.headerRow}>
         <View style={styles.iconLabel}>
-          <Ionicons name="cloud-download" size={scale(16)} color={ACCENT} />
+          <CloudDownload size={scale(16)} color={ACCENT} strokeWidth={2} />
           <Text style={styles.headerText}>Downloaded</Text>
         </View>
         <Text style={styles.usedText}>{formatBytes(usedBytes)}</Text>
@@ -87,7 +87,7 @@ export function StorageSummary({ usedBytes, bookCount = 0, onManagePress }: Stor
             activeOpacity={0.7}
           >
             <Text style={styles.manageText}>Manage</Text>
-            <Ionicons name="chevron-forward" size={scale(12)} color={ACCENT} />
+            <ChevronRight size={scale(12)} color={ACCENT} strokeWidth={2} />
           </TouchableOpacity>
         )}
       </View>

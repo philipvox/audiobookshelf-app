@@ -17,7 +17,20 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  Circle,
+  PlayCircle,
+  GitCommitHorizontal,
+  Gauge,
+  Moon,
+  Download,
+  Bookmark,
+  Trophy,
+  Hand,
+  Info,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, scale } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
@@ -27,7 +40,7 @@ const ACCENT = colors.accent;
 
 // Settings Row Component
 interface SettingsRowProps {
-  icon: keyof typeof Ionicons.glyphMap;
+  Icon: LucideIcon;
   label: string;
   note?: string;
   switchValue: boolean;
@@ -35,7 +48,7 @@ interface SettingsRowProps {
   disabled?: boolean;
 }
 
-function SettingsRow({ icon, label, note, switchValue, onSwitchChange, disabled }: SettingsRowProps) {
+function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled }: SettingsRowProps) {
   const handleChange = useCallback((value: boolean) => {
     // Play haptic feedback when enabling
     if (value) {
@@ -48,10 +61,10 @@ function SettingsRow({ icon, label, note, switchValue, onSwitchChange, disabled 
     <View style={[styles.settingsRow, disabled && styles.settingsRowDisabled]}>
       <View style={styles.rowLeft}>
         <View style={[styles.iconContainer, disabled && styles.iconContainerDisabled]}>
-          <Ionicons
-            name={icon}
+          <Icon
             size={scale(18)}
             color={disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)'}
+            strokeWidth={2}
           />
         </View>
         <View style={styles.rowContent}>
@@ -120,7 +133,7 @@ export function HapticSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Haptic Feedback</Text>
         <View style={styles.headerSpacer} />
@@ -135,7 +148,7 @@ export function HapticSettingsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="radio-button-on-outline"
+              Icon={Circle}
               label="Haptic Feedback"
               note="Enable tactile feedback throughout the app"
               switchValue={enabled}
@@ -152,28 +165,28 @@ export function HapticSettingsScreen() {
               <SectionHeader title="Playback" />
               <View style={styles.sectionCard}>
                 <SettingsRow
-                  icon="play-circle-outline"
+                  Icon={PlayCircle}
                   label="Playback Controls"
                   note="Play, pause, skip forward/back"
                   switchValue={playbackControls}
                   onSwitchChange={setPlaybackControls}
                 />
                 <SettingsRow
-                  icon="git-commit-outline"
+                  Icon={GitCommitHorizontal}
                   label="Timeline Scrubbing"
                   note="Scrubbing feedback, chapter markers"
                   switchValue={scrubberFeedback}
                   onSwitchChange={setScrubberFeedback}
                 />
                 <SettingsRow
-                  icon="speedometer-outline"
+                  Icon={Gauge}
                   label="Speed Control"
                   note="Speed selection changes"
                   switchValue={speedControl}
                   onSwitchChange={setSpeedControl}
                 />
                 <SettingsRow
-                  icon="moon-outline"
+                  Icon={Moon}
                   label="Sleep Timer"
                   note="Timer set, warning, expiration"
                   switchValue={sleepTimer}
@@ -187,21 +200,21 @@ export function HapticSettingsScreen() {
               <SectionHeader title="Library" />
               <View style={styles.sectionCard}>
                 <SettingsRow
-                  icon="download-outline"
+                  Icon={Download}
                   label="Downloads"
                   note="Download start and completion"
                   switchValue={downloads}
                   onSwitchChange={setDownloads}
                 />
                 <SettingsRow
-                  icon="bookmark-outline"
+                  Icon={Bookmark}
                   label="Bookmarks"
                   note="Create, delete, jump to bookmark"
                   switchValue={bookmarks}
                   onSwitchChange={setBookmarks}
                 />
                 <SettingsRow
-                  icon="trophy-outline"
+                  Icon={Trophy}
                   label="Completions"
                   note="Book and series celebrations"
                   switchValue={completions}
@@ -215,7 +228,7 @@ export function HapticSettingsScreen() {
               <SectionHeader title="Interface" />
               <View style={styles.sectionCard}>
                 <SettingsRow
-                  icon="hand-left-outline"
+                  Icon={Hand}
                   label="UI Interactions"
                   note="Buttons, toggles, long press"
                   switchValue={uiInteractions}
@@ -228,7 +241,7 @@ export function HapticSettingsScreen() {
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Ionicons name="information-circle-outline" size={scale(16)} color="rgba(255,255,255,0.4)" />
+          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
           <Text style={styles.infoText}>
             Haptic feedback provides tactile confirmation for actions without requiring you to look at the screen.
             Disable individual categories to customize your experience.

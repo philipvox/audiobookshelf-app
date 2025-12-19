@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { getSeriesNavigationInfo } from '@/core/cache';
@@ -130,7 +130,7 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
       >
         {previousBook ? (
           <>
-            <Ionicons name="chevron-back" size={scale(16)} color="rgba(255,255,255,0.7)" />
+            <ChevronLeft size={scale(16)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
             <Text style={styles.arrowText}>{getPreviousLabel()}</Text>
           </>
         ) : (
@@ -169,7 +169,7 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
         {nextBook ? (
           <>
             <Text style={styles.arrowText}>{getNextLabel()}</Text>
-            <Ionicons name="chevron-forward" size={scale(16)} color="rgba(255,255,255,0.7)" />
+            <ChevronRight size={scale(16)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
           </>
         ) : (
           <View style={styles.arrowPlaceholder} />

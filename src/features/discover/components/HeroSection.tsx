@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Play, Pause, CheckCircle, ArrowDownCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
@@ -191,9 +191,9 @@ export function HeroSection({ hero }: HeroSectionProps) {
                   {isPending ? (
                     <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
                   ) : isPaused ? (
-                    <Ionicons name="play" size={scale(14)} color="rgba(255,255,255,0.6)" />
+                    <Play size={scale(14)} color="rgba(255,255,255,0.6)" fill="rgba(255,255,255,0.6)" strokeWidth={0} />
                   ) : (
-                    <Ionicons name="pause" size={scale(14)} color="rgba(255,255,255,0.6)" />
+                    <Pause size={scale(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
                   )}
                   <Text style={styles.downloadStatusText}>
                     {isPending ? 'Queued' : isPaused ? 'Paused' : `${Math.round(downloadProgress * 100)}%`}
@@ -221,11 +221,11 @@ export function HeroSection({ hero }: HeroSectionProps) {
               activeOpacity={0.7}
               disabled={isDownloaded}
             >
-              <Ionicons
-                name={isDownloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}
-                size={scale(18)}
-                color={isDownloaded ? ACCENT : 'rgba(255,255,255,0.7)'}
-              />
+              {isDownloaded ? (
+                <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
+              ) : (
+                <ArrowDownCircle size={scale(18)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+              )}
               <View style={styles.buttonTextContainer}>
                 <Text style={[styles.buttonText, isDownloaded && styles.buttonTextAccent]}>
                   {isDownloaded ? 'Downloaded' : 'Download'}
@@ -247,11 +247,11 @@ export function HeroSection({ hero }: HeroSectionProps) {
             onPress={handlePlay}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name={isCurrentlyPlaying ? 'pause' : 'play'}
-              size={scale(18)}
-              color={isCurrentlyPlaying ? '#000' : (isDownloaded ? '#000' : 'rgba(255,255,255,0.9)')}
-            />
+            {isCurrentlyPlaying ? (
+              <Pause size={scale(18)} color="#000" strokeWidth={2} />
+            ) : (
+              <Play size={scale(18)} color={isDownloaded ? '#000' : 'rgba(255,255,255,0.9)'} fill={isDownloaded ? '#000' : 'rgba(255,255,255,0.9)'} strokeWidth={0} />
+            )}
             <View style={styles.buttonTextContainer}>
               <Text style={[
                 styles.playButtonText,

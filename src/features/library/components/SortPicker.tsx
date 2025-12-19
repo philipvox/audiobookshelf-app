@@ -14,7 +14,7 @@ import {
   StyleSheet,
   Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronDown, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, scale, spacing, radius } from '@/shared/theme';
 
@@ -66,7 +66,7 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
         >
           <Text style={styles.sortLabel}>Sort: </Text>
           <Text style={styles.sortValue}>{selectedLabel}</Text>
-          <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.6)" />
+          <ChevronDown size={16} color="rgba(255,255,255,0.6)" strokeWidth={2} />
         </TouchableOpacity>
 
         <Text style={styles.bookCount}>
@@ -99,7 +99,7 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
                     {option.label}
                   </Text>
                   {isSelected && (
-                    <Ionicons name="checkmark" size={20} color={ACCENT} />
+                    <Check size={20} color={ACCENT} strokeWidth={2.5} />
                   )}
                 </TouchableOpacity>
               );

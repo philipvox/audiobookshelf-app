@@ -13,7 +13,7 @@ import {
   Animated,
   TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Info, AlertTriangle, AlertCircle, XCircle, X, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity } from '../types';
 
@@ -31,11 +31,11 @@ const SEVERITY_COLORS: Record<ErrorSeverity, string> = {
   critical: '#d32f2f',
 };
 
-const SEVERITY_ICONS: Record<ErrorSeverity, keyof typeof Ionicons.glyphMap> = {
-  low: 'information-circle',
-  medium: 'warning',
-  high: 'alert-circle',
-  critical: 'close-circle',
+const SEVERITY_ICONS: Record<ErrorSeverity, LucideIcon> = {
+  low: Info,
+  medium: AlertTriangle,
+  high: AlertCircle,
+  critical: XCircle,
 };
 
 export function ErrorToast({
@@ -87,7 +87,7 @@ export function ErrorToast({
   };
 
   const color = SEVERITY_COLORS[error.severity];
-  const icon = SEVERITY_ICONS[error.severity];
+  const IconComponent = SEVERITY_ICONS[error.severity];
   const hasAction = error.recovery === 'retry' || onAction;
 
   return (
@@ -102,7 +102,7 @@ export function ErrorToast({
       ]}
     >
       <View style={[styles.toast, { borderLeftColor: color }]}>
-        <Ionicons name={icon} size={22} color={color} style={styles.icon} />
+        <IconComponent size={22} color={color} strokeWidth={2} style={styles.icon} />
 
         <View style={styles.content}>
           <Text style={styles.message} numberOfLines={2}>
@@ -126,7 +126,7 @@ export function ErrorToast({
           )}
 
           <TouchableOpacity style={styles.dismissButton} onPress={dismiss}>
-            <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
+            <X size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>

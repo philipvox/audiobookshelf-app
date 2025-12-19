@@ -24,6 +24,7 @@ import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
 import { usePlayerStore } from '@/features/player';
+import { useNetworkStatus } from './NetworkStatusBar';
 import {
   colors,
   spacing,
@@ -89,6 +90,19 @@ const CloudIcon = ({ size = 14, color = '#fff' }: { size?: number; color?: strin
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+// Cloud Off Icon for offline unavailable
+const CloudOffIcon = ({ size = 14, color = '#fff' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M2 2l20 20M5 5a8 8 0 0011.26 5H18a5 5 0 015 5c0 1.05-.33 2.03-.89 2.83M5.64 9.36A8 8 0 004 14a8 8 0 005 7.36M18.36 18.36L5 5"
       stroke={color}
       strokeWidth={2}
       strokeLinecap="round"
@@ -179,6 +193,10 @@ export function BookCard({
   const isInQueue = useIsInQueue(book.id);
   const currentBookId = usePlayerStore((s) => s.currentBook?.id);
   const isNowPlaying = currentBookId === book.id;
+  const isOnline = useNetworkStatus();
+
+  // Determine if book is unavailable (offline + not downloaded)
+  const isUnavailableOffline = !isOnline && !isDownloaded && !isDownloading;
 
   // Actions
   const { queueDownload } = useDownloads();
@@ -262,7 +280,11 @@ export function BookCard({
         <View style={styles.coverContainer}>
           <Image
             source={coverUrl}
-            style={[styles.cover, !isDownloaded && !isDownloading && styles.coverNotDownloaded]}
+            style={[
+              styles.cover,
+              !isDownloaded && !isDownloading && styles.coverNotDownloaded,
+              isUnavailableOffline && styles.coverUnavailable,
+            ]}
             contentFit="cover"
           />
 
@@ -290,9 +312,16 @@ export function BookCard({
 
           {/* Download/Stream status badge */}
           {showStatusBadge && !isDownloading && (
-            <View style={[styles.statusBadge, isDownloaded ? styles.downloadedBadge : styles.streamBadge]}>
+            <View style={[
+              styles.statusBadge,
+              isDownloaded ? styles.downloadedBadge :
+              isUnavailableOffline ? styles.offlineBadge :
+              styles.streamBadge
+            ]}>
               {isDownloaded ? (
                 <CheckIcon size={10} color="#000" />
+              ) : isUnavailableOffline ? (
+                <CloudOffIcon size={10} color="#fff" />
               ) : (
                 <CloudIcon size={10} color="#fff" />
               )}
@@ -317,15 +346,17 @@ export function BookCard({
       </Pressable>
 
       {/* Right side action - context-dependent */}
-      {/* Download action (browse context) */}
+      {/* Download action (browse context) - disabled when offline */}
       {(actionType === 'auto' || actionType === 'download') && !isDownloaded && (
         <TouchableOpacity
-          style={styles.actionButton}
-          onPress={isDownloading ? undefined : handleDownloadPress}
-          disabled={isDownloading}
+          style={[styles.actionButton, isUnavailableOffline && styles.actionButtonDisabled]}
+          onPress={isDownloading || isUnavailableOffline ? undefined : handleDownloadPress}
+          disabled={isDownloading || isUnavailableOffline}
         >
           {isDownloading ? (
             <ProgressRing progress={progress * 100} size={scale(28)} />
+          ) : isUnavailableOffline ? (
+            <CloudOffIcon size={scale(20)} color={colors.textTertiary} />
           ) : (
             <DownloadIcon size={scale(20)} color={colors.textSecondary} />
           )}
@@ -374,6 +405,9 @@ const styles = StyleSheet.create({
   coverNotDownloaded: {
     opacity: 0.7,
   },
+  coverUnavailable: {
+    opacity: 0.4,
+  },
   queueButton: {
     position: 'absolute',
     bottom: spacing.xxs,
@@ -407,6 +441,9 @@ const styles = StyleSheet.create({
   streamBadge: {
     backgroundColor: 'rgba(100, 150, 255, 0.9)',
   },
+  offlineBadge: {
+    backgroundColor: colors.error,
+  },
   info: {
     flex: 1,
     marginLeft: spacing.md,
@@ -431,6 +468,9 @@ const styles = StyleSheet.create({
     height: layout.minTouchTarget,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
   },
   playButton: {
     width: scale(36),

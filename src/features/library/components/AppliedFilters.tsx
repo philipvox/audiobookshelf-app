@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { X } from 'lucide-react-native';
 import { colors, scale, spacing, radius } from '@/shared/theme';
 
 export interface AppliedFilter {
@@ -59,7 +59,7 @@ export function AppliedFilters({
               onPress={() => onRemove(filter.key)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="close" size={scale(12)} color={colors.textPrimary} />
+              <X size={scale(12)} color={colors.textPrimary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
         ))}

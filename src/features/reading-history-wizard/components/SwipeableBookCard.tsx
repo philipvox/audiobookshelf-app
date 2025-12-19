@@ -9,7 +9,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Book, Check, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedStyle,
@@ -134,10 +134,10 @@ export function SwipeableBookCard({
           />
         ) : (
           <View style={[styles.cover, styles.coverPlaceholder]}>
-            <Ionicons
-              name="book"
+            <Book
               size={scale(80)}
               color="rgba(255,255,255,0.3)"
+              strokeWidth={1.5}
             />
           </View>
         )}
@@ -168,14 +168,14 @@ export function SwipeableBookCard({
         {/* Swipe indicators */}
         <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
           <View style={styles.overlayBadge}>
-            <Ionicons name="checkmark" size={scale(40)} color="#000" />
+            <Check size={scale(40)} color="#000" strokeWidth={3} />
             <Text style={styles.overlayText}>FINISHED</Text>
           </View>
         </Animated.View>
 
         <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayStyle]}>
           <View style={[styles.overlayBadge, styles.skipBadge]}>
-            <Ionicons name="close" size={scale(40)} color="#fff" />
+            <X size={scale(40)} color="#fff" strokeWidth={2.5} />
             <Text style={[styles.overlayText, styles.skipText]}>SKIP</Text>
           </View>
         </Animated.View>
