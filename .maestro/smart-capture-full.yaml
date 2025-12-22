@@ -1,0 +1,646 @@
+# =============================================================================
+# SMART CAPTURE FULL - Complete screenshot capture with content validation
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# LIBRARY TAB - ALL TABS WITH CONTENT
+# =============================================================================
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Library All
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: full/library-all-content
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/library-all-scrolled
+      - swipe:
+          start: "50%,30%"
+          end: "50%,70%"
+      - waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Your library is empty"
+    commands:
+      - takeScreenshot: full/library-empty
+
+# Downloaded tab
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: full/library-downloaded
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/library-downloaded-scrolled
+      - swipe:
+          start: "50%,30%"
+          end: "50%,70%"
+      - waitForAnimationToEnd
+
+# In Progress tab
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: full/library-in-progress
+
+# Not Started tab
+- tapOn:
+    text: "Not Started"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/library-not-started
+
+# Completed tab
+- tapOn:
+    text: "Completed"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/library-completed
+
+# Favorites tab
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/library-favorites
+
+# =============================================================================
+# BOOK DETAIL - Full detail with chapters
+# =============================================================================
+
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - tapOn:
+          point: "25%,35%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/book-detail-top
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/book-detail-scrolled
+      - swipe:
+          start: "50%,30%"
+          end: "50%,70%"
+      - waitForAnimationToEnd
+      # Chapters tab
+      - tapOn:
+          text: "Chapters"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/book-chapters-top
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/book-chapters-scrolled
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# SEARCH - Empty and results
+# =============================================================================
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/search-empty
+
+# Search typing
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- inputText: "the"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/search-typing
+- hideKeyboard
+- takeScreenshot: full/search-results
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/search-results-scrolled
+
+- back
+- waitForAnimationToEnd
+
+# Quick Browse categories
+- tapOn:
+    text: "Genres"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/genres-list
+- back
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Authors"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/authors-list
+- back
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Series"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/series-list
+- back
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Narrators"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/narrators-list
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# BROWSE - Main and categories
+# =============================================================================
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/browse-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/browse-scrolled
+
+# Mood Discovery
+- runFlow:
+    when:
+      visible: "What sounds good"
+    commands:
+      - tapOn:
+          text: "What sounds good"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/mood-discovery
+      - tapOn:
+          point: "50%,40%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/mood-step2
+      - back
+      - waitForAnimationToEnd
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Browse Genres
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - tapOn:
+          text: "Genres"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/browse-genres
+      - back
+      - waitForAnimationToEnd
+
+# Browse Authors
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - tapOn:
+          text: "Authors"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/browse-authors
+      - tapOn:
+          point: "25%,30%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/author-detail
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/author-books
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# Browse Series
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn:
+          text: "Series"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/browse-series
+      - tapOn:
+          point: "25%,30%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: full/series-detail
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/series-scrolled
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PROFILE & ALL SETTINGS
+# =============================================================================
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/profile-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/profile-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      notVisible: "No downloads"
+    commands:
+      - takeScreenshot: full/downloads-content
+      - swipe:
+          start: "80%,40%"
+          end: "20%,40%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/downloads-swipe-delete
+      - tapOn:
+          point: "50%,60%"
+      - waitForAnimationToEnd
+
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      notVisible: "Empty"
+    commands:
+      - takeScreenshot: full/wishlist-content
+      - tapOn:
+          text: "All"
+          optional: true
+      - waitForAnimationToEnd
+      - takeScreenshot: full/wishlist-all
+      - tapOn:
+          text: "Must Read"
+          optional: true
+      - waitForAnimationToEnd
+      - takeScreenshot: full/wishlist-must-read
+
+- back
+- waitForAnimationToEnd
+
+# Stats
+- tapOn:
+    text: "Listening Stats"
+    optional: true
+- tapOn:
+    text: "Stats"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/stats-top
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/stats-scrolled
+- back
+- waitForAnimationToEnd
+
+# Reading History
+- tapOn:
+    text: "Reading History"
+    optional: true
+- tapOn:
+    text: "History"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/reading-history
+- back
+- waitForAnimationToEnd
+
+# Preferences
+- tapOn:
+    text: "Reading Preferences"
+    optional: true
+- tapOn:
+    text: "Preferences"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/preferences
+- back
+- waitForAnimationToEnd
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/playback-settings
+
+# Speed picker
+- tapOn:
+    text: "Default Speed"
+    optional: true
+- tapOn:
+    text: "Speed"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/playback-speed-picker
+- back
+- waitForAnimationToEnd
+
+# Skip forward
+- tapOn:
+    text: "Skip Forward"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/playback-skip-forward
+- back
+- waitForAnimationToEnd
+
+# Skip back
+- tapOn:
+    text: "Skip Back"
+    optional: true
+- tapOn:
+    text: "Backward"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/playback-skip-back
+- back
+- waitForAnimationToEnd
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/playback-scrolled
+- back
+- waitForAnimationToEnd
+
+# Storage Settings
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/storage-settings
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# HOME & PLAYER
+# =============================================================================
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: full/home-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/home-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# FULL PLAYER - All states
+# =============================================================================
+
+# Open player via mini-player
+- tapOn:
+    point: "50%,93%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# If player opened
+- runFlow:
+    when:
+      visible: "Off"
+    commands:
+      - takeScreenshot: full/player-paused
+
+      # Play
+      - tapOn:
+          point: "50%,80%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-playing
+
+      # Pause
+      - tapOn:
+          point: "50%,80%"
+      - waitForAnimationToEnd
+
+      # Sleep timer sheet
+      - tapOn:
+          point: "15%,88%"
+          optional: true
+      - tapOn:
+          text: "Off"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/sleep-timer-sheet
+      - swipe:
+          start: "50%,70%"
+          end: "50%,40%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/sleep-timer-scroll
+      # Select End of Chapter
+      - tapOn:
+          text: "End of Chapter"
+          optional: true
+      - tapOn:
+          text: "chapter"
+          optional: true
+      - waitForAnimationToEnd
+      - takeScreenshot: full/sleep-timer-active
+      # Close sheet
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Speed sheet
+      - tapOn:
+          point: "85%,88%"
+          optional: true
+      - tapOn:
+          text: "1x"
+          optional: true
+      - tapOn:
+          text: "1.0"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/speed-sheet
+      # Select 1.5x
+      - tapOn:
+          text: "1.5"
+          optional: true
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-speed-1.5x
+      # Close sheet
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Chapters sheet
+      - tapOn:
+          point: "50%,88%"
+          optional: true
+      - tapOn:
+          text: "Chapters"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/player-chapters
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-chapters-scroll
+      # Close sheet
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Close player
+      - tapOn:
+          point: "8%,5%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# MINI-PLAYER ACROSS TABS
+# =============================================================================
+
+- takeScreenshot: full/miniplayer-home
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-library
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-search
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-browse
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-profile
+
+- evalScript: |
+    console.log("Full smart capture complete!");

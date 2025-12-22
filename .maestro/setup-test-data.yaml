@@ -1,0 +1,144 @@
+# =============================================================================
+# SETUP TEST DATA - Download a book and start playback
+# Run this BEFORE smart-capture.yaml to populate content
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# STEP 1: Go to Browse and find a book to download
+# =============================================================================
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Wait for content to load
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Take a screenshot to see what's available
+- takeScreenshot: setup/01-browse-content
+
+# Scroll down to see more books
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: setup/02-browse-scrolled
+
+# Tap on a book (first one in the grid area)
+- tapOn:
+    point: "25%,40%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: setup/03-book-detail
+
+# =============================================================================
+# STEP 2: Download the book
+# =============================================================================
+
+# Try to tap Download button
+- tapOn:
+    text: "Download"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: setup/04-download-started
+
+# Wait for download to complete (up to 3 minutes)
+- waitForAnimationToEnd:
+    timeout: 180000
+
+- takeScreenshot: setup/05-download-complete
+
+# =============================================================================
+# STEP 3: Start playback to create "In Progress" state
+# =============================================================================
+
+# Try Play/Stream/Resume
+- tapOn:
+    text: "Play"
+    optional: true
+- tapOn:
+    text: "Stream"
+    optional: true
+- tapOn:
+    text: "Resume"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: setup/06-playback-started
+
+# Let it play for 10 seconds to register progress
+- waitForAnimationToEnd:
+    timeout: 10000
+
+- takeScreenshot: setup/07-player-running
+
+# Pause playback
+- tapOn:
+    point: "50%,80%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: setup/08-player-paused
+
+# =============================================================================
+# STEP 4: Go back to Home to verify mini-player
+# =============================================================================
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: setup/09-home-with-miniplayer
+
+# =============================================================================
+# STEP 5: Verify Library now has content
+# =============================================================================
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: setup/10-library-with-content
+
+# Check Downloaded tab
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: setup/11-library-downloaded
+
+# Check In Progress tab
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: setup/12-library-in-progress
+
+- evalScript: |
+    console.log("Test data setup complete!");
+    console.log("You should now have:");
+    console.log("- 1 downloaded book");
+    console.log("- 1 book in progress");
+    console.log("- Mini-player active");

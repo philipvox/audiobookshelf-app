@@ -11,6 +11,9 @@ export { ReadingHistoryScreen } from './screens/ReadingHistoryScreen';
 
 // Components
 export { SwipeableBookCard } from './components/SwipeableBookCard';
+export { FilterSheet } from './components/FilterSheet';
+export { SortSheet } from './components/SortSheet';
+export type { SortOption } from './components/SortSheet';
 
 // Store
 export {
@@ -19,7 +22,13 @@ export {
   useMarkedCount,
   useCurrentView,
 } from './stores/galleryStore';
-export type { MarkedBook, UndoAction } from './stores/galleryStore';
+export type {
+  MarkedBook,
+  UndoAction,
+  FilterState,
+  DurationFilter,
+  SyncStatusFilter,
+} from './stores/galleryStore';
 
 // Hooks
 export {

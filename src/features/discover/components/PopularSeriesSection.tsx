@@ -145,7 +145,7 @@ export function PopularSeriesSection({ limit = 10 }: PopularSeriesSectionProps) 
           activeOpacity={0.7}
         >
           <Text style={styles.viewAllText}>View All</Text>
-          <Icon name="chevron-forward" size={scale(14)} color={COLORS.playButton} set="ionicons" />
+          <Icon name="ChevronRight" size={scale(14)} color={COLORS.playButton} />
         </TouchableOpacity>
       </View>
 

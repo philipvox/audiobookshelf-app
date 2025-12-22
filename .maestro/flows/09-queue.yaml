@@ -1,0 +1,238 @@
+# =============================================================================
+# MAESTRO: Queue Screen States
+# =============================================================================
+# Captures all queue screen states:
+# - Empty queue
+# - Queue with items
+# - Now Playing highlighted
+# - Reorder mode
+# - Swipe to delete
+# - Clear all confirmation
+#
+# Prerequisites: User is logged in, has started playing a book
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# First, ensure we have something playing to have a queue
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 10000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Start a book playing
+- tapOn:
+    point: "25%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Play the book
+- runFlow:
+    when:
+      visible:
+        text: "Play|Resume|Listen"
+    commands:
+      - tapOn:
+          text: "Play|Resume|Listen"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# Add to queue (if option exists)
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Add to Queue"
+    commands:
+      - tapOn:
+          text: "Queue|Add to Queue"
+
+# Go back and add another book to queue
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# Tap on second book
+- tapOn:
+    point: "75%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Add to queue
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Add to Queue|Play Next|Play Last"
+    commands:
+      - tapOn:
+          text: "Queue|Add to Queue|Play Next"
+
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# OPEN QUEUE SCREEN
+# -----------------------------------------------------------------------------
+# Navigate to queue (might be from player or home pill)
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# Look for queue pill or button
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Up Next"
+    commands:
+      - tapOn:
+          text: "Queue|Up Next"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# Alternative: open from player
+- runFlow:
+    when:
+      notVisible:
+        text: "Now Playing"
+    commands:
+      - tapOn:
+          point: "50%, 25%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - runFlow:
+          when:
+            visible:
+              text: "Queue"
+          commands:
+            - tapOn: "Queue"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+
+# -----------------------------------------------------------------------------
+# QUEUE WITH ITEMS
+# -----------------------------------------------------------------------------
+# Screenshot 1: Queue with Items (Now Playing + Up Next)
+- takeScreenshot: screens/09-queue/01-queue-with-items
+
+# Screenshot 2: Queue Scrolled
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/09-queue/02-queue-scrolled
+
+# Scroll back
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# NOW PLAYING HIGHLIGHTED
+# -----------------------------------------------------------------------------
+# Screenshot 3: Now Playing Section
+- takeScreenshot: screens/09-queue/03-queue-now-playing
+
+# -----------------------------------------------------------------------------
+# SWIPE TO DELETE
+# -----------------------------------------------------------------------------
+# Swipe on a queue item to reveal delete
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 300
+- takeScreenshot: screens/09-queue/04-queue-swipe-delete
+
+# Tap elsewhere to dismiss
+- tapOn:
+    point: "50%, 30%"
+
+# -----------------------------------------------------------------------------
+# CLEAR ALL (if button exists)
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Clear|Clear All|Empty"
+    commands:
+      - tapOn:
+          text: "Clear|Clear All"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      # Screenshot 5: Clear All Confirmation
+      - takeScreenshot: screens/09-queue/05-queue-clear-confirmation
+      # Cancel
+      - runFlow:
+          when:
+            visible:
+              text: "Cancel|No"
+          commands:
+            - tapOn:
+                text: "Cancel|No"
+
+# -----------------------------------------------------------------------------
+# EMPTY QUEUE
+# -----------------------------------------------------------------------------
+# If we can get to empty state
+- runFlow:
+    when:
+      visible:
+        text: "Clear|Clear All"
+    commands:
+      - tapOn:
+          text: "Clear|Clear All"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      - runFlow:
+          when:
+            visible:
+              text: "Confirm|Yes|Clear"
+          commands:
+            - tapOn:
+                text: "Confirm|Yes|Clear"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 2000
+            # Screenshot 6: Empty Queue
+            - takeScreenshot: screens/09-queue/06-queue-empty
+
+# Go back
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Queue screenshots complete: screens/09-queue/");

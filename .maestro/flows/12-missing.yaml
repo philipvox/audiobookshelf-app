@@ -1,0 +1,204 @@
+# =============================================================================
+# MAESTRO: Missing Screens Supplementary Flow
+# =============================================================================
+# Captures screens that were missed in the main flow:
+# - Narrator Detail Screen
+# - Haptic Settings Screen
+# - Mood Discovery Flow (full)
+# - Joystick Seek Settings
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 10000
+
+# -----------------------------------------------------------------------------
+# NARRATOR DETAIL SCREEN
+# -----------------------------------------------------------------------------
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Look for Narrators
+- runFlow:
+    when:
+      visible: "Narrators"
+    commands:
+      - tapOn: "Narrators"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Tap on first narrator
+      - tapOn:
+          point: "25%, 30%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot: Narrator Detail (top)
+      - takeScreenshot: screens/07-details/25-narrator-detail-top
+      # Screenshot: Narrator Detail (genres/collaborators)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/26-narrator-detail-genres
+      # Screenshot: Narrator Detail (books)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/27-narrator-detail-books
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/28-narrator-detail-books-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# MOOD DISCOVERY FLOW
+# -----------------------------------------------------------------------------
+# Go to browse and find mood discovery
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll to find mood discovery card
+- swipe:
+    direction: UP
+    duration: 500
+
+- runFlow:
+    when:
+      visible:
+        text: "What sounds good|Mood|feeling"
+    commands:
+      - takeScreenshot: screens/05-browse/07-mood-card-visible
+      - tapOn:
+          text: "What sounds good|Mood|feeling"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot: Mood Discovery Screen
+      - takeScreenshot: screens/05-browse/08-mood-discovery-screen
+      # Select a mood
+      - tapOn:
+          point: "30%, 40%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      - takeScreenshot: screens/05-browse/09-mood-selected
+      # Continue
+      - runFlow:
+          when:
+            visible:
+              text: "Next|Continue|Show"
+          commands:
+            - tapOn:
+                text: "Next|Continue|Show"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+            - takeScreenshot: screens/05-browse/10-mood-results
+            - swipe:
+                direction: UP
+                duration: 500
+            - takeScreenshot: screens/05-browse/11-mood-results-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# HAPTIC SETTINGS SCREEN
+# -----------------------------------------------------------------------------
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll to find Haptics
+- swipe:
+    direction: UP
+    duration: 500
+
+- runFlow:
+    when:
+      visible:
+        text: "Haptic|Haptics"
+    commands:
+      - tapOn:
+          text: "Haptic|Haptics"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - takeScreenshot: screens/06-profile/28-haptic-settings
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# JOYSTICK SEEK SETTINGS
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Playback"
+    commands:
+      - tapOn: "Playback"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Scroll to find Joystick settings
+      - swipe:
+          direction: UP
+          duration: 500
+      - runFlow:
+          when:
+            visible:
+              text: "Joystick"
+          commands:
+            - tapOn:
+                text: "Joystick"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+            - takeScreenshot: screens/06-profile/30-joystick-seek-settings
+            - back
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Missing screens captured!");

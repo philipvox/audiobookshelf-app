@@ -14,8 +14,8 @@ import {
   getSeriesWithSequence,
   getDuration,
   getFormattedDuration,
-  formatDuration,
 } from '../metadata';
+import { formatDuration } from '../format';
 
 // Helper to create mock LibraryItem (inline type to avoid importing types)
 function createMockItem(metadata: Record<string, any>, duration?: number): any {
@@ -235,7 +235,7 @@ describe('getDuration', () => {
   });
 });
 
-describe('formatDuration (metadata version)', () => {
+describe('formatDuration', () => {
   it('formats hours and minutes', () => {
     expect(formatDuration(3600)).toBe('1h 0m');
     expect(formatDuration(5400)).toBe('1h 30m');
@@ -247,12 +247,12 @@ describe('formatDuration (metadata version)', () => {
     expect(formatDuration(1800)).toBe('30m');
   });
 
-  it('returns "Unknown" for invalid values', () => {
-    expect(formatDuration(0)).toBe('Unknown');
-    expect(formatDuration(-100)).toBe('Unknown');
-    expect(formatDuration(null)).toBe('Unknown');
-    expect(formatDuration(undefined)).toBe('Unknown');
-    expect(formatDuration(NaN)).toBe('Unknown');
+  it('returns "0m" for invalid values', () => {
+    expect(formatDuration(0)).toBe('0m');
+    expect(formatDuration(-100)).toBe('0m');
+    expect(formatDuration(null)).toBe('0m');
+    expect(formatDuration(undefined)).toBe('0m');
+    expect(formatDuration(NaN)).toBe('0m');
   });
 });
 
@@ -262,8 +262,8 @@ describe('getFormattedDuration', () => {
     expect(getFormattedDuration(item)).toBe('2h 0m');
   });
 
-  it('returns "Unknown" for items without duration', () => {
+  it('returns "0m" for items without duration', () => {
     const item = createMockItem({});
-    expect(getFormattedDuration(item)).toBe('Unknown');
+    expect(getFormattedDuration(item)).toBe('0m');
   });
 });

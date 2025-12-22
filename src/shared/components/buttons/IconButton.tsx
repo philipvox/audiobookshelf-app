@@ -1,5 +1,6 @@
 /**
  * Icon-only button component with various sizes and variants
+ * Includes haptic feedback for better tactile response
  */
 
 import React from 'react';
@@ -9,6 +10,7 @@ import {
   StyleSheet,
   ViewStyle,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, radius, elevation } from '../../theme';
 
 type IconButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -24,6 +26,10 @@ interface IconButtonProps {
   rounded?: boolean;
   style?: ViewStyle;
   accessibilityLabel: string;
+  /** Disable haptic feedback (default: enabled) */
+  noHaptics?: boolean;
+  /** Custom hit slop for touch area */
+  hitSlop?: { top?: number; bottom?: number; left?: number; right?: number };
 }
 
 const SIZE_MAP = {
@@ -45,9 +51,23 @@ export function IconButton({
   rounded = true,
   style,
   accessibilityLabel,
+  noHaptics = false,
+  hitSlop,
 }: IconButtonProps) {
   const isDisabled = disabled || loading;
   const dimensions = SIZE_MAP[size];
+
+  const handlePress = () => {
+    if (!noHaptics) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  };
+
+  // Default hit slop for small buttons to ensure 44pt touch target
+  const defaultHitSlop = size === 'small'
+    ? { top: 6, bottom: 6, left: 6, right: 6 }
+    : undefined;
 
   return (
     <TouchableOpacity
@@ -62,11 +82,13 @@ export function IconButton({
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       activeOpacity={0.7}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled }}
+      hitSlop={hitSlop || defaultHitSlop}
     >
       {loading ? (
         <ActivityIndicator

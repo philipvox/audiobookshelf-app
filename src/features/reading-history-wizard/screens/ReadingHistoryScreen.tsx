@@ -16,6 +16,8 @@ import {
   TouchableOpacity,
   FlatList,
   Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -25,15 +27,22 @@ import {
   Book,
   CloudCheck,
   CloudUpload,
+  CloudOff,
   CheckSquare,
   Square,
   ArrowLeft,
   BookOpen,
+  Search,
+  SlidersHorizontal,
+  ArrowDownUp,
+  X,
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useGalleryStore } from '../stores/galleryStore';
+import { useGalleryStore, FilterState, DurationFilter } from '../stores/galleryStore';
+import { FilterSheet } from '../components/FilterSheet';
+import { SortSheet, SortOption } from '../components/SortSheet';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
@@ -81,13 +90,12 @@ interface HistoryBook {
   title: string;
   authorName: string;
   seriesName?: string;
+  genres: string[];
   duration: number;
   coverUrl: string | null;
   markedAt: number;
   synced: boolean;
 }
-
-type SortOption = 'recent' | 'title' | 'author' | 'duration';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -114,6 +122,10 @@ function getSeriesSequence(item: LibraryItem): string {
   const name = getMetadata(item).seriesName || '';
   const match = name.match(/#([\d.]+)$/);
   return match ? match[1] : '';
+}
+
+function getGenres(item: LibraryItem): string[] {
+  return getMetadata(item).genres || [];
 }
 
 function getDuration(item: LibraryItem): number {
@@ -146,65 +158,293 @@ function formatDate(timestamp: number): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// =============================================================================
-// SORT PILLS COMPONENT
-// =============================================================================
+function getDateGroup(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-interface SortPillsProps {
-  sortBy: SortOption;
-  onSortChange: (sort: SortOption) => void;
+  if (date >= today) return 'TODAY';
+  if (date >= yesterday) return 'YESTERDAY';
+  if (date >= weekAgo) return 'THIS WEEK';
+  if (date >= twoWeeksAgo) return 'LAST WEEK';
+  if (date >= monthAgo) return 'THIS MONTH';
+
+  // Return month and year for older items
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
 }
 
-function SortPills({ sortBy, onSortChange }: SortPillsProps) {
-  const options: { key: SortOption; label: string }[] = [
-    { key: 'recent', label: 'Recent' },
-    { key: 'title', label: 'Title' },
-    { key: 'author', label: 'Author' },
-    { key: 'duration', label: 'Duration' },
-  ];
+function matchesDurationFilter(duration: number, filter: DurationFilter): boolean {
+  if (!filter) return true;
+  const hours = duration / 3600;
+  switch (filter) {
+    case 'under_5h': return hours < 5;
+    case '5_10h': return hours >= 5 && hours < 10;
+    case '10_20h': return hours >= 10 && hours < 20;
+    case 'over_20h': return hours >= 20;
+    default: return true;
+  }
+}
 
+// =============================================================================
+// TOOLBAR COMPONENT
+// =============================================================================
+
+const SORT_LABELS: Record<SortOption, string> = {
+  recent: 'Recent',
+  title: 'Title',
+  author: 'Author',
+  duration_long: 'Longest',
+  duration_short: 'Shortest',
+};
+
+interface ToolbarProps {
+  currentSort: SortOption;
+  onSortPress: () => void;
+  filterCount: number;
+  onFilterPress: () => void;
+  isSearching: boolean;
+  onSearchPress: () => void;
+}
+
+function Toolbar({
+  currentSort,
+  onSortPress,
+  filterCount,
+  onFilterPress,
+  isSearching,
+  onSearchPress,
+}: ToolbarProps) {
   return (
-    <View style={styles.sortContainer}>
-      {options.map((option) => {
-        const isActive = sortBy === option.key;
-        return (
-          <TouchableOpacity
-            key={option.key}
-            style={[styles.sortPill, isActive && styles.sortPillActive]}
-            onPress={() => {
-              Haptics.selectionAsync();
-              onSortChange(option.key);
-            }}
-          >
-            <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View style={styles.toolbar}>
+      <View style={styles.toolbarLeft}>
+        {/* Sort Button */}
+        <TouchableOpacity
+          style={styles.toolbarButton}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onSortPress();
+          }}
+        >
+          <ArrowDownUp size={wp(4)} color={COLORS.accent} strokeWidth={2} />
+          <Text style={styles.toolbarButtonText}>{SORT_LABELS[currentSort]}</Text>
+        </TouchableOpacity>
+
+        {/* Filter Button */}
+        <TouchableOpacity
+          style={[styles.toolbarButton, filterCount > 0 && styles.toolbarButtonActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onFilterPress();
+          }}
+        >
+          <SlidersHorizontal
+            size={wp(4)}
+            color={filterCount > 0 ? '#000000' : COLORS.textTertiary}
+            strokeWidth={2}
+          />
+          <Text style={[styles.toolbarButtonText, filterCount > 0 && styles.toolbarButtonTextActive]}>
+            Filter{filterCount > 0 ? ` (${filterCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Button */}
+      <TouchableOpacity
+        style={[styles.searchButton, isSearching && styles.searchButtonActive]}
+        onPress={() => {
+          Haptics.selectionAsync();
+          onSearchPress();
+        }}
+      >
+        <Search
+          size={wp(4.5)}
+          color={isSearching ? COLORS.accent : COLORS.textTertiary}
+          strokeWidth={2}
+        />
+      </TouchableOpacity>
     </View>
   );
 }
 
 // =============================================================================
-// STATS SUMMARY COMPONENT
+// SEARCH BAR COMPONENT
 // =============================================================================
 
-interface StatsSummaryProps {
+interface SearchBarProps {
+  value: string;
+  onChangeText: (text: string) => void;
+  onClose: () => void;
+}
+
+function SearchBar({ value, onChangeText, onClose }: SearchBarProps) {
+  return (
+    <Animated.View
+      style={styles.searchBar}
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(150)}
+    >
+      <Search size={wp(4.5)} color={COLORS.textTertiary} strokeWidth={2} />
+      <TextInput
+        style={styles.searchInput}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="Search by title, author, series..."
+        placeholderTextColor={COLORS.textTertiary}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <X size={wp(4.5)} color={COLORS.textSecondary} strokeWidth={2} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// =============================================================================
+// ACTIVE FILTERS ROW COMPONENT
+// =============================================================================
+
+interface ActiveFilter {
+  id: string;
+  label: string;
+  type: 'genre' | 'author' | 'series' | 'sync' | 'duration';
+}
+
+interface ActiveFiltersRowProps {
+  filters: ActiveFilter[];
+  onRemove: (id: string) => void;
+  onClearAll: () => void;
+}
+
+function ActiveFiltersRow({ filters, onRemove, onClearAll }: ActiveFiltersRowProps) {
+  if (filters.length === 0) return null;
+
+  return (
+    <Animated.View
+      style={styles.activeFiltersContainer}
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(150)}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.activeFiltersContent}
+      >
+        {filters.map((filter) => (
+          <TouchableOpacity
+            key={filter.id}
+            style={styles.activeFilterChip}
+            onPress={() => {
+              Haptics.selectionAsync();
+              onRemove(filter.id);
+            }}
+          >
+            <Text style={styles.activeFilterText}>{filter.label}</Text>
+            <X size={wp(3)} color={COLORS.accent} strokeWidth={2.5} />
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={styles.clearAllButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onClearAll();
+          }}
+        >
+          <Text style={styles.clearAllText}>Clear All</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+// =============================================================================
+// SECTION HEADER COMPONENT
+// =============================================================================
+
+interface SectionHeaderProps {
+  title: string;
+}
+
+function SectionHeader({ title }: SectionHeaderProps) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+    </View>
+  );
+}
+
+// =============================================================================
+// STATS CARD COMPONENT (Enhanced per UX spec)
+// =============================================================================
+
+interface StatsCardProps {
   totalBooks: number;
   totalDuration: number;
   syncedCount: number;
+  syncPercentage: number;
+  onSyncAll: () => void;
+  isSyncing: boolean;
 }
 
-function StatsSummary({ totalBooks, totalDuration, syncedCount }: StatsSummaryProps) {
+function StatsCard({
+  totalBooks,
+  totalDuration,
+  syncedCount,
+  syncPercentage,
+  onSyncAll,
+  isSyncing,
+}: StatsCardProps) {
+  const totalHours = Math.round(totalDuration / 3600);
+  const hasUnsynced = syncedCount < totalBooks;
+
   return (
-    <View style={styles.statsContainer}>
-      <Text style={styles.statsPrimary}>
-        {totalBooks} books finished • {formatTotalHours(totalDuration)}
-      </Text>
-      <Text style={styles.statsSecondary}>
-        {syncedCount} synced to server
-      </Text>
+    <View style={styles.statsCard}>
+      {/* 3-column stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statColumn}>
+          <Text style={styles.statValue}>{totalBooks}</Text>
+          <Text style={styles.statLabel}>books</Text>
+        </View>
+        <View style={styles.statColumn}>
+          <Text style={styles.statValue}>{totalHours}h</Text>
+          <Text style={styles.statLabel}>listened</Text>
+        </View>
+        <View style={styles.statColumn}>
+          <Text style={[styles.statValue, styles.statValueSynced]}>{syncedCount}</Text>
+          <Text style={styles.statLabel}>synced</Text>
+        </View>
+      </View>
+
+      {/* Sync progress section */}
+      <View style={styles.syncSection}>
+        {/* Progress bar */}
+        <View style={styles.progressBarContainer}>
+          <View style={[styles.progressBarFill, { width: `${syncPercentage}%` }]} />
+        </View>
+
+        {/* Sync status row */}
+        <View style={styles.syncStatusRow}>
+          <Text style={styles.syncStatusText}>
+            {syncPercentage}% synced to server
+          </Text>
+          {hasUnsynced && (
+            <TouchableOpacity
+              style={[styles.syncAllButton, isSyncing && styles.syncAllButtonDisabled]}
+              onPress={onSyncAll}
+              disabled={isSyncing}
+            >
+              <Text style={styles.syncAllButtonText}>
+                {isSyncing ? 'Syncing...' : 'Sync All'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     </View>
   );
 }
@@ -301,6 +541,8 @@ interface SelectionFooterProps {
   onSelectAll: () => void;
   onCancel: () => void;
   onRemove: () => void;
+  onSync: () => void;
+  canSync: boolean;
 }
 
 function SelectionFooter({
@@ -309,6 +551,8 @@ function SelectionFooter({
   onSelectAll,
   onCancel,
   onRemove,
+  onSync,
+  canSync,
 }: SelectionFooterProps) {
   const allSelected = selectedCount === totalCount && totalCount > 0;
 
@@ -334,6 +578,17 @@ function SelectionFooter({
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
 
+        {/* Sync button - only when there are unsynced items */}
+        {canSync && (
+          <TouchableOpacity
+            style={styles.syncButton}
+            onPress={onSync}
+          >
+            <CloudUpload size={wp(4)} color={COLORS.accent} strokeWidth={2} />
+            <Text style={styles.syncButtonText}>Sync</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.removeButton, selectedCount === 0 && styles.removeButtonDisabled]}
           onPress={onRemove}
@@ -357,16 +612,26 @@ export function ReadingHistoryScreen() {
   // Store
   const markedBooks = useGalleryStore((s) => s.markedBooks);
   const unmarkBook = useGalleryStore((s) => s.unmarkBook);
+  const syncToServer = useGalleryStore((s) => s.syncToServer);
+  const filters = useGalleryStore((s) => s.filters);
+  const setFilters = useGalleryStore((s) => s.setFilters);
+  const clearFilters = useGalleryStore((s) => s.clearFilters);
+  const getActiveFilterCount = useGalleryStore((s) => s.getActiveFilterCount);
   const items = useLibraryCache((s) => s.items);
 
   // UI State
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showSortSheet, setShowSortSheet] = useState(false);
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Build history list
+  // Build history list with filtering and sorting
   const historyBooks = useMemo((): HistoryBook[] => {
-    const books: HistoryBook[] = [];
+    let books: HistoryBook[] = [];
 
     markedBooks.forEach((marked, bookId) => {
       const item = items.find((i) => i.id === bookId);
@@ -376,6 +641,7 @@ export function ReadingHistoryScreen() {
           title: getTitle(item),
           authorName: getAuthorName(item),
           seriesName: getSeriesName(item) || undefined,
+          genres: getGenres(item),
           duration: getDuration(item),
           coverUrl: getCoverUrl(bookId),
           markedAt: marked.markedAt,
@@ -383,6 +649,47 @@ export function ReadingHistoryScreen() {
         });
       }
     });
+
+    // Apply filters
+    if (filters.syncStatus.length > 0) {
+      books = books.filter((book) => {
+        if (filters.syncStatus.includes('synced') && book.synced) return true;
+        if (filters.syncStatus.includes('not_synced') && !book.synced) return true;
+        return false;
+      });
+    }
+
+    if (filters.genres.length > 0) {
+      books = books.filter((book) =>
+        book.genres.some((g) => filters.genres.includes(g.toLowerCase()))
+      );
+    }
+
+    if (filters.authors.length > 0) {
+      books = books.filter((book) =>
+        filters.authors.includes(book.authorName.toLowerCase())
+      );
+    }
+
+    if (filters.series.length > 0) {
+      books = books.filter((book) =>
+        book.seriesName && filters.series.includes(book.seriesName.toLowerCase())
+      );
+    }
+
+    if (filters.duration) {
+      books = books.filter((book) => matchesDurationFilter(book.duration, filters.duration));
+    }
+
+    // Apply search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      books = books.filter((book) =>
+        book.title.toLowerCase().includes(query) ||
+        book.authorName.toLowerCase().includes(query) ||
+        (book.seriesName && book.seriesName.toLowerCase().includes(query))
+      );
+    }
 
     // Sort
     switch (sortBy) {
@@ -395,13 +702,16 @@ export function ReadingHistoryScreen() {
       case 'author':
         books.sort((a, b) => a.authorName.localeCompare(b.authorName));
         break;
-      case 'duration':
+      case 'duration_long':
         books.sort((a, b) => b.duration - a.duration);
+        break;
+      case 'duration_short':
+        books.sort((a, b) => a.duration - b.duration);
         break;
     }
 
     return books;
-  }, [markedBooks, items, sortBy]);
+  }, [markedBooks, items, sortBy, filters, searchQuery]);
 
   // Stats
   const stats = useMemo(() => {
@@ -416,12 +726,218 @@ export function ReadingHistoryScreen() {
       }
     });
 
+    const totalBooks = markedBooks.size;
+    const syncPercentage = totalBooks > 0 ? Math.round((syncedCount / totalBooks) * 100) : 100;
+
     return {
-      totalBooks: markedBooks.size,
+      totalBooks,
       totalDuration,
       syncedCount,
+      syncPercentage,
     };
   }, [markedBooks, items]);
+
+  // Available filters computed from all books (before filtering)
+  const availableFilters = useMemo(() => {
+    const genreMap = new Map<string, number>();
+    const authorMap = new Map<string, number>();
+    const seriesMap = new Map<string, number>();
+
+    markedBooks.forEach((_, bookId) => {
+      const item = items.find((i) => i.id === bookId);
+      if (!item) return;
+
+      // Genres
+      const genres = getGenres(item);
+      genres.forEach((g) => {
+        const key = g.toLowerCase();
+        genreMap.set(key, (genreMap.get(key) || 0) + 1);
+      });
+
+      // Authors
+      const author = getAuthorName(item).toLowerCase();
+      if (author) {
+        authorMap.set(author, (authorMap.get(author) || 0) + 1);
+      }
+
+      // Series
+      const series = getSeriesName(item).toLowerCase();
+      if (series) {
+        seriesMap.set(series, (seriesMap.get(series) || 0) + 1);
+      }
+    });
+
+    return {
+      genres: Array.from(genreMap.entries())
+        .map(([id, count]) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), count }))
+        .sort((a, b) => b.count - a.count),
+      authors: Array.from(authorMap.entries())
+        .map(([id, count]) => {
+          const item = items.find((i) => getAuthorName(i).toLowerCase() === id);
+          return { id, name: item ? getAuthorName(item) : id, count };
+        })
+        .sort((a, b) => b.count - a.count),
+      series: Array.from(seriesMap.entries())
+        .map(([id, count]) => {
+          const item = items.find((i) => getSeriesName(i).toLowerCase() === id);
+          return { id, name: item ? getSeriesName(item) : id, count };
+        })
+        .sort((a, b) => b.count - a.count),
+    };
+  }, [markedBooks, items]);
+
+  // Active filters for display
+  const activeFilters = useMemo((): ActiveFilter[] => {
+    const result: ActiveFilter[] = [];
+
+    filters.syncStatus.forEach((status) => {
+      result.push({
+        id: `sync_${status}`,
+        label: status === 'synced' ? 'Synced' : 'Not Synced',
+        type: 'sync',
+      });
+    });
+
+    filters.genres.forEach((genre) => {
+      result.push({
+        id: `genre_${genre}`,
+        label: genre.charAt(0).toUpperCase() + genre.slice(1),
+        type: 'genre',
+      });
+    });
+
+    filters.authors.forEach((author) => {
+      const found = availableFilters.authors.find((a) => a.id === author);
+      result.push({
+        id: `author_${author}`,
+        label: found?.name || author,
+        type: 'author',
+      });
+    });
+
+    filters.series.forEach((series) => {
+      const found = availableFilters.series.find((s) => s.id === series);
+      result.push({
+        id: `series_${series}`,
+        label: found?.name || series,
+        type: 'series',
+      });
+    });
+
+    if (filters.duration) {
+      const labels: Record<string, string> = {
+        under_5h: 'Under 5h',
+        '5_10h': '5-10h',
+        '10_20h': '10-20h',
+        over_20h: 'Over 20h',
+      };
+      result.push({
+        id: `duration_${filters.duration}`,
+        label: labels[filters.duration] || filters.duration,
+        type: 'duration',
+      });
+    }
+
+    return result;
+  }, [filters, availableFilters]);
+
+  // Group books by date for section headers
+  const groupedBooks = useMemo(() => {
+    if (sortBy !== 'recent') {
+      return [{ title: null, data: historyBooks }];
+    }
+
+    const groups = new Map<string, HistoryBook[]>();
+    historyBooks.forEach((book) => {
+      const group = getDateGroup(book.markedAt);
+      if (!groups.has(group)) {
+        groups.set(group, []);
+      }
+      groups.get(group)!.push(book);
+    });
+
+    return Array.from(groups.entries()).map(([title, data]) => ({ title, data }));
+  }, [historyBooks, sortBy]);
+
+  // Sync All handler
+  const handleSyncAll = useCallback(async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await syncToServer();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('[ReadingHistory] Sync failed:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, syncToServer]);
+
+  // Handle removing a single filter
+  const handleRemoveFilter = useCallback((filterId: string) => {
+    const [type, ...valueParts] = filterId.split('_');
+    const value = valueParts.join('_');
+
+    switch (type) {
+      case 'sync':
+        setFilters({
+          syncStatus: filters.syncStatus.filter((s) => s !== value),
+        });
+        break;
+      case 'genre':
+        setFilters({
+          genres: filters.genres.filter((g) => g !== value),
+        });
+        break;
+      case 'author':
+        setFilters({
+          authors: filters.authors.filter((a) => a !== value),
+        });
+        break;
+      case 'series':
+        setFilters({
+          series: filters.series.filter((s) => s !== value),
+        });
+        break;
+      case 'duration':
+        setFilters({ duration: null });
+        break;
+    }
+  }, [filters, setFilters]);
+
+  // Handle sync selected items
+  const handleSyncSelected = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+
+    const unsyncedIds = Array.from(selectedIds).filter((id) => {
+      const marked = markedBooks.get(id);
+      return marked && !marked.synced;
+    });
+
+    if (unsyncedIds.length === 0) return;
+
+    setIsSyncing(true);
+    try {
+      await syncToServer();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('[ReadingHistory] Sync selected failed:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSyncing(false);
+      setSelectedIds(new Set());
+      setIsSelecting(false);
+    }
+  }, [selectedIds, markedBooks, syncToServer]);
+
+  // Count unsynced in selection
+  const unsyncedSelectedCount = useMemo(() => {
+    return Array.from(selectedIds).filter((id) => {
+      const marked = markedBooks.get(id);
+      return marked && !marked.synced;
+    }).length;
+  }, [selectedIds, markedBooks]);
 
   // Handlers
   const handleClose = useCallback(() => {
@@ -523,18 +1039,48 @@ export function ReadingHistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Stats Summary */}
-      {stats.totalBooks > 0 && (
-        <StatsSummary
+      {/* Stats Card - hidden during selection mode */}
+      {stats.totalBooks > 0 && !isSelecting && (
+        <StatsCard
           totalBooks={stats.totalBooks}
           totalDuration={stats.totalDuration}
           syncedCount={stats.syncedCount}
+          syncPercentage={stats.syncPercentage}
+          onSyncAll={handleSyncAll}
+          isSyncing={isSyncing}
         />
       )}
 
-      {/* Sort Pills */}
-      {historyBooks.length > 0 && (
-        <SortPills sortBy={sortBy} onSortChange={setSortBy} />
+      {/* Toolbar or Search Bar */}
+      {stats.totalBooks > 0 && !isSelecting && (
+        isSearching ? (
+          <SearchBar
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onClose={() => {
+              setIsSearching(false);
+              setSearchQuery('');
+            }}
+          />
+        ) : (
+          <Toolbar
+            currentSort={sortBy}
+            onSortPress={() => setShowSortSheet(true)}
+            filterCount={getActiveFilterCount()}
+            onFilterPress={() => setShowFilterSheet(true)}
+            isSearching={isSearching}
+            onSearchPress={() => setIsSearching(true)}
+          />
+        )
+      )}
+
+      {/* Active Filters */}
+      {!isSelecting && activeFilters.length > 0 && (
+        <ActiveFiltersRow
+          filters={activeFilters}
+          onRemove={handleRemoveFilter}
+          onClearAll={clearFilters}
+        />
       )}
 
       {/* Book List */}
@@ -568,9 +1114,29 @@ export function ReadingHistoryScreen() {
             onSelectAll={handleSelectAll}
             onCancel={handleCancelSelection}
             onRemove={handleRemoveSelected}
+            onSync={handleSyncSelected}
+            canSync={unsyncedSelectedCount > 0}
           />
         </View>
       )}
+
+      {/* Sort Sheet */}
+      <SortSheet
+        visible={showSortSheet}
+        onClose={() => setShowSortSheet(false)}
+        currentSort={sortBy}
+        onSelectSort={setSortBy}
+      />
+
+      {/* Filter Sheet */}
+      <FilterSheet
+        visible={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        filters={filters}
+        onApply={setFilters}
+        availableFilters={availableFilters}
+        resultCount={historyBooks.length}
+      />
     </View>
   );
 }
@@ -590,7 +1156,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
-    height: hp(6),
+    height: hp(5),
   },
   headerButton: {
     width: wp(12),
@@ -611,55 +1177,202 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
 
-  // Stats Summary
-  statsContainer: {
+  // Toolbar
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
-    paddingVertical: hp(1.5),
+    paddingVertical: hp(1),
+  },
+  toolbarLeft: {
+    flexDirection: 'row',
+    gap: wp(2),
+  },
+  toolbarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(1.5),
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(1),
     backgroundColor: COLORS.surface,
+    borderRadius: hp(2),
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+  },
+  toolbarButtonActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  toolbarButtonText: {
+    fontSize: moderateScale(13),
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  toolbarButtonTextActive: {
+    color: '#000000',
+    fontWeight: '600',
+  },
+  searchButton: {
+    width: hp(4),
+    height: hp(4),
+    borderRadius: hp(2),
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchButtonActive: {
+    borderColor: COLORS.accent,
+  },
+
+  // Search Bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
     marginHorizontal: LAYOUT.HORIZONTAL_PADDING,
-    marginTop: hp(1),
+    marginVertical: hp(1.5),
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(1.2),
+    backgroundColor: COLORS.surface,
     borderRadius: wp(3),
     borderWidth: 1,
     borderColor: COLORS.surfaceBorder,
   },
-  statsPrimary: {
+  searchInput: {
+    flex: 1,
     fontSize: moderateScale(14),
-    fontWeight: '600',
     color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  statsSecondary: {
-    fontSize: moderateScale(12),
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: wp(0.5),
+    padding: 0,
   },
 
-  // Sort Pills
-  sortContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: wp(2),
+  // Active Filters
+  activeFiltersContainer: {
+    paddingVertical: hp(1),
+  },
+  activeFiltersContent: {
     paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
-    paddingVertical: hp(1.5),
+    gap: wp(2),
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  sortPill: {
-    paddingHorizontal: wp(3),
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(1.5),
+    paddingHorizontal: wp(2.5),
     paddingVertical: hp(0.8),
+    backgroundColor: COLORS.accentDim,
     borderRadius: hp(1.5),
+    borderWidth: 1,
+    borderColor: 'rgba(243, 182, 12, 0.3)',
+  },
+  activeFilterText: {
+    fontSize: moderateScale(12),
+    fontWeight: '500',
+    color: COLORS.accent,
+  },
+  clearAllButton: {
+    paddingHorizontal: wp(2),
+    paddingVertical: hp(0.8),
+  },
+  clearAllText: {
+    fontSize: moderateScale(12),
+    fontWeight: '500',
+    color: COLORS.accent,
+  },
+
+  // Section Header
+  sectionHeader: {
+    paddingHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    paddingTop: hp(2),
+    paddingBottom: hp(1),
+  },
+  sectionHeaderText: {
+    fontSize: moderateScale(12),
+    fontWeight: '600',
+    color: COLORS.textTertiary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  // Stats Card (Enhanced)
+  statsCard: {
+    marginHorizontal: LAYOUT.HORIZONTAL_PADDING,
+    marginTop: hp(0.5),
+    padding: wp(4),
     backgroundColor: COLORS.surface,
+    borderRadius: wp(4),
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
   },
-  sortPillActive: {
-    backgroundColor: COLORS.accent,
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
   },
-  sortPillText: {
+  statColumn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontSize: moderateScale(28),
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  statValueSynced: {
+    color: COLORS.success,
+  },
+  statLabel: {
     fontSize: moderateScale(12),
     fontWeight: '500',
     color: COLORS.textTertiary,
+    marginTop: wp(0.5),
   },
-  sortPillTextActive: {
+  syncSection: {
+    marginTop: wp(3),
+    paddingTop: wp(3),
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceBorder,
+  },
+  progressBarContainer: {
+    height: hp(0.4),
+    backgroundColor: COLORS.surfaceBorder,
+    borderRadius: hp(0.2),
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.success,
+    borderRadius: hp(0.2),
+  },
+  syncStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: wp(2),
+  },
+  syncStatusText: {
+    fontSize: moderateScale(12),
+    color: COLORS.textTertiary,
+  },
+  syncAllButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    backgroundColor: COLORS.accentDim,
+    borderRadius: wp(2),
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  syncAllButtonDisabled: {
+    opacity: 0.5,
+  },
+  syncAllButtonText: {
+    fontSize: moderateScale(12),
     fontWeight: '600',
-    color: '#000000',
+    color: COLORS.accent,
   },
 
   // List
@@ -759,6 +1472,22 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: moderateScale(14),
     color: COLORS.textSecondary,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(1.5),
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(1),
+    backgroundColor: COLORS.accentDim,
+    borderRadius: wp(2),
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  syncButtonText: {
+    fontSize: moderateScale(14),
+    fontWeight: '600',
+    color: COLORS.accent,
   },
   removeButton: {
     paddingHorizontal: wp(4),

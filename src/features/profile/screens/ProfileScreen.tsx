@@ -14,7 +14,11 @@ import {
   StatusBar,
   TouchableOpacity,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// App logo
+const APP_LOGO = require('../../../../assets/login-logo.png');
 import { useNavigation } from '@react-navigation/native';
 import {
   Server,
@@ -30,10 +34,12 @@ import {
   LogOut,
   ChevronRight,
   Bookmark,
+  Bug,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
+import { haptics } from '@/core/native/haptics';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
 import { colors, scale } from '@/shared/theme';
@@ -72,9 +78,11 @@ interface UserHeaderProps {
   username: string;
   role: string;
   serverUrl: string;
+  onSignOut: () => void;
+  isLoading?: boolean;
 }
 
-function UserHeader({ username, role, serverUrl }: UserHeaderProps) {
+function UserHeader({ username, role, serverUrl, onSignOut, isLoading }: UserHeaderProps) {
   const initials = username
     .split(' ')
     .map((word) => word[0])
@@ -100,6 +108,15 @@ function UserHeader({ username, role, serverUrl }: UserHeaderProps) {
           <Text style={styles.serverText} numberOfLines={1}>{displayServer}</Text>
         </View>
       </View>
+      {/* Quick sign out button - visible without scrolling */}
+      <TouchableOpacity
+        style={[styles.headerSignOut, isLoading && styles.headerSignOutDisabled]}
+        onPress={onSignOut}
+        disabled={isLoading}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <LogOut size={scale(18)} color="#ff4b4b" strokeWidth={2} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -181,6 +198,7 @@ export function ProfileScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
+          haptics.destructiveConfirm();
           try {
             await logout();
           } catch {
@@ -210,11 +228,13 @@ export function ProfileScreen() {
           <Text style={styles.headerTitle}>Profile</Text>
         </View>
 
-        {/* User Header */}
+        {/* User Header with quick sign out */}
         <UserHeader
           username={user?.username || 'User'}
           role={formatAccountType(user?.type)}
           serverUrl={serverUrl || ''}
+          onSignOut={handleLogout}
+          isLoading={isLoading}
         />
 
         {/* My Stuff Section */}
@@ -286,14 +306,22 @@ export function ProfileScreen() {
         </SectionGroup>
 
         {/* Developer Section - keep for testing */}
-        <SectionGroup title="Developer">
-          <ProfileLink
-            Icon={Music}
-            label="Cassette Player Test"
-            subtitle="Test the retro cassette UI"
-            onPress={() => navigation.navigate('CassetteTest')}
-          />
-        </SectionGroup>
+        {__DEV__ && (
+          <SectionGroup title="Developer">
+            <ProfileLink
+              Icon={Music}
+              label="Cassette Player Test"
+              subtitle="Test the retro cassette UI"
+              onPress={() => navigation.navigate('CassetteTest')}
+            />
+            <ProfileLink
+              Icon={Bug}
+              label="Stress Tests"
+              subtitle="Runtime monitoring & diagnostics"
+              onPress={() => navigation.navigate('DebugStressTest')}
+            />
+          </SectionGroup>
+        )}
 
         {/* Sign Out Button */}
         <View style={styles.signOutSection}>
@@ -310,7 +338,12 @@ export function ProfileScreen() {
 
         {/* App Footer */}
         <View style={styles.footer}>
-          <Text style={styles.appName}>AudiobookShelf</Text>
+          <Image
+            source={APP_LOGO}
+            style={styles.footerLogo}
+            contentFit="contain"
+          />
+          <Text style={styles.appName}>Secret Library</Text>
           <Text style={styles.versionText}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
           <Text style={styles.buildDate}>{VERSION_DATE}</Text>
         </View>
@@ -388,6 +421,18 @@ const styles = StyleSheet.create({
     fontSize: scale(12),
     color: 'rgba(255,255,255,0.4)',
     flex: 1,
+  },
+  headerSignOut: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: 'rgba(255,75,75,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: scale(8),
+  },
+  headerSignOutDisabled: {
+    opacity: 0.5,
   },
   // Section Group
   sectionGroup: {
@@ -479,6 +524,12 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     paddingVertical: scale(16),
+  },
+  footerLogo: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(10),
+    marginBottom: scale(8),
   },
   appName: {
     fontSize: scale(14),

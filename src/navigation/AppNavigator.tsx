@@ -5,9 +5,9 @@
  * Shows UI immediately with cached data, loads fresh data in background.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, InteractionManager } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '@/core/auth';
@@ -37,9 +37,11 @@ import { MarkBooksScreen, ReadingHistoryScreen } from '@/features/reading-histor
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { StatsScreen } from '@/features/stats';
-import { WishlistScreen } from '@/features/wishlist';
+import { WishlistScreen, ManualAddScreen } from '@/features/wishlist';
+import { DebugStressTestScreen } from '@/features/debug';
 import { downloadManager } from '@/core/services/downloadManager';
 import { networkMonitor } from '@/core/services/networkMonitor';
+import { navigationMonitor } from '@/utils/runtimeMonitor';
 import { NavigationBar } from './components/NavigationBar';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
 import { NetworkStatusBar } from '@/shared/components';
@@ -70,6 +72,21 @@ function AuthenticatedApp() {
   const { library } = useDefaultLibrary();
   const { loadCache } = useLibraryCache();
   const initQueue = useQueueStore((state) => state.init);
+  const navigationRef = useRef<NavigationContainerRef<Record<string, object | undefined>>>(null);
+  const routeNameRef = useRef<string | undefined>(undefined);
+
+  // Navigation state tracking for runtime monitoring
+  const onNavigationStateChange = () => {
+    if (__DEV__) {
+      const currentRoute = navigationRef.current?.getCurrentRoute();
+      const currentRouteName = currentRoute?.name;
+
+      if (currentRouteName && currentRouteName !== routeNameRef.current) {
+        routeNameRef.current = currentRouteName;
+        navigationMonitor.recordNavigation(currentRouteName);
+      }
+    }
+  };
 
   // Pre-initialize audio service at app startup for faster playback
   // Use InteractionManager to defer until after initial render and animations
@@ -135,7 +152,10 @@ function AuthenticatedApp() {
 
   // Render immediately - HomeScreen handles empty state gracefully
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onStateChange={onNavigationStateChange}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Search" component={SearchScreen} />
@@ -154,12 +174,16 @@ function AuthenticatedApp() {
         <Stack.Screen name="Downloads" component={DownloadsScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Wishlist" component={WishlistScreen} />
+        <Stack.Screen name="ManualAdd" component={ManualAddScreen} />
         <Stack.Screen name="PlaybackSettings" component={PlaybackSettingsScreen} />
         <Stack.Screen name="StorageSettings" component={StorageSettingsScreen} />
         <Stack.Screen name="JoystickSeekSettings" component={JoystickSeekSettingsScreen} />
         <Stack.Screen name="HapticSettings" component={HapticSettingsScreen} />
         <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
+        {__DEV__ && (
+          <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
+        )}
         <Stack.Screen
           name="PreferencesOnboarding"
           component={PreferencesOnboardingScreen}

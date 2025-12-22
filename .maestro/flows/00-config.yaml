@@ -1,0 +1,23 @@
+# =============================================================================
+# MAESTRO: Shared Configuration
+# =============================================================================
+# Common configuration used by all screenshot flows
+#
+# Usage: Include in other flows via runFlow
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+env:
+  # Screenshot output directory
+  OUTPUT_DIR: "screens"
+
+  # Timing constants (ms)
+  WAIT_SHORT: 500
+  WAIT_MEDIUM: 1000
+  WAIT_LONG: 2000
+  WAIT_LOAD: 3000
+  WAIT_ANIMATION: 500
+
+---
+# This file is included by other flows for shared configuration

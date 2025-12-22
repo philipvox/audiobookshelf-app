@@ -1,0 +1,215 @@
+# =============================================================================
+# MAESTRO: Empty States
+# =============================================================================
+# Captures empty states across the app:
+# - Empty library tabs
+# - Empty downloads
+# - Empty wishlist
+# - Empty queue
+# - Empty search results
+# - No connection state
+#
+# Note: These states may require specific setup or may not be achievable
+# in all environments. Use this flow when you have a fresh/empty account.
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 10000
+
+# -----------------------------------------------------------------------------
+# LIBRARY EMPTY STATES
+# -----------------------------------------------------------------------------
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Check each tab for empty state
+# Downloaded Tab (likely empty if nothing downloaded)
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - runFlow:
+          when:
+            visible:
+              text: "No downloads|Nothing downloaded|Empty"
+          commands:
+            - takeScreenshot: screens/11-empty/01-library-downloaded-empty
+
+# Completed Tab (if no completed books)
+- runFlow:
+    when:
+      visible: "Completed"
+    commands:
+      - tapOn: "Completed"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - runFlow:
+          when:
+            visible:
+              text: "No completed|Nothing completed|Empty"
+          commands:
+            - takeScreenshot: screens/11-empty/02-library-completed-empty
+
+# Favorites Tab (if no favorites)
+- runFlow:
+    when:
+      visible: "Favorites"
+    commands:
+      - tapOn: "Favorites"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - runFlow:
+          when:
+            visible:
+              text: "No favorites|Nothing favorited|Empty"
+          commands:
+            - takeScreenshot: screens/11-empty/03-library-favorites-empty
+
+# -----------------------------------------------------------------------------
+# PROFILE - EMPTY STATES
+# -----------------------------------------------------------------------------
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Empty Downloads Screen
+- runFlow:
+    when:
+      visible: "Downloads"
+    commands:
+      - tapOn: "Downloads"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - runFlow:
+          when:
+            visible:
+              text: "No downloads|Nothing|Empty|Browse"
+          commands:
+            - takeScreenshot: screens/11-empty/04-downloads-empty
+      - back
+
+# Empty Wishlist
+- runFlow:
+    when:
+      visible: "Wishlist"
+    commands:
+      - tapOn: "Wishlist"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - runFlow:
+          when:
+            visible:
+              text: "No items|Empty|Add books"
+          commands:
+            - takeScreenshot: screens/11-empty/05-wishlist-empty
+      - back
+
+# Empty Stats (new user)
+- runFlow:
+    when:
+      visible:
+        text: "Stats|Listening Stats"
+    commands:
+      - tapOn:
+          text: "Stats|Listening Stats"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - runFlow:
+          when:
+            visible:
+              text: "No data|Start listening|Empty"
+          commands:
+            - takeScreenshot: screens/11-empty/06-stats-empty
+      - back
+
+# Empty Reading History
+- runFlow:
+    when:
+      visible:
+        text: "History|Reading History"
+    commands:
+      - tapOn:
+          text: "History|Reading History"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - runFlow:
+          when:
+            visible:
+              text: "No history|Empty|No books"
+          commands:
+            - takeScreenshot: screens/11-empty/07-history-empty
+      - back
+
+# -----------------------------------------------------------------------------
+# HOME - NO PLAYBACK
+# -----------------------------------------------------------------------------
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# If no current book playing
+- runFlow:
+    when:
+      visible:
+        text: "No book|Pick something|Start listening|Choose a book"
+    commands:
+      - takeScreenshot: screens/11-empty/08-home-no-playback
+
+# -----------------------------------------------------------------------------
+# QUEUE - EMPTY
+# -----------------------------------------------------------------------------
+# Try to open queue
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Up Next"
+    commands:
+      - tapOn:
+          text: "Queue|Up Next"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      - runFlow:
+          when:
+            visible:
+              text: "Queue is empty|No items|Empty"
+          commands:
+            - takeScreenshot: screens/11-empty/09-queue-empty
+      - back
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Empty states screenshots complete: screens/11-empty/");

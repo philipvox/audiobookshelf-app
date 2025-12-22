@@ -14,7 +14,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { Ionicons } from '@expo/vector-icons';
+import { X, Bookmark } from 'lucide-react-native';
 import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
 import { colors, spacing, radius, scale, layout } from '@/shared/theme';
@@ -88,7 +88,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
   // ==========================================================================
 
   const handleApply = useCallback(() => {
-    haptics.selection();
+    haptics.sleepTimerSet();  // Category-specific haptic for setting timer
     if (endOfChapter) {
       // Set timer to end of current chapter
       const chapterRemaining = getChapterRemainingMins();
@@ -104,19 +104,19 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
   }, [endOfChapter, sliderValue, setSleepTimer, clearSleepTimer, onClose, chapters, chapterIndex, position]);
 
   const handleClear = useCallback(() => {
-    haptics.selection();
+    haptics.sleepTimerClear();  // Category-specific haptic for clearing timer
     clearSleepTimer();
     onClose();
   }, [clearSleepTimer, onClose]);
 
   const handlePresetPress = useCallback((preset: number) => {
-    haptics.selection();
+    haptics.selection();  // Selection feedback for preset buttons
     setSliderValue(preset);
     setEndOfChapter(false);
   }, []);
 
   const handleEndOfChapterPress = useCallback(() => {
-    haptics.selection();
+    haptics.selection();  // Selection feedback for toggle
     setEndOfChapter(!endOfChapter);
     if (!endOfChapter) {
       setSliderValue(0);
@@ -136,7 +136,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sleep Timer</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
+          <X size={24} color={colors.textPrimary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -202,10 +202,10 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
         onPress={handleEndOfChapterPress}
         activeOpacity={0.7}
       >
-        <Ionicons
-          name="bookmark-outline"
+        <Bookmark
           size={20}
           color={endOfChapter ? '#000' : '#FFF'}
+          strokeWidth={2}
         />
         <Text style={[
           styles.endOfChapterText,

@@ -4,7 +4,7 @@
  * TypeScript interfaces for library-related models.
  */
 
-import { BookMedia, PodcastMedia } from './media';
+import { BookMedia, PodcastMedia, MediaProgress } from './media';
 import { LibraryFile } from './files';
 
 /**
@@ -67,6 +67,8 @@ export interface LibraryItem {
   mediaType: 'book' | 'podcast';
   media: BookMedia | PodcastMedia;
   libraryFiles: LibraryFile[];
+  // Optional - included when API returns with progress data
+  userMediaProgress?: MediaProgress;
 }
 
 /**

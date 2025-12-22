@@ -14,11 +14,20 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Circle } from 'react-native-svg';
+import {
+  Library,
+  CloudDownload,
+  PlayCircle,
+  BookOpen,
+  CheckCircle,
+  Heart,
+  Compass,
+  Play,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { colors, scale, spacing } from '@/shared/theme';
 
-type TabType = 'all' | 'downloaded' | 'in-progress' | 'favorites';
+type TabType = 'all' | 'downloaded' | 'in-progress' | 'not-started' | 'completed' | 'favorites';
 
 interface LibraryEmptyStateProps {
   /** Current tab to show contextual message */
@@ -28,78 +37,81 @@ interface LibraryEmptyStateProps {
 }
 
 interface EmptyStateConfig {
-  icon: React.ReactNode;
+  Icon: LucideIcon;
   title: string;
   subtitle: string;
   actionText: string;
-  actionIcon: keyof typeof Ionicons.glyphMap;
+  ActionIcon: LucideIcon;
 }
-
-// Compass/browse icon for CTA
-const BrowseIcon = ({ size = 20, color = '#000' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Circle cx={12} cy={12} r={10} stroke={color} strokeWidth={2} />
-    <Path
-      d="M14.31 8l-5.31 2.16L12 15.31l5.31-2.16L14.31 8z"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
 
 const getConfig = (tab: TabType): EmptyStateConfig => {
   switch (tab) {
     case 'all':
       return {
-        icon: <Ionicons name="library-outline" size={scale(48)} color="rgba(255,255,255,0.25)" />,
+        Icon: Library,
         title: 'Your library is empty',
         subtitle: 'Download or favorite books to build your personal collection and listen offline.',
         actionText: 'Browse Library',
-        actionIcon: 'compass-outline',
+        ActionIcon: Compass,
       };
     case 'downloaded':
       return {
-        icon: <Ionicons name="cloud-download-outline" size={scale(48)} color="rgba(255,255,255,0.25)" />,
+        Icon: CloudDownload,
         title: 'No downloads yet',
         subtitle: 'Download books to listen offline, anytime and anywhere.',
         actionText: 'Browse Library',
-        actionIcon: 'compass-outline',
+        ActionIcon: Compass,
       };
     case 'in-progress':
       return {
-        icon: <Ionicons name="play-circle-outline" size={scale(48)} color="rgba(255,255,255,0.25)" />,
+        Icon: PlayCircle,
         title: 'Nothing in progress',
         subtitle: 'Start listening to track your progress. Your partially-read books will appear here.',
         actionText: 'Start Listening',
-        actionIcon: 'play',
+        ActionIcon: Play,
+      };
+    case 'not-started':
+      return {
+        Icon: BookOpen,
+        title: 'All books started',
+        subtitle: "Great job! You've started all your downloaded books. Download more to add to your reading list.",
+        actionText: 'Browse Library',
+        ActionIcon: Compass,
+      };
+    case 'completed':
+      return {
+        Icon: CheckCircle,
+        title: 'No completed books',
+        subtitle: 'Finish listening to a book and it will appear here. Keep going!',
+        actionText: 'Continue Listening',
+        ActionIcon: Play,
       };
     case 'favorites':
       return {
-        icon: <Ionicons name="heart-outline" size={scale(48)} color="rgba(255,255,255,0.25)" />,
+        Icon: Heart,
         title: 'No favorites yet',
         subtitle: 'Tap the heart icon on books, authors, series, or narrators to save them here.',
         actionText: 'Browse Library',
-        actionIcon: 'compass-outline',
+        ActionIcon: Compass,
       };
     default:
       return {
-        icon: <Ionicons name="book-outline" size={scale(48)} color="rgba(255,255,255,0.25)" />,
+        Icon: BookOpen,
         title: 'Nothing here yet',
         subtitle: 'Browse the library to discover audiobooks.',
         actionText: 'Browse Library',
-        actionIcon: 'compass-outline',
+        ActionIcon: Compass,
       };
   }
 };
 
 export function LibraryEmptyState({ tab, onAction }: LibraryEmptyStateProps) {
   const config = getConfig(tab);
+  const { Icon, ActionIcon } = config;
 
   return (
     <View style={styles.container}>
-      {config.icon}
+      <Icon size={scale(48)} color="rgba(255,255,255,0.25)" strokeWidth={1.5} />
 
       <Text style={styles.title}>{config.title}</Text>
       <Text style={styles.subtitle}>{config.subtitle}</Text>
@@ -109,11 +121,7 @@ export function LibraryEmptyState({ tab, onAction }: LibraryEmptyStateProps) {
         onPress={onAction}
         activeOpacity={0.8}
       >
-        {tab === 'all' || tab === 'downloaded' || tab === 'favorites' ? (
-          <BrowseIcon size={scale(18)} color="#000" />
-        ) : (
-          <Ionicons name={config.actionIcon} size={scale(18)} color="#000" />
-        )}
+        <ActionIcon size={scale(18)} color="#000" strokeWidth={2} />
         <Text style={styles.actionText}>{config.actionText}</Text>
       </TouchableOpacity>
     </View>

@@ -28,7 +28,7 @@ export function NarratorsListContent() {
     return (
       <EmptyState
         icon="🎙️"
-        message="No narrators found"
+        title="No narrators found"
         description="Your library doesn't have any narrators"
       />
     );
@@ -67,7 +67,7 @@ export function NarratorsListContent() {
         ListEmptyComponent={
           <EmptyState
             icon="🔍"
-            message="No narrators found"
+            title="No narrators found"
             description={`No narrators match "${searchQuery}"`}
           />
         }

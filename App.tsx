@@ -14,8 +14,25 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { queryClient } from './src/core/queryClient';
 import { appInitializer, InitResult } from './src/core/services/appInitializer';
 import { AnimatedSplash } from './src/shared/components/AnimatedSplash';
+import { useAppHealthMonitor } from './src/utils/perfDebug';
+import { startAllMonitoring, stopAllMonitoring } from './src/utils/runtimeMonitor';
 
 export default function App() {
+  // Performance monitoring in development
+  if (__DEV__) {
+    useAppHealthMonitor();
+  }
+
+  // Runtime monitoring in development
+  useEffect(() => {
+    if (__DEV__) {
+      startAllMonitoring();
+      return () => {
+        stopAllMonitoring();
+      };
+    }
+  }, []);
+
   const [isInitialized, setIsInitialized] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [initResult, setInitResult] = useState<InitResult | null>(null);

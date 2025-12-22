@@ -8,6 +8,7 @@ import {
   TextInput as RNTextInput,
   StyleSheet,
   ViewStyle,
+  TextStyle,
   TouchableOpacity,
   TextInputProps as RNTextInputProps,
 } from 'react-native';
@@ -20,7 +21,7 @@ interface SearchInputProps extends Omit<RNTextInputProps, 'style'> {
   onClear?: () => void;
   onSubmit?: () => void;
   containerStyle?: ViewStyle;
-  inputStyle?: ViewStyle;
+  inputStyle?: TextStyle;
 }
 
 /**

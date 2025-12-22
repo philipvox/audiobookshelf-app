@@ -173,9 +173,9 @@ export async function getProgressOffline(
   const cached = await sqliteCache.getProgress(itemId);
   if (cached) {
     return {
-      currentTime: cached.currentTime,
+      currentTime: cached.position,
       duration: cached.duration,
-      progress: cached.duration > 0 ? cached.currentTime / cached.duration : 0,
+      progress: cached.duration > 0 ? cached.position / cached.duration : 0,
     };
   }
 

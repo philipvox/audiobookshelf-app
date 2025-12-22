@@ -1,0 +1,145 @@
+# =============================================================================
+# SMART CAPTURE - Player States Only
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Go to Home and open player
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open player via mini-player tap
+- tapOn:
+    point: "50%,93%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Check if player opened (look for sleep timer "Off" text)
+- runFlow:
+    when:
+      visible: "Off"
+    commands:
+      - takeScreenshot: full/player-paused
+
+      # Play
+      - tapOn:
+          point: "50%,80%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-playing
+
+      # Pause
+      - tapOn:
+          point: "50%,80%"
+      - waitForAnimationToEnd
+
+      # Sleep timer sheet
+      - tapOn:
+          point: "15%,88%"
+          optional: true
+      - tapOn:
+          text: "Off"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/sleep-timer-sheet
+      - swipe:
+          start: "50%,70%"
+          end: "50%,40%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/sleep-timer-scroll
+      # Close sheet by tapping outside
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Speed sheet
+      - tapOn:
+          point: "85%,88%"
+          optional: true
+      - tapOn:
+          text: "1x"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/speed-sheet
+      # Select 1.5x speed
+      - tapOn:
+          text: "1.5"
+          optional: true
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-speed-changed
+      # Close sheet
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Chapters sheet
+      - tapOn:
+          point: "50%,88%"
+          optional: true
+      - tapOn:
+          text: "Chapters"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: full/player-chapters
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: full/player-chapters-scroll
+      # Close sheet
+      - tapOn:
+          point: "50%,15%"
+      - waitForAnimationToEnd
+
+      # Close player
+      - tapOn:
+          point: "8%,5%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# MINI-PLAYER ON ALL TABS
+# =============================================================================
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-home-final
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-library
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-search
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-browse
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-profile
+
+- evalScript: |
+    console.log("Player capture complete!");

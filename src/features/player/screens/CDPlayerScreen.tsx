@@ -37,11 +37,20 @@ import ReanimatedAnimated, {
 import { DURATION, CD_ROTATION } from '@/shared/animation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  X,
+  Volume2,
+  Check,
+  CheckCircle,
+  Cloud,
+  Play,
+  Layers,
+  Hourglass,
+} from 'lucide-react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigation } from '@react-navigation/native';
 
-import { usePlayerStore, useCurrentChapterIndex, useBookProgress, useSleepTimerState } from '../stores/playerStore';
+import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
 import { useJoystickSeekSettings } from '../stores/joystickSeekStore';
 import { SleepTimerSheet, SpeedSheet } from '../sheets';
 import { QueuePanel } from '@/features/queue/components/QueuePanel';
@@ -49,6 +58,7 @@ import { useQueueCount } from '@/features/queue/stores/queueStore';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useCoverUrl } from '@/core/cache';
 import { useIsOfflineAvailable } from '@/core/hooks/useDownloads';
+import { useRenderTracker, useLifecycleTracker } from '@/utils/perfDebug';
 import { useNormalizedChapters } from '@/shared/hooks';
 import { CoverPlayButton, JogState } from '@/shared/components/CoverPlayButton';
 import { haptics } from '@/core/native/haptics';
@@ -419,6 +429,13 @@ const CDProgressBar: React.FC<ProgressBarProps> = ({ progress, onSeek, chapterMa
 
 export function CDPlayerScreen() {
   useScreenLoadTime('CDPlayerScreen');
+
+  // Performance tracking (dev only)
+  if (__DEV__) {
+    useRenderTracker('CDPlayerScreen');
+    useLifecycleTracker('CDPlayerScreen');
+  }
+
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -432,7 +449,6 @@ export function CDPlayerScreen() {
     isPlaying,
     isLoading,
     isBuffering,
-    position,
     duration,
     playbackRate,
     sleepTimer,
@@ -444,13 +460,18 @@ export function CDPlayerScreen() {
       isPlaying: s.isPlaying,
       isLoading: s.isLoading,
       isBuffering: s.isBuffering,
-      position: s.position,
+      // NOTE: position removed - causes excessive re-renders (2x/sec)
+      // Use usePlaybackPosition() hook below for position-dependent UI
       duration: s.duration,
       playbackRate: s.playbackRate,
       sleepTimer: s.sleepTimer,
       chapters: s.chapters,
     }))
   );
+
+  // Position-dependent state - isolated to minimize re-renders
+  // This only re-renders components that actually need position
+  const position = usePlayerStore((s) => s.isSeeking ? s.seekPosition : s.position);
 
   // Actions
   const closePlayer = usePlayerStore((s) => s.closePlayer);
@@ -467,11 +488,11 @@ export function CDPlayerScreen() {
   const skipForwardInterval = usePlayerStore((s) => s.skipForwardInterval ?? 30);
   const skipBackInterval = usePlayerStore((s) => s.skipBackInterval ?? 15);
 
-  // Sleep timer state
-  const sleepTimerState = useSleepTimerState();
+  // NOTE: sleepTimerState hook removed - was unused and could cause re-renders during countdown
+  // sleepTimer is already available from the main useShallow selector above
 
   const chapterIndex = useCurrentChapterIndex();
-  const bookProgress = useBookProgress();
+  // NOTE: bookProgress removed - was unused and caused extra re-renders on every position tick
   const coverUrl = useCoverUrl(currentBook?.id || '');
   const { isAvailable: isDownloaded } = useIsOfflineAvailable(currentBook?.id || '');
   const queueCount = useQueueCount();
@@ -675,22 +696,26 @@ export function CDPlayerScreen() {
   }, [seekTo]);
 
   // Skip backward using configured interval
+  // NOTE: Uses getState() to avoid callback recreation on position updates
   const handleSkipBack = useCallback(() => {
     haptics.skip();  // Use category-specific haptic for playback controls
-    const newPosition = Math.max(0, position - skipBackInterval);
+    const currentPos = usePlayerStore.getState().position;
+    const newPosition = Math.max(0, currentPos - skipBackInterval);
     seekTo?.(newPosition);
     // Spin disc backward for visual feedback (90 degrees)
     discSpinBurst.value = -90;
-  }, [position, skipBackInterval, seekTo, discSpinBurst]);
+  }, [skipBackInterval, seekTo, discSpinBurst]);
 
   // Skip forward using configured interval
+  // NOTE: Uses getState() to avoid callback recreation on position updates
   const handleSkipForward = useCallback(() => {
     haptics.skip();  // Use category-specific haptic for playback controls
-    const newPosition = Math.min(duration, position + skipForwardInterval);
+    const state = usePlayerStore.getState();
+    const newPosition = Math.min(state.duration, state.position + skipForwardInterval);
     seekTo?.(newPosition);
     // Spin disc forward for visual feedback (90 degrees)
     discSpinBurst.value = 90;
-  }, [position, duration, skipForwardInterval, seekTo, discSpinBurst]);
+  }, [skipForwardInterval, seekTo, discSpinBurst]);
 
   // Long-press: Skip to previous chapter
   const handlePrevChapter = useCallback(() => {
@@ -722,7 +747,7 @@ export function CDPlayerScreen() {
           accessibilityLabel="Close chapters"
           accessibilityRole="button"
         >
-          <Ionicons name="close" size={24} color="#FFF" />
+          <X size={24} color="#FFF" strokeWidth={2} />
         </TouchableOpacity>
       </View>
       <ScrollView style={styles.chaptersList} showsVerticalScrollIndicator={false}>
@@ -759,7 +784,7 @@ export function CDPlayerScreen() {
                 </Text>
               </View>
               {isCurrentChapter && (
-                <Ionicons name="volume-high" size={16} color={ACCENT_COLOR} />
+                <Volume2 size={16} color={ACCENT_COLOR} strokeWidth={2} />
               )}
             </TouchableOpacity>
           );
@@ -773,7 +798,7 @@ export function CDPlayerScreen() {
       <View style={styles.sheetHeader}>
         <Text style={styles.sheetTitle}>Player Settings</Text>
         <TouchableOpacity onPress={() => setActiveSheet('none')} style={styles.sheetClose}>
-          <Ionicons name="close" size={24} color="#FFF" />
+          <X size={24} color="#FFF" strokeWidth={2} />
         </TouchableOpacity>
       </View>
       <View style={styles.settingsSection}>
@@ -793,7 +818,7 @@ export function CDPlayerScreen() {
               Chapter
             </Text>
             {progressMode === 'chapter' && (
-              <Ionicons name="checkmark" size={20} color={ACCENT_COLOR} />
+              <Check size={20} color={ACCENT_COLOR} strokeWidth={2.5} />
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -810,7 +835,7 @@ export function CDPlayerScreen() {
               Book (with chapter markers)
             </Text>
             {progressMode === 'book' && (
-              <Ionicons name="checkmark" size={20} color={ACCENT_COLOR} />
+              <Check size={20} color={ACCENT_COLOR} strokeWidth={2.5} />
             )}
           </TouchableOpacity>
         </View>
@@ -856,18 +881,18 @@ export function CDPlayerScreen() {
         <View style={styles.headerRow}>
           {/* Left - Source indicator */}
           <View style={styles.sourceIndicator}>
-            <Ionicons
-              name={isDownloaded ? 'checkmark-circle' : 'cloud-outline'}
-              size={scale(14)}
-              color={isDownloaded ? '#34C759' : 'rgba(255,255,255,0.5)'}
-            />
+            {isDownloaded ? (
+              <CheckCircle size={scale(14)} color="#34C759" strokeWidth={2} />
+            ) : (
+              <Cloud size={scale(14)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+            )}
             <Text style={[styles.sourceText, isDownloaded && styles.sourceTextDownloaded]}>
               {isDownloaded ? 'Downloaded' : 'Streaming'}
             </Text>
           </View>
-          {/* Center - Down arrow (tap to close) */}
+          {/* Center - Down arrow (tap to close) - absolutely positioned for true center */}
           <TouchableOpacity
-            style={styles.arrowButton}
+            style={styles.arrowButtonCentered}
             onPress={handleClose}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
@@ -876,6 +901,8 @@ export function CDPlayerScreen() {
           >
             <DownArrowIcon />
           </TouchableOpacity>
+          {/* Spacer to balance settings button */}
+          <View style={styles.headerSpacer} />
           {/* Right - Settings */}
           <TouchableOpacity
             style={styles.settingsButton}
@@ -929,7 +956,7 @@ export function CDPlayerScreen() {
             {/* Playing indicator for reduced motion mode */}
             {reducedMotion && isPlaying && (
               <View style={styles.playingBadge}>
-                <Ionicons name="play" size={scale(10)} color="#000" />
+                <Play size={scale(10)} color="#000" fill="#000" strokeWidth={0} />
                 <Text style={styles.playingBadgeText}>Playing</Text>
               </View>
             )}
@@ -966,7 +993,7 @@ export function CDPlayerScreen() {
                   </Svg>
                 }
               >
-                <View style={{ marginTop: -(DISC_SIZE / 2), alignItems: 'center' }}>
+                <View style={{ marginTop: - (DISC_SIZE / 2), alignItems: 'center' }}>
                   <CDDisc
                     coverUrl={coverUrl}
                     size={DISC_SIZE + scale(5)}
@@ -1040,7 +1067,7 @@ export function CDPlayerScreen() {
               accessibilityRole="button"
             >
               <View style={styles.pillBorder} />
-              <Ionicons name="albums-outline" size={scale(14)} color={queueCount > 0 ? colors.accent : '#fff'} />
+              <Layers size={scale(14)} color={queueCount > 0 ? colors.accent : '#fff'} strokeWidth={2} />
               {queueCount > 0 && (
                 <View style={styles.queueBadge}>
                   <Text style={styles.queueBadgeText}>{queueCount}</Text>
@@ -1088,7 +1115,7 @@ export function CDPlayerScreen() {
       {isBuffering && !isDownloaded && (
         <View style={[styles.bufferingBadgeContainer, { top: useStandardPlayer ? scale(200) : discCenterY + scale(60) }]}>
           <View style={styles.bufferingBadge}>
-            <Ionicons name="hourglass-outline" size={scale(10)} color="#FFF" />
+            <Hourglass size={scale(10)} color="#FFF" strokeWidth={2} />
             <Text style={styles.bufferingBadgeText}>Buffering...</Text>
           </View>
         </View>
@@ -1285,6 +1312,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: scale(8),
   },
+  arrowButtonCentered: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(8),
+  },
+  headerSpacer: {
+    width: scale(44),  // Same as settings button
+  },
   header: {
     alignItems: 'center',
     paddingHorizontal: scale(20),
@@ -1381,6 +1419,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 6,  // Above sharp disc, below spindle
+    overflow: 'hidden',  // Clip blur at top edge
   },
   blurDarkOverlay: {
     position: 'absolute',

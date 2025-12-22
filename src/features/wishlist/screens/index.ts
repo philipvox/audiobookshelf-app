@@ -3,3 +3,4 @@
  */
 
 export { WishlistScreen } from './WishlistScreen';
+export { ManualAddScreen } from './ManualAddScreen';

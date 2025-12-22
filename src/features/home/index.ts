@@ -21,6 +21,3 @@ export { useContinueListening } from './hooks/useContinueListening';
 
 // Types
 export * from './types';
-
-// Constants
-export * from './constants';

@@ -47,11 +47,13 @@ export const userApi = {
 
   /**
    * Mark media as finished
+   * Sets isFinished=true and progress=1 (100%)
    */
-  markAsFinished: async (itemId: string): Promise<MediaProgress> => {
+  markAsFinished: async (itemId: string, duration?: number): Promise<MediaProgress> => {
     return apiClient.updateProgress(itemId, {
       isFinished: true,
-      currentTime: 0,
+      progress: 1,
+      currentTime: duration ?? 0,
     });
   },
 

@@ -22,7 +22,7 @@ export const CollectionCard = memo(function CollectionCard({ collection }: Colle
   const navigation = useNavigation();
 
   const handlePress = () => {
-    navigation.navigate('CollectionDetail' as never, { collectionId: collection.id } as never);
+    (navigation as any).navigate('CollectionDetail', { collectionId: collection.id });
   };
 
   const books = collection.books || [];

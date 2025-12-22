@@ -1,0 +1,875 @@
+# =============================================================================
+# MAESTRO: Comprehensive Screenshot Capture
+# =============================================================================
+# Captures all logged-in screens with full-length scrolling support.
+# Run this AFTER logging in manually on the emulator.
+#
+# Prerequisites:
+#   1. User is already logged in
+#   2. App is on Home screen
+#   3. Have some books in library (ideally: 1 downloaded, 1 in-progress, 1 not started)
+#
+# Usage:
+#   maestro test .maestro/capture-comprehensive.yaml
+#
+# Total screenshots: ~120+ (with scroll variants)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# PHASE 2: HOME TAB (Screenshots 7-10)
+# =============================================================================
+- launchApp
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Ensure we're on Home tab
+- runFlow:
+    when:
+      visible: "Home"
+    commands:
+      - tapOn: "Home"
+      - waitForAnimationToEnd
+
+# Screenshot 7: Home idle (no active playback)
+- takeScreenshot: comprehensive/07-home-idle
+
+# Scroll down to see more content
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/07-home-idle-scrolled
+
+# Scroll back up
+- scroll:
+    direction: UP
+- waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 3: PLAYER STATES (Screenshots 11-23)
+# =============================================================================
+
+# Try to open full player by tapping CD disc area (center of screen, upper third)
+- tapOn:
+    point: "50%,30%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Check if player opened, if so capture player states
+- runFlow:
+    when:
+      visible:
+        text: ".*"
+    commands:
+      # Screenshot 11: Player paused
+      - takeScreenshot: comprehensive/11-player-paused
+
+      # Look for play button and tap it
+      - runFlow:
+          when:
+            visible: "Play"
+          commands:
+            - tapOn: "Play"
+            - waitForAnimationToEnd
+            # Screenshot 12: Player playing
+            - takeScreenshot: comprehensive/12-player-playing
+            # Pause again
+            - tapOn: "Pause"
+            - waitForAnimationToEnd
+
+# Look for sleep timer button (moon icon or "Off" text near it)
+- runFlow:
+    when:
+      visible: "Off"
+    commands:
+      - tapOn: "Off"
+      - waitForAnimationToEnd
+      # Screenshot 20: Sleep timer sheet
+      - takeScreenshot: comprehensive/20-sleep-timer-sheet
+      # Scroll sheet to see more options
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/20-sleep-timer-sheet-scrolled
+      # Dismiss sheet by tapping outside (top of screen)
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# Look for speed button (shows current speed like "1x" or "1.0x")
+- runFlow:
+    when:
+      visible:
+        text: ".*x"
+    commands:
+      - tapOn:
+          text: ".*x"
+      - waitForAnimationToEnd
+      # Screenshot 23: Speed sheet
+      - takeScreenshot: comprehensive/23-speed-sheet
+      # Dismiss sheet
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# Screenshot 18: Chapter list (if chapters button visible)
+- runFlow:
+    when:
+      visible: "Chapters"
+    commands:
+      - tapOn: "Chapters"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/18-player-chapters
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/18-player-chapters-scrolled
+      # Dismiss
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# Close player (tap X or chevron at top)
+- runFlow:
+    when:
+      visible:
+        text: ".*"
+    commands:
+      - tapOn:
+          point: "10%,5%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 4: LIBRARY TAB (Screenshots 24-34)
+# =============================================================================
+
+# Navigate to Library tab
+- tapOn: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot 25: Library All with content (top)
+- takeScreenshot: comprehensive/25-library-all-top
+
+# Scroll and capture
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/25-library-all-mid
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/25-library-all-bottom
+
+# Scroll back to top
+- scroll:
+    direction: UP
+- scroll:
+    direction: UP
+- waitForAnimationToEnd
+
+# --- Library Tabs ---
+
+# Downloaded tab
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - waitForAnimationToEnd
+      # Screenshot 28: Library Downloaded with content
+      - takeScreenshot: comprehensive/28-library-downloaded-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/28-library-downloaded-scrolled
+
+# In Progress tab
+- runFlow:
+    when:
+      visible: "In Progress"
+    commands:
+      - tapOn: "In Progress"
+      - waitForAnimationToEnd
+      # Screenshot 31: Library In Progress with content
+      - takeScreenshot: comprehensive/31-library-progress-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/31-library-progress-scrolled
+
+# Not Started tab
+- runFlow:
+    when:
+      visible: "Not Started"
+    commands:
+      - tapOn: "Not Started"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-not-started
+
+# Completed tab
+- runFlow:
+    when:
+      visible: "Completed"
+    commands:
+      - tapOn: "Completed"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-completed
+
+# Favorites tab
+- runFlow:
+    when:
+      visible: "Favorites"
+    commands:
+      - tapOn: "Favorites"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-favorites
+
+# Back to All tab
+- runFlow:
+    when:
+      visible: "All"
+    commands:
+      - tapOn: "All"
+      - waitForAnimationToEnd
+
+# --- Sort Dropdown ---
+- runFlow:
+    when:
+      visible: "Sort"
+    commands:
+      - tapOn: "Sort"
+      - waitForAnimationToEnd
+      # Screenshot 32: Sort dropdown open
+      - takeScreenshot: comprehensive/32-library-sort-dropdown
+      # Dismiss by tapping elsewhere
+      - tapOn:
+          point: "50%,80%"
+      - waitForAnimationToEnd
+
+# --- Library Search ---
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - waitForAnimationToEnd
+      # Screenshot 33: Search active
+      - takeScreenshot: comprehensive/33-library-search-active
+      - inputText: "the"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      # Screenshot 34: Search results
+      - takeScreenshot: comprehensive/34-library-search-results
+      - hideKeyboard
+      # Clear search
+      - runFlow:
+          when:
+            visible: "Clear"
+          commands:
+            - tapOn: "Clear"
+            - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 5: BOOK DETAIL (Screenshots 35-51)
+# =============================================================================
+
+# Tap on first book in library to open detail
+- tapOn:
+    point: "25%,40%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot 35-38: Book detail overview
+- takeScreenshot: comprehensive/35-book-detail-top
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/35-book-detail-mid
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/35-book-detail-bottom
+
+# Scroll back up
+- scroll:
+    direction: UP
+- scroll:
+    direction: UP
+- waitForAnimationToEnd
+
+# --- Chapters Tab ---
+- runFlow:
+    when:
+      visible: "Chapters"
+    commands:
+      - tapOn: "Chapters"
+      - waitForAnimationToEnd
+      # Screenshot 45: Chapters list
+      - takeScreenshot: comprehensive/45-chapters-list-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/45-chapters-list-mid
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/45-chapters-list-bottom
+      # Scroll back
+      - scroll:
+          direction: UP
+      - scroll:
+          direction: UP
+
+# --- Overview Tab ---
+- runFlow:
+    when:
+      visible: "Overview"
+    commands:
+      - tapOn: "Overview"
+      - waitForAnimationToEnd
+
+# --- Queue Action ---
+- runFlow:
+    when:
+      visible: "Add to Queue"
+    commands:
+      - tapOn: "Add to Queue"
+      - waitForAnimationToEnd
+      # Screenshot 49: Queue confirmation toast
+      - takeScreenshot: comprehensive/49-queue-confirmation
+
+# --- Download Action ---
+- runFlow:
+    when:
+      visible: "Download"
+    commands:
+      - tapOn: "Download"
+      - waitForAnimationToEnd
+      # Screenshot 40: Download starting
+      - takeScreenshot: comprehensive/40-download-starting
+      - wait: 2000
+      # Screenshot 41: Download in progress
+      - takeScreenshot: comprehensive/41-download-progress
+
+# Go back to library
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 6: SERIES DETAIL (Screenshots 52-55)
+# =============================================================================
+
+# Look for a series card and tap it
+- runFlow:
+    when:
+      visible: "series"
+    commands:
+      - tapOn:
+          text: ".*series.*"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 52: Series overview
+      - takeScreenshot: comprehensive/52-series-overview-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/52-series-overview-mid
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/52-series-overview-bottom
+      # Go back
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 7: SEARCH TAB (Screenshots 56-65)
+# =============================================================================
+
+# Navigate to Search (might be icon-based)
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# If search is a separate screen, capture it
+- takeScreenshot: comprehensive/56-search-empty
+
+# Type a search query
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - inputText: "fantasy"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 58: Search typing
+      - takeScreenshot: comprehensive/58-search-typing
+      # Press search/enter
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 59: Search results
+      - takeScreenshot: comprehensive/59-search-results-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/59-search-results-scrolled
+      - hideKeyboard
+
+# Clear search and go back
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 8: BROWSE/DISCOVER TAB (Screenshots 66-82)
+# =============================================================================
+
+# Navigate to Discover/Browse tab
+- tapOn: "Discover"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot 66: Browse default view
+- takeScreenshot: comprehensive/66-browse-default-top
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/66-browse-default-mid
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/66-browse-default-bottom
+
+# Scroll back up
+- scroll:
+    direction: UP
+- scroll:
+    direction: UP
+- waitForAnimationToEnd
+
+# --- Mood Discovery ---
+- runFlow:
+    when:
+      visible: "What sounds good"
+    commands:
+      # Screenshot 70: Mood card visible
+      - takeScreenshot: comprehensive/70-mood-card
+      - tapOn: "What sounds good"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 71: Mood discovery flow
+      - takeScreenshot: comprehensive/71-mood-discovery-step1
+      # Tap a mood option
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/71-mood-discovery-step2
+      # Continue or skip
+      - runFlow:
+          when:
+            visible: "Next"
+          commands:
+            - tapOn: "Next"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/71-mood-discovery-step3
+      # Show results or skip
+      - runFlow:
+          when:
+            visible: "Show Me Books"
+          commands:
+            - tapOn: "Show Me Books"
+            - waitForAnimationToEnd:
+                timeout: 5000
+            # Screenshot 72: Mood results
+            - takeScreenshot: comprehensive/72-mood-results
+      # Go back
+      - back
+      - waitForAnimationToEnd
+
+# --- Browse Categories ---
+
+# Genres
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - tapOn: "Genres"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 73: Genres browse
+      - takeScreenshot: comprehensive/73-browse-genres-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/73-browse-genres-scrolled
+      # Tap on a genre
+      - tapOn:
+          point: "25%,30%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 81: Genre detail
+      - takeScreenshot: comprehensive/81-genre-detail-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/81-genre-detail-scrolled
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# Authors
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - tapOn: "Authors"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 74: Authors browse
+      - takeScreenshot: comprehensive/74-browse-authors-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/74-browse-authors-scrolled
+      # Tap on an author
+      - tapOn:
+          point: "25%,30%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 77: Author detail
+      - takeScreenshot: comprehensive/77-author-detail-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/77-author-detail-scrolled
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# Series
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn: "Series"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 75: Series browse
+      - takeScreenshot: comprehensive/75-browse-series-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/75-browse-series-scrolled
+      - back
+      - waitForAnimationToEnd
+
+# Narrators
+- runFlow:
+    when:
+      visible: "Narrators"
+    commands:
+      - tapOn: "Narrators"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 76: Narrators browse
+      - takeScreenshot: comprehensive/76-browse-narrators-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/76-browse-narrators-scrolled
+      # Tap on a narrator
+      - tapOn:
+          point: "25%,30%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 79: Narrator detail
+      - takeScreenshot: comprehensive/79-narrator-detail-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/79-narrator-detail-scrolled
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 9: PROFILE TAB (Screenshots 83-108)
+# =============================================================================
+
+# Navigate to Profile tab
+- tapOn: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot 83: Profile default
+- takeScreenshot: comprehensive/83-profile-default-top
+
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/83-profile-default-scrolled
+
+# Scroll back up
+- scroll:
+    direction: UP
+- waitForAnimationToEnd
+
+# --- Downloads Screen ---
+- runFlow:
+    when:
+      visible: "Downloads"
+    commands:
+      - tapOn: "Downloads"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 86: Downloads with content
+      - takeScreenshot: comprehensive/86-downloads-content-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/86-downloads-content-scrolled
+      - back
+      - waitForAnimationToEnd
+
+# --- Wishlist Screen ---
+- runFlow:
+    when:
+      visible: "Wishlist"
+    commands:
+      - tapOn: "Wishlist"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 91: Wishlist with content
+      - takeScreenshot: comprehensive/91-wishlist-content-top
+      # All tab
+      - runFlow:
+          when:
+            visible: "All"
+          commands:
+            - tapOn: "All"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/92-wishlist-all
+      # Must Read tab
+      - runFlow:
+          when:
+            visible: "Must Read"
+          commands:
+            - tapOn: "Must Read"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/93-wishlist-must-read
+      # Authors tab
+      - runFlow:
+          when:
+            visible: "Authors"
+          commands:
+            - tapOn: "Authors"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/94-wishlist-authors
+      # Series tab
+      - runFlow:
+          when:
+            visible: "Series"
+          commands:
+            - tapOn: "Series"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/95-wishlist-series
+      - back
+      - waitForAnimationToEnd
+
+# --- Stats Screen ---
+- runFlow:
+    when:
+      visible: "Listening Stats"
+    commands:
+      - tapOn: "Listening Stats"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 97: Stats with data
+      - takeScreenshot: comprehensive/97-stats-content-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/97-stats-content-scrolled
+      - back
+      - waitForAnimationToEnd
+
+# --- Reading History ---
+- runFlow:
+    when:
+      visible: "Reading History"
+    commands:
+      - tapOn: "Reading History"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/102-history-list
+      - back
+      - waitForAnimationToEnd
+
+# --- Reading Preferences ---
+- runFlow:
+    when:
+      visible: "Reading Preferences"
+    commands:
+      - tapOn: "Reading Preferences"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/103-preferences
+      - back
+      - waitForAnimationToEnd
+
+# --- Playback Settings ---
+- runFlow:
+    when:
+      visible: "Playback"
+    commands:
+      - tapOn: "Playback"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 104: Playback settings
+      - takeScreenshot: comprehensive/104-playback-settings-top
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/104-playback-settings-scrolled
+      # Default speed picker
+      - runFlow:
+          when:
+            visible: "Default Speed"
+          commands:
+            - tapOn: "Default Speed"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/105-playback-speed-picker
+            - back
+            - waitForAnimationToEnd
+      # Skip forward picker
+      - runFlow:
+          when:
+            visible: "Skip Forward"
+          commands:
+            - tapOn: "Skip Forward"
+            - waitForAnimationToEnd
+            - takeScreenshot: comprehensive/106-playback-skip-forward
+            - back
+            - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# --- Storage Settings ---
+- runFlow:
+    when:
+      visible: "Storage"
+    commands:
+      - tapOn: "Storage"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/storage-settings
+      - back
+      - waitForAnimationToEnd
+
+# --- Haptic Settings ---
+- runFlow:
+    when:
+      visible: "Haptic"
+    commands:
+      - tapOn: "Haptic"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/haptic-settings
+      - back
+      - waitForAnimationToEnd
+
+# --- Chapter Cleaning ---
+- runFlow:
+    when:
+      visible: "Chapter"
+    commands:
+      - tapOn: "Chapter"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/chapter-cleaning-settings
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 10: ERROR STATES (Screenshots 109-114)
+# =============================================================================
+
+# Enable airplane mode for connection errors
+- runScript:
+    script: |
+      const adbPath = '/opt/homebrew/share/android-commandlinetools/platform-tools/adb';
+      exec(adbPath + ' shell settings put global airplane_mode_on 1');
+      exec(adbPath + ' shell am broadcast -a android.intent.action.AIRPLANE_MODE');
+
+- wait: 2000
+
+# Navigate to a screen that requires network
+- tapOn: "Discover"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Screenshot 109: No connection error
+- takeScreenshot: comprehensive/109-error-no-connection
+
+# Disable airplane mode
+- runScript:
+    script: |
+      const adbPath = '/opt/homebrew/share/android-commandlinetools/platform-tools/adb';
+      exec(adbPath + ' shell settings put global airplane_mode_on 0');
+      exec(adbPath + ' shell am broadcast -a android.intent.action.AIRPLANE_MODE');
+
+- wait: 3000
+
+# =============================================================================
+# PHASE 11: MINI-PLAYER STATES (Screenshots 119-121)
+# =============================================================================
+
+# Ensure mini-player is visible (need active playback)
+# Navigate to different tabs with mini-player visible
+
+- tapOn: "Library"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-library
+
+- tapOn: "Discover"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-discover
+
+- tapOn: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-profile
+
+- tapOn: "Home"
+- waitForAnimationToEnd
+
+# =============================================================================
+# FINAL STATE
+# =============================================================================
+- takeScreenshot: comprehensive/99-final-state
+
+# =============================================================================
+# COMPLETE
+# =============================================================================
+- evalScript: |
+    console.log("===========================================");
+    console.log("Comprehensive screenshot capture complete!");
+    console.log("Screenshots saved to: .maestro/screenshots/comprehensive/");
+    console.log("===========================================");

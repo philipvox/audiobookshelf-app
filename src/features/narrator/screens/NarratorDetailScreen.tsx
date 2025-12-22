@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,13 +81,46 @@ export function NarratorDetailScreen() {
   const insets = useSafeAreaInsets();
   const { loadBook } = usePlayerStore();
 
-  // Handle both param formats
-  const narratorName = (route.params as any).narratorName || (route.params as any).name;
+  // Handle both param formats - with null safety
+  const narratorName = (route.params as any).narratorName || (route.params as any).name || '';
+
+  // Early return if no narrator name provided
+  if (!narratorName) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+        <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
+          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Narrator</Text>
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Narrator not found</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.errorButton}>
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const [sortBy, setSortBy] = useState<SortType>('title');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { getNarrator, getAuthor, isLoaded } = useLibraryCache();
+  const { getNarrator, getAuthor, isLoaded, refreshCache } = useLibraryCache();
+
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshCache();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshCache]);
 
   // Get narrator data from cache
   const narratorInfo = useMemo(() => {
@@ -209,12 +243,12 @@ export function NarratorDetailScreen() {
 
   const handlePlayBook = useCallback((book: LibraryItem) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    loadBook(book.id);
+    loadBook(book);
   }, [loadBook]);
 
   const handleGenrePress = useCallback((genre: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('GenreDetail', { genre });
+    navigation.navigate('GenreDetail', { genreName: genre });
   }, [navigation]);
 
   const handleAuthorPress = useCallback((name: string) => {
@@ -222,13 +256,17 @@ export function NarratorDetailScreen() {
     navigation.navigate('AuthorDetail', { authorName: name });
   }, [navigation]);
 
-  // Generate initials
-  const initials = narratorName
-    .split(' ')
-    .map((word: string) => word[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+  // Generate initials - null safe
+  const initials = useMemo(() => {
+    if (!narratorName || typeof narratorName !== 'string') return '??';
+    const parts = narratorName.trim().split(' ').filter(Boolean);
+    if (parts.length === 0) return '??';
+    return parts
+      .map((word: string) => word[0] || '')
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || '??';
+  }, [narratorName]);
 
   // Render book list item with progress
   const renderBookItem = useCallback((book: LibraryItem) => {
@@ -420,6 +458,14 @@ export function NarratorDetailScreen() {
       <ScrollView
         style={styles.content}
         contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={NARRATOR_COLOR}
+            colors={[NARRATOR_COLOR]}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         {/* Narrator Header */}
@@ -873,5 +919,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: scale(8),
+  },
+
+  // Error state styles
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: scale(40),
+  },
+  errorText: {
+    fontSize: scale(16),
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: scale(16),
+  },
+  errorButton: {
+    backgroundColor: NARRATOR_COLOR,
+    paddingHorizontal: scale(24),
+    paddingVertical: scale(12),
+    borderRadius: scale(8),
+  },
+  errorButtonText: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    color: '#fff',
   },
 });

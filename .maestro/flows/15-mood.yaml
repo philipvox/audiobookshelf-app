@@ -1,0 +1,50 @@
+# Capture Mood Discovery Flow
+appId: com.secretlibrary.app
+
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Browse"
+    timeout: 10000
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll to find mood discovery
+- swipe:
+    direction: UP
+    duration: 500
+
+# Screenshot current browse state
+- takeScreenshot: screens/05-browse/24-browse-mood-section
+
+# Look for mood discovery card text
+- tapOn:
+    text: "What sounds good"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+- takeScreenshot: screens/05-browse/25-mood-discovery-screen
+
+# Select a mood option by tapping
+- tapOn:
+    point: "30%, 45%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+- takeScreenshot: screens/05-browse/26-mood-selected
+
+# Look for continue/next button
+- tapOn:
+    text: "Show Me Books"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+- takeScreenshot: screens/05-browse/27-mood-results

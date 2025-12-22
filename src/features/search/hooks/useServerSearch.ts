@@ -91,9 +91,10 @@ export function useServerSearch(libraryId: string) {
       const narratorMap = new Map<string, LibraryItem[]>();
       
       books.forEach(book => {
-        const authorName = book.media?.metadata?.authorName || 
-          book.media?.metadata?.authors?.[0]?.name || '';
-        const narratorName = book.media?.metadata?.narratorName || '';
+        const metadata = book.media?.metadata as any;
+        const authorName = metadata?.authorName ||
+          metadata?.authors?.[0]?.name || '';
+        const narratorName = metadata?.narratorName || '';
         
         if (authorName) {
           const existing = authorMap.get(authorName) || [];

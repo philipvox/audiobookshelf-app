@@ -27,7 +27,23 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Download,
+  Cloud,
+  CheckCircle,
+  Play,
+  User,
+  Mic,
+  ChevronRight,
+  Search,
+  XCircle,
+  Library,
+  CloudDownload,
+  PlayCircle,
+  BookOpen,
+  Heart,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -39,13 +55,14 @@ import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { DownloadItem } from '@/features/downloads/components/DownloadItem';
 import { SectionHeader } from '@/features/home/components/SectionHeader';
-import { SeriesProgressBadge, StackedCovers } from '@/shared/components';
+import { SeriesProgressBadge, StackedCovers, BookCardSkeleton, SectionSkeleton } from '@/shared/components';
 import { SortPicker, SortOption } from '../components/SortPicker';
 import { StorageSummary } from '../components/StorageSummary';
 import { ContinueListeningHero } from '../components/ContinueListeningHero';
 import { LibraryEmptyState } from '../components/LibraryEmptyState';
 import { useMyLibraryStore } from '../stores/myLibraryStore';
 import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
+import { useGalleryStore } from '@/features/reading-history-wizard';
 import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
@@ -63,12 +80,12 @@ const HORIZONTAL_CARD_WIDTH = scale(110);
 const HORIZONTAL_CARD_COVER = scale(100);
 
 // Tab types
-type TabType = 'all' | 'downloaded' | 'in-progress' | 'favorites';
+type TabType = 'all' | 'downloaded' | 'in-progress' | 'not-started' | 'completed' | 'favorites';
 
 interface TabConfig {
   id: TabType;
   label: string;
-  icon: string;
+  Icon: LucideIcon;
 }
 
 // Helper to extract metadata safely
@@ -104,6 +121,19 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60);
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+// Extract series metadata from series name string (e.g., "Harry Potter #1" -> { name: "Harry Potter", sequence: 1 })
+function extractSeriesMetadata(seriesName: string): { cleanName: string; sequence?: number } {
+  if (!seriesName) return { cleanName: '' };
+  const match = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
+  if (match) {
+    return {
+      cleanName: match[1].trim(),
+      sequence: parseFloat(match[2]),
+    };
+  }
+  return { cleanName: seriesName };
 }
 
 // Compass/browse icon
@@ -172,10 +202,12 @@ interface SeriesGroup {
 
 // Tab configuration
 const TABS: TabConfig[] = [
-  { id: 'all', label: 'All', icon: 'library-outline' },
-  { id: 'downloaded', label: 'Downloaded', icon: 'cloud-download-outline' },
-  { id: 'in-progress', label: 'In Progress', icon: 'play-circle-outline' },
-  { id: 'favorites', label: 'Favorites', icon: 'heart-outline' },
+  { id: 'all', label: 'All', Icon: Library },
+  { id: 'downloaded', label: 'Downloaded', Icon: CloudDownload },
+  { id: 'in-progress', label: 'In Progress', Icon: PlayCircle },
+  { id: 'not-started', label: 'Not Started', Icon: BookOpen },
+  { id: 'completed', label: 'Completed', Icon: CheckCircle },
+  { id: 'favorites', label: 'Favorites', Icon: Heart },
 ];
 
 // Tab bar component
@@ -198,6 +230,7 @@ const TabBar = React.memo(function TabBar({
       {TABS.map((tab) => {
         const isActive = activeTab === tab.id;
         const count = counts[tab.id];
+        const TabIcon = tab.Icon;
         return (
           <Pressable
             key={tab.id}
@@ -210,10 +243,10 @@ const TabBar = React.memo(function TabBar({
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={`${tab.label}${count > 0 ? `, ${count} items` : ''}`}
           >
-            <Ionicons
-              name={isActive ? (tab.icon.replace('-outline', '') as any) : (tab.icon as any)}
+            <TabIcon
               size={scale(16)}
               color={isActive ? COLORS.accent : COLORS.textSecondary}
+              strokeWidth={isActive ? 2.5 : 2}
             />
             <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
               {tab.label}
@@ -236,7 +269,7 @@ export function MyLibraryScreen() {
   useScreenLoadTime('MyLibraryScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { items: cachedItems, isLoaded, getSeries, getItem } = useLibraryCache();
+  const { items: cachedItems, isLoaded, getSeries, getItem, loadCache, currentLibraryId } = useLibraryCache();
   const { downloads, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
   const { loadBook } = usePlayerStore();
 
@@ -245,6 +278,10 @@ export function MyLibraryScreen() {
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
   const favoriteAuthors = usePreferencesStore((state) => state.favoriteAuthors);
   const favoriteNarrators = usePreferencesStore((state) => state.favoriteNarrators);
+
+  // Reading history (marked as finished)
+  const markedBooks = useGalleryStore((state) => state.markedBooks);
+  const isMarkedFinished = useCallback((bookId: string) => markedBooks.has(bookId), [markedBooks]);
 
   // Continue listening data
   const { items: continueListeningItems } = useContinueListening();
@@ -263,6 +300,12 @@ export function MyLibraryScreen() {
   const completedDownloads = useMemo(
     () => downloads.filter((d) => d.status === 'complete'),
     [downloads]
+  );
+
+  // O(1) lookup map for download status - prevents O(n²) in loops
+  const downloadMap = useMemo(
+    () => new Map(completedDownloads.map(d => [d.itemId, d])),
+    [completedDownloads]
   );
 
   // Get total storage used
@@ -290,17 +333,14 @@ export function MyLibraryScreen() {
       }
 
       const metadata = getMetadata(item);
-      const seriesName = metadata.seriesName || '';
-      const sequenceMatch = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
-      const cleanSeriesName = sequenceMatch ? sequenceMatch[1].trim() : seriesName;
-      const sequence = sequenceMatch ? parseFloat(sequenceMatch[2]) : undefined;
+      const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
 
       return {
         id: download.itemId,
         item,
         title: metadata.title || 'Unknown Title',
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-        seriesName: cleanSeriesName,
+        seriesName,
         sequence,
         progress: getProgress(item),
         duration: getDuration(item),
@@ -322,20 +362,17 @@ export function MyLibraryScreen() {
       if (!item) continue;
 
       const metadata = getMetadata(item);
-      const seriesName = metadata.seriesName || '';
-      const sequenceMatch = seriesName.match(/^(.+?)\s*#([\d.]+)$/);
-      const cleanSeriesName = sequenceMatch ? sequenceMatch[1].trim() : seriesName;
-      const sequence = sequenceMatch ? parseFloat(sequenceMatch[2]) : undefined;
+      const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
 
-      // Check if also downloaded
-      const download = completedDownloads.find(d => d.itemId === bookId);
+      // Check if also downloaded - O(1) lookup
+      const download = downloadMap.get(bookId);
 
       result.push({
         id: bookId,
         item,
         title: metadata.title || 'Unknown Title',
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-        seriesName: cleanSeriesName,
+        seriesName,
         sequence,
         progress: getProgress(item),
         duration: getDuration(item),
@@ -347,7 +384,7 @@ export function MyLibraryScreen() {
     }
 
     return result;
-  }, [libraryIds, cachedItems, isLoaded, completedDownloads, getItem]);
+  }, [libraryIds, cachedItems, isLoaded, downloadMap, getItem]);
 
   // "All" = union of downloaded + favorited books (deduplicated)
   const allLibraryBooks = useMemo<EnrichedBook[]>(() => {
@@ -368,10 +405,62 @@ export function MyLibraryScreen() {
     return Array.from(bookMap.values());
   }, [enrichedBooks, favoritedBooks]);
 
+  // Get books marked as finished from galleryStore (includes non-downloaded books)
+  const markedFinishedBooks = useMemo<EnrichedBook[]>(() => {
+    if (!isLoaded) return [];
+
+    const result: EnrichedBook[] = [];
+    const markedBookIds = Array.from(markedBooks.keys());
+
+    // Create Set for O(1) lookup - prevent O(n²)
+    const enrichedBookIds = new Set(enrichedBooks.map(b => b.id));
+
+    for (const bookId of markedBookIds) {
+      // Skip if already in enrichedBooks (downloaded) - O(1) lookup
+      if (enrichedBookIds.has(bookId)) continue;
+
+      const item = getItem(bookId);
+      if (!item) continue;
+
+      const metadata = getMetadata(item);
+      const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
+
+      result.push({
+        id: bookId,
+        item,
+        title: metadata.title || 'Unknown Title',
+        author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+        seriesName,
+        sequence,
+        progress: getProgress(item),
+        duration: getDuration(item),
+        totalBytes: 0,
+        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        addedAt: item.addedAt,
+        isDownloaded: false,
+      });
+    }
+
+    return result;
+  }, [isLoaded, markedBooks, enrichedBooks, getItem]);
+
   // Calculate tab counts
   const tabCounts = useMemo(() => {
-    // In-progress from downloaded books only
-    const inProgressCount = enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95).length;
+    // In-progress from downloaded books only (excluding manually marked as finished)
+    const inProgressCount = enrichedBooks.filter(b =>
+      b.progress > 0 && b.progress < 0.95 && !isMarkedFinished(b.id)
+    ).length;
+    const notStartedCount = enrichedBooks.filter(b =>
+      b.progress === 0 && !isMarkedFinished(b.id)
+    ).length;
+    // Completed includes:
+    // 1. Downloaded books with progress >= 0.95
+    // 2. Downloaded books marked as finished in galleryStore
+    // 3. Non-downloaded books marked as finished in galleryStore
+    const downloadedCompletedCount = enrichedBooks.filter(b =>
+      b.progress >= 0.95 || isMarkedFinished(b.id)
+    ).length;
+    const completedCount = downloadedCompletedCount + markedFinishedBooks.length;
     const downloadedCount = enrichedBooks.length;
     const favoritesCount = libraryIds.length + favoriteSeriesNames.length +
                            favoriteAuthors.length + favoriteNarrators.length;
@@ -381,10 +470,13 @@ export function MyLibraryScreen() {
       'all': allCount,
       'downloaded': downloadedCount,
       'in-progress': inProgressCount,
+      'not-started': notStartedCount,
+      'completed': completedCount,
       'favorites': favoritesCount,
     } as Record<TabType, number>;
   }, [allLibraryBooks.length, enrichedBooks, libraryIds.length,
-      favoriteSeriesNames.length, favoriteAuthors.length, favoriteNarrators.length]);
+      favoriteSeriesNames.length, favoriteAuthors.length, favoriteNarrators.length,
+      isMarkedFinished, markedFinishedBooks.length]);
 
   // Get books for current tab
   const currentTabBooks = useMemo(() => {
@@ -392,13 +484,23 @@ export function MyLibraryScreen() {
       case 'downloaded':
         return enrichedBooks;
       case 'in-progress':
-        return enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95);
+        // Exclude books manually marked as finished
+        return enrichedBooks.filter(b => b.progress > 0 && b.progress < 0.95 && !isMarkedFinished(b.id));
+      case 'not-started':
+        // Exclude books manually marked as finished
+        return enrichedBooks.filter(b => b.progress === 0 && !isMarkedFinished(b.id));
+      case 'completed':
+        // Include:
+        // 1. Downloaded books with progress >= 0.95 OR marked as finished
+        // 2. Non-downloaded books marked as finished (from markedFinishedBooks)
+        const downloadedCompleted = enrichedBooks.filter(b => b.progress >= 0.95 || isMarkedFinished(b.id));
+        return [...downloadedCompleted, ...markedFinishedBooks];
       case 'favorites':
         return favoritedBooks;
       default:
         return allLibraryBooks;
     }
-  }, [activeTab, enrichedBooks, favoritedBooks, allLibraryBooks]);
+  }, [activeTab, enrichedBooks, favoritedBooks, allLibraryBooks, isMarkedFinished, markedFinishedBooks]);
 
   // Apply sort
   const sortedBooks = useMemo(() => {
@@ -497,12 +599,19 @@ export function MyLibraryScreen() {
     });
   }, [filteredBooks, getSeries]);
 
-  // Refresh handler
+  // Refresh handler - actually refreshes library data from server
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
+    if (!currentLibraryId) return;
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 500);
-  }, []);
+    try {
+      await loadCache(currentLibraryId, true); // forceRefresh = true
+    } catch (error) {
+      // Silently fail - cache will show stale data
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [currentLibraryId, loadCache]);
 
   // Navigation handlers
   const handleProfilePress = () => navigation.navigate('Main', { screen: 'ProfileTab' });
@@ -614,7 +723,8 @@ export function MyLibraryScreen() {
   // Render book row with download/stream indicator
   const renderBookRow = useCallback((book: EnrichedBook, showIndicator = true) => {
     const coverUrl = apiClient.getItemCoverUrl(book.id);
-    const isCompleted = book.progress >= 0.95;
+    // Check both server progress AND manual mark from galleryStore
+    const isCompleted = book.progress >= 0.95 || isMarkedFinished(book.id);
     const isDownloaded = book.isDownloaded || book.totalBytes > 0;
 
     const progressText = book.progress > 0 && book.progress < 0.95
@@ -637,16 +747,16 @@ export function MyLibraryScreen() {
           {/* Download/Stream indicator */}
           {showIndicator && (
             <View style={[styles.statusBadge, isDownloaded ? styles.downloadedBadge : styles.streamBadge]}>
-              <Ionicons
-                name={isDownloaded ? 'checkmark' : 'cloud-outline'}
-                size={scale(10)}
-                color="#FFFFFF"
-              />
+              {isDownloaded ? (
+                <CheckCircle size={scale(10)} color="#FFFFFF" strokeWidth={2.5} />
+              ) : (
+                <Cloud size={scale(10)} color="#FFFFFF" strokeWidth={2} />
+              )}
             </View>
           )}
           {isCompleted && (
             <View style={styles.completedBadge}>
-              <Ionicons name="checkmark-circle" size={14} color={COLORS.accent} />
+              <CheckCircle size={14} color={COLORS.accent} strokeWidth={2} />
             </View>
           )}
         </View>
@@ -669,11 +779,11 @@ export function MyLibraryScreen() {
           accessibilityLabel={`Play ${book.title}`}
           accessibilityRole="button"
         >
-          <Ionicons name="play" size={18} color="#000" />
+          <Play size={18} color="#000" fill="#000" strokeWidth={0} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
-  }, [handleBookPress, handlePlayBook]);
+  }, [handleBookPress, handlePlayBook, isMarkedFinished]);
 
   // Render favorite author card
   const renderAuthorCard = useCallback((author: any) => {
@@ -694,7 +804,7 @@ export function MyLibraryScreen() {
           {author.imageUrl ? (
             <Image source={author.imageUrl} style={styles.personImage} contentFit="cover" />
           ) : (
-            <Ionicons name="person" size={scale(24)} color={COLORS.textSecondary} />
+            <User size={scale(24)} color={COLORS.textSecondary} strokeWidth={1.5} />
           )}
         </View>
         <Text style={styles.personName} numberOfLines={1}>{author.name}</Text>
@@ -719,7 +829,7 @@ export function MyLibraryScreen() {
         accessibilityHint="Double tap to view narrator"
       >
         <View style={styles.personAvatar}>
-          <Ionicons name="mic" size={scale(24)} color={COLORS.textSecondary} />
+          <Mic size={scale(24)} color={COLORS.textSecondary} strokeWidth={1.5} />
         </View>
         <Text style={styles.personName} numberOfLines={1}>{narrator.name}</Text>
         <Text style={styles.personMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
@@ -758,7 +868,7 @@ export function MyLibraryScreen() {
           <Text style={styles.favoriteSeriesName} numberOfLines={1}>{series.name}</Text>
           <Text style={styles.favoriteSeriesMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={scale(16)} color={COLORS.textSecondary} />
+        <ChevronRight size={scale(16)} color={COLORS.textSecondary} strokeWidth={2} />
       </TouchableOpacity>
     );
   }, [handleSeriesPress]);
@@ -932,7 +1042,7 @@ export function MyLibraryScreen() {
                 style={styles.heroPlayButton}
                 onPress={() => handleResumeBook(heroItem)}
               >
-                <Ionicons name="play" size={scale(28)} color="#000" />
+                <Play size={scale(28)} color="#000" fill="#000" strokeWidth={0} />
               </TouchableOpacity>
             </TouchableOpacity>
           </View>
@@ -954,7 +1064,22 @@ export function MyLibraryScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       {/* Content */}
-      {!hasAnyContent ? (
+      {!isLoaded ? (
+        /* Loading state with skeletons */
+        <View style={[styles.scrollContent, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}>
+          <View style={styles.skeletonTitleContainer}>
+            <View style={styles.skeletonTitle} />
+          </View>
+          <View style={styles.skeletonSearchBar} />
+          <SectionSkeleton cardCount={4} showHeader />
+          <View style={{ marginTop: 16 }}>
+            <BookCardSkeleton />
+            <BookCardSkeleton style={{ marginTop: 8 }} />
+            <BookCardSkeleton style={{ marginTop: 8 }} />
+            <BookCardSkeleton style={{ marginTop: 8 }} />
+          </View>
+        </View>
+      ) : !hasAnyContent ? (
         <View style={[styles.emptyContainer, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}>
           <LibraryEmptyState tab="all" onAction={handleBrowse} />
         </View>
@@ -977,7 +1102,7 @@ export function MyLibraryScreen() {
           {/* Search Bar */}
           <View style={styles.searchBarContainer}>
             <View style={styles.searchBar}>
-              <Ionicons name="search" size={scale(18)} color={COLORS.textSecondary} />
+              <Search size={scale(18)} color={COLORS.textSecondary} strokeWidth={2} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search library..."
@@ -997,7 +1122,7 @@ export function MyLibraryScreen() {
                   accessibilityLabel="Clear search"
                   accessibilityRole="button"
                 >
-                  <Ionicons name="close-circle" size={scale(18)} color={COLORS.textSecondary} />
+                  <XCircle size={scale(18)} color={COLORS.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1083,17 +1208,21 @@ export function MyLibraryScreen() {
               )}
 
               {/* =============== 2. BOOKS SECTION =============== */}
-              {filteredBooks.length > 0 && (
+              {filteredBooks.length > 0 ? (
                 <View style={styles.section}>
                   <SectionHeader
-                    title={activeTab === 'downloaded'
-                      ? `Downloaded Books (${filteredBooks.length})`
-                      : `Books (${filteredBooks.length})`
+                    title={
+                      activeTab === 'downloaded' ? `Downloaded Books (${filteredBooks.length})` :
+                      activeTab === 'not-started' ? `Not Started (${filteredBooks.length})` :
+                      activeTab === 'completed' ? `Completed (${filteredBooks.length})` :
+                      `Books (${filteredBooks.length})`
                     }
                     showViewAll={false}
                   />
                   {filteredBooks.map(book => renderBookRow(book, activeTab === 'all'))}
                 </View>
+              ) : (activeTab === 'not-started' || activeTab === 'completed') && (
+                <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
               )}
 
               {/* =============== 3. SERIES SECTION =============== */}
@@ -1179,80 +1308,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-  },
-
-  // Header
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    zIndex: 100,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  libraryButtonActive: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(244, 182, 12, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 100,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#F4B60C',
-  },
-  libraryButtonTextActive: {
-    color: '#F4B60C',
-    fontSize: 10,
-    letterSpacing: 0.2,
-    fontWeight: '600',
-  },
-  libraryIcon: {
-    width: 14,
-    height: 16,
-    position: 'relative',
-  },
-  libraryIconBack: {
-    position: 'absolute',
-    top: 2,
-    left: 2,
-    width: 10,
-    height: 14,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(244, 182, 12, 0.5)',
-    backgroundColor: 'transparent',
-  },
-  libraryIconFront: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 10,
-    height: 14,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: '#F4B60C',
-    backgroundColor: 'rgba(244, 182, 12, 0.1)',
   },
 
   scrollView: {
@@ -1366,9 +1421,6 @@ const styles = StyleSheet.create({
   },
 
   // Horizontal sections
-  horizontalSection: {
-    marginBottom: scale(24),
-  },
   horizontalList: {
     paddingHorizontal: scale(20),
     gap: scale(12),
@@ -1555,34 +1607,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: scale(40),
   },
-  emptyTitle: {
-    fontSize: scale(20),
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginTop: scale(16),
-    marginBottom: scale(8),
-  },
-  emptySubtitle: {
-    fontSize: scale(14),
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: scale(20),
-    marginBottom: scale(24),
-  },
-  browseButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: scale(24),
-    paddingVertical: scale(12),
-    borderRadius: scale(24),
-    gap: scale(8),
-  },
-  browseButtonText: {
-    fontSize: scale(15),
-    fontWeight: '600',
-    color: '#000000',
-  },
 
   // Bottom CTA
   bottomCta: {
@@ -1609,26 +1633,6 @@ const styles = StyleSheet.create({
     fontSize: scale(14),
     fontWeight: '500',
     color: COLORS.accent,
-  },
-
-  // Empty tab state
-  emptyTabContainer: {
-    alignItems: 'center',
-    paddingVertical: scale(60),
-    paddingHorizontal: scale(40),
-  },
-  emptyTabTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginTop: scale(16),
-    marginBottom: scale(8),
-  },
-  emptyTabSubtitle: {
-    fontSize: scale(14),
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: scale(20),
   },
 
   // Hero section (In Progress tab)
@@ -1753,19 +1757,6 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     gap: scale(12),
   },
-  seriesImageContainer: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  seriesImage: {
-    width: '100%',
-    height: '100%',
-  },
   favoriteSeriesInfo: {
     flex: 1,
   },
@@ -1778,6 +1769,25 @@ const styles = StyleSheet.create({
     fontSize: scale(12),
     color: COLORS.textSecondary,
     marginTop: scale(2),
+  },
+
+  // Skeleton loading styles
+  skeletonTitleContainer: {
+    paddingHorizontal: scale(20),
+    marginBottom: scale(12),
+  },
+  skeletonTitle: {
+    width: scale(140),
+    height: scale(28),
+    borderRadius: scale(6),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  skeletonSearchBar: {
+    marginHorizontal: scale(20),
+    height: scale(44),
+    borderRadius: scale(12),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: scale(16),
   },
 });
 

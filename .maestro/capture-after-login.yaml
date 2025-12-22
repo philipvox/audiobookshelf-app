@@ -1,0 +1,230 @@
+# =============================================================================
+# MAESTRO: Capture Screenshots (User Already Logged In)
+# =============================================================================
+# Run this AFTER you have manually logged in on the emulator.
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# HOME TAB
+# =============================================================================
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: comprehensive/07-home-top
+
+# Swipe up to scroll down
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/07-home-scrolled
+
+# Swipe down to scroll back up
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# LIBRARY TAB
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/25-library-all-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/25-library-all-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Library tabs
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/28-library-downloaded
+
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/31-library-in-progress
+
+- tapOn:
+    text: "Not Started"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-not-started
+
+- tapOn:
+    text: "Completed"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-completed
+
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-favorites
+
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+
+# =============================================================================
+# BOOK DETAIL
+# =============================================================================
+- tapOn:
+    point: "25%,45%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/35-book-detail-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/35-book-detail-scrolled
+
+# Chapters tab
+- tapOn:
+    text: "Chapters"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/45-chapters-list
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/45-chapters-scrolled
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# DISCOVER/BROWSE TAB
+# =============================================================================
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/66-browse-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/66-browse-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# PROFILE TAB
+# =============================================================================
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/83-profile-top
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/83-profile-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/86-downloads
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/91-wishlist
+- back
+- waitForAnimationToEnd
+
+# Stats
+- tapOn:
+    text: "Listening Stats"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/97-stats
+- back
+- waitForAnimationToEnd
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/104-playback-settings
+- back
+- waitForAnimationToEnd
+
+# Storage
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/storage-settings
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# PLAYER
+# =============================================================================
+- tapOn:
+    text: "Home"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    point: "50%,30%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/11-player
+
+- tapOn:
+    point: "10%,5%"
+    optional: true
+- waitForAnimationToEnd
+
+# =============================================================================
+# FINAL
+# =============================================================================
+- takeScreenshot: comprehensive/99-final
+
+- evalScript: |
+    console.log("Screenshot capture complete!");

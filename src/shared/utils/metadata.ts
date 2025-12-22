@@ -13,6 +13,7 @@
  */
 
 import { LibraryItem } from '@/core/types';
+import { formatDuration } from './format';
 
 export interface BookMetadataExtracted {
   title: string;
@@ -98,23 +99,6 @@ export function extractBookMetadata(item: LibraryItem | null | undefined): BookM
     isbn: metadata.isbn || null,
     asin: metadata.asin || null,
   };
-}
-
-/**
- * Format duration in seconds to human readable string
- */
-export function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds || isNaN(seconds) || seconds <= 0) {
-    return 'Unknown';
-  }
-  
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
 }
 
 /**

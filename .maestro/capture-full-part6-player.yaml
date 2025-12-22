@@ -1,0 +1,200 @@
+# =============================================================================
+# FULL CAPTURE PART 6: Player States (11-23) & Mini-Player (119-121)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# START PLAYBACK
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Tap first book to open detail
+- tapOn:
+    point: "25%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Start playback
+- tapOn:
+    text: "Play"
+    optional: true
+- tapOn:
+    text: "Stream"
+    optional: true
+- tapOn:
+    text: "Resume"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Go to Home
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/08-home-playing
+- takeScreenshot: comprehensive/10-home-miniplayer
+
+# =============================================================================
+# FULL PLAYER (11-19)
+# =============================================================================
+# Tap CD disc to open full player
+- tapOn:
+    point: "50%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/11-player-paused
+- takeScreenshot: comprehensive/14-player-sleep-off
+- takeScreenshot: comprehensive/16-player-speed-1x
+
+# Play
+- tapOn:
+    point: "50%,80%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/12-player-playing
+
+# Pause
+- tapOn:
+    point: "50%,80%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# SLEEP TIMER (20-22)
+# =============================================================================
+- tapOn:
+    text: "Off"
+    optional: true
+- tapOn:
+    point: "15%,88%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/20-sleep-timer-sheet
+
+# Scroll to see more options
+- swipe:
+    start: "50%,70%"
+    end: "50%,40%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/21-sleep-timer-custom
+
+# Select End of Chapter
+- tapOn:
+    text: "End of Chapter"
+    optional: true
+- tapOn:
+    text: "chapter"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/22-sleep-timer-chapter
+
+# Close sheet
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/15-player-sleep-active
+
+# =============================================================================
+# SPEED SELECTOR (23)
+# =============================================================================
+- tapOn:
+    text: "1x"
+    optional: true
+- tapOn:
+    text: "1.0"
+    optional: true
+- tapOn:
+    point: "85%,88%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/23-speed-sheet
+
+# Select different speed
+- tapOn:
+    text: "1.5"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/17-player-speed-1.5x
+
+# Close sheet
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# PLAYER CHAPTERS (18)
+# =============================================================================
+- tapOn:
+    text: "Chapters"
+    optional: true
+- tapOn:
+    point: "50%,88%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/18-player-chapters
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/18-player-chapters-scrolled
+
+# Close
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+
+# Close player
+- tapOn:
+    point: "8%,5%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# MINI-PLAYER STATES (119-121)
+# =============================================================================
+# Mini-player on Library
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/119-miniplayer-playing
+- takeScreenshot: comprehensive/121-miniplayer-library
+
+# Mini-player on Search
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-search
+
+# Mini-player on Browse
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-browse
+
+# Mini-player on Profile
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/121-miniplayer-profile
+
+# Pause mini-player
+- tapOn:
+    point: "85%,93%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/120-miniplayer-paused
+- takeScreenshot: comprehensive/09-home-paused
+
+- evalScript: |
+    console.log("Part 6 Player complete");

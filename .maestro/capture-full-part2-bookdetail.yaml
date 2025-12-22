@@ -1,0 +1,146 @@
+# =============================================================================
+# FULL CAPTURE PART 2: Book Detail (35-51)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# =============================================================================
+# BOOK DETAIL - OVERVIEW (35-39)
+# =============================================================================
+# Tap first book
+- tapOn:
+    point: "25%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/35-book-detail-not-downloaded
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/38-book-detail-in-progress
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# BOOK DETAIL - CHAPTERS (45-47)
+# =============================================================================
+- tapOn:
+    text: "Chapters"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/45-chapters-list
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/46-chapters-progress
+- takeScreenshot: comprehensive/47-chapters-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Back to Overview
+- tapOn:
+    text: "Overview"
+    optional: true
+- waitForAnimationToEnd
+
+# =============================================================================
+# BOOK DETAIL - ACTIONS (48-51)
+# =============================================================================
+# Add to Queue
+- tapOn:
+    text: "Add to Queue"
+    optional: true
+- tapOn:
+    text: "Queue"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/48-add-to-queue
+- takeScreenshot: comprehensive/49-queue-confirmation
+
+# Mark Finished (if visible)
+- tapOn:
+    text: "Mark"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/50-mark-finished
+
+# Go back
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# DIFFERENT BOOK STATES - Find downloaded book
+# =============================================================================
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd
+
+# Tap a downloaded book
+- tapOn:
+    point: "25%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/36-book-detail-downloaded
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# DOWNLOAD STATES (40-44)
+# =============================================================================
+- tapOn:
+    text: "Not Started"
+    optional: true
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+
+# Find a book not downloaded
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+
+- tapOn:
+    point: "75%,50%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Tap Download
+- tapOn:
+    text: "Download"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/40-download-starting
+
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/41-download-progress
+
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 2 Book Detail complete");

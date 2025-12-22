@@ -1,4 +1,3 @@
-export { SeriesListScreen } from './screens/SeriesListScreen';
 export { SeriesDetailScreen } from './screens/SeriesDetailScreen';
 export { SeriesCard } from './components/SeriesCard';
 export { useSeries } from './hooks/useSeries';

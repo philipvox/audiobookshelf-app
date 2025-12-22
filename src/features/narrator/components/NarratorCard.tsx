@@ -14,7 +14,7 @@ export function NarratorCard({ narrator }: NarratorCardProps) {
   const navigation = useNavigation();
 
   const handlePress = () => {
-    navigation.navigate('NarratorDetail' as never, { narratorName: narrator.name } as never);
+    (navigation as any).navigate('NarratorDetail', { narratorName: narrator.name });
   };
 
   const initials = narrator.name

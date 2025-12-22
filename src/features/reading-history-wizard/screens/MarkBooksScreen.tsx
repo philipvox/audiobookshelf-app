@@ -1200,7 +1200,7 @@ export function MarkBooksScreen() {
           {breadcrumb.length > 0 ? breadcrumb.join(' › ') : 'Mark as Finished'}
         </Text>
 
-        <TouchableOpacity style={styles.headerButton} onPress={handleViewHistory}>
+        <TouchableOpacity style={styles.historyButton} onPress={handleViewHistory}>
           <Text style={styles.historyLink}>History →</Text>
         </TouchableOpacity>
       </View>
@@ -1307,6 +1307,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
     textAlign: 'center',
+  },
+  historyButton: {
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(2),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   historyLink: {
     fontSize: moderateScale(14),

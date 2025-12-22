@@ -27,16 +27,17 @@ import {
   Library,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { WishlistItem, WishlistSortOption, WishlistPriority } from '../types';
+import { WishlistItem, WishlistSortOption, WishlistPriority, FollowedAuthor, TrackedSeries } from '../types';
 import {
   useWishlistStore,
   useWishlistCount,
   useFollowedAuthorsCount,
   useTrackedSeriesCount,
 } from '../stores/wishlistStore';
+import { useLibraryCache } from '@/core/cache';
 import { WishlistItemRow } from '../components/WishlistItemRow';
-import { ManualAddSheet } from '../components/ManualAddSheet';
 import { colors, scale, spacing, radius, layout } from '@/shared/theme';
+import { ChevronRight, BellOff } from 'lucide-react-native';
 
 const ACCENT = colors.accent;
 
@@ -74,12 +75,16 @@ export function WishlistScreen() {
   const getSortedItems = useWishlistStore((s) => s.getSortedItems);
   const followedAuthors = useWishlistStore((s) => s.followedAuthors);
   const trackedSeries = useWishlistStore((s) => s.trackedSeries);
+  const unfollowAuthor = useWishlistStore((s) => s.unfollowAuthor);
+  const untrackSeries = useWishlistStore((s) => s.untrackSeries);
+
+  // Library cache for author/series info
+  const { getAuthor, getSeries, isLoaded } = useLibraryCache();
 
   // Local state
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [showSortPicker, setShowSortPicker] = useState(false);
-  const [showAddSheet, setShowAddSheet] = useState(false);
 
   // Counts for badges
   const wishlistCount = useWishlistCount();
@@ -121,8 +126,28 @@ export function WishlistScreen() {
 
   const handleAddPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setShowAddSheet(true);
-  }, []);
+    navigation.navigate('ManualAdd');
+  }, [navigation]);
+
+  const handleAuthorPress = useCallback((author: FollowedAuthor) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('AuthorDetail', { authorName: author.name });
+  }, [navigation]);
+
+  const handleUnfollowAuthor = useCallback((author: FollowedAuthor) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    unfollowAuthor(author.name);
+  }, [unfollowAuthor]);
+
+  const handleSeriesPress = useCallback((series: TrackedSeries) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('SeriesDetail', { seriesName: series.name });
+  }, [navigation]);
+
+  const handleUntrackSeries = useCallback((series: TrackedSeries) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    untrackSeries(series.name);
+  }, [untrackSeries]);
 
   const handleSortPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -295,20 +320,38 @@ export function WishlistScreen() {
           <FlatList
             data={followedAuthors}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.authorRow}>
-                <View style={styles.authorAvatar}>
-                  <User size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
-                </View>
-                <View style={styles.authorInfo}>
-                  <Text style={styles.authorName}>{item.name}</Text>
-                  <Text style={styles.authorMeta}>
-                    Following since {new Date(item.followedAt).toLocaleDateString()}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            renderItem={({ item }) => {
+              const authorInfo = isLoaded && item.name ? getAuthor(item.name) : null;
+              const bookCount = authorInfo?.bookCount || 0;
+
+              return (
+                <TouchableOpacity
+                  style={styles.authorRow}
+                  onPress={() => handleAuthorPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.authorAvatar}>
+                    <User size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                  </View>
+                  <View style={styles.authorInfo}>
+                    <Text style={styles.authorName}>{item.name}</Text>
+                    <Text style={styles.authorMeta}>
+                      {bookCount > 0 ? `${bookCount} books in library` : 'Following'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.unfollowButton}
+                    onPress={() => handleUnfollowAuthor(item)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <BellOff size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+                  </TouchableOpacity>
+                  <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+                </TouchableOpacity>
+              );
+            }}
             contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.authorSeparator} />}
           />
         )
       ) : activeTab === 'series' ? (
@@ -319,20 +362,38 @@ export function WishlistScreen() {
           <FlatList
             data={trackedSeries}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.seriesRow}>
-                <View style={styles.seriesIcon}>
-                  <Library size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
-                </View>
-                <View style={styles.seriesInfo}>
-                  <Text style={styles.seriesName}>{item.name}</Text>
-                  <Text style={styles.seriesMeta}>
-                    {item.ownedBooks || 0} owned · {item.wishlistBooks || 0} on wishlist
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            renderItem={({ item }) => {
+              const seriesInfo = isLoaded && item.name ? getSeries(item.name) : null;
+              const bookCount = seriesInfo?.bookCount || 0;
+
+              return (
+                <TouchableOpacity
+                  style={styles.seriesRow}
+                  onPress={() => handleSeriesPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.seriesIcon}>
+                    <Library size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                  </View>
+                  <View style={styles.seriesInfo}>
+                    <Text style={styles.seriesName}>{item.name}</Text>
+                    <Text style={styles.seriesMeta}>
+                      {bookCount > 0 ? `${bookCount} books in library` : 'Tracking'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.unfollowButton}
+                    onPress={() => handleUntrackSeries(item)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <BellOff size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+                  </TouchableOpacity>
+                  <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+                </TouchableOpacity>
+              );
+            }}
             contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.seriesSeparator} />}
           />
         )
       ) : (
@@ -356,12 +417,6 @@ export function WishlistScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
-
-      {/* Manual Add Sheet */}
-      <ManualAddSheet
-        visible={showAddSheet}
-        onClose={() => setShowAddSheet(false)}
-      />
     </View>
   );
 }
@@ -543,6 +598,11 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: scale(2),
   },
+  authorSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginLeft: scale(76),
+  },
   seriesRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -570,5 +630,14 @@ const styles = StyleSheet.create({
     fontSize: scale(12),
     color: colors.textTertiary,
     marginTop: scale(2),
+  },
+  seriesSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginLeft: scale(76),
+  },
+  unfollowButton: {
+    padding: scale(8),
+    marginRight: scale(4),
   },
 });

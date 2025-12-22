@@ -47,10 +47,9 @@ function FilterChip({ label, icon, iconSet, active = true }: FilterChipProps) {
   return (
     <View style={[styles.filterChip, active && styles.filterChipActive]}>
       <Icon
-        name={icon}
+        name={icon as any}
         size={14}
         color={active ? '#000' : colors.textSecondary}
-        set={iconSet as any}
       />
       <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
         {label}
@@ -104,10 +103,9 @@ export function QuickTuneBar({
       <View style={styles.header}>
         <View style={styles.timerContainer}>
           <Icon
-            name="time-outline"
+            name="Clock"
             size={14}
             color={colors.textTertiary}
-            set="ionicons"
           />
           <Text style={styles.timerText}>
             {formatTimeRemaining(timeRemaining)}
@@ -121,10 +119,9 @@ export function QuickTuneBar({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Icon
-                name="options-outline"
+                name="SlidersHorizontal"
                 size={18}
                 color={colors.accent}
-                set="ionicons"
               />
               <Text style={styles.editText}>Edit</Text>
             </TouchableOpacity>
@@ -135,10 +132,9 @@ export function QuickTuneBar({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Icon
-              name="close-circle-outline"
+              name="XCircle"
               size={18}
               color={colors.textTertiary}
-              set="ionicons"
             />
           </TouchableOpacity>
         </View>

@@ -57,12 +57,19 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
   const removeItem = useWishlistStore((s) => s.removeItem);
   const getItem = useLibraryCache((s) => s.getItem);
 
+  // Ensure item has required properties (defensive coding)
+  const safeItem = {
+    ...item,
+    priority: item.priority || 'want-to-read',
+    libraryItemId: item.libraryItemId || undefined,
+  };
+
   // Get library item if it exists
-  const libraryItem = item.libraryItemId ? getItem(item.libraryItemId) : undefined;
+  const libraryItem = safeItem.libraryItemId ? getItem(safeItem.libraryItemId) : undefined;
   const metadata = libraryItem?.media?.metadata as any;
 
-  // Get cover URL if it's a library item
-  const coverUrl = useCoverUrl(item.libraryItemId || '');
+  // Get cover URL if it's a library item (only call hook if we have an ID)
+  const coverUrl = useCoverUrl(safeItem.libraryItemId || '');
 
   // Get display data - prefer library item data over manual entry
   const title = metadata?.title || item.manual?.title || 'Unknown Title';
@@ -71,9 +78,9 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
   const duration = (libraryItem?.media as any)?.duration || item.manual?.estimatedDuration;
   const series = metadata?.seriesName?.replace(/\s*#[\d.]+$/, '') || item.manual?.series;
   const seriesSeq = metadata?.seriesName?.match(/#([\d.]+)/)?.[1] || item.manual?.seriesSequence;
-  const displayCover = item.manual?.coverUrl || coverUrl;
+  const displayCover = item.manual?.coverUrl || (safeItem.libraryItemId ? coverUrl : undefined);
 
-  const priorityConfig = PRIORITY_CONFIG[item.priority];
+  const priorityConfig = PRIORITY_CONFIG[safeItem.priority] || PRIORITY_CONFIG['want-to-read'];
 
   const handlePress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

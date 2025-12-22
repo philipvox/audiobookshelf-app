@@ -28,7 +28,7 @@ function AuthorCardComponent({ author }: AuthorCardProps) {
   const navigation = useNavigation();
 
   const handlePress = () => {
-    navigation.navigate('AuthorDetail' as never, { authorName: author.name } as never);
+    (navigation as any).navigate('AuthorDetail', { authorName: author.name });
   };
 
   const imageUrl = author.imagePath

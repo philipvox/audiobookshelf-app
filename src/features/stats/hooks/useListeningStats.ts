@@ -201,45 +201,6 @@ export function useInvalidateStats() {
   }, [queryClient]);
 }
 
-// Utility functions for formatting
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`;
-  }
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours === 0) {
-    return `${minutes}m`;
-  }
-
-  if (minutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${minutes}m`;
-}
-
-export function formatDurationLong(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours === 0 && minutes === 0) {
-    return `${Math.round(seconds)} seconds`;
-  }
-
-  if (hours === 0) {
-    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
-  }
-
-  if (minutes === 0) {
-    return `${hours} hour${hours !== 1 ? 's' : ''}`;
-  }
-
-  return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
-}
-
 export function formatDateRelative(dateStr: string): string {
   const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];

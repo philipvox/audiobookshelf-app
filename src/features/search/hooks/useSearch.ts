@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import Fuse from 'fuse.js';
+import Fuse, { IFuseOptions } from 'fuse.js';
 import { LibraryItem } from '@/core/types';
 import { getTitle, getAuthorName, getNarratorName, getSeriesName } from '@/shared/utils/metadata';
 
@@ -39,7 +39,7 @@ interface SearchableItem {
   genres: string[];
 }
 
-const fuseOptions: Fuse.IFuseOptions<SearchableItem> = {
+const fuseOptions: IFuseOptions<SearchableItem> = {
   keys: [
     { name: 'title', weight: 0.4 },
     { name: 'author', weight: 0.25 },
@@ -47,10 +47,15 @@ const fuseOptions: Fuse.IFuseOptions<SearchableItem> = {
     { name: 'series', weight: 0.15 },
     { name: 'genres', weight: 0.05 },
   ],
-  threshold: 0.4,
+  // Fuzzy matching settings for misspelling tolerance
+  threshold: 0.5,           // Higher = more fuzzy (0.0 = exact, 1.0 = match anything)
+  distance: 200,            // How far to search for fuzzy match
   includeScore: true,
-  ignoreLocation: true,
+  ignoreLocation: true,     // Match anywhere in string
   minMatchCharLength: 2,
+  findAllMatches: true,     // Find all possible matches
+  shouldSort: true,         // Sort by relevance
+  isCaseSensitive: false,
 };
 
 export function useSearch(items: LibraryItem[]) {
@@ -62,7 +67,7 @@ export function useSearch(items: LibraryItem[]) {
       title: getTitle(item),
       author: getAuthorName(item),
       narrator: getNarratorName(item),
-      series: getSeriesName(item),
+      series: getSeriesName(item) || '',
       genres: (item.media?.metadata as any)?.genres || [],
     }));
   }, [items]);

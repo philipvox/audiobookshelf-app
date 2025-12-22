@@ -1,0 +1,302 @@
+# =============================================================================
+# MAESTRO: CD Player Screen States
+# =============================================================================
+# Captures all player screen states:
+# - Full player open
+# - Playing state (disc spinning)
+# - Paused state (disc static)
+# - Seeking/joystick states
+# - Sleep timer sheet
+# - Speed sheet
+# - Chapters view
+# - Progress bar states
+# - Mini-player states
+#
+# Prerequisites: User is logged in with a book ready to play
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Library and start playback
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 10000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Tap on first book to open book detail
+- tapOn:
+    point: "25%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Look for play button and tap it
+- runFlow:
+    when:
+      visible:
+        text: "Play|Resume|Listen"
+    commands:
+      - tapOn:
+          text: "Play|Resume|Listen"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# Navigate back to home where player shows
+- back
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# MINI-PLAYER STATES
+# -----------------------------------------------------------------------------
+# Screenshot 1: Mini-player Playing
+- takeScreenshot: screens/04-player/01-miniplayer-playing
+
+# Tap pause on mini-player
+- runFlow:
+    when:
+      visible:
+        text: "Pause"
+    commands:
+      - tapOn: "Pause"
+      - takeScreenshot: screens/04-player/02-miniplayer-paused
+
+# -----------------------------------------------------------------------------
+# FULL PLAYER - OPEN IT
+# -----------------------------------------------------------------------------
+# Tap on CD disc or mini-player to open full player
+- tapOn:
+    point: "50%, 25%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# Screenshot 3: Full Player - Paused
+# -----------------------------------------------------------------------------
+- takeScreenshot: screens/04-player/03-player-full-paused
+
+# -----------------------------------------------------------------------------
+# Screenshot 4: Full Player - Playing
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Play"
+    commands:
+      - tapOn: "Play"
+      - takeScreenshot: screens/04-player/04-player-full-playing
+      # Pause again
+      - runFlow:
+          when:
+            visible: "Pause"
+          commands:
+            - tapOn: "Pause"
+
+# -----------------------------------------------------------------------------
+# Screenshot 5: Full Player - Progress Bar Details
+# -----------------------------------------------------------------------------
+- takeScreenshot: screens/04-player/05-player-progress-bar
+
+# -----------------------------------------------------------------------------
+# SLEEP TIMER SHEET
+# -----------------------------------------------------------------------------
+# Look for sleep timer button (moon icon or "Off" or timer pill)
+- runFlow:
+    when:
+      visible:
+        text: "Off|Sleep|min|Timer"
+    commands:
+      - tapOn:
+          text: "Off|Sleep|min|Timer"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 6: Sleep Timer Sheet
+      - takeScreenshot: screens/04-player/06-sleep-timer-sheet
+      # Scroll to see more options
+      - swipe:
+          direction: UP
+          duration: 300
+      - takeScreenshot: screens/04-player/07-sleep-timer-sheet-scrolled
+      # Select a timer option (e.g., 15 min)
+      - runFlow:
+          when:
+            visible: "15"
+          commands:
+            - tapOn: "15"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/04-player/08-sleep-timer-active
+      # Dismiss if still open
+      - tapOn:
+          point: "50%, 10%"
+
+# -----------------------------------------------------------------------------
+# SPEED SHEET
+# -----------------------------------------------------------------------------
+# Look for speed button (shows current speed like "1x" or "1.0x")
+- runFlow:
+    when:
+      visible:
+        text: "\\d+\\.?\\d*x"
+    commands:
+      - tapOn:
+          text: "\\d+\\.?\\d*x"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 9: Speed Sheet
+      - takeScreenshot: screens/04-player/09-speed-sheet
+      # Scroll to see more speeds
+      - swipe:
+          direction: UP
+          duration: 300
+      - takeScreenshot: screens/04-player/10-speed-sheet-scrolled
+      # Select a different speed
+      - runFlow:
+          when:
+            visible: "1.25"
+          commands:
+            - tapOn: "1.25"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/04-player/11-speed-changed
+      # Dismiss if still open
+      - tapOn:
+          point: "50%, 10%"
+
+# -----------------------------------------------------------------------------
+# CHAPTERS VIEW
+# -----------------------------------------------------------------------------
+# Look for chapters button or list icon
+- runFlow:
+    when:
+      visible:
+        text: "Chapters|Chapter"
+    commands:
+      - tapOn:
+          text: "Chapters|Chapter"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 12: Chapters List (top)
+      - takeScreenshot: screens/04-player/12-chapters-list-top
+      # Scroll chapters
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/04-player/13-chapters-list-scrolled
+      # Scroll more
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/04-player/14-chapters-list-bottom
+      # Go back
+      - back
+
+# -----------------------------------------------------------------------------
+# SEEKING STATES
+# -----------------------------------------------------------------------------
+# Screenshot 15: Tap skip forward
+- runFlow:
+    when:
+      visible:
+        id: "skip-forward"
+    commands:
+      - tapOn:
+          id: "skip-forward"
+      - takeScreenshot: screens/04-player/15-player-skip-forward
+
+# Alternative: tap on visible skip button
+- runFlow:
+    when:
+      visible:
+        text: "30|15|\\+|→"
+    commands:
+      - tapOn:
+          text: "30|15"
+      - takeScreenshot: screens/04-player/15-player-skip-forward-alt
+
+# Screenshot 16: Tap skip backward
+- runFlow:
+    when:
+      visible:
+        text: "\\-|←|10|15"
+    commands:
+      - tapOn:
+          text: "\\-|10"
+      - takeScreenshot: screens/04-player/16-player-skip-back
+
+# -----------------------------------------------------------------------------
+# JOYSTICK SEEK (drag on play button)
+# -----------------------------------------------------------------------------
+# Try dragging on the play button area
+- swipe:
+    start: 50%, 70%
+    end: 70%, 70%
+    duration: 1000
+- takeScreenshot: screens/04-player/17-player-joystick-seek
+
+# -----------------------------------------------------------------------------
+# CLOSE PLAYER
+# -----------------------------------------------------------------------------
+# Tap close button or swipe down to dismiss
+- swipe:
+    direction: DOWN
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# MINI-PLAYER ON DIFFERENT TABS
+# -----------------------------------------------------------------------------
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+- takeScreenshot: screens/04-player/18-miniplayer-on-library
+
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+- takeScreenshot: screens/04-player/19-miniplayer-on-discover
+
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+- takeScreenshot: screens/04-player/20-miniplayer-on-profile
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Player screenshots complete: screens/04-player/");

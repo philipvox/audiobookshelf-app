@@ -66,6 +66,11 @@ export interface PodcastMedia {
   lastEpisodeCheck?: number;
   maxEpisodesToKeep: number;
   maxNewEpisodesToDownload: number;
+  // Optional duration - computed from episodes when needed
+  duration?: number;
+  // Optional for compatibility with BookMedia properties
+  audioFiles?: never[];
+  chapters?: never[];
 }
 
 /**

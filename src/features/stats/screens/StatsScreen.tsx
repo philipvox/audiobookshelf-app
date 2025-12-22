@@ -18,12 +18,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/shared/components/Icon';
-import {
-  useStatsScreen,
-  formatDuration,
-  formatDurationLong,
-  getWeekdayName,
-} from '../hooks/useListeningStats';
+import { useStatsScreen, getWeekdayName } from '../hooks/useListeningStats';
+import { formatDuration, formatDurationLong } from '@/shared/utils/format';
 import { ShareStatsCard } from '../components/ShareStatsCard';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, wp } from '@/shared/theme';
@@ -57,7 +53,7 @@ function StatCard({ icon, label, value, subtitle, accentColor }: StatCardProps) 
   return (
     <View style={styles.statCard}>
       <View style={[styles.statIcon, accentColor && { backgroundColor: accentColor }]}>
-        <Icon name={icon} size={20} color={COLORS.text} set="ionicons" />
+        <Icon name={icon} size={20} color={COLORS.text} />
       </View>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
@@ -289,17 +285,17 @@ export function StatsScreen() {
                 onPress={() => openShareModal('streak')}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Icon name="share-outline" size={18} color={COLORS.textTertiary} set="ionicons" />
+                <Icon name="Share" size={18} color={COLORS.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
           <View style={styles.streakContainer}>
             <View style={styles.streakItem}>
               <Icon
-                name="flame"
+                name="Flame"
                 size={28}
                 color={currentStreak > 0 ? COLORS.streakActive : COLORS.textTertiary}
-                set="ionicons"
+               
               />
               <Text style={styles.streakValue}>{currentStreak}</Text>
               <Text style={styles.streakLabel}>
@@ -308,7 +304,7 @@ export function StatsScreen() {
             </View>
             <View style={styles.streakDivider} />
             <View style={styles.streakItem}>
-              <Icon name="trophy" size={28} color={COLORS.accent} set="ionicons" />
+              <Icon name="Trophy" size={28} color={COLORS.accent} />
               <Text style={styles.streakValue}>{longestStreak}</Text>
               <Text style={styles.streakLabel}>
                 day{longestStreak !== 1 ? 's' : ''} best
@@ -327,7 +323,7 @@ export function StatsScreen() {
                 onPress={() => openShareModal('weekly')}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Icon name="share-outline" size={18} color={COLORS.textTertiary} set="ionicons" />
+                <Icon name="Share" size={18} color={COLORS.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
@@ -350,13 +346,13 @@ export function StatsScreen() {
                 onPress={() => openShareModal('allTime')}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Icon name="share-outline" size={18} color={COLORS.textTertiary} set="ionicons" />
+                <Icon name="Share" size={18} color={COLORS.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
           <View style={styles.statsGrid}>
             <StatCard
-              icon="time-outline"
+              icon="Clock"
               label="Total Time"
               value={formatDuration(allTimeTime)}
               subtitle={allTime?.totalSessions ? `${allTime.totalSessions} sessions` : undefined}

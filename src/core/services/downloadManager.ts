@@ -7,7 +7,6 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { sqliteCache } from './sqliteCache';
-import { waveformService } from './waveformService';
 import { networkMonitor, NetworkState } from './networkMonitor';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
@@ -50,6 +49,7 @@ export interface DownloadTask {
   bytesDownloaded: number;
   totalBytes: number;
   error?: string;
+  completedAt?: number;
 }
 
 type DownloadListener = (tasks: DownloadTask[]) => void;
@@ -399,8 +399,6 @@ class DownloadManager {
     log(`Deleting download: ${itemId}`);
     await sqliteCache.deleteDownload(itemId);
     await this.deleteFiles(itemId);
-    // Also delete waveform data
-    await waveformService.deleteWaveform(itemId);
     this.notifyListeners();
     log(`Download deleted: ${itemId}`);
   }
@@ -771,9 +769,6 @@ class DownloadManager {
       // Initialize progress tracking with total size
       this.progressInfo.set(itemId, { bytesDownloaded: 0, totalBytes: totalSize });
 
-      // Track downloaded file paths for waveform extraction
-      const downloadedFilePaths: string[] = [];
-
       // Download each audio file with retry logic
       for (let i = 0; i < audioFiles.length; i++) {
         const file = audioFiles[i];
@@ -813,7 +808,6 @@ class DownloadManager {
           }
         );
 
-        downloadedFilePaths.push(destPath);
         downloadedSize += fileSize;
         log(`File ${i + 1} complete. Downloaded so far: ${formatBytes(downloadedSize)}`);
       }
@@ -821,32 +815,6 @@ class DownloadManager {
       // Download cover image
       log(`Downloading cover image...`);
       await this.downloadCover(item, destDir);
-
-      // Extract waveform for scrub visualization (non-blocking)
-      log(`Extracting waveform for scrub visualization...`);
-      const bookMedia = fullItem.media as any;
-      const bookDuration = bookMedia?.duration || 0;
-      const chapters = bookMedia?.chapters?.map((ch: any) => ({
-        title: ch.title,
-        start: ch.start,
-        end: ch.end,
-      }));
-
-      // Run waveform extraction in background (don't block download completion)
-      waveformService.extractWaveform(
-        itemId,
-        downloadedFilePaths,
-        bookDuration,
-        chapters
-      ).then(waveform => {
-        if (waveform) {
-          log(`Waveform extracted: ${waveform.totalSamples} samples`);
-        } else {
-          logWarn(`Waveform extraction failed for ${itemId}`);
-        }
-      }).catch(err => {
-        logWarn(`Waveform extraction error:`, err);
-      });
 
       // Mark complete
       this.activeDownloads.delete(itemId);

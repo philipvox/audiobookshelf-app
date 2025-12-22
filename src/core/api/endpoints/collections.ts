@@ -72,9 +72,10 @@ export const collectionsApi = {
     const currentBookIds = collection.books?.map((b) => b.id) || [];
 
     if (currentBookIds.indexOf(itemId) === -1) {
+      // API accepts book IDs, not full LibraryItem objects
       return apiClient.updateCollection(collectionId, {
         books: [...currentBookIds, itemId],
-      } as Partial<Collection>);
+      } as unknown as Partial<Collection>);
     }
 
     return collection;
@@ -87,8 +88,9 @@ export const collectionsApi = {
     const collection = await apiClient.getCollection(collectionId);
     const currentBookIds = collection.books?.map((b) => b.id) || [];
 
+    // API accepts book IDs, not full LibraryItem objects
     return apiClient.updateCollection(collectionId, {
       books: currentBookIds.filter((id) => id !== itemId),
-    } as Partial<Collection>);
+    } as unknown as Partial<Collection>);
   },
 };

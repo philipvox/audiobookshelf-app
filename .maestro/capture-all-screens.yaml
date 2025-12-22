@@ -1,0 +1,478 @@
+# =============================================================================
+# MAESTRO: Capture All Screens
+# =============================================================================
+# This flow navigates through all 35 screens and captures screenshots.
+#
+# Usage:
+#   maestro test .maestro/capture-all-screens.yaml
+#
+# Prerequisites:
+#   1. Install Maestro: brew install maestro
+#   2. Have the app running on simulator/emulator
+#   3. Update LOGIN credentials below
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+# -----------------------------------------------------------------------------
+# CONFIGURATION - Update these values
+# -----------------------------------------------------------------------------
+env:
+  SERVER_URL: "https://your-server.com"
+  USERNAME: "your-username"
+  PASSWORD: "your-password"
+  # Set to "true" to skip login (if already logged in)
+  SKIP_LOGIN: "false"
+
+---
+
+# =============================================================================
+# 1. LOGIN SCREEN
+# =============================================================================
+- launchApp:
+    clearState: true
+
+- takeScreenshot: 01-auth/01-login-screen
+
+# Skip login if already authenticated
+- runFlow:
+    when:
+      visible: "Connect to your server"
+    commands:
+      - tapOn:
+          id: "server-url-input"
+      - inputText: ${SERVER_URL}
+      - tapOn:
+          id: "username-input"
+      - inputText: ${USERNAME}
+      - tapOn:
+          id: "password-input"
+      - inputText: ${PASSWORD}
+      - hideKeyboard
+      - takeScreenshot: 01-auth/02-login-filled
+      - tapOn: "Connect"
+      - waitForAnimationToEnd:
+          timeout: 10000
+
+# =============================================================================
+# 2. HOME TAB
+# =============================================================================
+- assertVisible:
+    text: ".*"
+    timeout: 5000
+
+- takeScreenshot: 02-home/01-home-screen
+
+# Open Sleep Timer Sheet
+- runFlow:
+    when:
+      visible:
+        id: "sleep-timer-pill"
+    commands:
+      - tapOn:
+          id: "sleep-timer-pill"
+      - waitForAnimationToEnd
+      - takeScreenshot: 02-home/02-sleep-timer-sheet
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# Open Speed Sheet
+- runFlow:
+    when:
+      visible:
+        id: "speed-pill"
+    commands:
+      - tapOn:
+          id: "speed-pill"
+      - waitForAnimationToEnd
+      - takeScreenshot: 02-home/03-speed-sheet
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# Open Queue Sheet
+- runFlow:
+    when:
+      visible:
+        id: "queue-pill"
+    commands:
+      - tapOn:
+          id: "queue-pill"
+      - waitForAnimationToEnd
+      - takeScreenshot: 02-home/04-queue-sheet
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 3. LIBRARY TAB
+# =============================================================================
+- tapOn: "Library"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/01-my-library-all
+
+# Library Tabs
+- tapOn: "Downloaded"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/02-my-library-downloaded
+
+- tapOn: "In Progress"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/03-my-library-in-progress
+
+- tapOn: "Not Started"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/04-my-library-not-started
+
+- tapOn: "Completed"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/05-my-library-completed
+
+- tapOn: "Favorites"
+- waitForAnimationToEnd
+- takeScreenshot: 03-library/06-my-library-favorites
+
+# Back to All tab
+- tapOn: "All"
+- waitForAnimationToEnd
+
+# =============================================================================
+# 4. BROWSE/DISCOVER TAB
+# =============================================================================
+- tapOn: "Discover"
+- waitForAnimationToEnd
+- takeScreenshot: 04-browse/01-browse-screen
+
+# Mood Discovery (if visible)
+- runFlow:
+    when:
+      visible: "Discover Your Mood"
+    commands:
+      - tapOn: "Discover Your Mood"
+      - waitForAnimationToEnd
+      - takeScreenshot: 04-browse/02-mood-discovery-step1
+      # Select a mood option
+      - tapOn:
+          index: 0
+      - waitForAnimationToEnd
+      - tapOn: "Next"
+      - waitForAnimationToEnd
+      - takeScreenshot: 04-browse/03-mood-discovery-step2
+      - tapOn: "Skip"
+      - waitForAnimationToEnd
+      - takeScreenshot: 04-browse/04-mood-discovery-step3
+      - tapOn: "Skip"
+      - waitForAnimationToEnd
+      - takeScreenshot: 04-browse/05-mood-discovery-step4
+      - tapOn: "Show Me Books"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - takeScreenshot: 04-browse/06-mood-results
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 5. PROFILE TAB
+# =============================================================================
+- tapOn: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: 05-profile/01-profile-screen
+
+# Downloads Screen
+- tapOn: "Downloads"
+- waitForAnimationToEnd
+- takeScreenshot: 05-profile/02-downloads-screen
+- back
+- waitForAnimationToEnd
+
+# Wishlist Screen
+- tapOn: "Wishlist"
+- waitForAnimationToEnd
+- takeScreenshot: 05-profile/03-wishlist-screen
+- back
+- waitForAnimationToEnd
+
+# Stats Screen
+- tapOn: "Listening Stats"
+- waitForAnimationToEnd
+- takeScreenshot: 05-profile/04-stats-screen
+- back
+- waitForAnimationToEnd
+
+# Reading History
+- runFlow:
+    when:
+      visible: "Reading History"
+    commands:
+      - tapOn: "Reading History"
+      - waitForAnimationToEnd
+      - takeScreenshot: 05-profile/05-reading-history-screen
+      - back
+      - waitForAnimationToEnd
+
+# Reading Preferences
+- runFlow:
+    when:
+      visible: "Reading Preferences"
+    commands:
+      - tapOn: "Reading Preferences"
+      - waitForAnimationToEnd
+      - takeScreenshot: 05-profile/06-preferences-screen
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 6. SETTINGS SCREENS
+# =============================================================================
+- tapOn: "Playback"
+- waitForAnimationToEnd
+- takeScreenshot: 06-settings/01-playback-settings
+- back
+- waitForAnimationToEnd
+
+- tapOn: "Storage"
+- waitForAnimationToEnd
+- takeScreenshot: 06-settings/02-storage-settings
+- back
+- waitForAnimationToEnd
+
+- tapOn: "Haptic Feedback"
+- waitForAnimationToEnd
+- takeScreenshot: 06-settings/03-haptic-settings
+- back
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Chapter Names"
+    commands:
+      - tapOn: "Chapter Names"
+      - waitForAnimationToEnd
+      - takeScreenshot: 06-settings/04-chapter-cleaning-settings
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 7. SEARCH SCREEN
+# =============================================================================
+- tapOn: "Discover"
+- waitForAnimationToEnd
+
+# Find and tap search icon/bar
+- runFlow:
+    when:
+      visible:
+        id: "search-button"
+    commands:
+      - tapOn:
+          id: "search-button"
+      - waitForAnimationToEnd
+      - takeScreenshot: 07-search/01-search-empty
+      - inputText: "fantasy"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 07-search/02-search-autocomplete
+      - tapOn: "Search"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 07-search/03-search-results
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 8. BOOK DETAIL SCREEN
+# =============================================================================
+- tapOn: "Library"
+- waitForAnimationToEnd
+
+# Tap on first book card
+- runFlow:
+    when:
+      visible:
+        id: "book-card-.*"
+    commands:
+      - tapOn:
+          id: "book-card-0"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 08-detail/01-book-detail-overview
+      # Chapters tab
+      - tapOn: "Chapters"
+      - waitForAnimationToEnd
+      - takeScreenshot: 08-detail/02-book-detail-chapters
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 9. SERIES DETAIL SCREEN
+# =============================================================================
+- scroll:
+    direction: DOWN
+
+- runFlow:
+    when:
+      visible:
+        id: "series-card-.*"
+    commands:
+      - tapOn:
+          id: "series-card-0"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 08-detail/03-series-detail
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 10. AUTHOR DETAIL SCREEN
+# =============================================================================
+- scroll:
+    direction: DOWN
+
+- runFlow:
+    when:
+      visible:
+        id: "author-card-.*"
+    commands:
+      - tapOn:
+          id: "author-card-0"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 08-detail/04-author-detail
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 11. NARRATOR DETAIL SCREEN
+# =============================================================================
+- runFlow:
+    when:
+      visible:
+        id: "narrator-card-.*"
+    commands:
+      - tapOn:
+          id: "narrator-card-0"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 08-detail/05-narrator-detail
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 12. PLAYER SCREENS
+# =============================================================================
+# Navigate to a book and start playing
+- tapOn: "Home"
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible:
+        id: "cd-disc"
+    commands:
+      - tapOn:
+          id: "cd-disc"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 09-player/01-cd-player-screen
+      # Open chapters sheet
+      - tapOn:
+          id: "chapters-button"
+      - waitForAnimationToEnd
+      - takeScreenshot: 09-player/02-cd-player-chapters
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+      # Close player
+      - tapOn:
+          id: "close-button"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 13. QUEUE SCREEN (Full)
+# =============================================================================
+- runFlow:
+    when:
+      visible:
+        id: "mini-player"
+    commands:
+      - tapOn:
+          id: "queue-button"
+      - waitForAnimationToEnd
+      - takeScreenshot: 09-player/03-queue-screen
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 14. GENRES LIST SCREEN
+# =============================================================================
+- tapOn: "Library"
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Browse Full Library"
+    commands:
+      - tapOn: "Browse Full Library"
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-lists/01-genres-list
+      # Tap on a genre
+      - tapOn:
+          index: 0
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-lists/02-genre-detail
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 15. AUTHORS LIST SCREEN
+# =============================================================================
+- runFlow:
+    when:
+      visible: "See All Authors"
+    commands:
+      - tapOn: "See All Authors"
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-lists/03-authors-list
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 16. NARRATORS LIST SCREEN
+# =============================================================================
+- runFlow:
+    when:
+      visible: "See All Narrators"
+    commands:
+      - tapOn: "See All Narrators"
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-lists/04-narrators-list
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# 17. SERIES LIST SCREEN
+# =============================================================================
+- runFlow:
+    when:
+      visible: "See All Series"
+    commands:
+      - tapOn: "See All Series"
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-lists/05-series-list
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# COMPLETE
+# =============================================================================
+- takeScreenshot: 99-final-state
+
+# Print summary
+- evalScript: |
+    console.log("===========================================");
+    console.log("Screenshot capture complete!");
+    console.log("Screenshots saved to: .maestro/screenshots/");
+    console.log("===========================================");

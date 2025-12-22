@@ -223,6 +223,12 @@ function FloatingTabBarInner() {
   const bottomPadding = Math.max(insets.bottom, 16) + BAR_BOTTOM_PADDING;
   const totalBarHeight = BAR_HEIGHT + bottomPadding;
 
+  // Hide tab bar on full-screen modal routes
+  const hiddenRoutes = ['ReadingHistoryWizard', 'MoodDiscovery', 'MoodResults', 'PreferencesOnboarding'];
+  if (hiddenRoutes.includes(currentRouteName)) {
+    return null;
+  }
+
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
       <View style={[styles.bar, { paddingBottom: bottomPadding, minHeight: totalBarHeight }]}>

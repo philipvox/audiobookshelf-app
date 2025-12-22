@@ -37,9 +37,9 @@ export function FilterSortBar({
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.button} onPress={() => setShowSortModal(true)}>
-        <Icon name="swap-vertical" size={18} color={colors.textSecondary} set="ionicons" />
+        <Icon name="ArrowUpDown" size={18} color={colors.textSecondary} />
         <Text style={styles.buttonText}>{currentSortLabel}</Text>
-        <Icon name="chevron-down" size={16} color={colors.textTertiary} set="ionicons" />
+        <Icon name="ChevronDown" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
 
       {showGenreFilter && genres.length > 0 && (
@@ -47,11 +47,11 @@ export function FilterSortBar({
           style={[styles.button, selectedGenre && styles.buttonActive]}
           onPress={() => setShowGenreModal(true)}
         >
-          <Icon name="filter" size={18} color={selectedGenre ? '#fff' : colors.textSecondary} set="ionicons" />
+          <Icon name="Filter" size={18} color={selectedGenre ? '#fff' : colors.textSecondary} />
           <Text style={[styles.buttonText, selectedGenre && styles.buttonTextActive]}>
             {selectedGenre || 'Genre'}
           </Text>
-          <Icon name="chevron-down" size={16} color={selectedGenre ? '#fff' : colors.textTertiary} set="ionicons" />
+          <Icon name="ChevronDown" size={16} color={selectedGenre ? '#fff' : colors.textTertiary} />
         </TouchableOpacity>
       )}
 
@@ -72,7 +72,7 @@ export function FilterSortBar({
                   {option.label}
                 </Text>
                 {sortBy === option.value && (
-                  <Icon name="checkmark" size={20} color={colors.accent} set="ionicons" />
+                  <Icon name="Check" size={20} color={colors.accent} />
                 )}
               </TouchableOpacity>
             ))}
@@ -93,7 +93,7 @@ export function FilterSortBar({
                 }}
               >
                 <Text style={[styles.modalOptionText, !selectedGenre && styles.modalOptionTextActive]}>All Genres</Text>
-                {!selectedGenre && <Icon name="checkmark" size={20} color={colors.accent} set="ionicons" />}
+                {!selectedGenre && <Icon name="Check" size={20} color={colors.accent} />}
               </TouchableOpacity>
               {genres.map((genre) => (
                 <TouchableOpacity
@@ -108,7 +108,7 @@ export function FilterSortBar({
                     {genre}
                   </Text>
                   {selectedGenre === genre && (
-                    <Icon name="checkmark" size={20} color={colors.accent} set="ionicons" />
+                    <Icon name="Check" size={20} color={colors.accent} />
                   )}
                 </TouchableOpacity>
               ))}

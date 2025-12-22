@@ -1,0 +1,202 @@
+# =============================================================================
+# PART 1: Home, Player States, Sleep Timer, Speed
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# HOME STATES (7-10)
+# =============================================================================
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/07-home-idle
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/07-home-idle-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# START PLAYBACK - Go to Library, find a book, play it
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Tap first book
+- tapOn:
+    point: "25%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/35-book-detail-not-downloaded
+
+# Try Download button
+- tapOn:
+    text: "Download"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/40-download-starting
+
+# Try Stream button to start playback
+- tapOn:
+    text: "Stream"
+    optional: true
+- tapOn:
+    text: "Play"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Go back to home
+- back
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot: Home with playback/mini-player
+- takeScreenshot: comprehensive/08-home-playing
+- takeScreenshot: comprehensive/10-home-miniplayer
+
+# =============================================================================
+# FULL PLAYER STATES (11-19)
+# =============================================================================
+# Tap CD disc area to open player
+- tapOn:
+    point: "50%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/11-player-paused
+
+# Play button
+- tapOn:
+    text: "Play"
+    optional: true
+- tapOn:
+    point: "50%,75%"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/12-player-playing
+
+# Pause
+- tapOn:
+    text: "Pause"
+    optional: true
+- tapOn:
+    point: "50%,75%"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/14-player-sleep-off
+
+# =============================================================================
+# SLEEP TIMER SHEET (20-22)
+# =============================================================================
+# Look for sleep timer - usually "Off" or moon icon
+- tapOn:
+    text: "Off"
+    optional: true
+- tapOn:
+    text: "Sleep"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/20-sleep-timer-sheet
+
+# Select 15 minutes
+- tapOn:
+    text: "15"
+    optional: true
+- tapOn:
+    text: "15 min"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/22-sleep-timer-active
+
+# Close sheet
+- tapOn:
+    point: "50%,20%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/15-player-sleep-active
+
+# =============================================================================
+# SPEED SHEET (23)
+# =============================================================================
+# Look for speed button (1x, 1.0x, etc)
+- tapOn:
+    text: "1x"
+    optional: true
+- tapOn:
+    text: "1.0x"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/23-speed-sheet
+
+# Select 1.5x
+- tapOn:
+    text: "1.5"
+    optional: true
+- tapOn:
+    text: "1.5x"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/17-player-speed-changed
+
+# Close sheet
+- tapOn:
+    point: "50%,20%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# PLAYER CHAPTERS (18)
+# =============================================================================
+- tapOn:
+    text: "Chapters"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/18-player-chapters
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/18-player-chapters-scrolled
+
+# Close chapters
+- tapOn:
+    point: "50%,10%"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# Final player screenshot
+- takeScreenshot: comprehensive/16-player-speed-1x
+
+# Close player
+- tapOn:
+    point: "5%,5%"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 1 complete - Home & Player states");

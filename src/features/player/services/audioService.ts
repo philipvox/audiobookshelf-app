@@ -325,36 +325,56 @@ class AudioService {
 
   /**
    * Update media control metadata (call when loading new audio)
+   * This is critical for lock screen display on both iOS and Android
    */
   private async updateMediaControlMetadata(): Promise<void> {
-    if (!this.mediaControlEnabled || !MediaControl) return;
+    if (!this.mediaControlEnabled || !MediaControl) {
+      log('Media controls not enabled, skipping metadata update');
+      return;
+    }
+
+    const metadata = {
+      title: this.metadata.title || 'Unknown Title',
+      artist: this.metadata.artist || 'Unknown Author',
+      duration: this.totalDuration,
+      artwork: this.metadata.artwork ? { uri: this.metadata.artwork } : undefined,
+    };
+
+    log('Updating media control metadata:', {
+      title: metadata.title,
+      artist: metadata.artist,
+      duration: metadata.duration,
+      hasArtwork: !!metadata.artwork,
+    });
 
     try {
-      await MediaControl.updateMetadata({
-        title: this.metadata.title || 'Unknown Title',
-        artist: this.metadata.artist || 'Unknown Author',
-        duration: this.totalDuration,
-        artwork: this.metadata.artwork ? { uri: this.metadata.artwork } : undefined,
-      });
+      await MediaControl.updateMetadata(metadata);
+      log('Media metadata updated successfully');
     } catch (error: any) {
-      audioLog.warn('Failed to update media metadata:', error.message);
+      audioLog.error('Failed to update media metadata:', error.message, error.stack);
     }
   }
 
   /**
    * Update media control playback state
+   * This updates the lock screen play/pause button state
    */
   private async updateMediaControlPlaybackState(
     isPlaying: boolean,
     position?: number
   ): Promise<void> {
-    if (!this.mediaControlEnabled || !MediaControl || !MediaPlaybackState) return;
+    if (!this.mediaControlEnabled || !MediaControl || !MediaPlaybackState) {
+      log('Media controls not enabled, skipping playback state update');
+      return;
+    }
 
     try {
       const state = isPlaying ? MediaPlaybackState.PLAYING : MediaPlaybackState.PAUSED;
-      await MediaControl.updatePlaybackState(state, position);
+      const pos = position ?? this.getGlobalPositionSync();
+      log('Updating playback state:', { isPlaying, state, position: pos });
+      await MediaControl.updatePlaybackState(state, pos);
     } catch (error: any) {
-      audioLog.warn('Failed to update playback state:', error.message);
+      audioLog.error('Failed to update playback state:', error.message);
     }
   }
 

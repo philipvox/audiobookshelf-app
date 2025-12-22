@@ -126,16 +126,16 @@ export const endpoints = {
 /**
  * Helper to build query string from params
  */
-export function buildQueryString(params?: Record<string, string | number | boolean | undefined>): string {
+export function buildQueryString<T extends Record<string, unknown>>(params?: T): string {
   if (!params) return '';
-  
+
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       searchParams.append(key, String(value));
     }
   });
-  
+
   const queryString = searchParams.toString();
   return queryString ? `?${queryString}` : '';
 }

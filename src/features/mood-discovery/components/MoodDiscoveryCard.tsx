@@ -96,10 +96,9 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
               />
             ) : (
               <Icon
-                name="color-wand-outline"
+                name="Wand2"
                 size={20}
                 color={colors.accent}
-                set="ionicons"
               />
             )}
           </View>
@@ -114,10 +113,9 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
             )}
           </View>
           <Icon
-            name="chevron-forward"
+            name="ChevronRight"
             size={18}
             color={colors.accent}
-            set="ionicons"
           />
         </LinearGradient>
       </AnimatedPressable>
@@ -157,13 +155,13 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
               ) : (
                 <>
                   <View style={styles.iconCircle}>
-                    <Icon name="color-wand-outline" size={18} color={colors.accent} set="ionicons" />
+                    <Icon name="Wand2" size={18} color={colors.accent} />
                   </View>
                   <View style={styles.iconCircle}>
-                    <Icon name="flash-outline" size={18} color={colors.accent} set="ionicons" />
+                    <Icon name="Zap" size={18} color={colors.accent} />
                   </View>
                   <View style={styles.iconCircle}>
-                    <Icon name="moon-outline" size={18} color={colors.accent} set="ionicons" />
+                    <Icon name="Moon" size={18} color={colors.accent} />
                   </View>
                 </>
               )}
@@ -183,10 +181,9 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
           {/* Right arrow */}
           <View style={styles.arrowContainer}>
             <Icon
-              name="arrow-forward-circle"
+              name="ArrowRightCircle"
               size={28}
               color={colors.accent}
-              set="ionicons"
             />
           </View>
         </LinearGradient>

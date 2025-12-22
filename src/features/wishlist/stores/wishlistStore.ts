@@ -45,13 +45,13 @@ interface WishlistState {
   removeTag: (id: string, tag: string) => void;
 
   // Actions - Authors
-  followAuthor: (author: Omit<FollowedAuthor, 'id' | 'followedAt'>) => string;
-  unfollowAuthor: (id: string) => void;
+  followAuthor: (authorName: string) => string;
+  unfollowAuthor: (authorName: string) => void;
   updateAuthor: (id: string, updates: Partial<FollowedAuthor>) => void;
 
   // Actions - Series
-  trackSeries: (series: Omit<TrackedSeries, 'id' | 'trackedAt'>) => string;
-  untrackSeries: (id: string) => void;
+  trackSeries: (seriesName: string) => string;
+  untrackSeries: (seriesName: string) => void;
   updateSeries: (id: string, updates: Partial<TrackedSeries>) => void;
 
   // Actions - UI
@@ -63,8 +63,8 @@ interface WishlistState {
   isOnWishlist: (libraryItemId: string) => boolean;
   getWishlistItem: (id: string) => WishlistItem | undefined;
   getWishlistItemByLibraryId: (libraryItemId: string) => WishlistItem | undefined;
-  isAuthorFollowed: (authorId: string) => boolean;
-  isSeriesTracked: (seriesId: string) => boolean;
+  isAuthorFollowed: (authorName: string) => boolean;
+  isSeriesTracked: (seriesName: string) => boolean;
   getFilteredItems: () => WishlistItem[];
   getSortedItems: (items: WishlistItem[]) => WishlistItem[];
   getAllTags: () => string[];
@@ -198,11 +198,19 @@ export const useWishlistStore = create<WishlistState>()(
 
       // ========== Author Actions ==========
 
-      followAuthor: (author) => {
+      followAuthor: (authorName) => {
+        if (!authorName) return '';
+
+        // Check if already following (with null safety)
+        const existing = get().followedAuthors.find(
+          (a) => a.name?.toLowerCase() === authorName.toLowerCase()
+        );
+        if (existing) return existing.id;
+
         const id = generateId();
         const newAuthor: FollowedAuthor = {
-          ...author,
           id,
+          name: authorName,
           followedAt: now(),
         };
         set((state) => ({
@@ -211,9 +219,13 @@ export const useWishlistStore = create<WishlistState>()(
         return id;
       },
 
-      unfollowAuthor: (id) => {
+      unfollowAuthor: (authorName) => {
+        if (!authorName) return;
+
         set((state) => ({
-          followedAuthors: state.followedAuthors.filter((a) => a.id !== id),
+          followedAuthors: state.followedAuthors.filter(
+            (a) => a.name?.toLowerCase() !== authorName.toLowerCase()
+          ),
         }));
       },
 
@@ -227,11 +239,19 @@ export const useWishlistStore = create<WishlistState>()(
 
       // ========== Series Actions ==========
 
-      trackSeries: (series) => {
+      trackSeries: (seriesName) => {
+        if (!seriesName) return '';
+
+        // Check if already tracking (with null safety)
+        const existing = get().trackedSeries.find(
+          (s) => s.name?.toLowerCase() === seriesName.toLowerCase()
+        );
+        if (existing) return existing.id;
+
         const id = generateId();
         const newSeries: TrackedSeries = {
-          ...series,
           id,
+          name: seriesName,
           trackedAt: now(),
         };
         set((state) => ({
@@ -240,9 +260,13 @@ export const useWishlistStore = create<WishlistState>()(
         return id;
       },
 
-      untrackSeries: (id) => {
+      untrackSeries: (seriesName) => {
+        if (!seriesName) return;
+
         set((state) => ({
-          trackedSeries: state.trackedSeries.filter((s) => s.id !== id),
+          trackedSeries: state.trackedSeries.filter(
+            (s) => s.name?.toLowerCase() !== seriesName.toLowerCase()
+          ),
         }));
       },
 
@@ -276,15 +300,17 @@ export const useWishlistStore = create<WishlistState>()(
         return get().items.find((item) => item.libraryItemId === libraryItemId);
       },
 
-      isAuthorFollowed: (authorId) => {
+      isAuthorFollowed: (authorName) => {
+        if (!authorName) return false;
         return get().followedAuthors.some(
-          (a) => a.libraryAuthorId === authorId || a.id === authorId
+          (a) => a.name?.toLowerCase() === authorName.toLowerCase()
         );
       },
 
-      isSeriesTracked: (seriesId) => {
+      isSeriesTracked: (seriesName) => {
+        if (!seriesName) return false;
         return get().trackedSeries.some(
-          (s) => s.librarySeriesId === seriesId || s.id === seriesId
+          (s) => s.name?.toLowerCase() === seriesName.toLowerCase()
         );
       },
 
@@ -433,23 +459,25 @@ export function useTrackedSeriesCount(): number {
 }
 
 /**
- * Hook to check if an author is followed
+ * Hook to check if an author is followed (by name)
  */
-export function useIsAuthorFollowed(authorId: string): boolean {
-  return useWishlistStore((state) =>
-    state.followedAuthors.some(
-      (a) => a.libraryAuthorId === authorId || a.id === authorId
-    )
-  );
+export function useIsAuthorFollowed(authorName: string): boolean {
+  return useWishlistStore((state) => {
+    if (!authorName) return false;
+    return state.followedAuthors.some(
+      (a) => a.name && a.name.toLowerCase() === authorName.toLowerCase()
+    );
+  });
 }
 
 /**
- * Hook to check if a series is tracked
+ * Hook to check if a series is tracked (by name)
  */
-export function useIsSeriesTracked(seriesId: string): boolean {
-  return useWishlistStore((state) =>
-    state.trackedSeries.some(
-      (s) => s.librarySeriesId === seriesId || s.id === seriesId
-    )
-  );
+export function useIsSeriesTracked(seriesName: string): boolean {
+  return useWishlistStore((state) => {
+    if (!seriesName) return false;
+    return state.trackedSeries.some(
+      (s) => s.name && s.name.toLowerCase() === seriesName.toLowerCase()
+    );
+  });
 }

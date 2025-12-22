@@ -1,0 +1,137 @@
+# =============================================================================
+# CAPTURE PLAYER SCREENS - Direct approach
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Navigate to Home
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Tap on mini-player to open full player
+- tapOn:
+    point: "50%,93%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Player should now be open - capture states
+- takeScreenshot: full/player-paused
+
+# Play
+- tapOn:
+    point: "50%,80%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/player-playing
+
+# Pause
+- tapOn:
+    point: "50%,80%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Sleep timer button (bottom left)
+- tapOn:
+    point: "15%,88%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/sleep-timer-sheet
+
+# Scroll sleep timer options
+- swipe:
+    start: "50%,70%"
+    end: "50%,40%"
+- waitForAnimationToEnd
+- takeScreenshot: full/sleep-timer-scroll
+
+# Close sleep timer by tapping outside
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Speed button (bottom right)
+- tapOn:
+    point: "85%,88%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/speed-sheet
+
+# Select 1.5x speed
+- tapOn:
+    text: "1.5"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/player-speed-changed
+
+# Close speed sheet
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Chapters button (center bottom)
+- tapOn:
+    point: "50%,88%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/player-chapters-sheet
+
+# Scroll chapters
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: full/player-chapters-scroll
+
+# Close chapters
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Close player (back arrow top left)
+- tapOn:
+    point: "8%,5%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Now on Home with mini-player - capture mini-player states
+- takeScreenshot: full/home-miniplayer-final
+
+# Mini-player across tabs
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-library
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-search
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-browse
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/miniplayer-profile
+
+- evalScript: |
+    console.log("Player capture complete!");

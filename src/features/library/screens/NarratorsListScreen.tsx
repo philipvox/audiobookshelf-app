@@ -263,10 +263,10 @@ export function NarratorsListScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
+          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.searchContainer}>
-          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search narrators..."
@@ -279,7 +279,7 @@ export function NarratorsListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
           )}
         </View>

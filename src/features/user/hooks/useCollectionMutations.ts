@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/core/queryClient';
 import { apiClient } from '@/core/api';
 import { syncQueue } from '@/core/services/syncQueue';
-import { Collection } from '@/core/types';
+import { Collection, LibraryItem } from '@/core/types';
 
 /**
  * Create new collection
@@ -106,7 +106,7 @@ export function useAddToCollection() {
           if (collection.id === collectionId) {
             return {
               ...collection,
-              books: [...(collection.books || []), { id: itemId }],
+              books: [...(collection.books || []), { id: itemId } as LibraryItem],
             };
           }
           return collection;

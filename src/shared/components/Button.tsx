@@ -1,9 +1,10 @@
 /**
  * Standard button component with variants and states
  *
- * Variants: primary, secondary, ghost, danger
+ * Variants: primary, secondary, outline, ghost, danger
  * Sizes: small, medium, large
  * States: loading, disabled
+ * Features: haptic feedback, optional icons
  */
 
 import React from 'react';
@@ -13,16 +14,19 @@ import {
   ActivityIndicator,
   StyleSheet,
   ViewStyle,
+  View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import {
   colors,
   spacing,
   radius,
   typography,
   elevation,
+  scale,
 } from '@/shared/theme';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type ButtonSize = 'small' | 'medium' | 'large';
 
 interface ButtonProps {
@@ -34,6 +38,14 @@ interface ButtonProps {
   loading?: boolean;
   fullWidth?: boolean;
   style?: ViewStyle;
+  /** Icon component to render on the left */
+  leftIcon?: React.ReactNode;
+  /** Icon component to render on the right */
+  rightIcon?: React.ReactNode;
+  /** Disable haptic feedback (default: enabled) */
+  noHaptics?: boolean;
+  /** Accessibility label override */
+  accessibilityLabel?: string;
 }
 
 /**
@@ -48,8 +60,25 @@ export function Button({
   loading = false,
   fullWidth = false,
   style,
+  leftIcon,
+  rightIcon,
+  noHaptics = false,
+  accessibilityLabel,
 }: ButtonProps) {
   const isDisabled = disabled || loading;
+
+  const handlePress = () => {
+    if (!noHaptics) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  };
+
+  const textColor = variant === 'primary' || variant === 'danger'
+    ? colors.backgroundPrimary
+    : variant === 'outline'
+      ? colors.accent
+      : colors.textPrimary;
 
   return (
     <TouchableOpacity
@@ -61,9 +90,12 @@ export function Button({
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || title}
+      accessibilityState={{ disabled: isDisabled }}
     >
       {loading ? (
         <ActivityIndicator
@@ -71,16 +103,20 @@ export function Button({
           size="small"
         />
       ) : (
-        <Text
-          style={[
-            styles.text,
-            styles[`${variant}Text`],
-            styles[`${size}Text`],
-            isDisabled && styles.disabledText,
-          ]}
-        >
-          {title}
-        </Text>
+        <View style={styles.content}>
+          {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
+          <Text
+            style={[
+              styles.text,
+              styles[`${variant}Text`],
+              styles[`${size}Text`],
+              isDisabled && styles.disabledText,
+            ]}
+          >
+            {title}
+          </Text>
+          {rightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -95,6 +131,19 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
 
+  // Content container for icon + text layout
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leftIcon: {
+    marginRight: scale(8),
+  },
+  rightIcon: {
+    marginLeft: scale(8),
+  },
+
   // Variants
   primary: {
     backgroundColor: colors.accent,
@@ -104,6 +153,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBackground,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.accent,
   },
   ghost: {
     backgroundColor: 'transparent',
@@ -145,6 +199,11 @@ const styles = StyleSheet.create({
     ...typography.labelLarge,
     fontWeight: '600',
     color: colors.textPrimary,
+  },
+  outlineText: {
+    ...typography.labelLarge,
+    fontWeight: '600',
+    color: colors.accent,
   },
   ghostText: {
     ...typography.labelLarge,

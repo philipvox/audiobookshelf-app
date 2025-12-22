@@ -29,7 +29,7 @@ export function SeriesListContent() {
     return (
       <EmptyState
         icon="📚"
-        message="No series found"
+        title="No series found"
         description="Your library doesn't have any series"
       />
     );
@@ -68,7 +68,7 @@ export function SeriesListContent() {
         ListEmptyComponent={
           <EmptyState
             icon="🔍"
-            message="No series found"
+            title="No series found"
             description={`No series match "${searchQuery}"`}
           />
         }
