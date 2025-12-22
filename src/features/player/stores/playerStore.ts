@@ -153,6 +153,14 @@ interface PlayerState {
   // ---------------------------------------------------------------------------
   smartRewindEnabled: boolean;            // Auto-rewind on resume based on pause duration (default true)
   smartRewindMaxSeconds: number;          // Maximum rewind amount in seconds (default 30)
+
+  // ---------------------------------------------------------------------------
+  // Book Completion (persisted)
+  // ---------------------------------------------------------------------------
+  showCompletionPrompt: boolean;          // Show prompt when book ends (default true)
+  autoMarkFinished: boolean;              // Auto-mark books finished when prompt disabled (default false)
+  showCompletionSheet: boolean;           // Currently showing completion sheet (transient)
+  completionSheetBook: LibraryItem | null; // Book that just finished (for completion sheet)
 }
 
 interface PlayerActions {
@@ -285,6 +293,14 @@ interface PlayerActions {
   updateBookmark: (bookmarkId: string, updates: { title?: string; note?: string | null }) => Promise<void>;
   removeBookmark: (bookmarkId: string) => Promise<void>;
   loadBookmarks: () => Promise<void>;
+
+  // ---------------------------------------------------------------------------
+  // Book Completion
+  // ---------------------------------------------------------------------------
+  setShowCompletionPrompt: (enabled: boolean) => Promise<void>;
+  setAutoMarkFinished: (enabled: boolean) => Promise<void>;
+  markBookFinished: (bookId?: string) => Promise<void>;
+  dismissCompletionSheet: () => void;
 }
 
 // =============================================================================
@@ -300,9 +316,13 @@ const DISC_ANIMATION_KEY = 'playerDiscAnimation';
 const STANDARD_PLAYER_KEY = 'playerStandardMode';
 const SMART_REWIND_ENABLED_KEY = 'playerSmartRewindEnabled';
 const SMART_REWIND_MAX_SECONDS_KEY = 'playerSmartRewindMaxSeconds';
+const LAST_PLAYED_BOOK_ID_KEY = 'playerLastPlayedBookId';
+const ACTIVE_PLAYBACK_RATE_KEY = 'playerActivePlaybackRate';
 const SMART_REWIND_PAUSE_TIMESTAMP_KEY = 'smartRewindPauseTimestamp';
 const SMART_REWIND_PAUSE_BOOK_ID_KEY = 'smartRewindPauseBookId';
 const SMART_REWIND_PAUSE_POSITION_KEY = 'smartRewindPausePosition';
+const SHOW_COMPLETION_PROMPT_KEY = 'playerShowCompletionPrompt';
+const AUTO_MARK_FINISHED_KEY = 'playerAutoMarkFinished';
 const PROGRESS_SAVE_INTERVAL = 30000; // Save progress every 30 seconds
 const MIN_PAUSE_FOR_REWIND_MS = 3000; // Minimum pause before smart rewind applies
 const PREV_CHAPTER_THRESHOLD = 3;     // Seconds before going to prev vs restart
@@ -540,14 +560,24 @@ async function setupDownloadCompletionListener(bookId: string): Promise<void> {
         }
 
         // Small delay to ensure download is fully finalized
+        // Capture the book ID for cancellation check
+        const capturedBookId = bookToReload.id;
+
         setTimeout(async () => {
           try {
+            // RACE CONDITION FIX: Check if user switched to a different book during the delay
+            const currentState = usePlayerStore.getState();
+            if (currentState.currentBook?.id !== capturedBookId) {
+              log(`[DOWNLOAD] Book changed during reload delay (${capturedBookId} -> ${currentState.currentBook?.id}), aborting switch`);
+              return;
+            }
+
             log(`Reloading book at position ${savedPosition.toFixed(1)}s to use local files`);
 
             // Show a toast notification
             try {
-              const { Toast } = await import('react-native-toast-message');
-              Toast.show({
+              const ToastModule = await import('react-native-toast-message');
+              ToastModule.default.show({
                 type: 'success',
                 text1: 'Download Complete',
                 text2: 'Switched to offline playback',
@@ -559,10 +589,10 @@ async function setupDownloadCompletionListener(bookId: string): Promise<void> {
             }
 
             // Reload the book from local files
-            await state.loadBook(bookToReload, {
+            await currentState.loadBook(bookToReload, {
               startPosition: savedPosition,
               autoPlay: wasPlaying,
-              showPlayer: state.isPlayerVisible,
+              showPlayer: currentState.isPlayerVisible,
             });
           } catch (err) {
             logError('Failed to switch to local playback:', err);
@@ -720,8 +750,8 @@ async function checkAutoDownloadNextInSeries(currentBook: LibraryItem): Promise<
     if (result.success) {
       // Show toast notification (import lazily to avoid dependency issues)
       try {
-        const { Toast } = await import('react-native-toast-message');
-        Toast.show({
+        const ToastModule = await import('react-native-toast-message');
+        ToastModule.default.show({
           type: 'info',
           text1: 'Auto-downloading next book',
           text2: nextTitle,
@@ -804,6 +834,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     smartRewindEnabled: true,
     smartRewindMaxSeconds: 30,
 
+    // Book completion
+    showCompletionPrompt: true,   // Show prompt when book ends
+    autoMarkFinished: false,      // Auto-mark when prompt is disabled
+    showCompletionSheet: false,   // Currently showing completion sheet
+    completionSheetBook: null,    // Book that just finished
+
     // =========================================================================
     // LIFECYCLE
     // =========================================================================
@@ -821,13 +857,39 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         console.log(`[LOAD ${debugTs}] Call stack:`, new Error().stack?.split('\n').slice(1, 6).join('\n'));
       }
 
+      // CRITICAL FIX: Prevent double-loading the same book
+      // If we're already loading this exact book, don't start another load
+      // This prevents race conditions where clicking "Stream" multiple times
+      // or slow sync data arriving triggers multiple concurrent audio loads
+      if (isLoading && currentBook?.id === book.id) {
+        log(`[LOAD ${debugTs}] Already loading this book, ignoring duplicate request`);
+        return;
+      }
+
       // Debounce rapid load requests (prevent double-taps)
+      // Apply to BOTH same book and different book - any rapid taps should be debounced
       const now = Date.now();
-      if (now - lastLoadTime < LOAD_DEBOUNCE_MS && currentBook?.id !== book.id) {
-        log(`[LOAD ${debugTs}] Debouncing rapid load request, ignoring`);
+      if (now - lastLoadTime < LOAD_DEBOUNCE_MS) {
+        log(`[LOAD ${debugTs}] Debouncing rapid load request (${now - lastLoadTime}ms since last), ignoring`);
         return;
       }
       lastLoadTime = now;
+
+      // CRITICAL FIX: Check if same book is already loaded BEFORE unloading audio
+      // This check must happen before unloadAudio(), otherwise the audioService.getIsLoaded()
+      // check would always be false since we just unloaded it.
+      // Only reload same book if explicit startPosition is provided (e.g., "Play from Beginning")
+      const isSameBookAlreadyLoaded = currentBook?.id === book.id && audioService.getIsLoaded();
+      if (isSameBookAlreadyLoaded && startPosition === undefined) {
+        log(`[LOAD ${debugTs}] Same book already loaded and playing, resuming without reload`);
+        if (showPlayer) {
+          set({ isPlayerVisible: true });
+        }
+        if (autoPlay && !get().isPlaying) {
+          await get().play();
+        }
+        return;
+      }
 
       // CRITICAL FIX: Always stop existing audio before loading new audio
       // Previously only called unloadAudio if isLoading was true, but this missed
@@ -850,23 +912,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       log('Book ID:', book.id);
       log('Title:', book.media?.metadata?.title);
       timing('Start');
-
-      // Same book already loaded?
-      if (currentBook?.id === book.id && audioService.getIsLoaded()) {
-        log('Same book already loaded');
-        if (showPlayer) {
-          set({ isPlayerVisible: true });
-        }
-        // If startPosition is provided, seek to it
-        if (startPosition !== undefined && startPosition > 0) {
-          log('Seeking to startPosition:', startPosition);
-          await get().seekTo(startPosition);
-        }
-        if (autoPlay && !get().isPlaying) {
-          await get().play();
-        }
-        return;
-      }
 
       // Set new book immediately (also sync viewingBook)
       set({
@@ -1086,9 +1131,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         if (loadId !== currentLoadId) return;
 
         // Get metadata for lock screen
-        const title = book.media?.metadata?.title || 'Audiobook';
-        const author = book.media?.metadata?.authorName ||
-                       book.media?.metadata?.authors?.[0]?.name ||
+        const metadata = book.media?.metadata as any;
+        const title = metadata?.title || 'Audiobook';
+        const author = metadata?.authorName ||
+                       metadata?.authors?.[0]?.name ||
                        'Unknown Author';
         const coverUrl = apiClient.getItemCoverUrl(book.id);
 
@@ -1155,6 +1201,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             isPlaying: true,
             lastPlayedBookId: book.id,  // Track that this book was actually played
           });
+
+          // Persist lastPlayedBookId for app restart recovery
+          AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, book.id).catch(() => {});
 
           // Start listening session tracking for autoplay
           startListeningSession(book, resumePosition);
@@ -1378,6 +1427,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isPlaying: true,
         lastPlayedBookId: currentBook?.id || null,
       });
+
+      // Persist lastPlayedBookId for app restart recovery
+      if (currentBook) {
+        AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, currentBook.id).catch(() => {});
+      }
 
       // Start listening session tracking
       if (currentBook && !activeSession) {
@@ -1652,6 +1706,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       await audioService.setPlaybackRate(rate);
       set({ playbackRate: rate });
 
+      // Always persist the active playback rate for app restart recovery
+      try {
+        await AsyncStorage.setItem(ACTIVE_PLAYBACK_RATE_KEY, rate.toString());
+      } catch {}
+
       // Save per-book speed if a book is loaded
       if (currentBook) {
         const updatedMap = { ...bookSpeedMap, [currentBook.id]: rate };
@@ -1861,6 +1920,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           standardPlayerStr,
           smartRewindEnabledStr,
           smartRewindMaxSecondsStr,
+          lastPlayedBookIdStr,
+          activePlaybackRateStr,
+          showCompletionPromptStr,
+          autoMarkFinishedStr,
         ] = await Promise.all([
           AsyncStorage.getItem('playerControlMode'),
           AsyncStorage.getItem('playerProgressMode'),
@@ -1873,6 +1936,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           AsyncStorage.getItem(STANDARD_PLAYER_KEY),
           AsyncStorage.getItem(SMART_REWIND_ENABLED_KEY),
           AsyncStorage.getItem(SMART_REWIND_MAX_SECONDS_KEY),
+          AsyncStorage.getItem(LAST_PLAYED_BOOK_ID_KEY),
+          AsyncStorage.getItem(ACTIVE_PLAYBACK_RATE_KEY),
+          AsyncStorage.getItem(SHOW_COMPLETION_PROMPT_KEY),
+          AsyncStorage.getItem(AUTO_MARK_FINISHED_KEY),
         ]);
 
         const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
@@ -1884,11 +1951,36 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         const useStandardPlayer = standardPlayerStr === 'true'; // Default false
         const smartRewindEnabled = smartRewindEnabledStr !== 'false'; // Default true
         const smartRewindMaxSeconds = smartRewindMaxSecondsStr ? parseInt(smartRewindMaxSecondsStr, 10) : 30;
+        const lastPlayedBookId = lastPlayedBookIdStr || null;
+        const showCompletionPrompt = showCompletionPromptStr !== 'false'; // Default true
+        const autoMarkFinished = autoMarkFinishedStr === 'true'; // Default false
+
+        // Restore playback rate:
+        // 1. If we have an active rate saved, use it (syncs UI with potentially running audio)
+        // 2. Otherwise, if we have a last played book, use its book-specific speed
+        // 3. Fall back to global default
+        let playbackRate = globalDefaultRate;
+        if (activePlaybackRateStr) {
+          playbackRate = parseFloat(activePlaybackRateStr);
+          log(`[loadPlayerSettings] Restored active playback rate: ${playbackRate}x`);
+        } else if (lastPlayedBookId && bookSpeedMap[lastPlayedBookId]) {
+          playbackRate = bookSpeedMap[lastPlayedBookId];
+          log(`[loadPlayerSettings] Using book-specific speed for ${lastPlayedBookId}: ${playbackRate}x`);
+        }
+
+        // Apply the restored rate to audioService immediately
+        // This ensures lock screen and background playback have the correct rate
+        if (playbackRate !== 1.0) {
+          log(`[loadPlayerSettings] Applying restored playback rate to audioService: ${playbackRate}x`);
+          audioService.setPlaybackRate(playbackRate).catch(() => {
+            // Audio service may not be loaded yet - rate will be applied when book loads
+          });
+        }
 
         set({
           controlMode: (controlMode as 'rewind' | 'chapter') || 'rewind',
           progressMode: (progressMode as 'bar' | 'chapters') || 'bar',
-          playbackRate: globalDefaultRate, // Start with global default, will be overridden when book loads
+          playbackRate,
           bookSpeedMap,
           globalDefaultRate,
           shakeToExtendEnabled,
@@ -1898,8 +1990,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           useStandardPlayer,
           smartRewindEnabled,
           smartRewindMaxSeconds,
+          lastPlayedBookId,
+          showCompletionPrompt,
+          autoMarkFinished,
         });
-      } catch {
+      } catch (error) {
+        log('[loadPlayerSettings] Error loading settings:', error);
         // Use defaults
       }
     },
@@ -2054,34 +2150,69 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             session?.id
           ).catch(() => {});
 
-          const metadata = currentBook.media?.metadata as any;
-          if (metadata) {
-            sqliteCache.addToReadHistory({
-              itemId: currentBook.id,
-              title: metadata.title || 'Unknown Title',
-              authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-              narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
-              genres: metadata.genres || [],
-            }).catch(() => {});
-          }
+          // Get completion preferences
+          const { showCompletionPrompt, autoMarkFinished } = get();
 
-          // Check queue for next book (late import to avoid circular dependency)
-          (async () => {
-            try {
-              const { useQueueStore } = await import('@/features/queue/stores/queueStore');
-              const queueStore = useQueueStore.getState();
-              if (queueStore.queue.length > 0) {
-                log('Queue has items - playing next book');
-                const nextBook = await queueStore.playNext();
-                if (nextBook) {
-                  log('Loading next book from queue:', nextBook.id);
-                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+          if (showCompletionPrompt) {
+            // Show completion sheet for user to decide
+            log('BOOK FINISHED - showing completion sheet');
+            set({
+              showCompletionSheet: true,
+              completionSheetBook: currentBook,
+            });
+            // Don't auto-play next book - let user decide via sheet
+          } else if (autoMarkFinished) {
+            // Auto-mark as finished when prompt is disabled
+            log('BOOK FINISHED - auto-marking as finished');
+            get().markBookFinished(currentBook.id);
+            // Queue will play next if available (markBookFinished handles queue removal)
+            (async () => {
+              try {
+                const { useQueueStore } = await import('@/features/queue/stores/queueStore');
+                const queueStore = useQueueStore.getState();
+                if (queueStore.queue.length > 0) {
+                  log('Queue has items - playing next book');
+                  const nextBook = await queueStore.playNext();
+                  if (nextBook) {
+                    log('Loading next book from queue:', nextBook.id);
+                    get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+                  }
                 }
+              } catch (err) {
+                log('Queue check failed:', err);
               }
-            } catch (err) {
-              log('Queue check failed:', err);
+            })();
+          } else {
+            // Neither prompt nor auto-mark - just add to reading history and check queue
+            const metadata = currentBook.media?.metadata as any;
+            if (metadata) {
+              sqliteCache.addToReadHistory({
+                itemId: currentBook.id,
+                title: metadata.title || 'Unknown Title',
+                authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+                narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+                genres: metadata.genres || [],
+              }).catch(() => {});
             }
-          })();
+
+            // Check queue for next book (late import to avoid circular dependency)
+            (async () => {
+              try {
+                const { useQueueStore } = await import('@/features/queue/stores/queueStore');
+                const queueStore = useQueueStore.getState();
+                if (queueStore.queue.length > 0) {
+                  log('Queue has items - playing next book');
+                  const nextBook = await queueStore.playNext();
+                  if (nextBook) {
+                    log('Loading next book from queue:', nextBook.id);
+                    get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+                  }
+                }
+              } catch (err) {
+                log('Queue check failed:', err);
+              }
+            })();
+          }
         } else if (!isNearEnd) {
           log('NOT at book end - this may be a stream segment end');
         }
@@ -2186,6 +2317,88 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         logError('Failed to load bookmarks:', err);
         set({ bookmarks: [] });
       }
+    },
+
+    // =========================================================================
+    // BOOK COMPLETION
+    // =========================================================================
+
+    setShowCompletionPrompt: async (enabled: boolean) => {
+      set({ showCompletionPrompt: enabled });
+      await AsyncStorage.setItem(SHOW_COMPLETION_PROMPT_KEY, enabled.toString());
+      log('[Completion] Show completion prompt set to:', enabled);
+    },
+
+    setAutoMarkFinished: async (enabled: boolean) => {
+      set({ autoMarkFinished: enabled });
+      await AsyncStorage.setItem(AUTO_MARK_FINISHED_KEY, enabled.toString());
+      log('[Completion] Auto-mark finished set to:', enabled);
+    },
+
+    markBookFinished: async (bookId?: string) => {
+      const { currentBook, duration } = get();
+      const targetBookId = bookId || currentBook?.id;
+
+      if (!targetBookId) {
+        log('[Completion] No book ID provided and no current book');
+        return;
+      }
+
+      log('[Completion] Marking book as finished:', targetBookId);
+
+      try {
+        // Provide haptic feedback
+        haptics.bookmarkCreated(); // Reuse success haptic
+
+        // Import user endpoints for marking finished
+        const { userApi } = await import('@/core/api/endpoints/user');
+        await userApi.markAsFinished(targetBookId, duration);
+        log('[Completion] Server marked as finished');
+
+        // Update local progress to 100%
+        if (currentBook?.id === targetBookId && duration > 0) {
+          await sqliteCache.setPlaybackProgress(targetBookId, duration, duration, false);
+        }
+
+        // Add to reading history
+        if (currentBook?.id === targetBookId) {
+          const metadata = currentBook.media?.metadata as any;
+          if (metadata) {
+            await sqliteCache.addToReadHistory({
+              itemId: targetBookId,
+              title: metadata.title || 'Unknown Title',
+              authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
+              narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+              genres: metadata.genres || [],
+            });
+            log('[Completion] Added to reading history');
+          }
+        }
+
+        // Remove from queue if present
+        try {
+          const { useQueueStore } = await import('@/features/queue/stores/queueStore');
+          const queueStore = useQueueStore.getState();
+          if (queueStore.isInQueue(targetBookId)) {
+            await queueStore.removeFromQueue(targetBookId);
+            log('[Completion] Removed from queue');
+          }
+        } catch (err) {
+          log('[Completion] Queue removal failed:', err);
+        }
+
+        // Dismiss the completion sheet
+        set({ showCompletionSheet: false, completionSheetBook: null });
+
+        log('[Completion] Book marked as finished successfully');
+      } catch (err) {
+        logError('[Completion] Failed to mark book as finished:', err);
+      }
+    },
+
+    dismissCompletionSheet: () => {
+      set({ showCompletionSheet: false, completionSheetBook: null });
+      log('[Completion] Sheet dismissed');
     },
   }))
 );

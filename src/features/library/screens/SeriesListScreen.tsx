@@ -198,10 +198,10 @@ export function SeriesListScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
+          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.searchContainer}>
-          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
@@ -215,7 +215,7 @@ export function SeriesListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
           )}
         </View>
@@ -230,10 +230,10 @@ export function SeriesListScreen() {
             onPress={() => handleSortPress('name')}
           >
             <Icon
-              name={sortBy === 'name' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'swap-vertical'}
+              name={sortBy === 'name' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'ArrowUpDown'}
               size={14}
               color={sortBy === 'name' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
+             
             />
             <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
               {sortBy === 'name' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Name'}
@@ -244,10 +244,9 @@ export function SeriesListScreen() {
             onPress={() => handleSortPress('bookCount')}
           >
             <Icon
-              name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'library-outline'}
+              name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'Library'}
               size={14}
               color={sortBy === 'bookCount' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
             />
             <Text style={[styles.sortButtonText, sortBy === 'bookCount' && styles.sortButtonTextActive]}>Books</Text>
           </TouchableOpacity>
@@ -317,7 +316,7 @@ export function SeriesListScreen() {
                 {/* Complete badge */}
                 {isComplete && (
                   <View style={styles.completeBadge}>
-                    <Icon name="checkmark" size={10} color="#000" set="ionicons" />
+                    <Icon name="Check" size={10} color="#000" />
                   </View>
                 )}
               </View>

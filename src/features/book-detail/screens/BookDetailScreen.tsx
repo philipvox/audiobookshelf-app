@@ -20,11 +20,24 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  Play,
+  Pause,
+  ArrowDown,
+  CheckCircle,
+  Clock,
+  List,
+  PlusCircle,
+  RotateCcw,
+  CheckCheck,
+  Music,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -32,7 +45,7 @@ import { useBookDetails } from '../hooks/useBookDetails';
 import { OverviewTab } from '../components/OverviewTab';
 import { ChaptersTab } from '../components/ChaptersTab';
 import { SeriesNavigator } from '../components/SeriesNavigator';
-import { ErrorView } from '@/shared/components';
+import { ErrorView, BookDetailSkeleton, Snackbar, useSnackbar } from '@/shared/components';
 import { useCoverUrl } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { userApi } from '@/core/api/endpoints/user';
@@ -75,6 +88,17 @@ export function BookDetailScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const { book, isLoading, error, refetch } = useBookDetails(bookId);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch]);
   const { loadBook, currentBook, isPlaying, play, pause, position } = usePlayerStore();
   const {
     isDownloaded,
@@ -204,54 +228,74 @@ export function BookDetailScreen() {
   const [isMarkingFinished, setIsMarkingFinished] = useState(false);
   const markBookInGallery = useGalleryStore((s) => s.markBook);
   const unmarkBookInGallery = useGalleryStore((s) => s.unmarkBook);
+  const isMarkedInGallery = useGalleryStore((s) => s.isMarked(bookId));
+
+  // Snackbar for feedback
+  const { snackbarProps, showUndo, showSuccess, showError } = useSnackbar();
 
   const handleMarkAsFinished = useCallback(async () => {
-    if (isMarkingFinished) return;
+    if (isMarkingFinished || !book) return;
     setIsMarkingFinished(true);
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Update local reading history (galleryStore)
-      markBookInGallery(bookId);
+      // Update local reading history (galleryStore) - immediate UI update
+      await markBookInGallery(bookId);
 
-      // Update server-side progress
-      await userApi.markAsFinished(bookId);
+      // Show snackbar with undo option
+      showUndo('Marked as finished', async () => {
+        await unmarkBookInGallery(bookId);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }, 5000);
+
+      // Get book duration for proper progress update
+      const bookDuration = (book.media as any)?.duration || 0;
+
+      // Update server-side progress with duration (background)
+      userApi.markAsFinished(bookId, bookDuration).catch((err) => {
+        console.warn('Server sync failed:', err);
+      });
 
       // Refetch to update progress display
       refetch();
     } catch (err) {
       console.error('Failed to mark as finished:', err);
-      Alert.alert('Error', 'Failed to mark book as finished. Please try again.');
+      showError('Failed to mark as finished');
     } finally {
       setIsMarkingFinished(false);
     }
-  }, [bookId, isMarkingFinished, refetch, markBookInGallery]);
+  }, [bookId, book, isMarkingFinished, refetch, markBookInGallery, unmarkBookInGallery, showUndo, showError]);
 
   const handleMarkAsNotStarted = useCallback(async () => {
     if (isMarkingFinished) return;
     Alert.alert(
-      'Reset Progress',
-      'This will reset your progress for this book. Are you sure?',
+      'Remove from Finished?',
+      'This will remove the book from your reading history.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reset',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             setIsMarkingFinished(true);
             try {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
               // Remove from local reading history (galleryStore)
               await unmarkBookInGallery(bookId);
 
-              // Reset server-side progress
-              await userApi.markAsNotStarted(bookId);
+              // Show feedback
+              showSuccess('Removed from history');
+
+              // Reset server-side progress (background)
+              userApi.markAsNotStarted(bookId).catch((err) => {
+                console.warn('Server sync failed:', err);
+              });
 
               refetch();
             } catch (err) {
               console.error('Failed to reset progress:', err);
-              Alert.alert('Error', 'Failed to reset progress. Please try again.');
+              showError('Failed to remove from history');
             } finally {
               setIsMarkingFinished(false);
             }
@@ -259,7 +303,7 @@ export function BookDetailScreen() {
         },
       ]
     );
-  }, [bookId, isMarkingFinished, refetch, unmarkBookInGallery]);
+  }, [bookId, isMarkingFinished, refetch, unmarkBookInGallery, showSuccess, showError]);
 
   // Handle download button press
   const handleDownloadPress = useCallback(() => {
@@ -287,8 +331,7 @@ export function BookDetailScreen() {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" />
-        <ActivityIndicator size="large" color={ACCENT} />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <BookDetailSkeleton style={{ paddingTop: insets.top + TOP_NAV_HEIGHT + 50 }} />
       </View>
     );
   }
@@ -340,7 +383,8 @@ export function BookDetailScreen() {
 
   // Determine button states and text
   const showDownloadProgress = isDownloading || isPending || isPaused;
-  const isCompleted = progress >= 0.95;
+  // Check both server state AND local galleryStore for finished status
+  const isCompleted = progress >= 0.95 || book.userMediaProgress?.isFinished === true || isMarkedInGallery;
 
   const getPlayButtonContent = () => {
     if (isThisBookLoaded && isThisBookPlaying) {
@@ -406,7 +450,7 @@ export function BookDetailScreen() {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+          <ChevronLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <View style={styles.headerSpacer} />
       </View>
@@ -415,6 +459,14 @@ export function BookDetailScreen() {
         style={styles.scrollView}
         contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={ACCENT}
+            colors={[ACCENT]}
+          />
+        }
       >
         {/* Genre Tags at top */}
         {genres.length > 0 && (
@@ -500,9 +552,9 @@ export function BookDetailScreen() {
                   {isPending ? (
                     <ActivityIndicator size="small" color={ACCENT} style={{ marginRight: scale(6) }} />
                   ) : isPaused ? (
-                    <Ionicons name="play" size={scale(16)} color={ACCENT} />
+                    <Play size={scale(16)} color={ACCENT} fill={ACCENT} strokeWidth={0} />
                   ) : (
-                    <Ionicons name="pause" size={scale(16)} color={ACCENT} />
+                    <Pause size={scale(16)} color={ACCENT} strokeWidth={2} />
                   )}
                   <Text style={styles.pillButtonText}>
                     {isPending ? 'Preparing...' : isPaused ? 'Paused' : `${Math.round(downloadProgress * 100)}%`}
@@ -522,11 +574,11 @@ export function BookDetailScreen() {
               accessibilityRole="button"
               accessibilityHint={isDownloaded ? 'Double tap to delete download' : 'Double tap to download for offline listening'}
             >
-              <Ionicons
-                name={isDownloaded ? 'checkmark-circle' : 'arrow-down-outline'}
-                size={scale(18)}
-                color={isDownloaded ? ACCENT : '#fff'}
-              />
+              {isDownloaded ? (
+                <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
+              ) : (
+                <ArrowDown size={scale(18)} color="#fff" strokeWidth={2} />
+              )}
               <Text style={[styles.pillButtonText, isDownloaded && styles.pillButtonTextAccent]}>
                 {isDownloaded ? 'Downloaded' : 'Download'}
               </Text>
@@ -542,7 +594,11 @@ export function BookDetailScreen() {
             accessibilityRole="button"
             accessibilityHint={isThisBookPlaying ? 'Double tap to pause' : 'Double tap to play'}
           >
-            <Ionicons name={playContent.icon} size={scale(18)} color="#000" />
+            {playContent.icon === 'pause' ? (
+              <Pause size={scale(18)} color="#000" strokeWidth={2} />
+            ) : (
+              <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
+            )}
             <Text style={styles.pillButtonTextDark}>{playContent.text}</Text>
           </TouchableOpacity>
         </View>
@@ -550,7 +606,7 @@ export function BookDetailScreen() {
         {/* Duration & Chapters Info Row */}
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
-            <Ionicons name="time-outline" size={scale(16)} color="rgba(255,255,255,0.5)" />
+            <Clock size={scale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
             <Text style={styles.infoText}>{formatDuration(duration)}</Text>
           </View>
           <View style={styles.infoDivider} />
@@ -562,7 +618,7 @@ export function BookDetailScreen() {
             accessibilityRole="button"
             accessibilityHint="Double tap to view chapters"
           >
-            <Ionicons name="list-outline" size={scale(16)} color="rgba(255,255,255,0.5)" />
+            <List size={scale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
             <Text style={styles.infoText}>{chapters.length} Chapters</Text>
           </TouchableOpacity>
         </View>
@@ -597,11 +653,11 @@ export function BookDetailScreen() {
             accessibilityLabel={isInQueue ? `In queue at position ${queuePosition}` : 'Add to queue'}
             accessibilityRole="button"
           >
-            <Ionicons
-              name={isInQueue ? 'checkmark-circle' : 'add-circle-outline'}
-              size={scale(18)}
-              color={isInQueue ? ACCENT : 'rgba(255,255,255,0.7)'}
-            />
+            {isInQueue ? (
+              <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
+            ) : (
+              <PlusCircle size={scale(18)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+            )}
             <Text style={[styles.actionLinkText, isInQueue && styles.actionLinkTextActive]}>
               {isInQueue ? `Queue #${queuePosition}` : 'Add to Queue'}
             </Text>
@@ -621,12 +677,10 @@ export function BookDetailScreen() {
           >
             {isMarkingFinished ? (
               <ActivityIndicator size="small" color={ACCENT} />
+            ) : isCompleted ? (
+              <RotateCcw size={scale(18)} color={ACCENT} strokeWidth={2} />
             ) : (
-              <Ionicons
-                name={isCompleted ? 'refresh-outline' : 'checkmark-done-outline'}
-                size={scale(18)}
-                color={isCompleted ? ACCENT : 'rgba(255,255,255,0.7)'}
-              />
+              <CheckCheck size={scale(18)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
             )}
             <Text style={[styles.actionLinkText, isCompleted && styles.actionLinkTextActive]}>
               {isCompleted ? 'Completed' : 'Mark Finished'}
@@ -677,6 +731,9 @@ export function BookDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Snackbar for feedback */}
+      <Snackbar {...snackbarProps} />
     </View>
   );
 }

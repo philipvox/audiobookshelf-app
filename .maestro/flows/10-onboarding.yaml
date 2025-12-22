@@ -1,0 +1,213 @@
+# =============================================================================
+# MAESTRO: Onboarding & Preferences Flows
+# =============================================================================
+# Captures:
+# - Preferences Onboarding (multi-step)
+# - Mark Books Wizard (swipe card interface)
+#
+# Prerequisites: User is logged in
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Profile
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 10000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# PREFERENCES ONBOARDING FLOW
+# -----------------------------------------------------------------------------
+# Look for Preferences option
+- runFlow:
+    when:
+      visible:
+        text: "Preferences|Reading Preferences"
+    commands:
+      - tapOn:
+          text: "Preferences|Reading Preferences"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+      # Look for "Set Up" or onboarding prompt
+      - runFlow:
+          when:
+            visible:
+              text: "Set Up|Get Started|Start|Configure"
+          commands:
+            - takeScreenshot: screens/10-onboarding/01-preferences-not-set
+            - tapOn:
+                text: "Set Up|Get Started|Start|Configure"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+            # Screenshot: Step 1 - Mood Selection
+            - takeScreenshot: screens/10-onboarding/02-preferences-step1-mood
+            # Select a mood
+            - tapOn:
+                point: "50%, 40%"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/10-onboarding/03-preferences-step1-selected
+            # Continue
+            - runFlow:
+                when:
+                  visible:
+                    text: "Next|Continue"
+                commands:
+                  - tapOn:
+                      text: "Next|Continue"
+                  - extendedWaitUntil:
+                      visible:
+                        text: ".*"
+                      timeout: 2000
+                  # Screenshot: Step 2 - Genre Selection
+                  - takeScreenshot: screens/10-onboarding/04-preferences-step2-genre
+                  # Select genres
+                  - tapOn:
+                      point: "30%, 40%"
+                  - tapOn:
+                      point: "70%, 40%"
+                  - takeScreenshot: screens/10-onboarding/05-preferences-step2-selected
+                  # Continue
+                  - runFlow:
+                      when:
+                        visible:
+                          text: "Next|Continue"
+                      commands:
+                        - tapOn:
+                            text: "Next|Continue"
+                        - extendedWaitUntil:
+                            visible:
+                              text: ".*"
+                            timeout: 2000
+                        # Screenshot: Step 3 - Length Preference
+                        - takeScreenshot: screens/10-onboarding/06-preferences-step3-length
+                        # Select option
+                        - tapOn:
+                            point: "50%, 50%"
+                        - takeScreenshot: screens/10-onboarding/07-preferences-step3-selected
+                        # Continue
+                        - runFlow:
+                            when:
+                              visible:
+                                text: "Next|Continue"
+                            commands:
+                              - tapOn:
+                                  text: "Next|Continue"
+                              - extendedWaitUntil:
+                                  visible:
+                                    text: ".*"
+                                  timeout: 2000
+                              # Screenshot: Step 4 - Series Preference
+                              - takeScreenshot: screens/10-onboarding/08-preferences-step4-series
+                              # Select option
+                              - tapOn:
+                                  point: "50%, 50%"
+                              - takeScreenshot: screens/10-onboarding/09-preferences-step4-selected
+                              # Finish
+                              - runFlow:
+                                  when:
+                                    visible:
+                                      text: "Done|Finish|Save|Complete"
+                                  commands:
+                                    - tapOn:
+                                        text: "Done|Finish|Save|Complete"
+                                    - extendedWaitUntil:
+                                        visible:
+                                          text: ".*"
+                                        timeout: 3000
+                                    # Screenshot: Preferences Saved
+                                    - takeScreenshot: screens/10-onboarding/10-preferences-saved
+
+      # If preferences already set, show that state
+      - runFlow:
+          when:
+            notVisible:
+              text: "Set Up|Get Started"
+          commands:
+            - takeScreenshot: screens/10-onboarding/11-preferences-configured
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# MARK BOOKS WIZARD
+# -----------------------------------------------------------------------------
+# Look for Reading History
+- runFlow:
+    when:
+      visible:
+        text: "History|Reading History"
+    commands:
+      - tapOn:
+          text: "History|Reading History"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+      # Look for Mark Books button
+      - runFlow:
+          when:
+            visible:
+              text: "Mark|Mark Books|Wizard"
+          commands:
+            - tapOn:
+                text: "Mark|Mark Books|Wizard"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+            # Screenshot: Card Stack Interface
+            - takeScreenshot: screens/10-onboarding/12-mark-books-card-stack
+            # Swipe right (mark as read)
+            - swipe:
+                start: 50%, 50%
+                end: 90%, 50%
+                duration: 500
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/10-onboarding/13-mark-books-swiped-right
+            # Swipe left (not read)
+            - swipe:
+                start: 50%, 50%
+                end: 10%, 50%
+                duration: 500
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/10-onboarding/14-mark-books-swiped-left
+            # Exit wizard
+            - back
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Onboarding screenshots complete: screens/10-onboarding/");

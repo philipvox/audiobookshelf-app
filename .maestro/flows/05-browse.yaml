@@ -1,0 +1,301 @@
+# =============================================================================
+# MAESTRO: Browse/Discover Screen States
+# =============================================================================
+# Captures all browse screen states:
+# - Default with hero section
+# - Genre pills filtering
+# - Category grid
+# - Popular series section
+# - Top authors section
+# - Mood discovery flow
+# - Content carousels
+# - Scrolled states
+#
+# Prerequisites: User is logged in with books in library
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Discover tab
+- extendedWaitUntil:
+    visible: "Browse"
+    timeout: 10000
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# BROWSE DEFAULT STATES
+# -----------------------------------------------------------------------------
+# Screenshot 1: Browse Default (top with hero)
+- takeScreenshot: screens/05-browse/01-browse-default-top
+
+# Screenshot 2: Browse Scrolled (genre pills, carousels)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/05-browse/02-browse-scrolled-1
+
+# Screenshot 3: Browse More Scrolled (more sections)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/05-browse/03-browse-scrolled-2
+
+# Screenshot 4: Browse Bottom
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/05-browse/04-browse-scrolled-bottom
+
+# Scroll back to top
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# GENRE PILLS FILTERING
+# -----------------------------------------------------------------------------
+# Look for genre pills and tap one
+- runFlow:
+    when:
+      visible:
+        text: "Fantasy|Sci-Fi|Mystery|Romance|Thriller|Horror"
+    commands:
+      - takeScreenshot: screens/05-browse/05-browse-genre-pills
+      - tapOn:
+          text: "Fantasy|Sci-Fi|Mystery"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 6: Genre Filtered View
+      - takeScreenshot: screens/05-browse/06-browse-genre-filtered
+      # Tap again to clear filter
+      - tapOn:
+          text: "Fantasy|Sci-Fi|Mystery"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+
+# -----------------------------------------------------------------------------
+# MOOD DISCOVERY
+# -----------------------------------------------------------------------------
+# Look for mood discovery card or "What sounds good"
+- runFlow:
+    when:
+      visible:
+        text: "What sounds good|Mood|How are you feeling"
+    commands:
+      # Screenshot 7: Mood Card Visible
+      - takeScreenshot: screens/05-browse/07-browse-mood-card
+      - tapOn:
+          text: "What sounds good|Mood|How are you feeling"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 8: Mood Discovery Step 1
+      - takeScreenshot: screens/05-browse/08-mood-discovery-step1
+      # Tap a mood option
+      - tapOn:
+          point: "50%, 40%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      # Screenshot 9: Mood Discovery Step 2 (mood selected)
+      - takeScreenshot: screens/05-browse/09-mood-discovery-step2
+      # Continue to next step
+      - runFlow:
+          when:
+            visible:
+              text: "Next|Continue"
+          commands:
+            - tapOn:
+                text: "Next|Continue"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 2000
+            - takeScreenshot: screens/05-browse/10-mood-discovery-step3
+      # Show results
+      - runFlow:
+          when:
+            visible:
+              text: "Show|Find|Results"
+          commands:
+            - tapOn:
+                text: "Show|Find|Results"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 3000
+            # Screenshot 11: Mood Results
+            - takeScreenshot: screens/05-browse/11-mood-results-top
+            - swipe:
+                direction: UP
+                duration: 500
+            - takeScreenshot: screens/05-browse/12-mood-results-scrolled
+      # Go back
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# BROWSE CATEGORIES (Genres, Authors, Series, Narrators)
+# -----------------------------------------------------------------------------
+
+# GENRES
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - tapOn: "Genres"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 13: Genres List (top)
+      - takeScreenshot: screens/05-browse/13-genres-list-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/05-browse/14-genres-list-scrolled
+      # Tap on a genre to see genre detail
+      - tapOn:
+          point: "25%, 30%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 15: Genre Detail
+      - takeScreenshot: screens/05-browse/15-genre-detail-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/05-browse/16-genre-detail-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# AUTHORS
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - tapOn: "Authors"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 17: Authors List (top)
+      - takeScreenshot: screens/05-browse/17-authors-list-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/05-browse/18-authors-list-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# SERIES
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn: "Series"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 19: Series List (top)
+      - takeScreenshot: screens/05-browse/19-series-list-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/05-browse/20-series-list-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# NARRATORS
+- runFlow:
+    when:
+      visible: "Narrators"
+    commands:
+      - tapOn: "Narrators"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 21: Narrators List (top)
+      - takeScreenshot: screens/05-browse/21-narrators-list-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/05-browse/22-narrators-list-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# HERO SECTION TAP
+# -----------------------------------------------------------------------------
+# Scroll back to top and tap on hero section
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+- tapOn:
+    point: "50%, 25%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+# This should open book detail - capture it
+- takeScreenshot: screens/05-browse/23-hero-book-detail
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Browse screenshots complete: screens/05-browse/");

@@ -17,7 +17,23 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Gauge,
+  SkipForward,
+  SkipBack,
+  Smartphone,
+  RefreshCw,
+  Gamepad2,
+  Disc,
+  Image,
+  CheckCircle,
+  CheckSquare,
+  Info,
+  Check,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import { useJoystickSeekStore } from '@/features/player/stores/joystickSeekStore';
@@ -40,7 +56,7 @@ function formatSpeed(speed: number): string {
 
 // Settings Row Component
 interface SettingsRowProps {
-  icon: keyof typeof Ionicons.glyphMap;
+  Icon: LucideIcon;
   label: string;
   value?: string;
   onPress?: () => void;
@@ -51,7 +67,7 @@ interface SettingsRowProps {
   disabledReason?: string;
 }
 
-function SettingsRow({ icon, label, value, onPress, switchValue, onSwitchChange, note, disabled, disabledReason }: SettingsRowProps) {
+function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note, disabled, disabledReason }: SettingsRowProps) {
   // Show disabled reason instead of note when disabled
   const displayNote = disabled && disabledReason ? disabledReason : note;
 
@@ -59,7 +75,7 @@ function SettingsRow({ icon, label, value, onPress, switchValue, onSwitchChange,
     <View style={[styles.settingsRow, disabled && styles.settingsRowDisabled]}>
       <View style={styles.rowLeft}>
         <View style={styles.iconContainer}>
-          <Ionicons name={icon} size={scale(18)} color={disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)'} />
+          <Icon size={scale(18)} color={disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
         </View>
         <View style={styles.rowContent}>
           <Text style={[styles.rowLabel, disabled && styles.rowLabelDisabled]}>{label}</Text>
@@ -78,7 +94,7 @@ function SettingsRow({ icon, label, value, onPress, switchValue, onSwitchChange,
           />
         ) : null}
         {onPress ? (
-          <Ionicons name="chevron-forward" size={scale(18)} color={disabled ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)'} />
+          <ChevronRight size={scale(18)} color={disabled ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)'} strokeWidth={2} />
         ) : null}
       </View>
     </View>
@@ -159,7 +175,7 @@ function OptionPicker<T>({
                   {formatOption(option)}
                 </Text>
                 {selectedValue === option ? (
-                  <Ionicons name="checkmark" size={scale(18)} color={ACCENT} />
+                  <Check size={scale(18)} color={ACCENT} strokeWidth={2.5} />
                 ) : null}
               </TouchableOpacity>
             ))}
@@ -193,6 +209,10 @@ export function PlaybackSettingsScreen() {
   const setSmartRewindEnabled = usePlayerStore((s) => s.setSmartRewindEnabled);
   const smartRewindMaxSeconds = usePlayerStore((s) => s.smartRewindMaxSeconds ?? 30);
   const setSmartRewindMaxSeconds = usePlayerStore((s) => s.setSmartRewindMaxSeconds);
+  const showCompletionPrompt = usePlayerStore((s) => s.showCompletionPrompt ?? true);
+  const setShowCompletionPrompt = usePlayerStore((s) => s.setShowCompletionPrompt);
+  const autoMarkFinished = usePlayerStore((s) => s.autoMarkFinished ?? false);
+  const setAutoMarkFinished = usePlayerStore((s) => s.setAutoMarkFinished);
 
   // System accessibility preference
   const systemReduceMotion = useReducedMotion();
@@ -233,7 +253,7 @@ export function PlaybackSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={scale(24)} color="#fff" />
+          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Playback</Text>
         <View style={styles.headerSpacer} />
@@ -249,7 +269,7 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Speed" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="speedometer-outline"
+              Icon={Gauge}
               label="Default Speed"
               value={formatSpeed(globalDefaultRate)}
               onPress={() => setShowSpeedPicker(true)}
@@ -263,13 +283,13 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Skip Intervals" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="play-forward-outline"
+              Icon={SkipForward}
               label="Skip Forward"
               value={`${skipForwardInterval}s`}
               onPress={() => setShowForwardPicker(true)}
             />
             <SettingsRow
-              icon="play-back-outline"
+              Icon={SkipBack}
               label="Skip Back"
               value={`${skipBackInterval}s`}
               onPress={() => setShowBackPicker(true)}
@@ -282,7 +302,7 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Sleep Timer" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="phone-portrait-outline"
+              Icon={Smartphone}
               label="Shake to Extend"
               switchValue={shakeToExtendEnabled}
               onSwitchChange={setShakeToExtendEnabled}
@@ -296,7 +316,7 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Smart Rewind" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="refresh-outline"
+              Icon={RefreshCw}
               label="Smart Rewind"
               switchValue={smartRewindEnabled}
               onSwitchChange={setSmartRewindEnabled}
@@ -340,7 +360,7 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Seeking" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="game-controller-outline"
+              Icon={Gamepad2}
               label="Joystick Seek Settings"
               onPress={() => (navigation as any).navigate('JoystickSeekSettings')}
               note="Customize drag-to-seek speed and curve"
@@ -353,7 +373,7 @@ export function PlaybackSettingsScreen() {
           <SectionHeader title="Player Appearance" />
           <View style={styles.sectionCard}>
             <SettingsRow
-              icon="disc-outline"
+              Icon={Disc}
               label="Spinning Disc"
               switchValue={discAnimationEnabled}
               onSwitchChange={setDiscAnimationEnabled}
@@ -362,14 +382,14 @@ export function PlaybackSettingsScreen() {
               disabledReason={spinningDiscDisabledReason}
             />
             <SettingsRow
-              icon="game-controller-outline"
+              Icon={Gamepad2}
               label="Joystick Seek"
               switchValue={joystickEnabled}
               onSwitchChange={setJoystickEnabled}
               note="Drag on cover to scrub through audio"
             />
             <SettingsRow
-              icon="image-outline"
+              Icon={Image}
               label="Standard Player"
               switchValue={useStandardPlayer}
               onSwitchChange={setUseStandardPlayer}
@@ -378,9 +398,32 @@ export function PlaybackSettingsScreen() {
           </View>
         </View>
 
+        {/* Completion Section */}
+        <View style={styles.section}>
+          <SectionHeader title="Book Completion" />
+          <View style={styles.sectionCard}>
+            <SettingsRow
+              Icon={CheckCircle}
+              label="Completion Prompt"
+              switchValue={showCompletionPrompt}
+              onSwitchChange={setShowCompletionPrompt}
+              note="Ask what to do when a book ends"
+            />
+            {!showCompletionPrompt && (
+              <SettingsRow
+                Icon={CheckSquare}
+                label="Auto-Mark Finished"
+                switchValue={autoMarkFinished}
+                onSwitchChange={setAutoMarkFinished}
+                note="Automatically mark books as finished"
+              />
+            )}
+          </View>
+        </View>
+
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Ionicons name="information-circle-outline" size={scale(16)} color="rgba(255,255,255,0.4)" />
+          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
           <Text style={styles.infoText}>
             Playback speed is remembered per book. The default speed is only used when playing a book for the first time.
           </Text>

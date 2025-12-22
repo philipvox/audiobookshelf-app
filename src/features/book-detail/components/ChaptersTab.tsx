@@ -11,10 +11,11 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check, Volume2, Play, List } from 'lucide-react-native';
 import { BookChapter, LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 import { colors, scale, spacing, radius } from '@/shared/theme';
+import { useNormalizedChapters } from '@/shared/hooks';
 
 const ACCENT = colors.accent;
 
@@ -47,6 +48,10 @@ function formatShortDuration(seconds: number): string {
 
 export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: ChaptersTabProps) {
   const { seekTo, currentBook, loadBook, play } = usePlayerStore();
+
+  // Get normalized chapter names based on user settings
+  const bookTitle = book?.media?.metadata?.title;
+  const normalizedChapters = useNormalizedChapters(chapters, { bookTitle });
 
   // Calculate chapter states
   const chapterStates = useMemo(() => {
@@ -83,7 +88,7 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
   if (!chapters || chapters.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="list-outline" size={scale(40)} color="rgba(255,255,255,0.2)" />
+        <List size={scale(40)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
         <Text style={styles.emptyText}>No chapters available</Text>
       </View>
     );
@@ -129,10 +134,11 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
 
       {/* Chapter list */}
       <View style={styles.chapterList}>
-        {chapters.map((chapter, index) => {
+        {normalizedChapters.map((chapter, index) => {
           const state = chapterStates[index];
 
-          const chapterTitle = chapter.title || `Chapter ${index + 1}`;
+          // Use normalized display title from the hook
+          const chapterTitle = chapter.displayTitle || `Chapter ${index + 1}`;
           const statusLabel = state.isCompleted ? 'completed' : state.isCurrent ? 'currently playing' : '';
 
           return (
@@ -155,9 +161,9 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
                 state.isCurrent && styles.statusCurrent,
               ]}>
                 {state.isCompleted ? (
-                  <Ionicons name="checkmark" size={scale(12)} color="#000" />
+                  <Check size={scale(12)} color="#000" strokeWidth={3} />
                 ) : state.isCurrent ? (
-                  <Ionicons name="volume-high" size={scale(10)} color="#000" />
+                  <Volume2 size={scale(10)} color="#000" strokeWidth={2} />
                 ) : (
                   <Text style={styles.chapterNumber}>{index + 1}</Text>
                 )}
@@ -209,10 +215,11 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
                 {state.isCurrent ? (
                   <View style={styles.nowPlayingDot} />
                 ) : (
-                  <Ionicons
-                    name="play"
+                  <Play
                     size={scale(14)}
                     color={state.isCompleted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'}
+                    fill={state.isCompleted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'}
+                    strokeWidth={0}
                   />
                 )}
               </View>

@@ -1,0 +1,131 @@
+# =============================================================================
+# MAESTRO: Master Orchestration Flow
+# =============================================================================
+# Runs all screenshot capture flows in sequence.
+#
+# This flow captures EVERYTHING:
+# - Login states
+# - Home screen states
+# - Library tabs
+# - Player states
+# - Browse/Discover
+# - Profile & Settings
+# - Detail screens
+# - Search
+# - Queue
+# - Onboarding flows
+# - Empty states
+#
+# Prerequisites:
+#   - App installed on simulator/emulator
+#   - For logged-in flows: User already logged in
+#   - For login flow: Fresh app state
+#
+# Usage:
+#   # Capture everything (logged in state)
+#   JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+#     maestro test .maestro/flows/99-master.yaml
+#
+#   # Or individual flows:
+#   maestro test .maestro/flows/02-home.yaml
+#
+# Output: Screenshots saved to .maestro/screenshots/screens/
+#
+# Estimated Screenshots: 150+
+# Estimated Duration: 10-15 minutes
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- evalScript: |
+    console.log("===========================================");
+    console.log("SECRET LIBRARY - COMPREHENSIVE SCREENSHOTS");
+    console.log("===========================================");
+    console.log("Starting capture of all screens and states...");
+    console.log("");
+
+# -----------------------------------------------------------------------------
+# PHASE 1: HOME SCREEN
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("📱 PHASE 1: Home Screen");
+- runFlow: 02-home.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 2: LIBRARY
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("📚 PHASE 2: Library");
+- runFlow: 03-library.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 3: PLAYER
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("🎧 PHASE 3: Player");
+- runFlow: 04-player.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 4: BROWSE/DISCOVER
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("🔍 PHASE 4: Browse/Discover");
+- runFlow: 05-browse.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 5: PROFILE & SETTINGS
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("👤 PHASE 5: Profile & Settings");
+- runFlow: 06-profile.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 6: DETAIL SCREENS
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("📖 PHASE 6: Detail Screens");
+- runFlow: 07-detail-screens.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 7: SEARCH
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("🔎 PHASE 7: Search");
+- runFlow: 08-search.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 8: QUEUE
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("📋 PHASE 8: Queue");
+- runFlow: 09-queue.yaml
+
+# -----------------------------------------------------------------------------
+# PHASE 9: ONBOARDING
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("🎓 PHASE 9: Onboarding Flows");
+- runFlow: 10-onboarding.yaml
+
+# -----------------------------------------------------------------------------
+# COMPLETE
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("");
+    console.log("===========================================");
+    console.log("✅ SCREENSHOT CAPTURE COMPLETE!");
+    console.log("===========================================");
+    console.log("Screenshots saved to: .maestro/screenshots/screens/");
+    console.log("");
+    console.log("Captured sections:");
+    console.log("  - 02-home/     : Home screen states");
+    console.log("  - 03-library/  : Library tabs & search");
+    console.log("  - 04-player/   : Player & mini-player");
+    console.log("  - 05-browse/   : Browse, mood, categories");
+    console.log("  - 06-profile/  : Profile & all settings");
+    console.log("  - 07-details/  : Book, series, author, narrator");
+    console.log("  - 08-search/   : Search states");
+    console.log("  - 09-queue/    : Queue management");
+    console.log("  - 10-onboarding/: Preferences & wizards");
+    console.log("===========================================");

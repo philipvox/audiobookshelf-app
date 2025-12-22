@@ -164,7 +164,7 @@ function OptionCard<T>({ config, selected, onSelect, compact }: OptionCardProps<
         </Text>
       </View>
       {selected && (
-        <Icon name="checkmark-circle" size={24} color="#000" set="ionicons" />
+        <Icon name="CircleCheck" size={24} color="#000" />
       )}
     </AnimatedPressable>
   );
@@ -342,7 +342,7 @@ export function MoodDiscoveryScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Icon name="close" size={24} color={colors.textPrimary} set="ionicons" />
+          <Icon name="X" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
 
         <ProgressIndicator current={draft.currentStep} total={4} />
@@ -359,7 +359,7 @@ export function MoodDiscoveryScreen() {
       {/* Session indicator */}
       {hasActiveSession && draft.currentStep === 1 && (
         <View style={styles.sessionBanner}>
-          <Icon name="time-outline" size={16} color={colors.accent} set="ionicons" />
+          <Icon name="Clock" size={16} color={colors.accent} />
           <Text style={styles.sessionText}>
             You have an active session. Edit or start fresh.
           </Text>
@@ -392,7 +392,7 @@ export function MoodDiscoveryScreen() {
           <View style={styles.footerButtons}>
             {draft.currentStep > 1 && (
               <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                <Icon name="arrow-back" size={20} color={colors.textSecondary} set="ionicons" />
+                <Icon name="ArrowLeft" size={20} color={colors.textSecondary} />
                 <Text style={styles.backText}>Back</Text>
               </TouchableOpacity>
             )}
@@ -417,10 +417,9 @@ export function MoodDiscoveryScreen() {
                 {draft.currentStep === 4 ? 'Find Books' : 'Next'}
               </Text>
               <Icon
-                name={draft.currentStep === 4 ? 'sparkles' : 'arrow-forward'}
+                name={draft.currentStep === 4 ? 'Sparkles' : 'ArrowRight'}
                 size={20}
                 color={canProceed ? '#000' : colors.textTertiary}
-                set="ionicons"
               />
             </AnimatedPressable>
           </View>

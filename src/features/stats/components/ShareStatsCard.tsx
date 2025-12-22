@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Icon } from '@/shared/components/Icon';
-import { formatDuration } from '../hooks/useListeningStats';
+import { formatDuration } from '@/shared/utils/format';
 import { shareWeeklyStats, shareStreak, shareMilestone } from '../services/shareService';
 import { colors, wp } from '@/shared/theme';
 
@@ -110,7 +110,7 @@ export function ShareStatsCard({
 
   const renderStreakCard = () => (
     <View style={styles.statsContent}>
-      <Icon name="flame" size={48} color="#FF9500" set="ionicons" />
+      <Icon name="Flame" size={48} color="#FF9500" />
       <Text style={styles.mainStat}>{streakStats?.currentStreak || 0}</Text>
       <Text style={styles.mainStatLabel}>day streak</Text>
       {streakStats && streakStats.longestStreak > streakStats.currentStreak && (
@@ -152,7 +152,7 @@ export function ShareStatsCard({
           {type === 'allTime' && renderAllTimeCard()}
 
           <View style={styles.branding}>
-            <Icon name="headset" size={16} color={COLORS.textSecondary} set="ionicons" />
+            <Icon name="Headset" size={16} color={COLORS.textSecondary} />
             <Text style={styles.brandingText}>AudiobookShelf</Text>
           </View>
         </View>
@@ -160,7 +160,7 @@ export function ShareStatsCard({
 
       <View style={styles.actions}>
         <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-          <Icon name="share-outline" size={20} color={COLORS.background} set="ionicons" />
+          <Icon name="Share" size={20} color={COLORS.background} />
           <Text style={styles.shareButtonText}>Share</Text>
         </TouchableOpacity>
         {onClose && (

@@ -163,7 +163,8 @@ export function formatSpeedLabel(speed: number): string {
     return `${(speed * 100).toFixed(0)}% speed (slow motion)`;
   }
   if (speed < 60) {
-    return `${Math.round(speed)} seconds per second`;
+    const rounded = Math.round(speed);
+    return `${rounded} ${rounded === 1 ? 'second' : 'seconds'} per second`;
   }
   const minutes = Math.round(speed / 60);
   if (minutes === 1) {

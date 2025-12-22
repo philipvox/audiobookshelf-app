@@ -126,6 +126,31 @@ const BookmarkIcon = ({ size = 14, color = '#fff', fill = false }: { size?: numb
   </Svg>
 );
 
+// Inline Progress Bar for book cards (UX: visual progress + time remaining)
+const InlineProgressBar = ({ progress, height = 4 }: { progress: number; height?: number }) => {
+  const fillPercent = Math.min(Math.max(progress * 100, 0), 100);
+
+  return (
+    <View style={[inlineProgressStyles.container, { height: scale(height) }]}>
+      <View style={[inlineProgressStyles.fill, { width: `${fillPercent}%` }]} />
+    </View>
+  );
+};
+
+const inlineProgressStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.progressTrack,
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: scale(2),
+  },
+});
+
 // Progress Ring for downloading
 const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number }) => {
   const strokeWidth = 2.5;
@@ -172,6 +197,8 @@ export type BookCardContext = 'browse' | 'library' | 'author_detail' | 'narrator
 export interface BookCardProps {
   book: LibraryItem;
   onPress: () => void;
+  /** Callback when card is long-pressed - shows context menu if provided */
+  onLongPress?: () => void;
   showListeningProgress?: boolean;
   /** Action shown on right side:
    * - 'auto': Download for browse, nothing for library (default)
@@ -199,6 +226,7 @@ export interface BookCardProps {
 export function BookCard({
   book,
   onPress,
+  onLongPress,
   showListeningProgress = true,
   actionType = 'auto',
   onPlayPress,
@@ -259,6 +287,12 @@ export function BookCard({
   // Get listening progress
   const userProgress = (book as any).userMediaProgress;
   const progressPercent = userProgress?.progress ? Math.round(userProgress.progress * 100) : 0;
+  const progressValue = userProgress?.progress || 0;
+
+  // Calculate time remaining (UX: show time remaining, not percentage)
+  const timeRemaining = duration > 0 && progressValue > 0 && progressValue < 1
+    ? Math.round(duration * (1 - progressValue))
+    : 0;
 
   // Handle download press
   const handleDownloadPress = useCallback(() => {
@@ -325,10 +359,23 @@ export function BookCard({
     }
   }, [book.id, isOnWishlist, addFromLibraryItem, removeItem, getWishlistItemByLibraryId, wishlistScaleAnim]);
 
+  // Handle long press for context menu
+  const handleLongPress = useCallback(() => {
+    if (onLongPress) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onLongPress();
+    }
+  }, [onLongPress]);
+
   return (
     <View style={styles.container}>
       {/* Pressable card area - navigates to BookDetail */}
-      <Pressable style={styles.cardPressable} onPress={onPress}>
+      <Pressable
+        style={styles.cardPressable}
+        onPress={onPress}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+      >
         {/* Cover with optional queue button overlay */}
         <View style={styles.coverContainer}>
           <Image
@@ -408,9 +455,12 @@ export function BookCard({
             {secondaryPerson}{durationText ? ` · ${durationText}` : ''}
           </Text>
           {showListeningProgress && progressPercent > 0 && (
-            <Text style={styles.listeningProgress}>
-              {formatProgress.percent(progressPercent / 100)} complete
-            </Text>
+            <View style={styles.progressRow}>
+              <InlineProgressBar progress={progressValue} />
+              <Text style={styles.listeningProgress}>
+                {timeRemaining > 0 ? `${formatDuration.short(timeRemaining)} left` : 'Complete'}
+              </Text>
+            </View>
           )}
         </View>
       </Pressable>
@@ -546,9 +596,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.xxs,
   },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xxs,
+  },
   listeningProgress: {
     ...typography.labelSmall,
     color: colors.textTertiary,
+    flexShrink: 0,
   },
   actionButton: {
     width: layout.minTouchTarget,

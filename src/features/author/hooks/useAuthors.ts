@@ -28,6 +28,7 @@ export function useAuthors(libraryId: string, options: UseAuthorsOptions = {}) {
       name: author.name,
       imagePath: author.imagePath,
       bookCount: (author as any).numBooks || 0,
+      addedAt: (author as any).addedAt || Date.now(),
     }));
 
     if (searchQuery) {

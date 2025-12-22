@@ -1,0 +1,249 @@
+# =============================================================================
+# MAESTRO: Simple Screenshot Capture (Text-Based Navigation)
+# =============================================================================
+# This version uses visible text for navigation - works without testIDs.
+# More reliable for quick screenshot capture.
+#
+# Usage:
+#   maestro test .maestro/capture-simple.yaml
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+env:
+  SERVER_URL: "http://secretlibrary.org/"
+  USERNAME: "philip"
+  PASSWORD: "1"
+
+---
+
+# =============================================================================
+# LAUNCH & LOGIN
+# =============================================================================
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: screens/01-launch
+
+# Login if needed
+- runFlow:
+    when:
+      visible: "Connect to your server"
+    commands:
+      - takeScreenshot: 02-login-empty
+      # Clear any existing text first
+      - tapOn:
+          text: "Server URL"
+          optional: true
+      - eraseText: 50
+      - inputText: ${SERVER_URL}
+      - hideKeyboard
+      - tapOn:
+          text: "Username"
+          optional: true
+      - tapOn:
+          text: "Enter username"
+          optional: true
+      - inputText: ${USERNAME}
+      - hideKeyboard
+      - tapOn:
+          text: "Password"
+          optional: true
+      - tapOn:
+          text: "Enter password"
+          optional: true
+      - inputText: ${PASSWORD}
+      - hideKeyboard
+      - takeScreenshot: 03-login-filled
+      - tapOn:
+          text: "Login"
+      - waitForAnimationToEnd:
+          timeout: 15000
+
+# =============================================================================
+# MAIN TABS
+# =============================================================================
+
+# HOME
+- takeScreenshot: screens/10-home
+
+# LIBRARY
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd
+- takeScreenshot: screens/20-library-all
+
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: screens/21-library-downloaded
+
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: screens/22-library-in-progress
+
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: screens/23-library-favorites
+
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+
+# DISCOVER/BROWSE
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd
+- takeScreenshot: screens/30-browse
+
+# PROFILE
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: screens/40-profile
+
+# =============================================================================
+# PROFILE SUB-SCREENS
+# =============================================================================
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd
+- takeScreenshot: screens/41-downloads
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd
+- takeScreenshot: screens/42-wishlist
+- back
+- waitForAnimationToEnd
+
+# Stats
+- tapOn:
+    text: "Listening Stats"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: screens/43-stats
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# SETTINGS
+# =============================================================================
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd
+- takeScreenshot: screens/50-playback-settings
+- back
+- waitForAnimationToEnd
+
+# Storage Settings
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd
+- takeScreenshot: screens/51-storage-settings
+- back
+- waitForAnimationToEnd
+
+# Haptic Settings
+- tapOn:
+    text: "Haptic"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: screens/52-haptic-settings
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# BOOK DETAIL (if books exist)
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible:
+        text: ".*"
+        index: 0
+    commands:
+      - tapOn:
+          point: "25%,50%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: screens/60-book-detail
+      - runFlow:
+          when:
+            visible: "Chapters"
+          commands:
+            - tapOn: "Chapters"
+            - waitForAnimationToEnd
+            - takeScreenshot: screens/61-book-chapters
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PLAYER (if currently playing)
+# =============================================================================
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible:
+        point: "50%,40%"
+    commands:
+      - tapOn:
+          point: "50%,40%"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: screens/70-player
+      - tapOn:
+          point: "10%,5%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# SEARCH
+# =============================================================================
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - waitForAnimationToEnd
+      - takeScreenshot: screens/80-search-empty
+      - inputText: "test"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: screens/81-search-results
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# DONE
+# =============================================================================
+- takeScreenshot: screens/99-final
+
+- evalScript: |
+    console.log("");
+    console.log("✅ Screenshot capture complete!");
+    console.log("📁 Check .maestro/screenshots/screens/");
+    console.log("");

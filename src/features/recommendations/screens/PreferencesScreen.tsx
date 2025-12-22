@@ -49,7 +49,7 @@ export function PreferencesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color={colors.textPrimary} set="ionicons" />
+          <Icon name="ArrowLeft" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reading Preferences</Text>
         <View style={styles.backButton} />
@@ -58,7 +58,7 @@ export function PreferencesScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {!preferences.hasCompletedOnboarding ? (
           <View style={styles.emptyState}>
-            <Icon name="sparkles" size={48} color={colors.accent} set="ionicons" />
+            <Icon name="Sparkles" size={48} color={colors.accent} />
             <Text style={styles.emptyTitle}>Set up your preferences</Text>
             <Text style={styles.emptySubtitle}>
               Answer a few questions to get personalized recommendations
@@ -116,12 +116,12 @@ export function PreferencesScreen() {
             {/* Actions */}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.editButton} onPress={handleEditPreferences}>
-                <Icon name="create-outline" size={20} color={colors.accent} set="ionicons" />
+                <Icon name="Plus" size={20} color={colors.accent} />
                 <Text style={styles.editButtonText}>Edit Preferences</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.resetButton} onPress={handleResetPreferences}>
-                <Icon name="refresh-outline" size={20} color={colors.textTertiary} set="ionicons" />
+                <Icon name="RefreshCw" size={20} color={colors.textTertiary} />
                 <Text style={styles.resetButtonText}>Reset All</Text>
               </TouchableOpacity>
             </View>

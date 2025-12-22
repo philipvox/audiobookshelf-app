@@ -30,7 +30,7 @@ export function CollectionsListContent() {
     return (
       <EmptyState
         icon="📁"
-        message="No collections yet"
+        title="No collections yet"
         description="Create collections in AudiobookShelf to organize your books"
       />
     );
@@ -69,7 +69,7 @@ export function CollectionsListContent() {
         ListEmptyComponent={
           <EmptyState
             icon="🔍"
-            message="No collections found"
+            title="No collections found"
             description={`No collections match "${searchQuery}"`}
           />
         }

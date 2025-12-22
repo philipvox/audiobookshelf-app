@@ -26,6 +26,17 @@ export interface UndoAction {
   label: string; // e.g., "Marked 12 books by Brandon Sanderson"
 }
 
+export type DurationFilter = 'under_5h' | '5_10h' | '10_20h' | 'over_20h' | null;
+export type SyncStatusFilter = 'synced' | 'not_synced';
+
+export interface FilterState {
+  genres: string[];
+  authors: string[];
+  series: string[];
+  syncStatus: SyncStatusFilter[];
+  duration: DurationFilter;
+}
+
 interface GalleryState {
   // Marked books in current/recent session
   markedBooks: Map<string, MarkedBook>;
@@ -44,6 +55,9 @@ interface GalleryState {
 
   // View state
   currentView: 'all' | 'smart' | 'author' | 'series';
+
+  // Filters for Reading History screen
+  filters: FilterState;
 }
 
 interface GalleryActions {
@@ -73,6 +87,12 @@ interface GalleryActions {
   // View
   setView: (view: GalleryState['currentView']) => void;
 
+  // Filters
+  setFilters: (filters: Partial<FilterState>) => void;
+  clearFilters: () => void;
+  hasActiveFilters: () => boolean;
+  getActiveFilterCount: () => number;
+
   // Queries
   isMarked: (bookId: string) => boolean;
   getMarkedCount: () => number;
@@ -87,6 +107,14 @@ interface GalleryActions {
 
 type GalleryStore = GalleryState & GalleryActions;
 
+const emptyFilters: FilterState = {
+  genres: [],
+  authors: [],
+  series: [],
+  syncStatus: [],
+  duration: null,
+};
+
 const initialState: GalleryState = {
   markedBooks: new Map(),
   processedAuthors: new Map(),
@@ -95,6 +123,7 @@ const initialState: GalleryState = {
   sessionStartedAt: null,
   isSessionActive: false,
   currentView: 'all',
+  filters: emptyFilters,
 };
 
 export const useGalleryStore = create<GalleryStore>()(
@@ -360,6 +389,36 @@ export const useGalleryStore = create<GalleryStore>()(
       // View management
       setView: (view) => set({ currentView: view }),
 
+      // Filters
+      setFilters: (newFilters) => {
+        const { filters } = get();
+        set({ filters: { ...filters, ...newFilters } });
+      },
+
+      clearFilters: () => set({ filters: emptyFilters }),
+
+      hasActiveFilters: () => {
+        const { filters } = get();
+        return (
+          filters.genres.length > 0 ||
+          filters.authors.length > 0 ||
+          filters.series.length > 0 ||
+          filters.syncStatus.length > 0 ||
+          filters.duration !== null
+        );
+      },
+
+      getActiveFilterCount: () => {
+        const { filters } = get();
+        let count = 0;
+        count += filters.genres.length;
+        count += filters.authors.length;
+        count += filters.series.length;
+        count += filters.syncStatus.length;
+        if (filters.duration !== null) count += 1;
+        return count;
+      },
+
       // Queries
       isMarked: (bookId) => get().markedBooks.has(bookId),
 
@@ -403,6 +462,7 @@ export const useGalleryStore = create<GalleryStore>()(
         processedSeries: Array.from(state.processedSeries.entries()),
         sessionStartedAt: state.sessionStartedAt,
         currentView: state.currentView,
+        filters: state.filters,
       }),
       // Custom deserialization - merge converts arrays back to Maps
       merge: (persistedState: any, currentState) => {
@@ -419,6 +479,8 @@ export const useGalleryStore = create<GalleryStore>()(
           processedSeries: Array.isArray(persistedState?.processedSeries)
             ? new Map(persistedState.processedSeries)
             : currentState.processedSeries,
+          // Restore filters or use empty defaults
+          filters: persistedState?.filters || emptyFilters,
         };
       },
     }
@@ -434,3 +496,12 @@ export const useMarkedCount = () =>
 
 export const useCurrentView = () =>
   useGalleryStore((s) => s.currentView);
+
+export const useFilters = () =>
+  useGalleryStore((s) => s.filters);
+
+export const useHasActiveFilters = () =>
+  useGalleryStore((s) => s.hasActiveFilters());
+
+export const useActiveFilterCount = () =>
+  useGalleryStore((s) => s.getActiveFilterCount());

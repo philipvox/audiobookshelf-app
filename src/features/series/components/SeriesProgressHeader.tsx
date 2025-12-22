@@ -17,7 +17,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Trophy, RefreshCw, Play, CheckCircle } from 'lucide-react-native';
 import { LibraryItem } from '@/core/types';
 import { useCoverUrl } from '@/core/cache';
 import { colors, scale, spacing, radius } from '@/shared/theme';
@@ -87,8 +87,8 @@ function ProgressDot({
   );
 }
 
-// Get sequence number for book - returns null if unknown
-function getSequence(item: LibraryItem): number | null {
+// Get raw sequence number for book - returns null if unknown
+function getRawSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
 
   // First check series array (preferred - has explicit sequence)
@@ -106,6 +106,21 @@ function getSequence(item: LibraryItem): number | null {
   const seriesName = metadata.seriesName || '';
   const match = seriesName.match(/#([\d.]+)/);
   return match ? parseFloat(match[1]) : null;
+}
+
+// Check if a series has meaningful sequence numbers
+function hasRealSequences(books: LibraryItem[]): boolean {
+  if (books.length <= 1) return true;
+  const sequences = books.map(getRawSequence).filter(s => s !== null);
+  if (sequences.length === 0) return false;
+  const uniqueSequences = new Set(sequences);
+  return uniqueSequences.size > 1;
+}
+
+// Get sequence for display - returns null if this book shouldn't show a sequence
+function getSequenceForDisplay(item: LibraryItem, allBooks: LibraryItem[]): number | null {
+  if (!hasRealSequences(allBooks)) return null;
+  return getRawSequence(item);
 }
 
 // Get book progress
@@ -219,7 +234,7 @@ export function SeriesProgressHeader({
       <View style={styles.container}>
         <View style={styles.completedState}>
           <View style={styles.trophyIcon}>
-            <Ionicons name="trophy" size={scale(36)} color={ACCENT} />
+            <Trophy size={scale(36)} color={ACCENT} strokeWidth={2} />
           </View>
           <Text style={styles.completedTitle}>Series Complete!</Text>
           <Text style={styles.completedSubtext}>
@@ -239,7 +254,7 @@ export function SeriesProgressHeader({
               onPress={() => nextBook && onPlayPress?.(books[0])}
               activeOpacity={0.7}
             >
-              <Ionicons name="refresh" size={scale(14)} color={ACCENT} />
+              <RefreshCw size={scale(14)} color={ACCENT} strokeWidth={2} />
               <Text style={styles.listenAgainText}>Listen Again</Text>
             </TouchableOpacity>
           </View>
@@ -301,7 +316,7 @@ export function SeriesProgressHeader({
             contentFit="cover"
           />
           <View style={styles.contextInfo}>
-            <Text style={styles.contextLabel}>{getSequence(inProgressBook) !== null ? `Continue Book ${getSequence(inProgressBook)}` : 'Continue'}</Text>
+            <Text style={styles.contextLabel}>{getSequenceForDisplay(inProgressBook, books) !== null ? `Continue Book ${getSequenceForDisplay(inProgressBook, books)}` : 'Continue'}</Text>
             <Text style={styles.contextTitle} numberOfLines={1}>
               {(inProgressBook.media?.metadata as any)?.title || 'Unknown'}
             </Text>
@@ -329,14 +344,14 @@ export function SeriesProgressHeader({
             onPress={() => onPlayPress?.(inProgressBook)}
             activeOpacity={0.7}
           >
-            <Ionicons name="play" size={scale(20)} color="#000" />
+            <Play size={scale(20)} color="#000" fill="#000" strokeWidth={0} />
           </TouchableOpacity>
         </TouchableOpacity>
       ) : nextBook ? (
         // STATE C: Between Books - Show up next
         <View style={styles.betweenBooksCard}>
           <View style={styles.congratsRow}>
-            <Ionicons name="checkmark-circle" size={scale(18)} color={ACCENT} />
+            <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
             <Text style={styles.congratsText}>
               Congrats on finishing Book {completedCount}!
             </Text>
@@ -352,7 +367,7 @@ export function SeriesProgressHeader({
               contentFit="cover"
             />
             <View style={styles.contextInfo}>
-              <Text style={styles.contextLabelNext}>{getSequence(nextBook) !== null ? `Up Next: Book ${getSequence(nextBook)}` : 'Up Next'}</Text>
+              <Text style={styles.contextLabelNext}>{getSequenceForDisplay(nextBook, books) !== null ? `Up Next: Book ${getSequenceForDisplay(nextBook, books)}` : 'Up Next'}</Text>
               <Text style={styles.contextTitle} numberOfLines={1}>
                 {(nextBook.media?.metadata as any)?.title || 'Unknown'}
               </Text>
@@ -365,7 +380,7 @@ export function SeriesProgressHeader({
               onPress={() => onPlayPress?.(nextBook)}
               activeOpacity={0.7}
             >
-              <Ionicons name="play" size={scale(20)} color="#000" />
+              <Play size={scale(20)} color="#000" fill="#000" strokeWidth={0} />
             </TouchableOpacity>
           </TouchableOpacity>
         </View>

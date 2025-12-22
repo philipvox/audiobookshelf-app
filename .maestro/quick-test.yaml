@@ -1,0 +1,7 @@
+# Quick test - just capture current screen
+appId: com.secretlibrary.app
+
+---
+- takeScreenshot: test/current-screen
+- evalScript: |
+    console.log("Screenshot captured to .maestro/screenshots/test/");

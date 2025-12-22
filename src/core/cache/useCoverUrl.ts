@@ -18,6 +18,9 @@ export function useCoverUrl(itemId: string): string {
   const lastRefreshed = useLibraryCache((state) => state.lastRefreshed);
 
   return useMemo(() => {
+    // Guard against empty or invalid itemId
+    if (!itemId) return '';
+
     const baseUrl = apiClient.getItemCoverUrl(itemId);
     // If library was refreshed, append timestamp to bust cache
     if (lastRefreshed) {

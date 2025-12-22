@@ -44,7 +44,7 @@ const BrowsePill = React.memo(function BrowsePill({ category, onPress }: PillPro
       onPress={handlePress}
       activeOpacity={0.7}
     >
-      <Icon name={category.icon} size={scale(16)} color={colors.accent} set="ionicons" />
+      <Icon name={category.icon as any} size={scale(16)} color={colors.accent} />
       <Text style={styles.pillText}>{category.name}</Text>
       {category.count > 0 && (
         <View style={styles.countBadge}>
@@ -63,10 +63,10 @@ export function BrowsePills() {
   const categories = useMemo((): BrowseCategory[] => {
     if (!isLoaded) {
       return [
-        { id: 'genres', name: 'Genres', icon: 'albums-outline', count: 0, route: 'GenresList' },
-        { id: 'authors', name: 'Authors', icon: 'person-outline', count: 0, route: 'AuthorsList' },
-        { id: 'series', name: 'Series', icon: 'library-outline', count: 0, route: 'SeriesList' },
-        { id: 'narrators', name: 'Narrators', icon: 'mic-outline', count: 0, route: 'NarratorsList' },
+        { id: 'genres', name: 'Genres', icon: 'Layers', count: 0, route: 'GenresList' },
+        { id: 'authors', name: 'Authors', icon: 'User', count: 0, route: 'AuthorsList' },
+        { id: 'series', name: 'Series', icon: 'Library', count: 0, route: 'SeriesList' },
+        { id: 'narrators', name: 'Narrators', icon: 'Mic', count: 0, route: 'NarratorsList' },
       ];
     }
 
@@ -76,10 +76,10 @@ export function BrowsePills() {
     const narrators = getAllNarrators();
 
     return [
-      { id: 'genres', name: 'Genres', icon: 'albums-outline', count: genres.length, route: 'GenresList' },
-      { id: 'authors', name: 'Authors', icon: 'person-outline', count: authors.length, route: 'AuthorsList' },
-      { id: 'series', name: 'Series', icon: 'library-outline', count: series.length, route: 'SeriesList' },
-      { id: 'narrators', name: 'Narrators', icon: 'mic-outline', count: narrators.length, route: 'NarratorsList' },
+      { id: 'genres', name: 'Genres', icon: 'Layers', count: genres.length, route: 'GenresList' },
+      { id: 'authors', name: 'Authors', icon: 'User', count: authors.length, route: 'AuthorsList' },
+      { id: 'series', name: 'Series', icon: 'Library', count: series.length, route: 'SeriesList' },
+      { id: 'narrators', name: 'Narrators', icon: 'Mic', count: narrators.length, route: 'NarratorsList' },
     ];
   }, [isLoaded]);
 

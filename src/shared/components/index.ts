@@ -38,17 +38,24 @@ export type { SortOption } from './FilterSortBar';
 // =============================================================================
 // SKELETON LOADING
 // =============================================================================
-export { Shimmer } from './Skeleton';
-
-// =============================================================================
-// GESTURE COMPONENTS
-// =============================================================================
-export { Swipeable } from './GestureComponents';
+export {
+  Shimmer,
+  SkeletonBox,
+  SkeletonCircle,
+  SkeletonText,
+  BookCardSkeleton,
+  ContinueListeningCardSkeleton,
+  ListRowSkeleton,
+  SectionSkeleton,
+  HomeHeroSkeleton,
+  BookDetailSkeleton,
+  AuthorRowSkeleton,
+  SearchResultsSkeleton,
+} from './Skeleton';
 
 // =============================================================================
 // OFFLINE-FIRST
 // =============================================================================
-export { SyncStatusBadge } from './SyncStatusBadge';
 export { CircularDownloadButton } from './CircularDownloadButton';
 
 // =============================================================================
@@ -91,3 +98,14 @@ export { StackedCovers } from './StackedCovers';
 // NETWORK STATUS
 // =============================================================================
 export { NetworkStatusBar, useNetworkStatus } from './NetworkStatusBar';
+
+// =============================================================================
+// SNACKBAR / TOAST
+// =============================================================================
+export { Snackbar, useSnackbar } from './Snackbar';
+export type { SnackbarProps } from './Snackbar';
+
+// =============================================================================
+// CONTEXT MENUS
+// =============================================================================
+export { BookContextMenu } from './BookContextMenu';

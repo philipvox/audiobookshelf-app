@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { X, RotateCcw } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
 import { colors, spacing, radius, wp, scale, layout } from '@/shared/theme';
@@ -46,7 +46,7 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
   // ==========================================================================
 
   const handleSpeedSelect = useCallback((speed: number) => {
-    haptics.selection();
+    haptics.speedChange();  // Category-specific haptic for speed control
     setPlaybackRate(speed);
     onClose();
   }, [setPlaybackRate, onClose]);
@@ -61,7 +61,7 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Playback Speed</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
+          <X size={24} color={colors.textPrimary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -108,7 +108,7 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
           onPress={() => handleSpeedSelect(1)}
           activeOpacity={0.7}
         >
-          <Ionicons name="refresh-outline" size={18} color={colors.textPrimary} />
+          <RotateCcw size={18} color={colors.textPrimary} strokeWidth={2} />
           <Text style={styles.resetButtonText}>Reset to Normal</Text>
         </TouchableOpacity>
       )}

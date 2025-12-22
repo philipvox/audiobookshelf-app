@@ -39,10 +39,9 @@ export function AddToLibraryButton({
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Icon
-          name={inLibrary ? "heart" : "heart-outline"}
+          name="Heart"
           size={iconSize}
           color={inLibrary ? "#EF4444" : colors.textSecondary}
-          set="ionicons"
         />
       </TouchableOpacity>
     );
@@ -59,10 +58,9 @@ export function AddToLibraryButton({
       onPress={handlePress}
     >
       <Icon
-        name={inLibrary ? "heart" : "heart-outline"}
+        name="Heart"
         size={size === 'small' ? 16 : 20}
         color={inLibrary ? '#FFFFFF' : colors.textPrimary}
-        set="ionicons"
       />
       <Text style={[
         styles.buttonText,

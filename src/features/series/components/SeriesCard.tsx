@@ -16,7 +16,7 @@ import { SeriesInfo } from '../services/seriesAdapter';
 import { apiClient } from '@/core/api';
 import { colors, scale, spacing, radius, elevation, cardTokens } from '@/shared/theme';
 import { StackedCovers } from '@/shared/components';
-import { formatDuration } from '@/shared/utils/metadata';
+import { formatDuration } from '@/shared/utils/format';
 
 const ACCENT = colors.accent;
 const ACCENT_DIM = 'rgba(243,182,12,0.5)';

@@ -38,10 +38,10 @@ export function SearchBar({
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <Icon
-        name="search"
+        name="Search"
         size={20}
         color={iconColor}
-        set="ionicons"
+       
       />
       <TextInput
         style={[styles.input, { color: textColor }]}
@@ -61,10 +61,10 @@ export function SearchBar({
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Icon
-            name="close-circle"
+            name="XCircle"
             size={20}
             color={iconColor}
-            set="ionicons"
+           
           />
         </TouchableOpacity>
       )}

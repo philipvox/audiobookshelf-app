@@ -1,0 +1,28 @@
+# Capture Haptic Settings Screen
+appId: com.secretlibrary.app
+
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 10000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll to settings section
+- swipe:
+    direction: UP
+    duration: 500
+
+# Look for Haptics/Haptic Feedback
+- tapOn:
+    text: "Haptic"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+- takeScreenshot: screens/06-profile/28-haptic-settings

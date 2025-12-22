@@ -1,4 +1,4 @@
-import Fuse from 'fuse.js';
+import Fuse, { IFuseOptions } from 'fuse.js';
 import { LibraryItem } from '@/core/types';
 
 interface SearchableItem {
@@ -12,7 +12,7 @@ interface SearchableItem {
   originalItem: LibraryItem;
 }
 
-const fuseOptions: Fuse.IFuseOptions<SearchableItem> = {
+const fuseOptions: IFuseOptions<SearchableItem> = {
   keys: [
     { name: 'title', weight: 3 },
     { name: 'author', weight: 2 },
@@ -36,13 +36,13 @@ class SearchService {
 
   buildIndex(libraryItems: LibraryItem[]): void {
     this.items = libraryItems.map((item) => {
-      const metadata = item.media.metadata;
+      const metadata = item.media.metadata as any;
       return {
         id: item.id,
         title: metadata.title || '',
-        author: metadata.authors?.map((a) => a.name).join(', ') || '',
+        author: metadata.authors?.map((a: any) => a.name).join(', ') || '',
         narrator: metadata.narrators?.join(', ') || '',
-        series: metadata.series?.map((s) => s.name).join(', ') || '',
+        series: metadata.series?.map((s: any) => s.name).join(', ') || '',
         genres: metadata.genres?.join(', ') || '',
         description: metadata.description || '',
         originalItem: item,

@@ -443,6 +443,24 @@ class HapticService {
     this.notification('error');
   }
 
+  /**
+   * Destructive action confirmation (delete, remove, sign out)
+   * Double impact pattern to indicate irreversible action
+   */
+  destructiveConfirm(): void {
+    if (!this.isCategoryEnabled('uiInteractions')) return;
+    this.impact('heavy');
+    setTimeout(() => this.impact('medium'), 80);
+  }
+
+  /**
+   * Undo action available feedback
+   */
+  undoAvailable(): void {
+    if (!this.isCategoryEnabled('uiInteractions')) return;
+    this.impact('soft');
+  }
+
   // ============================================================================
   // HELPERS
   // ============================================================================
@@ -511,6 +529,8 @@ export function useHaptics() {
   const warning = useCallback(() => haptics.warning(), []);
   const error = useCallback(() => haptics.error(), []);
   const selection = useCallback(() => haptics.selection(), []);
+  const destructiveConfirm = useCallback(() => haptics.destructiveConfirm(), []);
+  const undoAvailable = useCallback(() => haptics.undoAvailable(), []);
 
   // Playback
   const playbackToggle = useCallback(() => haptics.playbackToggle(), []);
@@ -559,6 +579,8 @@ export function useHaptics() {
     warning,
     error,
     selection,
+    destructiveConfirm,
+    undoAvailable,
 
     // Playback
     playbackToggle,

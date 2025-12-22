@@ -1,0 +1,473 @@
+# =============================================================================
+# MAESTRO: Profile & Settings Screens
+# =============================================================================
+# Captures all profile and settings screens:
+# - Profile main screen
+# - Downloads screen
+# - Wishlist screen (all tabs)
+# - Stats screen
+# - Reading History screen
+# - Reading Preferences screen
+# - Playback Settings screen
+# - Storage Settings screen
+# - Haptic Settings screen
+# - Chapter Cleaning Settings screen
+# - Joystick Seek Settings screen
+#
+# Prerequisites: User is logged in
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Profile tab
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 10000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# PROFILE MAIN SCREEN
+# -----------------------------------------------------------------------------
+# Screenshot 1: Profile Screen (top)
+- takeScreenshot: screens/06-profile/01-profile-top
+
+# Screenshot 2: Profile Screen (scrolled)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/06-profile/02-profile-scrolled
+
+# Screenshot 3: Profile Screen (bottom with footer)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/06-profile/03-profile-bottom
+
+# Scroll back to top
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# DOWNLOADS SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Downloads"
+    commands:
+      - tapOn: "Downloads"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 4: Downloads Screen (top)
+      - takeScreenshot: screens/06-profile/04-downloads-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/05-downloads-scrolled
+      # If downloads exist, show swipe to delete
+      - runFlow:
+          when:
+            visible:
+              text: "GB|MB|Downloaded"
+          commands:
+            - swipe:
+                start: 80%, 40%
+                end: 20%, 40%
+                duration: 300
+            - takeScreenshot: screens/06-profile/06-downloads-swipe-delete
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# WISHLIST SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Wishlist"
+    commands:
+      - tapOn: "Wishlist"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 7: Wishlist All Tab
+      - takeScreenshot: screens/06-profile/07-wishlist-all-top
+
+      # Must Read Tab
+      - runFlow:
+          when:
+            visible: "Must Read"
+          commands:
+            - tapOn: "Must Read"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/08-wishlist-must-read
+
+      # Authors Tab
+      - runFlow:
+          when:
+            visible: "Authors"
+          commands:
+            - tapOn: "Authors"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/09-wishlist-authors
+
+      # Series Tab
+      - runFlow:
+          when:
+            visible: "Series"
+          commands:
+            - tapOn: "Series"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/10-wishlist-series
+
+      # Manual Add Button
+      - runFlow:
+          when:
+            visible:
+              text: "Add|\\+|Manual"
+          commands:
+            - tapOn:
+                text: "Add|\\+"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 2000
+            - takeScreenshot: screens/06-profile/11-wishlist-manual-add
+            - back
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# STATS SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Stats|Listening Stats"
+    commands:
+      - tapOn:
+          text: "Stats|Listening Stats"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 12: Stats Screen (top)
+      - takeScreenshot: screens/06-profile/12-stats-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/13-stats-scrolled
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/14-stats-bottom
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# READING HISTORY SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "History|Reading History"
+    commands:
+      - tapOn:
+          text: "History|Reading History"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 15: Reading History (top)
+      - takeScreenshot: screens/06-profile/15-history-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/16-history-scrolled
+
+      # Filter button
+      - runFlow:
+          when:
+            visible:
+              text: "Filter"
+          commands:
+            - tapOn: "Filter"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/17-history-filter-sheet
+            - tapOn:
+                point: "50%, 10%"
+
+      # Sort button
+      - runFlow:
+          when:
+            visible:
+              text: "Sort"
+          commands:
+            - tapOn: "Sort"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/18-history-sort-sheet
+            - tapOn:
+                point: "50%, 10%"
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# READING PREFERENCES SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Preferences|Reading Preferences"
+    commands:
+      - tapOn:
+          text: "Preferences|Reading Preferences"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 19: Preferences Screen
+      - takeScreenshot: screens/06-profile/19-preferences-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/20-preferences-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# PLAYBACK SETTINGS SCREEN
+# -----------------------------------------------------------------------------
+- swipe:
+    direction: UP
+    duration: 300
+
+- runFlow:
+    when:
+      visible: "Playback"
+    commands:
+      - tapOn: "Playback"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 21: Playback Settings (top)
+      - takeScreenshot: screens/06-profile/21-playback-settings-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/22-playback-settings-scrolled
+
+      # Default Speed Picker
+      - runFlow:
+          when:
+            visible:
+              text: "Default Speed"
+          commands:
+            - tapOn: "Default Speed"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/23-playback-speed-picker
+            - back
+
+      # Skip Forward Picker
+      - runFlow:
+          when:
+            visible:
+              text: "Skip Forward"
+          commands:
+            - tapOn: "Skip Forward"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/24-playback-skip-forward
+            - back
+
+      # Skip Back Picker
+      - runFlow:
+          when:
+            visible:
+              text: "Skip Back"
+          commands:
+            - tapOn: "Skip Back"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/06-profile/25-playback-skip-back
+            - back
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# STORAGE SETTINGS SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Storage"
+    commands:
+      - tapOn: "Storage"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 26: Storage Settings
+      - takeScreenshot: screens/06-profile/26-storage-settings-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/06-profile/27-storage-settings-scrolled
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# HAPTIC SETTINGS SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Haptic|Haptics"
+    commands:
+      - tapOn:
+          text: "Haptic|Haptics"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 28: Haptic Settings
+      - takeScreenshot: screens/06-profile/28-haptic-settings
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# CHAPTER CLEANING SETTINGS SCREEN
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Chapter|Chapter Names"
+    commands:
+      - tapOn:
+          text: "Chapter|Chapter Names"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 29: Chapter Cleaning Settings
+      - takeScreenshot: screens/06-profile/29-chapter-cleaning-settings
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# JOYSTICK SEEK SETTINGS (if accessible from playback)
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Playback"
+    commands:
+      - tapOn: "Playback"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - runFlow:
+          when:
+            visible:
+              text: "Joystick|Seek Settings"
+          commands:
+            - tapOn:
+                text: "Joystick|Seek Settings"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 2000
+            # Screenshot 30: Joystick Seek Settings
+            - takeScreenshot: screens/06-profile/30-joystick-seek-settings
+            - back
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# SIGN OUT BUTTON
+# -----------------------------------------------------------------------------
+- swipe:
+    direction: UP
+    duration: 500
+- swipe:
+    direction: UP
+    duration: 500
+
+- runFlow:
+    when:
+      visible:
+        text: "Sign Out|Log Out|Logout"
+    commands:
+      - takeScreenshot: screens/06-profile/31-profile-sign-out-button
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Profile screenshots complete: screens/06-profile/");

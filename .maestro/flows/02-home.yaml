@@ -1,0 +1,144 @@
+# =============================================================================
+# MAESTRO: Home Screen States
+# =============================================================================
+# Captures all home screen states:
+# - Default state with CD player
+# - Playing state (disc spinning)
+# - Paused state (disc static)
+# - With continue listening section
+# - With recently added section
+# - Scrolled states
+#
+# Prerequisites: User is logged in with books in library
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Wait for home to load
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 10000
+
+# Ensure we're on Home tab
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# Screenshot 1: Home Screen Default (top)
+# -----------------------------------------------------------------------------
+- takeScreenshot: screens/02-home/01-home-default-top
+
+# -----------------------------------------------------------------------------
+# Screenshot 2: Home Screen Scrolled (middle sections)
+# -----------------------------------------------------------------------------
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/02-home/02-home-scrolled-1
+
+# -----------------------------------------------------------------------------
+# Screenshot 3: Home Screen Scrolled (more sections)
+# -----------------------------------------------------------------------------
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/02-home/03-home-scrolled-2
+
+# -----------------------------------------------------------------------------
+# Screenshot 4: Home Screen Scrolled (bottom)
+# -----------------------------------------------------------------------------
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/02-home/04-home-scrolled-bottom
+
+# Scroll back to top
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# Screenshot 5: Pull to Refresh Active
+# -----------------------------------------------------------------------------
+# Slow swipe down to trigger pull-to-refresh
+- swipe:
+    start: 50%, 30%
+    end: 50%, 70%
+    duration: 500
+- takeScreenshot: screens/02-home/05-home-refreshing
+
+# Wait for refresh to complete
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# Screenshot 6: Tap on CD Disc Area to Play
+# -----------------------------------------------------------------------------
+# Tap on the CD disc (center upper portion) to start playback
+- tapOn:
+    point: "50%, 25%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# Screenshot with mini-player or active state
+- takeScreenshot: screens/02-home/06-home-with-playback
+
+# -----------------------------------------------------------------------------
+# Screenshot 7: Home with Mini-Player visible
+# -----------------------------------------------------------------------------
+# If playback started, mini-player should be visible
+- takeScreenshot: screens/02-home/07-home-miniplayer-visible
+
+# -----------------------------------------------------------------------------
+# Screenshot 8: Sleep Timer Pill
+# -----------------------------------------------------------------------------
+# Look for sleep timer pill/button
+- runFlow:
+    when:
+      visible:
+        text: "Off|Sleep|Timer"
+    commands:
+      - takeScreenshot: screens/02-home/08-home-sleep-pill
+
+# -----------------------------------------------------------------------------
+# Screenshot 9: Speed Pill
+# -----------------------------------------------------------------------------
+# Look for speed indicator
+- runFlow:
+    when:
+      visible:
+        text: "\\d+\\.?\\d*x"
+    commands:
+      - takeScreenshot: screens/02-home/09-home-speed-pill
+
+# -----------------------------------------------------------------------------
+# Screenshot 10: Queue Pill
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Up Next"
+    commands:
+      - takeScreenshot: screens/02-home/10-home-queue-pill
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Home screenshots complete: screens/02-home/");

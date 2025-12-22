@@ -29,7 +29,7 @@ export function AuthorsListContent() {
     return (
       <EmptyState
         icon="👤"
-        message="No authors found"
+        title="No authors found"
         description="Your library doesn't have any authors"
       />
     );
@@ -68,7 +68,7 @@ export function AuthorsListContent() {
         ListEmptyComponent={
           <EmptyState
             icon="🔍"
-            message="No authors found"
+            title="No authors found"
             description={`No authors match "${searchQuery}"`}
           />
         }

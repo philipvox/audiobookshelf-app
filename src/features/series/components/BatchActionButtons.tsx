@@ -17,7 +17,13 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ArrowDownCircle,
+  CheckCircle,
+  Play,
+  RefreshCw,
+  Compass,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
@@ -38,10 +44,11 @@ interface BatchActionButtonsProps {
   inProgressBook?: LibraryItem | null;
   inProgressPercent?: number;
   onContinue: () => void;
+  hasRealSequences?: boolean; // Whether the series has meaningful sequence numbers
 }
 
-// Get sequence number for book - returns null if unknown
-function getSequence(item: LibraryItem): number | null {
+// Get raw sequence number for book - returns null if unknown
+function getRawSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
 
   // First check series array (preferred - has explicit sequence)
@@ -59,6 +66,12 @@ function getSequence(item: LibraryItem): number | null {
   const seriesName = metadata.seriesName || '';
   const match = seriesName.match(/#([\d.]+)/);
   return match ? parseFloat(match[1]) : null;
+}
+
+// Get sequence for display - returns null if sequences aren't real
+function getSequenceForDisplay(item: LibraryItem, hasReal: boolean): number | null {
+  if (!hasReal) return null;
+  return getRawSequence(item);
 }
 
 // Get book title
@@ -86,6 +99,7 @@ export function BatchActionButtons({
   inProgressBook,
   inProgressPercent = 0,
   onContinue,
+  hasRealSequences = true, // Default to true for backwards compatibility
 }: BatchActionButtonsProps) {
   const navigation = useNavigation<any>();
   const { queueDownload } = useDownloads();
@@ -96,12 +110,14 @@ export function BatchActionButtons({
     if (seriesComplete) return 'completed';
     if (inProgressBook && inProgressPercent > 0) return 'mid_book';
     if (nextBook) {
-      const seq = getSequence(nextBook);
+      const seq = getSequenceForDisplay(nextBook, hasRealSequences);
       if (seq === 1) return 'not_started';
+      // If no real sequences, treat as not_started instead of between_books
+      if (!hasRealSequences) return 'not_started';
       return 'between_books';
     }
     return 'not_started';
-  }, [seriesComplete, inProgressBook, inProgressPercent, nextBook]);
+  }, [seriesComplete, inProgressBook, inProgressPercent, nextBook, hasRealSequences]);
 
   // Calculate remaining time for current book
   const currentBookRemaining = useMemo(() => {
@@ -125,7 +141,7 @@ export function BatchActionButtons({
     // Show feedback
     const bookNames = toDownload.map((b, i) => {
       if (i === 0) return getTitle(b);
-      const seq = getSequence(b);
+      const seq = getSequenceForDisplay(b, hasRealSequences);
       return seq !== null ? `Book ${seq}` : getTitle(b);
     }).join(', ');
 
@@ -187,20 +203,20 @@ export function BatchActionButtons({
   // Determine button configurations
   const downloadCount = Math.min(booksToDownload.length, MAX_BATCH_DOWNLOAD);
   const canDownload = downloadCount > 0 && !seriesComplete;
-  const nextSeq = nextBook ? getSequence(nextBook) : null;
+  const nextSeq = nextBook ? getSequenceForDisplay(nextBook, hasRealSequences) : null;
   const hasSequence = nextSeq !== null;
   const isNearEnd = hasSequence && nextSeq >= totalBooks - 1;
   const isFinalBook = hasSequence && nextSeq === totalBooks;
 
   // Download button text & icon
   let downloadText = 'All Downloaded';
-  let downloadIcon: keyof typeof Ionicons.glyphMap = 'checkmark-circle';
+  let DownloadIcon = CheckCircle;
   let showDownloadButton = true;
 
   if (seriesComplete) {
     showDownloadButton = false;
   } else if (canDownload) {
-    downloadIcon = 'arrow-down-circle-outline';
+    DownloadIcon = ArrowDownCircle;
     if (seriesState === 'not_started' && hasSequence) {
       downloadText = `Download Book 1`;
     } else if (isFinalBook) {
@@ -218,12 +234,12 @@ export function BatchActionButtons({
 
   // Continue button text & icon
   let continueText = 'Continue Series';
-  let continueIcon: keyof typeof Ionicons.glyphMap = 'play';
+  let ContinueIcon = Play;
   let continueEnabled = true;
 
   if (seriesComplete) {
     continueText = 'Listen Again';
-    continueIcon = 'refresh';
+    ContinueIcon = RefreshCw;
   } else if (seriesState === 'mid_book' && inProgressPercent > 0) {
     continueText = `Continue (${inProgressPercent}%)`;
     if (currentBookRemaining > 0) {
@@ -232,7 +248,7 @@ export function BatchActionButtons({
   } else if (seriesState === 'not_started') {
     continueText = hasSequence ? 'Start Book 1' : 'Start Series';
   } else if (seriesState === 'between_books' && nextBook) {
-    const seq = getSequence(nextBook);
+    const seq = getSequenceForDisplay(nextBook, hasRealSequences);
     const title = getTitle(nextBook);
     // Truncate title if too long
     const shortTitle = title.length > 15 ? title.substring(0, 15) + '...' : title;
@@ -248,7 +264,7 @@ export function BatchActionButtons({
           onPress={handleListenAgain}
           activeOpacity={0.7}
         >
-          <Ionicons name="refresh" size={scale(18)} color={ACCENT} />
+          <RefreshCw size={scale(18)} color={ACCENT} strokeWidth={2} />
           <Text style={styles.outlineButtonText}>Listen Again</Text>
         </TouchableOpacity>
 
@@ -257,7 +273,7 @@ export function BatchActionButtons({
           onPress={handleFindSimilar}
           activeOpacity={0.7}
         >
-          <Ionicons name="compass-outline" size={scale(18)} color="#000" />
+          <Compass size={scale(18)} color="#000" strokeWidth={2} />
           <Text style={styles.continueButtonText}>Find Similar</Text>
         </TouchableOpacity>
       </View>
@@ -278,10 +294,10 @@ export function BatchActionButtons({
           disabled={!canDownload}
           activeOpacity={0.7}
         >
-          <Ionicons
-            name={downloadIcon}
+          <DownloadIcon
             size={scale(18)}
             color={canDownload ? 'rgba(255,255,255,0.9)' : ACCENT}
+            strokeWidth={2}
           />
           <Text style={[
             styles.buttonText,
@@ -303,10 +319,11 @@ export function BatchActionButtons({
         disabled={!continueEnabled}
         activeOpacity={0.7}
       >
-        <Ionicons
-          name={continueIcon}
+        <ContinueIcon
           size={scale(18)}
           color="#000"
+          strokeWidth={2}
+          fill={ContinueIcon === Play ? "#000" : undefined}
         />
         <Text style={styles.continueButtonText}>
           {continueText}

@@ -19,10 +19,11 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, User, CheckCircle, Play, ArrowUp, ArrowDown } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, User, CheckCircle, Play, ArrowUp, ArrowDown, Bell, BellOff } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -30,6 +31,7 @@ import { useLibraryCache, getAllAuthors } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
+import { useWishlistStore, useIsAuthorFollowed } from '@/features/wishlist';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, scale } from '@/shared/theme';
 
@@ -81,14 +83,61 @@ export function AuthorDetailScreen() {
   const insets = useSafeAreaInsets();
   const { loadBook } = usePlayerStore();
 
-  // Handle both param formats
-  const authorName = (route.params as any).authorName || (route.params as any).name;
+  // Handle both param formats - with null safety
+  const authorName = (route.params as any).authorName || (route.params as any).name || '';
+
+  // Early return if no author name provided
+  if (!authorName) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+        <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
+          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Author</Text>
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Author not found</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.errorButton}>
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const [sortBy, setSortBy] = useState<SortType>('title');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [bioExpanded, setBioExpanded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { getAuthor, isLoaded } = useLibraryCache();
+  const { getAuthor, isLoaded, refreshCache } = useLibraryCache();
+
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshCache();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshCache]);
+
+  // Follow author functionality
+  const isFollowing = useIsAuthorFollowed(authorName);
+  const { followAuthor, unfollowAuthor } = useWishlistStore();
+
+  const handleFollowToggle = useCallback(() => {
+    if (isFollowing) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      unfollowAuthor(authorName);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      followAuthor(authorName);
+    }
+  }, [isFollowing, authorName, followAuthor, unfollowAuthor]);
 
   // Get author data from cache
   const authorInfo = useMemo(() => {
@@ -246,12 +295,12 @@ export function AuthorDetailScreen() {
 
   const handlePlayBook = useCallback((book: LibraryItem) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    loadBook(book.id);
+    loadBook(book);
   }, [loadBook]);
 
   const handleGenrePress = useCallback((genre: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('GenreDetail', { genre });
+    navigation.navigate('GenreDetail', { genreName: genre });
   }, [navigation]);
 
   const handleSeriesPress = useCallback((seriesName: string) => {
@@ -264,13 +313,17 @@ export function AuthorDetailScreen() {
     navigation.push('AuthorDetail', { authorName: name });
   }, [navigation]);
 
-  // Generate initials
-  const initials = authorName
-    .split(' ')
-    .map((word: string) => word[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+  // Generate initials - null safe
+  const initials = useMemo(() => {
+    if (!authorName || typeof authorName !== 'string') return '??';
+    const parts = authorName.trim().split(' ').filter(Boolean);
+    if (parts.length === 0) return '??';
+    return parts
+      .map((word: string) => word[0] || '')
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || '??';
+  }, [authorName]);
 
   // Get author image URL
   const authorImageUrl = useMemo(() => {
@@ -477,6 +530,14 @@ export function AuthorDetailScreen() {
         style={styles.content}
         contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={ACCENT}
+            colors={[ACCENT]}
+          />
+        }
       >
         {/* Author Header */}
         <View style={styles.entityHeader}>
@@ -496,6 +557,28 @@ export function AuthorDetailScreen() {
           <Text style={styles.entityStats}>
             {authorInfo.bookCount} {authorInfo.bookCount === 1 ? 'book' : 'books'} in library
           </Text>
+
+          {/* Follow Button */}
+          <TouchableOpacity
+            style={[
+              styles.followButton,
+              isFollowing && styles.followButtonActive
+            ]}
+            onPress={handleFollowToggle}
+            activeOpacity={0.7}
+          >
+            {isFollowing ? (
+              <BellOff size={scale(16)} color="#000" strokeWidth={2} />
+            ) : (
+              <Bell size={scale(16)} color={ACCENT} strokeWidth={2} />
+            )}
+            <Text style={[
+              styles.followButtonText,
+              isFollowing && styles.followButtonTextActive
+            ]}>
+              {isFollowing ? 'Following' : 'Follow'}
+            </Text>
+          </TouchableOpacity>
 
           {/* Genre chips */}
           {genres.length > 0 && (
@@ -725,6 +808,29 @@ const styles = StyleSheet.create({
     fontSize: scale(14),
     color: 'rgba(255,255,255,0.5)',
     marginBottom: scale(12),
+  },
+  followButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(20),
+    borderWidth: 1,
+    borderColor: ACCENT,
+    marginBottom: scale(16),
+  },
+  followButtonActive: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT,
+  },
+  followButtonText: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    color: ACCENT,
+  },
+  followButtonTextActive: {
+    color: '#000',
   },
   genreRow: {
     flexDirection: 'row',
@@ -1025,5 +1131,29 @@ const styles = StyleSheet.create({
     fontSize: scale(10),
     color: 'rgba(255,255,255,0.5)',
     marginTop: scale(2),
+  },
+
+  // Error state styles
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: scale(40),
+  },
+  errorText: {
+    fontSize: scale(16),
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: scale(16),
+  },
+  errorButton: {
+    backgroundColor: ACCENT,
+    paddingHorizontal: scale(24),
+    paddingVertical: scale(12),
+    borderRadius: scale(8),
+  },
+  errorButtonText: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    color: '#000',
   },
 });

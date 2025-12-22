@@ -1,0 +1,255 @@
+# =============================================================================
+# MAESTRO: Capture Empty States
+# =============================================================================
+# Captures all screens in their empty/initial state.
+# Run this on a fresh account with no content.
+#
+# Prerequisites:
+#   1. User just logged in with fresh/empty account
+#   2. No books downloaded, no listening history, empty wishlist
+#
+# Usage:
+#   # After logging in with fresh account:
+#   maestro test .maestro/capture-empty-states.yaml
+#
+# Screenshots captured: ~15 empty state variants
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# SETUP
+# =============================================================================
+- launchApp
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# HOME - EMPTY STATE
+# =============================================================================
+
+# Ensure we're on Home tab
+- runFlow:
+    when:
+      visible: "Home"
+    commands:
+      - tapOn: "Home"
+      - waitForAnimationToEnd
+
+# Screenshot: Empty home (no continue listening, no history)
+- takeScreenshot: comprehensive/112-empty-home
+
+# =============================================================================
+# LIBRARY - EMPTY STATES
+# =============================================================================
+
+# Navigate to Library tab
+- tapOn: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Screenshot 24: Library All empty
+- takeScreenshot: comprehensive/24-library-all-empty
+
+# Downloaded tab - empty
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - waitForAnimationToEnd
+      # Screenshot 27: Library Downloaded empty
+      - takeScreenshot: comprehensive/27-library-downloaded-empty
+
+# In Progress tab - empty
+- runFlow:
+    when:
+      visible: "In Progress"
+    commands:
+      - tapOn: "In Progress"
+      - waitForAnimationToEnd
+      # Screenshot 30: Library In Progress empty
+      - takeScreenshot: comprehensive/30-library-progress-empty
+
+# Not Started tab - empty
+- runFlow:
+    when:
+      visible: "Not Started"
+    commands:
+      - tapOn: "Not Started"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-not-started-empty
+
+# Completed tab - empty
+- runFlow:
+    when:
+      visible: "Completed"
+    commands:
+      - tapOn: "Completed"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-completed-empty
+
+# Favorites tab - empty
+- runFlow:
+    when:
+      visible: "Favorites"
+    commands:
+      - tapOn: "Favorites"
+      - waitForAnimationToEnd
+      - takeScreenshot: comprehensive/library-favorites-empty
+
+# =============================================================================
+# SEARCH - EMPTY STATE
+# =============================================================================
+
+# Navigate to Search
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Screenshot 56: Search empty state
+- takeScreenshot: comprehensive/56-search-empty
+
+# Search with no results
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - inputText: "xyznonexistent123"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 60: Search no results
+      - takeScreenshot: comprehensive/60-search-no-results
+      - hideKeyboard
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PROFILE - EMPTY STATES
+# =============================================================================
+
+# Navigate to Profile tab
+- tapOn: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- Downloads Empty ---
+- runFlow:
+    when:
+      visible: "Downloads"
+    commands:
+      - tapOn: "Downloads"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 85: Downloads empty
+      - takeScreenshot: comprehensive/85-downloads-empty
+      - back
+      - waitForAnimationToEnd
+
+# --- Wishlist Empty ---
+- runFlow:
+    when:
+      visible: "Wishlist"
+    commands:
+      - tapOn: "Wishlist"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 90: Wishlist empty
+      - takeScreenshot: comprehensive/90-wishlist-empty
+      - back
+      - waitForAnimationToEnd
+
+# --- Stats Empty ---
+- runFlow:
+    when:
+      visible: "Listening Stats"
+    commands:
+      - tapOn: "Listening Stats"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Screenshot 96: Stats empty
+      - takeScreenshot: comprehensive/96-stats-empty
+      - back
+      - waitForAnimationToEnd
+
+# --- Reading History Empty ---
+- runFlow:
+    when:
+      visible: "Reading History"
+    commands:
+      - tapOn: "Reading History"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: comprehensive/100-history-empty
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# BROWSE - EMPTY GENRE
+# =============================================================================
+
+# Navigate to Discover/Browse
+- tapOn: "Discover"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Try to find a genre with no books (unlikely but worth checking)
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - tapOn: "Genres"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Scroll to find less popular genres
+      - scroll:
+          direction: DOWN
+      - scroll:
+          direction: DOWN
+      - scroll:
+          direction: DOWN
+      - waitForAnimationToEnd
+      # Tap on a genre near bottom
+      - tapOn:
+          point: "25%,70%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # Capture (may or may not be empty)
+      - takeScreenshot: comprehensive/114-genre-possibly-empty
+      - back
+      - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# Return to home
+- tapOn: "Home"
+- waitForAnimationToEnd
+
+# =============================================================================
+# COMPLETE
+# =============================================================================
+- evalScript: |
+    console.log("===========================================");
+    console.log("Empty states capture complete!");
+    console.log("Screenshots saved to: .maestro/screenshots/comprehensive/");
+    console.log("");
+    console.log("Captured empty states for:");
+    console.log("  - Home (no listening history)");
+    console.log("  - Library tabs (All, Downloaded, In Progress, etc.)");
+    console.log("  - Search (empty + no results)");
+    console.log("  - Downloads");
+    console.log("  - Wishlist");
+    console.log("  - Stats");
+    console.log("  - Reading History");
+    console.log("===========================================");

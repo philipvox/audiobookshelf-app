@@ -1,0 +1,177 @@
+# =============================================================================
+# MAESTRO: Manual Screenshot Capture
+# =============================================================================
+# Interactive mode - waits for you to set up each screen before capturing.
+# Perfect for getting the exact state you want in screenshots.
+#
+# Usage:
+#   maestro test .maestro/capture-manual.yaml
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+
+# Instructions
+- evalScript: |
+    console.log("");
+    console.log("╔═══════════════════════════════════════════════════════════╗");
+    console.log("║           MANUAL SCREENSHOT CAPTURE MODE                  ║");
+    console.log("╠═══════════════════════════════════════════════════════════╣");
+    console.log("║  This will capture screenshots with your interaction.     ║");
+    console.log("║  Navigate to each screen manually, then press ENTER       ║");
+    console.log("║  in the terminal when ready to capture.                   ║");
+    console.log("╚═══════════════════════════════════════════════════════════╝");
+    console.log("");
+
+# Screen 1: Login
+- evalScript: |
+    console.log("📸 Screen 1/20: LOGIN SCREEN");
+    console.log("   Navigate to login screen, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/01-login
+
+# Screen 2: Home
+- evalScript: |
+    console.log("📸 Screen 2/20: HOME SCREEN");
+    console.log("   Navigate to home screen, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/02-home
+
+# Screen 3: Library
+- evalScript: |
+    console.log("📸 Screen 3/20: LIBRARY - ALL TAB");
+    console.log("   Open Library tab, select 'All', then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/03-library-all
+
+# Screen 4: Library Downloaded
+- evalScript: |
+    console.log("📸 Screen 4/20: LIBRARY - DOWNLOADED TAB");
+    console.log("   Select 'Downloaded' tab, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/04-library-downloaded
+
+# Screen 5: Library In Progress
+- evalScript: |
+    console.log("📸 Screen 5/20: LIBRARY - IN PROGRESS TAB");
+    console.log("   Select 'In Progress' tab, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/05-library-in-progress
+
+# Screen 6: Library Favorites
+- evalScript: |
+    console.log("📸 Screen 6/20: LIBRARY - FAVORITES TAB");
+    console.log("   Select 'Favorites' tab, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/06-library-favorites
+
+# Screen 7: Browse
+- evalScript: |
+    console.log("📸 Screen 7/20: BROWSE/DISCOVER SCREEN");
+    console.log("   Open Discover tab, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/07-browse
+
+# Screen 8: Profile
+- evalScript: |
+    console.log("📸 Screen 8/20: PROFILE SCREEN");
+    console.log("   Open Profile tab, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/08-profile
+
+# Screen 9: Downloads
+- evalScript: |
+    console.log("📸 Screen 9/20: DOWNLOADS SCREEN");
+    console.log("   Open Downloads from Profile, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/09-downloads
+
+# Screen 10: Wishlist
+- evalScript: |
+    console.log("📸 Screen 10/20: WISHLIST SCREEN");
+    console.log("   Open Wishlist from Profile, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/10-wishlist
+
+# Screen 11: Stats
+- evalScript: |
+    console.log("📸 Screen 11/20: STATS SCREEN");
+    console.log("   Open Listening Stats from Profile, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/11-stats
+
+# Screen 12: Playback Settings
+- evalScript: |
+    console.log("📸 Screen 12/20: PLAYBACK SETTINGS");
+    console.log("   Open Playback settings, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/12-playback-settings
+
+# Screen 13: Storage Settings
+- evalScript: |
+    console.log("📸 Screen 13/20: STORAGE SETTINGS");
+    console.log("   Open Storage settings, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/13-storage-settings
+
+# Screen 14: Book Detail
+- evalScript: |
+    console.log("📸 Screen 14/20: BOOK DETAIL SCREEN");
+    console.log("   Open any book detail, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/14-book-detail
+
+# Screen 15: Book Chapters
+- evalScript: |
+    console.log("📸 Screen 15/20: BOOK CHAPTERS TAB");
+    console.log("   Switch to Chapters tab on book detail, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/15-book-chapters
+
+# Screen 16: Series Detail
+- evalScript: |
+    console.log("📸 Screen 16/20: SERIES DETAIL SCREEN");
+    console.log("   Open any series detail, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/16-series-detail
+
+# Screen 17: Author Detail
+- evalScript: |
+    console.log("📸 Screen 17/20: AUTHOR DETAIL SCREEN");
+    console.log("   Open any author detail, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/17-author-detail
+
+# Screen 18: Player
+- evalScript: |
+    console.log("📸 Screen 18/20: PLAYER SCREEN");
+    console.log("   Open the full player, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/18-player
+
+# Screen 19: Search
+- evalScript: |
+    console.log("📸 Screen 19/20: SEARCH SCREEN");
+    console.log("   Open search with some results, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/19-search
+
+# Screen 20: Queue
+- evalScript: |
+    console.log("📸 Screen 20/20: QUEUE SCREEN");
+    console.log("   Open the queue, then press ENTER...");
+- inputText: ""
+- takeScreenshot: manual/20-queue
+
+# Complete
+- evalScript: |
+    console.log("");
+    console.log("╔═══════════════════════════════════════════════════════════╗");
+    console.log("║                    ✅ CAPTURE COMPLETE                    ║");
+    console.log("╠═══════════════════════════════════════════════════════════╣");
+    console.log("║  Screenshots saved to: .maestro/screenshots/manual/       ║");
+    console.log("╚═══════════════════════════════════════════════════════════╝");
+    console.log("");

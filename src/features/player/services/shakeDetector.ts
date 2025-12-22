@@ -8,7 +8,7 @@
 import * as Haptics from 'expo-haptics';
 
 // Lazy import to avoid crashes in simulator
-let Accelerometer: typeof import('expo-sensors').Accelerometer | null = null;
+let Accelerometer: typeof import('expo-sensors')['Accelerometer'] | null = null;
 let AccelerometerLoaded = false;
 
 async function loadAccelerometer() {
@@ -17,8 +17,8 @@ async function loadAccelerometer() {
   try {
     // Only import Accelerometer to avoid loading other sensors (like Pedometer)
     // that may not be available in the simulator
-    const { Accelerometer: AccelModule } = await import('expo-sensors/build/Accelerometer');
-    Accelerometer = AccelModule;
+    const sensors = await import('expo-sensors');
+    Accelerometer = sensors.Accelerometer;
     AccelerometerLoaded = true;
     return Accelerometer;
   } catch (error) {

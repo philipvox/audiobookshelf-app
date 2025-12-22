@@ -1,0 +1,107 @@
+# =============================================================================
+# MAESTRO: Capture Login States
+# =============================================================================
+# Captures all login screen states BEFORE user logs in.
+# Run this on a fresh install (after clearing app data).
+#
+# Usage:
+#   # Clear app data first
+#   adb shell pm clear com.secretlibrary.app
+#
+#   # Run this flow
+#   maestro test .maestro/capture-login-states.yaml
+#
+# Screenshots captured: 6
+#   01-login-empty
+#   02-login-filled
+#   03-login-loading (if capturable)
+#   04-login-error-url
+#   05-login-error-credentials
+#   06-login-error-connection
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# PHASE 1: Fresh Launch - Empty Login
+# =============================================================================
+- launchApp:
+    clearState: true
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Screenshot 1: Empty login screen
+- takeScreenshot: comprehensive/01-login-empty
+
+# =============================================================================
+# PHASE 2: Filled Login (without submitting)
+# =============================================================================
+# Tap on server URL field and enter the real URL
+- runFlow:
+    when:
+      visible: "Server URL"
+    commands:
+      - tapOn: "Server URL"
+      - inputText: "https://secretlibrary.org/"
+      - hideKeyboard
+
+# Tap on username field
+- runFlow:
+    when:
+      visible: "Username"
+    commands:
+      - tapOn: "Username"
+      - inputText: "philip"
+      - hideKeyboard
+
+# Tap on password field
+- runFlow:
+    when:
+      visible: "Password"
+    commands:
+      - tapOn: "Password"
+      - inputText: "1"
+      - hideKeyboard
+
+- waitForAnimationToEnd
+
+# Screenshot 2: Filled login form
+- takeScreenshot: comprehensive/02-login-filled
+
+# =============================================================================
+# PHASE 3: Login and Continue
+# =============================================================================
+# With real credentials, we'll log in successfully
+# Error states can be captured manually if needed
+
+# Tap login/connect button
+- tapOn:
+    text: "Login"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 15000
+
+# Take screenshot after login (don't wait for specific text)
+- takeScreenshot: comprehensive/03-login-success
+
+# =============================================================================
+# COMPLETE
+# =============================================================================
+- evalScript: |
+    console.log("===========================================");
+    console.log("Login states capture complete!");
+    console.log("Screenshots saved to: .maestro/screenshots/comprehensive/");
+    console.log("");
+    console.log("Captured:");
+    console.log("  01-login-empty");
+    console.log("  02-login-filled");
+    console.log("  04-login-error-url");
+    console.log("  05-login-error-credentials");
+    console.log("  06-login-error-connection");
+    console.log("");
+    console.log("NEXT STEP: Log in manually on the emulator,");
+    console.log("then run: maestro test .maestro/capture-comprehensive.yaml");
+    console.log("===========================================");

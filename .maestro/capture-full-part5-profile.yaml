@@ -1,0 +1,249 @@
+# =============================================================================
+# FULL CAPTURE PART 5: Profile Tab (83-108)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# PROFILE (83-84)
+# =============================================================================
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/83-profile-default
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/84-profile-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# DOWNLOADS (85-89)
+# =============================================================================
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/86-downloads-content
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/86-downloads-scrolled
+
+# Swipe to delete gesture
+- swipe:
+    start: "80%,35%"
+    end: "20%,35%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/88-downloads-swipe-delete
+
+# Tap elsewhere to cancel
+- tapOn:
+    point: "50%,60%"
+- waitForAnimationToEnd
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# WISHLIST (90-95)
+# =============================================================================
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/91-wishlist-content
+
+# Wishlist tabs
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/92-wishlist-all
+
+- tapOn:
+    text: "Must Read"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/93-wishlist-must-read
+
+- tapOn:
+    text: "Authors"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/94-wishlist-authors
+
+- tapOn:
+    text: "Series"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/95-wishlist-series
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# LISTENING STATS (96-99)
+# =============================================================================
+- tapOn:
+    text: "Listening Stats"
+    optional: true
+- tapOn:
+    text: "Stats"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/97-stats-content
+- takeScreenshot: comprehensive/98-stats-week
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/99-stats-scrolled
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# READING HISTORY (100-102)
+# =============================================================================
+- tapOn:
+    text: "Reading History"
+    optional: true
+- tapOn:
+    text: "History"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/101-history-on
+- takeScreenshot: comprehensive/102-history-list
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# READING PREFERENCES (103)
+# =============================================================================
+- tapOn:
+    text: "Reading Preferences"
+    optional: true
+- tapOn:
+    text: "Preferences"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/103-preferences
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# PLAYBACK SETTINGS (104-108)
+# =============================================================================
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/104-playback-settings
+
+# Speed picker
+- tapOn:
+    text: "Default Speed"
+    optional: true
+- tapOn:
+    text: "Speed"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/105-playback-speed-picker
+
+- tapOn:
+    point: "50%,20%"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# Skip Forward picker
+- tapOn:
+    text: "Skip Forward"
+    optional: true
+- tapOn:
+    text: "Forward"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/106-playback-skip-forward
+
+- tapOn:
+    point: "50%,20%"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# Skip Back picker
+- tapOn:
+    text: "Skip Back"
+    optional: true
+- tapOn:
+    text: "Backward"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/107-playback-skip-back
+
+- tapOn:
+    point: "50%,20%"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# Scroll playback settings
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/108-playback-scrolled
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# STORAGE SETTINGS
+# =============================================================================
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/storage-settings-full
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# HAPTIC SETTINGS
+# =============================================================================
+- tapOn:
+    text: "Haptic"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/haptic-settings
+
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 5 Profile complete");

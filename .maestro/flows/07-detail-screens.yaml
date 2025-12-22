@@ -1,0 +1,361 @@
+# =============================================================================
+# MAESTRO: Detail Screens
+# =============================================================================
+# Captures all detail screen states:
+# - Book Detail (overview, chapters, download states)
+# - Series Detail (progress, books list)
+# - Author Detail (bio, books, follow)
+# - Narrator Detail (books, collaborators)
+# - Collection Detail
+#
+# Prerequisites: User is logged in with books in library
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Library
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 10000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# BOOK DETAIL SCREEN
+# -----------------------------------------------------------------------------
+# Tap on first book card
+- tapOn:
+    point: "25%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Screenshot 1: Book Detail - Overview Tab (top)
+- takeScreenshot: screens/07-details/01-book-detail-overview-top
+
+# Screenshot 2: Book Detail - Overview Tab (scrolled)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/07-details/02-book-detail-overview-scrolled
+
+# Screenshot 3: Book Detail - Overview Tab (bottom with metadata)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/07-details/03-book-detail-overview-bottom
+
+# Scroll back up
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# BOOK DETAIL - CHAPTERS TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Chapters"
+    commands:
+      - tapOn: "Chapters"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 4: Chapters Tab (top)
+      - takeScreenshot: screens/07-details/04-book-detail-chapters-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/05-book-detail-chapters-scrolled
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/06-book-detail-chapters-bottom
+      # Tap on Overview to go back
+      - runFlow:
+          when:
+            visible: "Overview"
+          commands:
+            - tapOn: "Overview"
+
+# -----------------------------------------------------------------------------
+# BOOK DETAIL - ACTION BUTTONS
+# -----------------------------------------------------------------------------
+# Play Button
+- runFlow:
+    when:
+      visible:
+        text: "Play|Resume|Listen|Stream"
+    commands:
+      - takeScreenshot: screens/07-details/07-book-detail-play-button
+
+# Download Button (if not downloaded)
+- runFlow:
+    when:
+      visible:
+        text: "Download"
+    commands:
+      - takeScreenshot: screens/07-details/08-book-detail-download-button
+      # Tap to start download
+      - tapOn: "Download"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot downloading state
+      - takeScreenshot: screens/07-details/09-book-detail-downloading
+
+# Queue Button
+- runFlow:
+    when:
+      visible:
+        text: "Queue|Add to Queue"
+    commands:
+      - takeScreenshot: screens/07-details/10-book-detail-queue-button
+      - tapOn:
+          text: "Queue|Add to Queue"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      - takeScreenshot: screens/07-details/11-book-detail-in-queue
+
+# Wishlist Button
+- runFlow:
+    when:
+      visible:
+        text: "Wishlist|Add to Wishlist|♡"
+    commands:
+      - takeScreenshot: screens/07-details/12-book-detail-wishlist-button
+
+# Go back to library
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# SERIES DETAIL SCREEN
+# -----------------------------------------------------------------------------
+# Navigate to Discover to find series
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Look for Series section or go to Series list
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn: "Series"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Tap on first series
+      - tapOn:
+          point: "25%, 30%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 13: Series Detail (top with stacked covers)
+      - takeScreenshot: screens/07-details/13-series-detail-top
+      # Screenshot 14: Series Detail (progress header)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/14-series-detail-books-list
+      # Screenshot 15: Series Detail (more books)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/15-series-detail-books-scrolled
+
+      # Sort button
+      - runFlow:
+          when:
+            visible:
+              text: "Sort|↑|↓"
+          commands:
+            - tapOn:
+                text: "Sort|↑|↓"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/07-details/16-series-detail-sort
+            - tapOn:
+                point: "50%, 80%"
+
+      # Download All button
+      - runFlow:
+          when:
+            visible:
+              text: "Download All"
+          commands:
+            - takeScreenshot: screens/07-details/17-series-download-all-button
+
+      # Track Series button (bell icon)
+      - runFlow:
+          when:
+            visible:
+              text: "Track|🔔"
+          commands:
+            - takeScreenshot: screens/07-details/18-series-track-button
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# AUTHOR DETAIL SCREEN
+# -----------------------------------------------------------------------------
+# Look for Authors section
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - tapOn: "Authors"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Tap on first author
+      - tapOn:
+          point: "25%, 30%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 19: Author Detail (top with avatar)
+      - takeScreenshot: screens/07-details/19-author-detail-top
+      # Screenshot 20: Author Detail (bio section)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/20-author-detail-bio
+      # Screenshot 21: Author Detail (books list)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/21-author-detail-books
+      # Screenshot 22: Author Detail (more books)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/22-author-detail-books-scrolled
+
+      # Follow button
+      - runFlow:
+          when:
+            visible:
+              text: "Follow|🔔"
+          commands:
+            - swipe:
+                direction: DOWN
+                duration: 300
+            - swipe:
+                direction: DOWN
+                duration: 300
+            - takeScreenshot: screens/07-details/23-author-follow-button
+
+      # Expand bio
+      - runFlow:
+          when:
+            visible:
+              text: "more|Read more|Expand"
+          commands:
+            - tapOn:
+                text: "more|Read more|Expand"
+            - extendedWaitUntil:
+                visible:
+                  text: ".*"
+                timeout: 1000
+            - takeScreenshot: screens/07-details/24-author-bio-expanded
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# NARRATOR DETAIL SCREEN
+# -----------------------------------------------------------------------------
+# Look for Narrators section
+- runFlow:
+    when:
+      visible: "Narrators"
+    commands:
+      - tapOn: "Narrators"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Tap on first narrator
+      - tapOn:
+          point: "25%, 30%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 25: Narrator Detail (top)
+      - takeScreenshot: screens/07-details/25-narrator-detail-top
+      # Screenshot 26: Narrator Detail (genres/collaborators)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/26-narrator-detail-genres
+      # Screenshot 27: Narrator Detail (books)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/27-narrator-detail-books
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/07-details/28-narrator-detail-books-scrolled
+
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      - back
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Detail screenshots complete: screens/07-details/");

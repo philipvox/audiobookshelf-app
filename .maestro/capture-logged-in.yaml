@@ -1,0 +1,192 @@
+# =============================================================================
+# MAESTRO: Capture Screens (Already Logged In)
+# =============================================================================
+# Use this when you're already logged into the app.
+# Just captures the main screens without login flow.
+#
+# Usage:
+#   npm run screenshots:logged-in
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# LAUNCH
+# =============================================================================
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# =============================================================================
+# MAIN TABS
+# =============================================================================
+
+# HOME
+- takeScreenshot: 01-home
+
+# LIBRARY
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd
+- takeScreenshot: 02-library-all
+
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 03-library-downloaded
+
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 04-library-in-progress
+
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 05-library-favorites
+
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+
+# DISCOVER/BROWSE
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd
+- takeScreenshot: 06-browse
+
+# PROFILE
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: 07-profile
+
+# =============================================================================
+# PROFILE SUB-SCREENS
+# =============================================================================
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd
+- takeScreenshot: 08-downloads
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd
+- takeScreenshot: 09-wishlist
+- back
+- waitForAnimationToEnd
+
+# Stats
+- runFlow:
+    when:
+      visible: "Listening Stats"
+    commands:
+      - tapOn: "Listening Stats"
+      - waitForAnimationToEnd
+      - takeScreenshot: 10-stats
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# SETTINGS
+# =============================================================================
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd
+- takeScreenshot: 11-playback-settings
+- back
+- waitForAnimationToEnd
+
+# Storage Settings
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd
+- takeScreenshot: 12-storage-settings
+- back
+- waitForAnimationToEnd
+
+# Haptic Settings
+- runFlow:
+    when:
+      visible: "Haptic"
+    commands:
+      - tapOn: "Haptic"
+      - waitForAnimationToEnd
+      - takeScreenshot: 13-haptic-settings
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# DETAIL SCREENS (tap first item)
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd
+
+# Try to tap a book
+- runFlow:
+    when:
+      visible:
+        text: ".*"
+    commands:
+      - tapOn:
+          point: "25%,55%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 14-book-detail
+      - runFlow:
+          when:
+            visible: "Chapters"
+          commands:
+            - tapOn: "Chapters"
+            - waitForAnimationToEnd
+            - takeScreenshot: 15-book-chapters
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PLAYER (if available)
+# =============================================================================
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd
+
+# Tap center of screen to open player (CD disc area)
+- runFlow:
+    when:
+      visible:
+        text: ".*"
+    commands:
+      - tapOn:
+          point: "50%,35%"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 16-player
+      - tapOn:
+          point: "8%,6%"
+      - waitForAnimationToEnd
+
+# =============================================================================
+# DONE
+# =============================================================================
+- takeScreenshot: 99-final
+
+- evalScript: |
+    console.log("");
+    console.log("✅ Screenshot capture complete!");
+    console.log("📁 Check .maestro/screenshots/");
+    console.log("");

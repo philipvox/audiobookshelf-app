@@ -1,0 +1,122 @@
+# =============================================================================
+# FULL CAPTURE PART 1: Library Tab (24-34)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# LIBRARY TAB - ALL (24-26)
+# =============================================================================
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/25-library-all-content
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/26-library-all-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# LIBRARY - DOWNLOADED (27-29)
+# =============================================================================
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/28-library-downloaded-content
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/29-library-downloaded-storage
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# =============================================================================
+# LIBRARY - IN PROGRESS (30-31)
+# =============================================================================
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/31-library-progress-content
+
+# =============================================================================
+# LIBRARY - OTHER TABS
+# =============================================================================
+- tapOn:
+    text: "Not Started"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-not-started-content
+
+- tapOn:
+    text: "Completed"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-completed-content
+
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/library-favorites-content
+
+# =============================================================================
+# LIBRARY - SORT & FILTER (32-34)
+# =============================================================================
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd
+
+# Sort dropdown
+- tapOn:
+    text: "Sort"
+    optional: true
+- tapOn:
+    text: "Recently"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/32-library-sort-dropdown
+
+# Dismiss dropdown
+- tapOn:
+    point: "50%,50%"
+- waitForAnimationToEnd
+
+# Search
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/33-library-search-active
+
+- inputText: "the"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/34-library-search-results
+
+- hideKeyboard
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 1 Library complete");

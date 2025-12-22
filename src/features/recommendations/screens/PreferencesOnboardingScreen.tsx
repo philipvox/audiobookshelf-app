@@ -216,7 +216,7 @@ export function PreferencesOnboardingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color={theme.colors.text.primary} set="ionicons" />
+          <Icon name="ArrowLeft" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSkip}>
           <Text style={styles.skipText}>Skip</Text>
@@ -269,10 +269,9 @@ export function PreferencesOnboardingScreen() {
                 </Text>
                 {selected && (
                   <Icon
-                    name="checkmark-circle"
+                    name="CircleCheck"
                     size={20}
                     color={theme.colors.primary[500]}
-                    set="ionicons"
                   />
                 )}
               </TouchableOpacity>
@@ -292,10 +291,9 @@ export function PreferencesOnboardingScreen() {
             {isLastStep ? 'Get Recommendations' : 'Continue'}
           </Text>
           <Icon 
-            name={isLastStep ? "sparkles" : "arrow-forward"} 
-            size={20} 
+            name={isLastStep ? "Sparkles" : "ArrowRight"}
+            size={20}
             color="#FFFFFF" 
-            set="ionicons" 
           />
         </TouchableOpacity>
       </View>

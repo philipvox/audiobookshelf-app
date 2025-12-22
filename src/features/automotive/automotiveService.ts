@@ -136,10 +136,11 @@ class AutomotiveService {
         this.libraryCacheUnsubscribe();
       }
 
-      // Subscribe to changes
-      this.libraryCacheUnsubscribe = useLibraryCache.subscribe(
-        (state) => state.items,
-        () => {
+      // Subscribe to changes - track previous items to detect changes
+      let prevItems = useLibraryCache.getState().items;
+      this.libraryCacheUnsubscribe = useLibraryCache.subscribe((state) => {
+        if (state.items !== prevItems) {
+          prevItems = state.items;
           log('Library changed, refreshing automotive data');
 
           // Refresh CarPlay lists when library changes
@@ -152,7 +153,7 @@ class AutomotiveService {
             this.syncAndroidAutoBrowseData();
           }
         }
-      );
+      });
       log('Library cache listener set up');
     } catch (error) {
       log('Failed to set up library cache listener:', error);

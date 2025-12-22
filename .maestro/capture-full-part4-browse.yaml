@@ -1,0 +1,227 @@
+# =============================================================================
+# FULL CAPTURE PART 4: Browse Tab (66-82)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# BROWSE/DISCOVER (66-69)
+# =============================================================================
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/66-browse-default
+
+# Genre filter
+- tapOn:
+    text: "Fantasy"
+    optional: true
+- tapOn:
+    text: "Fiction"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/67-browse-genre-filtered
+
+# Clear filter - tap same genre again
+- tapOn:
+    text: "Fantasy"
+    optional: true
+- tapOn:
+    text: "Fiction"
+    optional: true
+- waitForAnimationToEnd
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/68-browse-scrolled
+
+# Scroll genre pills
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+- swipe:
+    start: "90%,18%"
+    end: "10%,18%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/69-browse-genres-scroll
+
+# =============================================================================
+# MOOD DISCOVERY (70-72)
+# =============================================================================
+- swipe:
+    start: "10%,18%"
+    end: "90%,18%"
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "What sounds good"
+    optional: true
+- tapOn:
+    text: "mood"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/70-mood-card
+- takeScreenshot: comprehensive/71-mood-discovery
+
+# Select mood option
+- tapOn:
+    point: "50%,40%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/71-mood-discovery-step2
+
+- tapOn:
+    text: "Next"
+    optional: true
+- tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/72-mood-results
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# BROWSE CATEGORIES (73-76)
+# =============================================================================
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Genres browse
+- tapOn:
+    text: "Genres"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/73-browse-genres
+
+- back
+- waitForAnimationToEnd
+
+# Authors browse
+- tapOn:
+    text: "Authors"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/74-browse-authors
+
+- back
+- waitForAnimationToEnd
+
+# Series browse
+- tapOn:
+    text: "Series"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/75-browse-series
+
+- back
+- waitForAnimationToEnd
+
+# Narrators browse
+- tapOn:
+    text: "Narrators"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/76-browse-narrators
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# AUTHOR DETAIL (77-78)
+# =============================================================================
+- tapOn:
+    text: "Authors"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "25%,25%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/77-author-detail
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/78-author-books
+
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# NARRATOR DETAIL (79-80)
+# =============================================================================
+- tapOn:
+    text: "Narrators"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "25%,25%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/79-narrator-detail
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/80-narrator-books
+
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# GENRE DETAIL (81-82)
+# =============================================================================
+- tapOn:
+    text: "Genres"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "25%,25%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/81-genre-detail
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/82-genre-scrolled
+
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 4 Browse complete");

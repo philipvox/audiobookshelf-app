@@ -1,0 +1,214 @@
+# =============================================================================
+# MAESTRO: Search Screen States
+# =============================================================================
+# Captures all search screen states:
+# - Empty state with quick browse grid
+# - Typing state with debounce
+# - Loading state
+# - Results with multiple categories
+# - No results state
+# - Recent searches
+#
+# Prerequisites: User is logged in
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Wait for app to load
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 10000
+
+# Navigate to Search (usually center button or search icon)
+- runFlow:
+    when:
+      visible:
+        text: "Search"
+    commands:
+      - tapOn: "Search"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# Alternative: tap on center button if search isn't directly visible
+- runFlow:
+    when:
+      notVisible:
+        text: "Search books"
+    commands:
+      - tapOn:
+          point: "50%, 95%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# -----------------------------------------------------------------------------
+# SEARCH EMPTY STATE (Quick Browse Grid)
+# -----------------------------------------------------------------------------
+# Screenshot 1: Search Empty with Quick Browse
+- takeScreenshot: screens/08-search/01-search-empty-quickbrowse
+
+# -----------------------------------------------------------------------------
+# QUICK BROWSE CATEGORIES
+# -----------------------------------------------------------------------------
+# Genres
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - takeScreenshot: screens/08-search/02-search-genres-card
+
+# Authors
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - takeScreenshot: screens/08-search/03-search-authors-card
+
+# Series
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - takeScreenshot: screens/08-search/04-search-series-card
+
+# Narrators
+- runFlow:
+    when:
+      visible: "Narrators"
+    commands:
+      - takeScreenshot: screens/08-search/05-search-narrators-card
+
+# -----------------------------------------------------------------------------
+# SEARCH INPUT FOCUSED
+# -----------------------------------------------------------------------------
+# Tap on search input
+- runFlow:
+    when:
+      visible:
+        text: "Search|Find"
+    commands:
+      - tapOn:
+          text: "Search|Find"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      # Screenshot 6: Search Input Focused
+      - takeScreenshot: screens/08-search/06-search-input-focused
+
+# -----------------------------------------------------------------------------
+# SEARCH TYPING (Debounced)
+# -----------------------------------------------------------------------------
+- inputText: "the"
+- takeScreenshot: screens/08-search/07-search-typing
+
+# Wait for debounce and results
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# SEARCH RESULTS
+# -----------------------------------------------------------------------------
+# Screenshot 8: Search Results (top)
+- takeScreenshot: screens/08-search/08-search-results-top
+
+# Screenshot 9: Search Results (scrolled - more categories)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/08-search/09-search-results-scrolled
+
+# Screenshot 10: Search Results (bottom)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/08-search/10-search-results-bottom
+
+# Scroll back up
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# Hide keyboard
+- hideKeyboard
+
+# -----------------------------------------------------------------------------
+# SEARCH - TAP ON RESULT
+# -----------------------------------------------------------------------------
+# Tap on first search result
+- tapOn:
+    point: "50%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+# Screenshot 11: Search Result Detail
+- takeScreenshot: screens/08-search/11-search-result-opened
+- back
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# -----------------------------------------------------------------------------
+# CLEAR SEARCH
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Clear|×|✕"
+    commands:
+      - tapOn:
+          text: "Clear|×|✕"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      - takeScreenshot: screens/08-search/12-search-cleared
+
+# -----------------------------------------------------------------------------
+# NO RESULTS STATE
+# -----------------------------------------------------------------------------
+# Search for something that won't exist
+- runFlow:
+    when:
+      visible:
+        text: "Search|Find"
+    commands:
+      - tapOn:
+          text: "Search|Find"
+      - inputText: "xyzzynonexistentbook123"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+      # Screenshot 13: No Results
+      - takeScreenshot: screens/08-search/13-search-no-results
+      - hideKeyboard
+
+# -----------------------------------------------------------------------------
+# RECENT SEARCHES (if visible)
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible:
+        text: "Recent|History"
+    commands:
+      - takeScreenshot: screens/08-search/14-search-recent-searches
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Search screenshots complete: screens/08-search/");

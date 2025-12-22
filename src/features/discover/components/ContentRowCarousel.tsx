@@ -62,7 +62,7 @@ const DiscoverBookCard = React.memo(function DiscoverBookCard({ book, onPress }:
         {/* Downloaded badge */}
         {book.isDownloaded && (
           <View style={styles.downloadedBadge}>
-            <Icon name="checkmark-circle" size={14} color={colors.accent} set="ionicons" />
+            <Icon name="CircleCheck" size={14} color={colors.accent} />
           </View>
         )}
         {/* Progress bar */}

@@ -1,0 +1,106 @@
+# =============================================================================
+# MAESTRO: Login Screen States
+# =============================================================================
+# Captures all login screen states:
+# - Empty form
+# - Filled form
+# - Connecting
+# - Error states
+#
+# Prerequisites: App freshly launched, not logged in
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+# Clear app state and launch fresh
+- clearState
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Server URL"
+    timeout: 10000
+
+# -----------------------------------------------------------------------------
+# Screenshot 1: Empty Login Form
+# -----------------------------------------------------------------------------
+- takeScreenshot: screens/01-login/01-login-empty
+
+# -----------------------------------------------------------------------------
+# Screenshot 2: Server URL Field Focused
+# -----------------------------------------------------------------------------
+- tapOn: "Server URL"
+- takeScreenshot: screens/01-login/02-login-url-focused
+
+# -----------------------------------------------------------------------------
+# Screenshot 3: Invalid URL Error
+# -----------------------------------------------------------------------------
+- inputText: "not-a-valid-url"
+- hideKeyboard
+- runFlow:
+    when:
+      visible: "Sign In"
+    commands:
+      - tapOn: "Sign In"
+      - extendedWaitUntil:
+          visible:
+            text: ".*invalid.*|.*error.*|.*URL.*"
+          timeout: 3000
+      - takeScreenshot: screens/01-login/03-login-url-error
+
+# -----------------------------------------------------------------------------
+# Screenshot 4: Form Filled (Valid URL)
+# -----------------------------------------------------------------------------
+- clearState
+- launchApp
+- extendedWaitUntil:
+    visible: "Server URL"
+    timeout: 10000
+
+- tapOn: "Server URL"
+- inputText: "https://abs.example.com"
+- hideKeyboard
+
+- runFlow:
+    when:
+      visible: "Username"
+    commands:
+      - tapOn: "Username"
+      - inputText: "testuser"
+      - hideKeyboard
+
+- runFlow:
+    when:
+      visible: "Password"
+    commands:
+      - tapOn: "Password"
+      - inputText: "testpass123"
+      - hideKeyboard
+
+- takeScreenshot: screens/01-login/04-login-filled
+
+# -----------------------------------------------------------------------------
+# Screenshot 5: Connecting State
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Sign In"
+    commands:
+      - tapOn: "Sign In"
+      # Capture connecting state quickly
+      - takeScreenshot: screens/01-login/05-login-connecting
+
+# -----------------------------------------------------------------------------
+# Screenshot 6: Auth Error (Wrong Credentials)
+# -----------------------------------------------------------------------------
+- extendedWaitUntil:
+    visible:
+      text: ".*error.*|.*failed.*|.*invalid.*|.*incorrect.*"
+    timeout: 10000
+- takeScreenshot: screens/01-login/06-login-auth-error
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Login screenshots complete: screens/01-login/");

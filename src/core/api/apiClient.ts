@@ -20,6 +20,7 @@ import {
   CollectionsResponse,
   PlaylistsResponse,
   AuthorQuery,
+  FilterData,
 } from '../types/api';
 import { User } from '../types/user';
 import { Library, LibraryItem, Collection, Playlist } from '../types/library';
@@ -77,7 +78,7 @@ class ApiClient extends BaseApiClient {
     libraryId: string,
     options?: LibraryItemsQuery
   ): Promise<PaginatedResponse<LibraryItem>> {
-    const queryString = buildQueryString(options);
+    const queryString = buildQueryString(options as Record<string, unknown>);
     const url = `${endpoints.libraries.items(libraryId)}${queryString}`;
     return this.get<PaginatedResponse<LibraryItem>>(url);
   }
@@ -156,7 +157,7 @@ class ApiClient extends BaseApiClient {
   // ==================== Search ====================
 
   async searchLibrary(libraryId: string, query: SearchQuery): Promise<SearchResults> {
-    const queryString = buildQueryString(query);
+    const queryString = buildQueryString(query as unknown as Record<string, unknown>);
     const url = `${endpoints.libraries.search(libraryId)}${queryString}`;
     return this.get<SearchResults>(url);
   }
@@ -186,7 +187,7 @@ class ApiClient extends BaseApiClient {
   }
 
   async getAuthor(authorId: string, include?: AuthorQuery): Promise<Author> {
-    const queryString = buildQueryString(include);
+    const queryString = buildQueryString(include as Record<string, unknown>);
     const url = `${endpoints.authors.get(authorId)}${queryString}`;
     return this.get<Author>(url);
   }

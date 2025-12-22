@@ -9,14 +9,16 @@ import type { LucideIcon } from 'lucide-react-native';
 import { colors } from '@/shared/theme';
 
 interface IconProps {
-  name: keyof typeof LucideIcons;
+  name: keyof typeof LucideIcons | string;
   size?: number;
   color?: string;
   strokeWidth?: number;
+  /** @deprecated Icon set is ignored - all icons are Lucide */
+  set?: string;
 }
 
 export function Icon({ name, size = 24, color = colors.textPrimary, strokeWidth = 2 }: IconProps) {
-  const IconComponent = LucideIcons[name] as LucideIcon;
+  const IconComponent = LucideIcons[name as keyof typeof LucideIcons] as LucideIcon;
 
   if (!IconComponent) {
     console.warn(`Icon "${name}" not found in Lucide icons`);

@@ -1,0 +1,154 @@
+# =============================================================================
+# FULL CAPTURE PART 3: Series Detail (52-55) & Search (56-65)
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# SERIES DETAIL (52-55)
+# =============================================================================
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Look for Series section
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+
+# Tap on a series
+- tapOn:
+    text: "Series"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# If we're on series list, tap first series
+- tapOn:
+    point: "25%,30%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/52-series-overview
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/53-series-progress
+- takeScreenshot: comprehensive/55-series-scrolled
+
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# SEARCH TAB (56-61)
+# =============================================================================
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/56-search-empty
+
+# Tap search field
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/57-search-keyboard
+
+# Type partial query
+- inputText: "the"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: comprehensive/58-search-typing
+
+# Complete search
+- inputText: " lord"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/59-search-results
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: comprehensive/61-search-scrolled
+
+# Clear and search for no results
+- hideKeyboard
+- tapOn:
+    point: "90%,12%"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- inputText: "xyzabc123nonsense"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/60-search-no-results
+
+- hideKeyboard
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# QUICK BROWSE CARDS (62-65)
+# =============================================================================
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Genres
+- tapOn:
+    text: "Genres"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/62-genres-list
+- back
+- waitForAnimationToEnd
+
+# Authors
+- tapOn:
+    text: "Authors"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/63-authors-list
+- back
+- waitForAnimationToEnd
+
+# Series
+- tapOn:
+    text: "Series"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/64-series-list
+- back
+- waitForAnimationToEnd
+
+# Narrators
+- tapOn:
+    text: "Narrators"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: comprehensive/65-narrators-list
+- back
+- waitForAnimationToEnd
+
+- evalScript: |
+    console.log("Part 3 Series & Search complete");

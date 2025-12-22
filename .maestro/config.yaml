@@ -1,0 +1,15 @@
+# Maestro Configuration
+# https://maestro.mobile.dev/
+
+# App identifiers
+ios:
+  bundleId: com.secretlibrary.app
+android:
+  appId: com.secretlibrary.app
+
+# Default settings
+executionOrder:
+  continueOnFailure: true
+
+# Screenshot output directory (relative to where maestro is run)
+# Screenshots will be saved to: .maestro/screenshots/screens/

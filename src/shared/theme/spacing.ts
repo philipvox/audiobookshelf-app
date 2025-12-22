@@ -101,6 +101,7 @@ export const layout = {
 
 /** Border radius tokens */
 export const radius = {
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,

@@ -156,7 +156,7 @@ export function HeroSection({ hero }: HeroSectionProps) {
       <View style={styles.infoContainer}>
         {/* Recommendation reason */}
         <View style={styles.reasonRow}>
-          <Icon name="sparkles" size={scale(12)} color={colors.accent} set="ionicons" />
+          <Icon name="Sparkles" size={scale(12)} color={colors.accent} />
           <Text style={styles.reason}>{reason || 'Recommended for you'}</Text>
         </View>
 
@@ -166,7 +166,7 @@ export function HeroSection({ hero }: HeroSectionProps) {
         {/* Meta info row */}
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Icon name="time-outline" size={scale(12)} color={colors.textTertiary} set="ionicons" />
+            <Icon name="Clock" size={scale(12)} color={colors.textTertiary} />
             <Text style={styles.metaText}>{formatDuration(book.duration)}</Text>
           </View>
           {book.genres[0] && (

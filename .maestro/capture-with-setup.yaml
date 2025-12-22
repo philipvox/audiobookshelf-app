@@ -1,0 +1,305 @@
+# =============================================================================
+# MAESTRO: Screenshot Capture with Content Setup
+# =============================================================================
+# This flow sets up content (downloads, favorites, playback) before capturing
+# screenshots. Works even with an empty library.
+#
+# Usage:
+#   npm run screenshots:setup
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+# =============================================================================
+# LAUNCH (assumes already logged in)
+# =============================================================================
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# PHASE 1: SETUP - Add content to library
+# =============================================================================
+
+# Go to Discover/Browse to find books
+- tapOn:
+    text: "Discover"
+    optional: true
+- tapOn:
+    text: "Browse"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Take browse screenshot
+- takeScreenshot: 01-browse
+
+# Tap on first book to open detail
+- tapOn:
+    point: "25%,45%"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Take book detail screenshot
+- takeScreenshot: 02-book-detail-overview
+
+# Look for Chapters tab
+- runFlow:
+    when:
+      visible: "Chapters"
+    commands:
+      - tapOn: "Chapters"
+      - waitForAnimationToEnd
+      - takeScreenshot: 03-book-detail-chapters
+      - tapOn: "Overview"
+      - waitForAnimationToEnd
+
+# Download the book (to add to library) - DON'T start playback yet
+- runFlow:
+    when:
+      visible: "Download"
+    commands:
+      - tapOn: "Download"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 04-downloading
+      # Wait a moment for download to start
+      - waitForAnimationToEnd:
+          timeout: 1000
+
+# Go back to browse
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 2: Setup Series (if available)
+# =============================================================================
+
+# Scroll down to find series
+- swipe:
+    direction: UP
+    duration: 500
+- waitForAnimationToEnd
+
+# Try to tap on a series
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn: "Series"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 06-series-detail
+      # Favorite the series
+      - runFlow:
+          when:
+            visible:
+              id: "favorite-button"
+          commands:
+            - tapOn:
+                id: "favorite-button"
+            - waitForAnimationToEnd
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 3: Capture Main Screens
+# =============================================================================
+
+# HOME
+- tapOn:
+    text: "Home"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 10-home
+
+# LIBRARY
+- tapOn:
+    text: "Library"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 11-library-all
+
+# Library tabs (capture whatever is available)
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - waitForAnimationToEnd
+      - takeScreenshot: 12-library-downloaded
+
+- runFlow:
+    when:
+      visible: "In Progress"
+    commands:
+      - tapOn: "In Progress"
+      - waitForAnimationToEnd
+      - takeScreenshot: 13-library-in-progress
+
+- runFlow:
+    when:
+      visible: "Favorites"
+    commands:
+      - tapOn: "Favorites"
+      - waitForAnimationToEnd
+      - takeScreenshot: 14-library-favorites
+
+# Back to All
+- runFlow:
+    when:
+      visible: "All"
+    commands:
+      - tapOn: "All"
+      - waitForAnimationToEnd
+
+# DISCOVER
+- tapOn:
+    text: "Discover"
+    optional: true
+- tapOn:
+    text: "Browse"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 15-discover
+
+# PROFILE
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: 20-profile
+
+# =============================================================================
+# PHASE 4: Profile Sub-screens
+# =============================================================================
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd
+- takeScreenshot: 21-downloads
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- runFlow:
+    when:
+      visible: "Wishlist"
+    commands:
+      - tapOn: "Wishlist"
+      - waitForAnimationToEnd
+      - takeScreenshot: 22-wishlist
+      - back
+      - waitForAnimationToEnd
+
+# Stats
+- runFlow:
+    when:
+      visible: "Listening Stats"
+    commands:
+      - tapOn: "Listening Stats"
+      - waitForAnimationToEnd
+      - takeScreenshot: 23-stats
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 5: Settings Screens
+# =============================================================================
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd
+- takeScreenshot: 30-playback-settings
+- back
+- waitForAnimationToEnd
+
+# Storage Settings
+- tapOn:
+    text: "Storage"
+- waitForAnimationToEnd
+- takeScreenshot: 31-storage-settings
+- back
+- waitForAnimationToEnd
+
+# Haptic Settings
+- runFlow:
+    when:
+      visible: "Haptic"
+    commands:
+      - tapOn: "Haptic"
+      - waitForAnimationToEnd
+      - takeScreenshot: 32-haptic-settings
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PHASE 6: Player (Start playback ONCE from home)
+# =============================================================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Take home screenshot first
+- takeScreenshot: 40-home-with-content
+
+# Open player by tapping the CD disc (center of screen)
+- tapOn:
+    point: "50%,32%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 41-player-full
+
+# Close player by tapping X button (top left)
+- tapOn:
+    point: "8%,5%"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# =============================================================================
+# PHASE 7: Search
+# =============================================================================
+
+- tapOn:
+    text: "Discover"
+    optional: true
+- tapOn:
+    text: "Browse"
+    optional: true
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: "Search"
+      - waitForAnimationToEnd
+      - takeScreenshot: 50-search-empty
+      - inputText: "the"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 51-search-results
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# DONE
+# =============================================================================
+- takeScreenshot: 99-final
+
+- evalScript: |
+    console.log("");
+    console.log("=============================================");
+    console.log("  ✅ Screenshot capture complete!");
+    console.log("  📁 .maestro/screenshots/");
+    console.log("=============================================");
+    console.log("");

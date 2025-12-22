@@ -5,7 +5,7 @@
  */
 
 // Screens
-export { WishlistScreen } from './screens';
+export { WishlistScreen, ManualAddScreen } from './screens';
 
 // Components
 export { WishlistItemRow, ManualAddSheet } from './components';

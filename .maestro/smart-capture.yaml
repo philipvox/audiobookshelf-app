@@ -1,0 +1,386 @@
+# =============================================================================
+# SMART SCREENSHOT CAPTURE - Simplified with Conditional Validation
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# =============================================================================
+# LIBRARY TAB - WITH CONDITIONAL CONTENT VALIDATION
+# =============================================================================
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Library All - Capture with validation
+# If library has content (not empty)
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-all-content
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: smart/library-all-scrolled
+      - swipe:
+          start: "50%,30%"
+          end: "50%,70%"
+      - waitForAnimationToEnd
+
+# If library is empty
+- runFlow:
+    when:
+      visible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-empty
+
+# Downloaded tab
+- tapOn:
+    text: "Downloaded"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-downloaded-content
+
+# In Progress tab
+- tapOn:
+    text: "In Progress"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-progress-content
+
+# Not Started tab
+- tapOn:
+    text: "Not Started"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-notstarted-content
+
+# Completed tab
+- tapOn:
+    text: "Completed"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-completed-content
+
+# Favorites tab
+- tapOn:
+    text: "Favorites"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - takeScreenshot: smart/library-favorites-content
+
+# =============================================================================
+# BOOK DETAIL - Only if library has content
+# =============================================================================
+
+- tapOn:
+    text: "All"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - tapOn:
+          point: "25%,35%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/book-detail-overview
+      - swipe:
+          start: "50%,70%"
+          end: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: smart/book-detail-scrolled
+      - tapOn:
+          text: "Chapters"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: smart/book-chapters
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# SEARCH
+# =============================================================================
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/search-empty
+
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- inputText: "the"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Check for results
+- runFlow:
+    when:
+      visible: "No results"
+    commands:
+      - hideKeyboard
+      - takeScreenshot: smart/search-no-results
+
+- runFlow:
+    when:
+      notVisible: "No results"
+    commands:
+      - hideKeyboard
+      - takeScreenshot: smart/search-results
+
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# BROWSE
+# =============================================================================
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/browse-default
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: smart/browse-scrolled
+
+# Mood Discovery
+- runFlow:
+    when:
+      visible: "What sounds good"
+    commands:
+      - tapOn:
+          text: "What sounds good"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/mood-discovery
+      - back
+      - waitForAnimationToEnd
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Genres
+- runFlow:
+    when:
+      visible: "Genres"
+    commands:
+      - tapOn:
+          text: "Genres"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/browse-genres
+      - back
+      - waitForAnimationToEnd
+
+# Authors
+- runFlow:
+    when:
+      visible: "Authors"
+    commands:
+      - tapOn:
+          text: "Authors"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/browse-authors
+      - back
+      - waitForAnimationToEnd
+
+# Series
+- runFlow:
+    when:
+      visible: "Series"
+    commands:
+      - tapOn:
+          text: "Series"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/browse-series
+      - back
+      - waitForAnimationToEnd
+
+# =============================================================================
+# PROFILE & SETTINGS
+# =============================================================================
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/profile-default
+
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- takeScreenshot: smart/profile-scrolled
+
+- swipe:
+    start: "50%,30%"
+    end: "50%,70%"
+- waitForAnimationToEnd
+
+# Downloads
+- tapOn:
+    text: "Downloads"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      visible: "No downloads"
+    commands:
+      - takeScreenshot: smart/downloads-empty
+
+- runFlow:
+    when:
+      notVisible: "No downloads"
+    commands:
+      - takeScreenshot: smart/downloads-content
+
+- back
+- waitForAnimationToEnd
+
+# Wishlist
+- tapOn:
+    text: "Wishlist"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      visible: "Empty"
+    commands:
+      - takeScreenshot: smart/wishlist-empty
+
+- runFlow:
+    when:
+      notVisible: "Empty"
+    commands:
+      - takeScreenshot: smart/wishlist-content
+
+- back
+- waitForAnimationToEnd
+
+# Stats
+- tapOn:
+    text: "Listening Stats"
+    optional: true
+- tapOn:
+    text: "Stats"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/stats-default
+- back
+- waitForAnimationToEnd
+
+# Playback Settings
+- tapOn:
+    text: "Playback"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/playback-settings
+- back
+- waitForAnimationToEnd
+
+# =============================================================================
+# HOME & PLAYER
+# =============================================================================
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smart/home-default
+
+# Try to start playback and capture player
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- runFlow:
+    when:
+      notVisible: "Your library is empty"
+    commands:
+      - tapOn:
+          point: "25%,35%"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - tapOn:
+          text: "Play"
+          optional: true
+      - tapOn:
+          text: "Stream"
+          optional: true
+      - tapOn:
+          text: "Resume"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - takeScreenshot: smart/player-started
+      - tapOn:
+          text: "Home"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/home-with-miniplayer
+      - tapOn:
+          point: "50%,93%"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: smart/player-full
+
+- evalScript: |
+    console.log("Smart capture complete");

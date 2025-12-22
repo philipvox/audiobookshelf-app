@@ -380,14 +380,17 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   },
 
   getAuthor: (name: string) => {
+    if (!name) return undefined;
     return get().authors.get(name.toLowerCase());
   },
 
   getNarrator: (name: string) => {
+    if (!name) return undefined;
     return get().narrators.get(name.toLowerCase());
   },
 
   getSeries: (name: string) => {
+    if (!name) return undefined;
     // Try exact match first
     let series = get().series.get(name.toLowerCase());
     if (series) return series;

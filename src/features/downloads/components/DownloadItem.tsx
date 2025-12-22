@@ -261,9 +261,27 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
       {/* Action button */}
       {renderActionButton()}
 
-      {/* Delete button */}
-      <Pressable style={styles.deleteButton} onPress={handleDelete}>
-        <RemoveIcon size={scale(18)} color={COLORS.textSecondary} />
+      {/* Delete/Cancel button - more prominent during active download */}
+      <Pressable
+        style={[
+          styles.deleteButton,
+          (download.status === 'downloading' || download.status === 'pending' || download.status === 'paused') &&
+            styles.cancelButton,
+        ]}
+        onPress={handleDelete}
+        accessibilityLabel={
+          download.status === 'complete' ? 'Remove download' : 'Cancel download'
+        }
+        accessibilityRole="button"
+      >
+        <RemoveIcon
+          size={scale(18)}
+          color={
+            download.status === 'downloading' || download.status === 'pending' || download.status === 'paused'
+              ? COLORS.error
+              : COLORS.textSecondary
+          }
+        />
       </Pressable>
     </View>
   );
@@ -326,5 +344,9 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderRadius: scale(22),
   },
 });

@@ -214,7 +214,7 @@ export function BrowseScreen() {
         {/* Empty State - only show when not loading and no content */}
         {!showSkeleton && !hasContent && (
           <View style={styles.emptyState}>
-            <Icon name="library-outline" size={scale(48)} color="rgba(255,255,255,0.3)" set="ionicons" />
+            <Icon name="Library" size={scale(48)} color="rgba(255,255,255,0.3)" />
             <Text style={styles.emptyTitle}>Your library is waiting</Text>
             <Text style={styles.emptySubtitle}>
               Add audiobooks to your server to start discovering.
@@ -225,7 +225,7 @@ export function BrowseScreen() {
         {/* No Results for Filter */}
         {hasContent && rows.length === 0 && selectedGenre !== 'All' && (
           <View style={styles.emptyState}>
-            <Icon name="search-outline" size={scale(48)} color="rgba(255,255,255,0.3)" set="ionicons" />
+            <Icon name="Search" size={scale(48)} color="rgba(255,255,255,0.3)" />
             <Text style={styles.emptyTitle}>No books match "{selectedGenre}"</Text>
             <TouchableOpacity
               style={styles.clearFilterButton}

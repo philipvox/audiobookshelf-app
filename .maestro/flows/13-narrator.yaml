@@ -1,0 +1,50 @@
+# Capture Narrator Detail Screen
+appId: com.secretlibrary.app
+
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Browse"
+    timeout: 10000
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 5000
+
+# Scroll down to find Narrators section
+- swipe:
+    direction: UP
+    duration: 500
+- swipe:
+    direction: UP
+    duration: 500
+
+# Try tapping on Narrators text
+- tapOn:
+    text: "Narrators"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+- takeScreenshot: screens/07-details/25-narrators-list
+
+# Tap first narrator card
+- tapOn:
+    point: "25%, 35%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+- takeScreenshot: screens/07-details/26-narrator-detail-top
+
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/07-details/27-narrator-detail-scrolled
+
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/07-details/28-narrator-detail-bottom

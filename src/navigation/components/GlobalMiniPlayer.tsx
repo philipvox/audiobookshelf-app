@@ -5,7 +5,7 @@
  * Shows on all screens when a book is loaded, hidden when full player is open.
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Pause } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -30,6 +30,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import {
   colors,
   spacing,
@@ -187,6 +188,20 @@ const PlayIcon = ({ size, color }: { size: number; color: string }) => (
 
 export function GlobalMiniPlayer() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const [currentRouteName, setCurrentRouteName] = useState('');
+
+  // Track current route for hiding on modal screens
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('state', () => {
+      const state = navigation.getState();
+      if (state) {
+        const route = state.routes[state.index];
+        setCurrentRouteName(route.name);
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Player state
   const currentBook = usePlayerStore((s) => s.currentBook);
@@ -253,7 +268,9 @@ export function GlobalMiniPlayer() {
   }));
 
   // Don't render if no book or full player is open
-  if (!currentBook || isPlayerVisible) {
+  // Also hide on full-screen modal routes
+  const hiddenRoutes = ['ReadingHistoryWizard', 'MoodDiscovery', 'MoodResults', 'PreferencesOnboarding'];
+  if (!currentBook || isPlayerVisible || hiddenRoutes.includes(currentRouteName)) {
     return null;
   }
 
@@ -327,7 +344,7 @@ export function GlobalMiniPlayer() {
                 {isLoading ? (
                   <ActivityIndicator size="small" color={colors.accent} />
                 ) : isPlaying ? (
-                  <Ionicons name="pause" size={playIconSize} color={colors.accent} />
+                  <Pause size={playIconSize} color={colors.accent} strokeWidth={3} />
                 ) : (
                   <PlayIcon size={playIconSize} color={colors.accent} />
                 )}

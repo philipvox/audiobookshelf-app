@@ -29,7 +29,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { DownloadTask, downloadManager } from '@/core/services/downloadManager';
 import { useCoverUrl } from '@/core/cache';
@@ -38,6 +38,7 @@ import { LibraryItem } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, scale, wp } from '@/shared/theme';
+import { Snackbar, useSnackbar } from '@/shared/components';
 
 // ============================================================================
 // DESIGN TOKENS (from spec)
@@ -286,15 +287,20 @@ interface DownloadedRowProps {
 
 function DownloadedRow({ download, onPress, onDelete }: DownloadedRowProps) {
   const [book, setBook] = useState<LibraryItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const coverUrl = useCoverUrl(download.itemId);
   const swipeableRef = React.useRef<Swipeable>(null);
 
   useEffect(() => {
-    sqliteCache.getLibraryItem(download.itemId).then(setBook);
+    setIsLoading(true);
+    sqliteCache.getLibraryItem(download.itemId).then((item) => {
+      setBook(item);
+      setIsLoading(false);
+    });
   }, [download.itemId]);
 
   const metadata = book?.media?.metadata as any;
-  const title = metadata?.title || 'Unknown';
+  const title = isLoading ? 'Loading...' : (metadata?.title || 'Unknown Title');
   const author = metadata?.authorName || '';
   const downloadDate = download.completedAt ? new Date(download.completedAt) : new Date();
 
@@ -390,13 +396,30 @@ export function DownloadsScreen() {
   const insets = useSafeAreaInsets();
   const { downloads, deleteDownload, pauseDownload, resumeDownload, cancelDownload } = useDownloads();
 
-  // Categorize downloads
+  // Snackbar for undo functionality
+  const { snackbarProps, showUndo } = useSnackbar();
+
+  // Pending deletion state for undo functionality
+  const [pendingDeletion, setPendingDeletion] = React.useState<{
+    items: DownloadTask[];
+    timeoutId: NodeJS.Timeout | null;
+  } | null>(null);
+
+  // Get pending deletion item IDs for filtering
+  const pendingDeletionIds = useMemo(() => {
+    return new Set(pendingDeletion?.items.map(d => d.itemId) || []);
+  }, [pendingDeletion]);
+
+  // Categorize downloads (excluding pending deletions)
   const { downloading, queued, completed } = useMemo(() => {
     const downloading: DownloadTask[] = [];
     const queued: DownloadTask[] = [];
     const completed: DownloadTask[] = [];
 
     for (const d of downloads) {
+      // Skip items pending deletion
+      if (pendingDeletionIds.has(d.itemId)) continue;
+
       if (d.status === 'downloading' || d.status === 'paused') {
         downloading.push(d);
       } else if (d.status === 'pending') {
@@ -410,7 +433,7 @@ export function DownloadsScreen() {
     completed.sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0));
 
     return { downloading, queued, completed };
-  }, [downloads]);
+  }, [downloads, pendingDeletionIds]);
 
   const totalUsedBytes = useMemo(() => {
     return completed.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
@@ -453,27 +476,69 @@ export function DownloadsScreen() {
     downloading.forEach(d => pauseDownload(d.itemId));
   }, [downloading, pauseDownload]);
 
+  // Execute pending deletion (called after undo timeout)
+  const executePendingDeletion = useCallback(async () => {
+    if (!pendingDeletion) return;
+
+    // Actually delete the items
+    for (const item of pendingDeletion.items) {
+      await deleteDownload(item.itemId);
+    }
+
+    // Clear pending state
+    setPendingDeletion(null);
+  }, [pendingDeletion, deleteDownload]);
+
+  // Undo pending deletion
+  const handleUndoDeletion = useCallback(() => {
+    if (pendingDeletion?.timeoutId) {
+      clearTimeout(pendingDeletion.timeoutId);
+    }
+    setPendingDeletion(null);
+    haptics.success();
+  }, [pendingDeletion]);
+
   const handleDeleteAll = useCallback(() => {
     if (completed.length === 0) return;
 
     const totalSize = completed.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
+    const itemCount = completed.length;
 
     Alert.alert(
       'Delete All Downloads?',
-      `This will remove ${completed.length} audiobook${completed.length !== 1 ? 's' : ''} (${formatBytes(totalSize)}). You can re-download them anytime.`,
+      `This will remove ${itemCount} audiobook${itemCount !== 1 ? 's' : ''} (${formatBytes(totalSize)}). You can re-download them anytime.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete All',
           style: 'destructive',
-          onPress: async () => {
-            haptics.warning();
-            await downloadManager.clearAllDownloads();
+          onPress: () => {
+            haptics.destructiveConfirm();
+
+            // Store items for potential undo (5 second window)
+            const itemsToDelete = [...completed];
+
+            // Set up delayed deletion
+            const timeoutId = setTimeout(() => {
+              executePendingDeletion();
+            }, 5500); // Slightly longer than snackbar duration
+
+            setPendingDeletion({
+              items: itemsToDelete,
+              timeoutId,
+            });
+
+            // Show undo snackbar
+            showUndo(
+              `Deleted ${itemCount} download${itemCount !== 1 ? 's' : ''}`,
+              handleUndoDeletion,
+              5000
+            );
           },
         },
       ]
     );
-  }, [completed]);
+  }, [completed, executePendingDeletion, showUndo, handleUndoDeletion]);
 
   const handleBrowse = useCallback(() => {
     navigation.navigate('Main', { screen: 'DiscoverTab' });
@@ -576,6 +641,9 @@ export function DownloadsScreen() {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Undo Snackbar */}
+      <Snackbar {...snackbarProps} />
     </View>
   );
 }

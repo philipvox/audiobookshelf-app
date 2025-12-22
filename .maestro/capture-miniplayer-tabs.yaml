@@ -1,0 +1,44 @@
+# =============================================================================
+# CAPTURE MINI-PLAYER ACROSS TABS
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/tab-home-miniplayer
+
+- tapOn:
+    text: "Library"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/tab-library-miniplayer
+
+- tapOn:
+    text: "Search"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/tab-search-miniplayer
+
+- tapOn:
+    text: "Browse"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/tab-browse-miniplayer
+
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: full/tab-profile-miniplayer
+
+- evalScript: |
+    console.log("Mini-player tabs complete!");

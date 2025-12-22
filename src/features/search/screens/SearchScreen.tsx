@@ -2,7 +2,7 @@
  * src/features/search/screens/SearchScreen.tsx
  *
  * Enhanced search screen based on NNGroup/Baymard UX research:
- * - Simple text autocomplete (no thumbnails per research)
+ * - Autocomplete with author thumbnails (enhanced from simple text)
  * - Darkened background when autocomplete active
  * - Debounced search (300ms)
  * - Typo tolerance with fuzzy matching
@@ -31,7 +31,7 @@ import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
-import { HeartButton, SeriesHeartButton } from '@/shared/components';
+import { HeartButton, SeriesHeartButton, SearchResultsSkeleton, AuthorRowSkeleton } from '@/shared/components';
 import { BookCard } from '@/shared/components/BookCard';
 import { LibraryItem } from '@/core/types';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
@@ -344,11 +344,16 @@ export function SearchScreen() {
         };
       });
 
-    // Authors - max 2
+    // Authors - max 2 (with image data for thumbnails)
     const authors = allAuthors
       .filter(a => a.name.toLowerCase().includes(lowerQuery))
       .slice(0, 2)
-      .map(a => ({ name: a.name, bookCount: a.bookCount }));
+      .map(a => ({
+        name: a.name,
+        bookCount: a.bookCount,
+        id: a.id,
+        imagePath: a.imagePath,
+      }));
 
     // Series - max 1
     const series = allSeries
@@ -556,11 +561,11 @@ export function SearchScreen() {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
+          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
         <View style={styles.searchContainer}>
-          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
@@ -588,7 +593,7 @@ export function SearchScreen() {
               accessibilityLabel="Clear search"
               accessibilityRole="button"
             >
-              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
           )}
         </View>
@@ -600,7 +605,7 @@ export function SearchScreen() {
           accessibilityRole="button"
           accessibilityState={{ expanded: showFilters }}
         >
-          <Icon name="options" size={20} color={showFilters ? '#000' : '#FFF'} set="ionicons" />
+          <Icon name="Settings" size={20} color={showFilters ? '#000' : '#FFF'} />
           {activeFilterCount > 0 && (
             <View style={styles.filterBadge}>
               <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
@@ -643,7 +648,7 @@ export function SearchScreen() {
                       {option === 'dateAdded' ? 'Date' : option.charAt(0).toUpperCase() + option.slice(1)}
                     </Text>
                     {sortBy === option && (
-                      <Icon name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'} size={12} color="#000" set="ionicons" />
+                      <Icon name={sortOrder === 'asc' ? 'ArrowUp' : 'ArrowDown'} size={12} color="#000" />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -726,13 +731,13 @@ export function SearchScreen() {
         </View>
       )}
 
-      {/* Autocomplete Overlay (simple text per research - no thumbnails) */}
+      {/* Autocomplete Overlay (with author thumbnails for enhanced discoverability) */}
       {showAutocomplete && (
         <>
           {/* Darkened background per Baymard research */}
           <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} />
 
-          <View style={styles.autocompleteContainer}>
+          <View style={[styles.autocompleteContainer, { top: insets.top + TOP_NAV_HEIGHT + 10 + 44 + 12 }]}>
             {/* Books */}
             {autocompleteSuggestions.books.length > 0 && (
               <View style={styles.autocompleteSectionContainer}>
@@ -750,7 +755,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle} numberOfLines={1}>{book.title}</Text>
                       <Text style={styles.autocompleteMeta}>{book.author} · {book.duration}</Text>
                     </View>
-                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -760,22 +765,36 @@ export function SearchScreen() {
             {autocompleteSuggestions.authors.length > 0 && (
               <View style={styles.autocompleteSectionContainer}>
                 <Text style={styles.autocompleteSection}>AUTHORS</Text>
-                {autocompleteSuggestions.authors.map((author) => (
-                  <TouchableOpacity
-                    key={author.name}
-                    style={styles.autocompleteItem}
-                    onPress={() => handleAutocompleteAuthor(author.name)}
-                    accessibilityLabel={`Author: ${author.name}, ${author.bookCount} books`}
-                    accessibilityRole="button"
-                    accessibilityHint="Double tap to view author"
-                  >
-                    <View style={styles.autocompleteItemContent}>
-                      <Text style={styles.autocompleteTitle}>{author.name}</Text>
-                      <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
-                    </View>
-                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
-                  </TouchableOpacity>
-                ))}
+                {autocompleteSuggestions.authors.map((author) => {
+                  const imageUrl = author.id && author.imagePath
+                    ? apiClient.getAuthorImageUrl(author.id)
+                    : null;
+                  const initials = author.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      key={author.name}
+                      style={styles.autocompleteItem}
+                      onPress={() => handleAutocompleteAuthor(author.name)}
+                      accessibilityLabel={`Author: ${author.name}, ${author.bookCount} books`}
+                      accessibilityRole="button"
+                      accessibilityHint="Double tap to view author"
+                    >
+                      {/* Author Thumbnail */}
+                      {imageUrl ? (
+                        <Image source={imageUrl} style={styles.autocompleteThumbnail} contentFit="cover" />
+                      ) : (
+                        <View style={[styles.autocompleteThumbnail, styles.autocompleteThumbnailPlaceholder]}>
+                          <Text style={styles.autocompleteThumbnailInitials}>{initials}</Text>
+                        </View>
+                      )}
+                      <View style={styles.autocompleteItemContent}>
+                        <Text style={styles.autocompleteTitle}>{author.name}</Text>
+                        <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
+                      </View>
+                      <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
@@ -796,7 +815,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle}>{series.name}</Text>
                       <Text style={styles.autocompleteMeta}>{series.bookCount} books</Text>
                     </View>
-                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -819,7 +838,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle}>{narrator.name}</Text>
                       <Text style={styles.autocompleteMeta}>{narrator.bookCount} books narrated</Text>
                     </View>
-                    <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -845,8 +864,19 @@ export function SearchScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Loading state - show skeleton while cache loads */}
+        {!isLoaded && (
+          <View style={styles.emptyStateContainer}>
+            <SearchResultsSkeleton count={5} />
+            <View style={{ marginTop: 24 }}>
+              <AuthorRowSkeleton />
+              <AuthorRowSkeleton style={{ marginTop: 8 }} />
+            </View>
+          </View>
+        )}
+
         {/* Empty state - show previous searches */}
-        {!hasActiveSearch && (
+        {isLoaded && !hasActiveSearch && (
           <View style={styles.emptyStateContainer}>
             {previousSearches.length > 0 ? (
               <View style={styles.previousSearches}>
@@ -862,20 +892,20 @@ export function SearchScreen() {
                     style={styles.previousSearchItem}
                     onPress={() => handlePreviousSearchPress(search)}
                   >
-                    <Icon name="time-outline" size={18} color="rgba(255,255,255,0.4)" set="ionicons" />
+                    <Icon name="Clock" size={18} color="rgba(255,255,255,0.4)" />
                     <Text style={styles.previousSearchText}>{search}</Text>
                     <TouchableOpacity
                       style={styles.removeSearchButton}
                       onPress={() => removeFromHistory(search)}
                     >
-                      <Icon name="close" size={16} color="rgba(255,255,255,0.3)" set="ionicons" />
+                      <Icon name="X" size={16} color="rgba(255,255,255,0.3)" />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 ))}
               </View>
             ) : (
               <View style={styles.emptyState}>
-                <Icon name="search" size={48} color="rgba(255,255,255,0.2)" set="ionicons" />
+                <Icon name="Search" size={48} color="rgba(255,255,255,0.2)" />
                 <Text style={styles.emptyTitle}>Search your library</Text>
                 <Text style={styles.emptySubtitle}>Find books by title, author, narrator, or series</Text>
               </View>
@@ -886,21 +916,21 @@ export function SearchScreen() {
               <Text style={styles.quickBrowseTitle}>Quick Browse</Text>
               <View style={styles.quickBrowseRow}>
                 <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('GenresList')}>
-                  <Icon name="albums-outline" size={24} color={ACCENT} set="ionicons" />
+                  <Icon name="Layers" size={24} color={ACCENT} />
                   <Text style={styles.quickBrowseItemText}>Genres</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('AuthorsList')}>
-                  <Icon name="person-outline" size={24} color={ACCENT} set="ionicons" />
+                  <Icon name="User" size={24} color={ACCENT} />
                   <Text style={styles.quickBrowseItemText}>Authors</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.quickBrowseRow}>
                 <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('SeriesList')}>
-                  <Icon name="library-outline" size={24} color={ACCENT} set="ionicons" />
+                  <Icon name="Library" size={24} color={ACCENT} />
                   <Text style={styles.quickBrowseItemText}>Series</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('NarratorList')}>
-                  <Icon name="mic-outline" size={24} color={ACCENT} set="ionicons" />
+                  <Icon name="Mic" size={24} color={ACCENT} />
                   <Text style={styles.quickBrowseItemText}>Narrators</Text>
                 </TouchableOpacity>
               </View>
@@ -909,10 +939,10 @@ export function SearchScreen() {
         )}
 
         {/* No results - with "Did you mean" recovery (per NNGroup: never leave at dead end) */}
-        {hasActiveSearch && !hasResults && (
+        {isLoaded && hasActiveSearch && !hasResults && (
           <View style={styles.noResultsContainer}>
             <View style={styles.noResultsHeader}>
-              <Icon name="search-outline" size={40} color="rgba(255,255,255,0.3)" set="ionicons" />
+              <Icon name="Search" size={40} color="rgba(255,255,255,0.3)" />
               <Text style={styles.noResultsTitle}>No results for "{debouncedQuery}"</Text>
             </View>
 
@@ -927,7 +957,7 @@ export function SearchScreen() {
                     onPress={() => handleSpellingSuggestion(suggestion.text)}
                   >
                     <Text style={styles.suggestionText}>{suggestion.text}</Text>
-                    <Icon name="arrow-forward" size={16} color={ACCENT} set="ionicons" />
+                    <Icon name="ArrowRight" size={16} color={ACCENT} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -941,21 +971,21 @@ export function SearchScreen() {
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('GenresList')}
                 >
-                  <Icon name="albums-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Icon name="Layers" size={20} color={ACCENT} />
                   <Text style={styles.browseRecoveryText}>Genres</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('AuthorsList')}
                 >
-                  <Icon name="person-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Icon name="User" size={20} color={ACCENT} />
                   <Text style={styles.browseRecoveryText}>Authors</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('SeriesList')}
                 >
-                  <Icon name="library-outline" size={20} color={ACCENT} set="ionicons" />
+                  <Icon name="Library" size={20} color={ACCENT} />
                   <Text style={styles.browseRecoveryText}>Series</Text>
                 </TouchableOpacity>
               </View>
@@ -1016,7 +1046,7 @@ export function SearchScreen() {
           </View>
         )}
 
-        {/* Authors Section (top 2) */}
+        {/* Authors Section (top 2) - with thumbnails per UX research */}
         {hasActiveSearch && authorResults.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -1028,25 +1058,34 @@ export function SearchScreen() {
               )}
             </View>
             <View style={styles.entityList}>
-              {authorResults.slice(0, 2).map(author => (
-                <TouchableOpacity
-                  key={author.name}
-                  style={styles.entityItem}
-                  onPress={() => handleAuthorPress(author.name)}
-                  accessibilityLabel={`${author.name}, ${author.bookCount} books`}
-                  accessibilityRole="button"
-                  accessibilityHint="Double tap to view author"
-                >
-                  <View style={[styles.entityAvatar, { backgroundColor: ACCENT }]}>
-                    <Text style={styles.entityAvatarText}>{getInitials(author.name)}</Text>
-                  </View>
-                  <View style={styles.entityInfo}>
-                    <Text style={styles.entityName}>{author.name}</Text>
-                    <Text style={styles.entityMeta}>{author.bookCount} books</Text>
-                  </View>
-                  <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
-                </TouchableOpacity>
-              ))}
+              {authorResults.slice(0, 2).map(author => {
+                const imageUrl = author.id && author.imagePath
+                  ? apiClient.getAuthorImageUrl(author.id)
+                  : null;
+                return (
+                  <TouchableOpacity
+                    key={author.name}
+                    style={styles.entityItem}
+                    onPress={() => handleAuthorPress(author.name)}
+                    accessibilityLabel={`${author.name}, ${author.bookCount} books`}
+                    accessibilityRole="button"
+                    accessibilityHint="Double tap to view author"
+                  >
+                    {imageUrl ? (
+                      <Image source={imageUrl} style={styles.entityAvatarImage} contentFit="cover" />
+                    ) : (
+                      <View style={[styles.entityAvatar, { backgroundColor: ACCENT }]}>
+                        <Text style={styles.entityAvatarText}>{getInitials(author.name)}</Text>
+                      </View>
+                    )}
+                    <View style={styles.entityInfo}>
+                      <Text style={styles.entityName}>{author.name}</Text>
+                      <Text style={styles.entityMeta}>{author.bookCount} books</Text>
+                    </View>
+                    <Icon name="ChevronRight" size={20} color="rgba(255,255,255,0.3)" />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         )}
@@ -1079,7 +1118,7 @@ export function SearchScreen() {
                     <Text style={styles.entityName}>{narrator.name}</Text>
                     <Text style={styles.entityMeta}>{narrator.bookCount} books narrated</Text>
                   </View>
-                  <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" set="ionicons" />
+                  <Icon name="ChevronRight" size={20} color="rgba(255,255,255,0.3)" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -1267,6 +1306,7 @@ const styles = StyleSheet.create({
   // Results
   results: {
     flex: 1,
+    zIndex: 1, // Below autocomplete
   },
   resultsContent: {
     paddingTop: 12,
@@ -1447,6 +1487,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  entityAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
   entityAvatarText: {
     color: '#000',
     fontSize: 16,
@@ -1478,7 +1524,7 @@ const styles = StyleSheet.create({
   },
   autocompleteContainer: {
     position: 'absolute',
-    top: 110, // Below search bar
+    // top is set dynamically based on safe area insets
     left: 0,
     right: 0,
     backgroundColor: CARD_COLOR,
@@ -1523,6 +1569,23 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
     marginTop: 2,
+  },
+  autocompleteThumbnail: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  autocompleteThumbnailPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+  },
+  autocompleteThumbnailInitials: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
   },
   noAutocomplete: {
     paddingVertical: 24,

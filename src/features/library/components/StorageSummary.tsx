@@ -15,7 +15,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { CloudDownload, ChevronRight } from 'lucide-react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, scale } from '@/shared/theme';
 
 const ACCENT = colors.accent;

@@ -31,10 +31,10 @@ export function formatFileSize(bytes: number): string {
 
 /**
  * Format duration in seconds to human readable string
- * @param seconds - Duration in seconds
+ * @param seconds - Duration in seconds (handles null/undefined)
  */
-export function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '0m';
+export function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds || isNaN(seconds) || seconds <= 0) return '0m';
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -43,4 +43,27 @@ export function formatDuration(seconds: number): string {
     return `${hours}h ${minutes}m`;
   }
   return `${minutes}m`;
+}
+
+/**
+ * Format duration with long form (e.g., "2 hours 30 minutes")
+ * Used for stats display
+ */
+export function formatDurationLong(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (hours === 0 && minutes === 0) {
+    return `${Math.round(seconds)} seconds`;
+  }
+
+  if (hours === 0) {
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+
+  if (minutes === 0) {
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+
+  return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
 }

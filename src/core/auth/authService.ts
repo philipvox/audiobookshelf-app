@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 // Import directly to avoid circular dependency with ../api
 import { apiClient } from '../api/apiClient';
+import { User } from '../types/user';
 
 // Storage keys
 const TOKEN_KEY = 'auth_token';
@@ -62,34 +63,8 @@ class Storage {
 
 const storage = new Storage();
 
-/**
- * User interface
- */
-export interface User {
-  id: string;
-  username: string;
-  email?: string;
-  type: string;
-  token: string;
-  mediaProgress?: any[];
-  seriesHideFromContinueListening?: string[];
-  bookmarks?: any[];
-  isActive: boolean;
-  isLocked: boolean;
-  lastSeen?: number;
-  createdAt: number;
-  permissions: {
-    download: boolean;
-    update: boolean;
-    delete: boolean;
-    upload: boolean;
-    accessAllLibraries: boolean;
-    accessAllTags: boolean;
-    accessExplicitContent: boolean;
-  };
-  librariesAccessible: string[];
-  itemTagsAccessible: string[];
-}
+// Re-export User type for backward compatibility
+export { User };
 
 /**
  * Authentication service
@@ -208,9 +183,39 @@ class AuthService {
       await this.storeUser(user);
 
       return user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed:', error);
-      throw error;
+
+      // Provide user-friendly error messages based on the error type
+      const errorMessage = error.message?.toLowerCase() || '';
+
+      // Check for authentication failures (401)
+      if (errorMessage.includes('unauthorized') || errorMessage.includes('401')) {
+        throw new Error('Invalid username or password');
+      }
+
+      // Check for forbidden (403) - account locked/disabled
+      if (errorMessage.includes('forbidden') || errorMessage.includes('403')) {
+        throw new Error('Account is locked or disabled');
+      }
+
+      // Check for network errors
+      if (errorMessage.includes('network error') || errorMessage.includes('timeout')) {
+        throw new Error('Cannot connect to server. Check your connection and server URL.');
+      }
+
+      // Check for server not found / connection refused
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('not found')) {
+        throw new Error('Server not found. Please verify the server URL.');
+      }
+
+      // Check for invalid server response
+      if (errorMessage.includes('invalid response')) {
+        throw new Error('Invalid server response. Is this an AudiobookShelf server?');
+      }
+
+      // Generic fallback with original message
+      throw new Error(error.message || 'Login failed. Please try again.');
     }
   }
 
@@ -246,36 +251,75 @@ class AuthService {
   /**
    * Optimized session restore - reads all storage keys in parallel.
    * Reduces latency from ~150ms (3 sequential reads) to ~50ms (1 parallel read).
+   * Includes retry logic for SecureStore reliability on Android.
    */
   async restoreSessionOptimized(): Promise<{
     user: User | null;
     serverUrl: string | null;
   }> {
-    try {
-      // Read all three values in parallel
-      const [token, serverUrl, userJson] = await Promise.all([
-        storage.getItem(TOKEN_KEY),
-        storage.getItem(SERVER_URL_KEY),
-        storage.getItem(USER_KEY),
-      ]);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 100;
 
-      if (token && serverUrl && userJson) {
-        const user = JSON.parse(userJson) as User;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`[AuthService] Restoring session (attempt ${attempt}/${MAX_RETRIES})...`);
 
-        // Configure API client with stored credentials
-        apiClient.configure({
-          baseURL: serverUrl,
-          token: token,
+        // Read all three values in parallel
+        const [token, serverUrl, userJson] = await Promise.all([
+          storage.getItem(TOKEN_KEY),
+          storage.getItem(SERVER_URL_KEY),
+          storage.getItem(USER_KEY),
+        ]);
+
+        console.log(`[AuthService] Storage read complete:`, {
+          hasToken: !!token,
+          hasServerUrl: !!serverUrl,
+          hasUserJson: !!userJson,
         });
 
-        return { user, serverUrl };
-      }
+        if (token && serverUrl && userJson) {
+          const user = JSON.parse(userJson) as User;
 
-      return { user: null, serverUrl: null };
-    } catch (error) {
-      console.error('Failed to restore session (optimized):', error);
-      return { user: null, serverUrl: null };
+          // Configure API client with stored credentials
+          apiClient.configure({
+            baseURL: serverUrl,
+            token: token,
+          });
+
+          console.log(`[AuthService] Session restored for user: ${user.username}`);
+          return { user, serverUrl };
+        }
+
+        // Values missing - this is not a failure, user may not be logged in
+        if (!token && !serverUrl && !userJson) {
+          console.log('[AuthService] No stored session found (user not logged in)');
+          return { user: null, serverUrl: null };
+        }
+
+        // Partial values - something might be corrupted
+        console.warn('[AuthService] Partial session data found, clearing:', {
+          hasToken: !!token,
+          hasServerUrl: !!serverUrl,
+          hasUserJson: !!userJson,
+        });
+
+        // Clear corrupted data and return null
+        await this.clearStorage();
+        return { user: null, serverUrl: null };
+      } catch (error: any) {
+        console.error(`[AuthService] Session restore attempt ${attempt} failed:`, error.message);
+
+        if (attempt < MAX_RETRIES) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+        } else {
+          console.error('[AuthService] All session restore attempts failed');
+          return { user: null, serverUrl: null };
+        }
+      }
     }
+
+    return { user: null, serverUrl: null };
   }
 
   /**

@@ -9,6 +9,7 @@ import {
   Text,
   StyleSheet,
   ViewStyle,
+  TextStyle,
   TextInputProps as RNTextInputProps,
   TouchableOpacity,
 } from 'react-native';
@@ -22,7 +23,7 @@ interface TextInputProps extends Omit<RNTextInputProps, 'style'> {
   rightIcon?: React.ReactNode;
   onRightIconPress?: () => void;
   containerStyle?: ViewStyle;
-  inputStyle?: ViewStyle;
+  inputStyle?: TextStyle;
 }
 
 /**
@@ -73,11 +74,11 @@ export const TextInput = forwardRef<RNTextInput, TextInputProps>(
             ref={ref}
             style={[
               styles.input,
-              leftIcon && styles.inputWithLeftIcon,
-              rightIcon && styles.inputWithRightIcon,
-              isDisabled && styles.inputDisabled,
+              leftIcon ? styles.inputWithLeftIcon : undefined,
+              rightIcon ? styles.inputWithRightIcon : undefined,
+              isDisabled ? styles.inputDisabled : undefined,
               inputStyle,
-            ]}
+            ].filter(Boolean) as TextStyle[]}
             placeholderTextColor={colors.textTertiary}
             editable={editable}
             onFocus={(e) => {

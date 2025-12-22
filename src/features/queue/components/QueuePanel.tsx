@@ -195,7 +195,7 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
     onClose();
     // Small delay to let the sheet close
     setTimeout(() => {
-      navigation.navigate('LibraryTab');
+      navigation.navigate('Main', { screen: 'LibraryTab' });
     }, 200);
   }, [onClose, navigation]);
 
@@ -308,10 +308,10 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
       {/* Autoplay toggle */}
       <View style={styles.autoplayRow}>
         <View style={styles.autoplayInfo}>
-          <Ionicons
-            name="play-skip-forward-outline"
+          <SkipForward
             size={scale(18)}
             color={colors.textSecondary}
+            strokeWidth={2}
           />
           <View>
             <Text style={styles.autoplayLabel}>Autoplay series</Text>

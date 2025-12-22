@@ -1,0 +1,265 @@
+# =============================================================================
+# MAESTRO: Library Screen States
+# =============================================================================
+# Captures all My Library screen states:
+# - All tab (default)
+# - Downloaded tab
+# - In Progress tab
+# - Not Started tab
+# - Completed tab
+# - Favorites tab
+# - Search active
+# - Sort dropdown
+# - Empty states
+# - With active downloads section
+#
+# Prerequisites: User is logged in with books in library
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Navigate to Library tab
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 10000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# -----------------------------------------------------------------------------
+# ALL TAB
+# -----------------------------------------------------------------------------
+# Screenshot 1: Library All Tab (top)
+- takeScreenshot: screens/03-library/01-library-all-top
+
+# Screenshot 2: Library All Tab (scrolled)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/03-library/02-library-all-scrolled
+
+# Screenshot 3: Library All Tab (bottom)
+- swipe:
+    direction: UP
+    duration: 500
+- takeScreenshot: screens/03-library/03-library-all-bottom
+
+# Scroll back to top
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: DOWN
+    duration: 300
+
+# -----------------------------------------------------------------------------
+# DOWNLOADED TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 4: Downloaded Tab (top)
+      - takeScreenshot: screens/03-library/04-library-downloaded-top
+      # Screenshot 5: Downloaded Tab (scrolled)
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/03-library/05-library-downloaded-scrolled
+      # Scroll back
+      - swipe:
+          direction: DOWN
+          duration: 300
+
+# -----------------------------------------------------------------------------
+# IN PROGRESS TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "In Progress"
+    commands:
+      - tapOn: "In Progress"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 6: In Progress Tab
+      - takeScreenshot: screens/03-library/06-library-in-progress-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/03-library/07-library-in-progress-scrolled
+      - swipe:
+          direction: DOWN
+          duration: 300
+
+# -----------------------------------------------------------------------------
+# NOT STARTED TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Not Started"
+    commands:
+      - tapOn: "Not Started"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 8: Not Started Tab
+      - takeScreenshot: screens/03-library/08-library-not-started-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/03-library/09-library-not-started-scrolled
+      - swipe:
+          direction: DOWN
+          duration: 300
+
+# -----------------------------------------------------------------------------
+# COMPLETED TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Completed"
+    commands:
+      - tapOn: "Completed"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 10: Completed Tab
+      - takeScreenshot: screens/03-library/10-library-completed-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/03-library/11-library-completed-scrolled
+      - swipe:
+          direction: DOWN
+          duration: 300
+
+# -----------------------------------------------------------------------------
+# FAVORITES TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Favorites"
+    commands:
+      - tapOn: "Favorites"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 12: Favorites Tab
+      - takeScreenshot: screens/03-library/12-library-favorites-top
+      - swipe:
+          direction: UP
+          duration: 500
+      - takeScreenshot: screens/03-library/13-library-favorites-scrolled
+      - swipe:
+          direction: DOWN
+          duration: 300
+
+# -----------------------------------------------------------------------------
+# BACK TO ALL TAB
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "All"
+    commands:
+      - tapOn: "All"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# -----------------------------------------------------------------------------
+# SORT FUNCTIONALITY
+# -----------------------------------------------------------------------------
+# Look for sort button/dropdown
+- runFlow:
+    when:
+      visible:
+        text: "Sort|Recently|Title|Author|Duration"
+    commands:
+      - tapOn:
+          text: "Sort|Recently|Title|Author"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      # Screenshot 14: Sort Dropdown Open
+      - takeScreenshot: screens/03-library/14-library-sort-dropdown
+      # Tap outside to dismiss
+      - tapOn:
+          point: "50%, 80%"
+
+# -----------------------------------------------------------------------------
+# SEARCH FUNCTIONALITY
+# -----------------------------------------------------------------------------
+# Look for search input
+- runFlow:
+    when:
+      visible:
+        text: "Search"
+    commands:
+      - tapOn:
+          text: "Search"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      # Screenshot 15: Search Active (empty)
+      - takeScreenshot: screens/03-library/15-library-search-active
+      # Type search query
+      - inputText: "the"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Screenshot 16: Search With Results
+      - takeScreenshot: screens/03-library/16-library-search-results
+      - hideKeyboard
+      # Clear search
+      - runFlow:
+          when:
+            visible:
+              text: "Clear|×|✕"
+          commands:
+            - tapOn:
+                text: "Clear|×|✕"
+
+# -----------------------------------------------------------------------------
+# STORAGE SUMMARY (on Downloaded tab)
+# -----------------------------------------------------------------------------
+- runFlow:
+    when:
+      visible: "Downloaded"
+    commands:
+      - tapOn: "Downloaded"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+      # Look for storage bar/summary
+      - runFlow:
+          when:
+            visible:
+              text: "GB|MB|Storage|Used"
+          commands:
+            - takeScreenshot: screens/03-library/17-library-storage-summary
+
+# -----------------------------------------------------------------------------
+# Complete
+# -----------------------------------------------------------------------------
+- evalScript: |
+    console.log("Library screenshots complete: screens/03-library/");

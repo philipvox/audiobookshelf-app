@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "AudiobookShelf",
+    "name": "Secret Library",
     "slug": "audiobookshelf-app",
-    "version": "1.0.2",
+    "version": "1.0.3",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -22,8 +23,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.audiobookshelf.app",
-      "buildNumber": "1",
+      "bundleIdentifier": "com.secretlibrary.app",
+      "buildNumber": "2",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio",
@@ -39,15 +40,17 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAF8F5"
       },
-      "package": "com.audiobookshelf.app",
-      "versionCode": 1,
+      "package": "com.secretlibrary.app",
+      "versionCode": 2,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "pan"
@@ -86,7 +89,8 @@
             "kotlinVersion": "2.1.20",
             "enableProguardInReleaseBuilds": false,
             "enableShrinkResourcesInReleaseBuilds": false,
-            "useLegacyPackaging": false
+            "useLegacyPackaging": false,
+            "enableMinifyInReleaseBuilds": false
           },
           "ios": {
             "deploymentTarget": "16.0",
@@ -94,6 +98,7 @@
           }
         }
       ]
-    ]
+    ],
+    "owner": "philipvox"
   }
 }

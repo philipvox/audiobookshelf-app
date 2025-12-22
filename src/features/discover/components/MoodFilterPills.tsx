@@ -93,7 +93,7 @@ function formatFullTime(ms: number): string {
 // SUB-COMPONENTS
 // ============================================================================
 
-function FilterChip({ label, icon, iconSet = 'ionicons', active = true, onPress }: FilterChipProps) {
+function FilterChip({ label, icon, active = true, onPress }: FilterChipProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -102,10 +102,9 @@ function FilterChip({ label, icon, iconSet = 'ionicons', active = true, onPress 
       disabled={!onPress}
     >
       <Icon
-        name={icon}
+        name={icon as any}
         size={16}
         color={active ? '#000' : colors.textSecondary}
-        set={iconSet as any}
       />
       <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
         {label}
@@ -187,10 +186,9 @@ export function MoodFilterPills({
           activeOpacity={0.7}
         >
           <Icon
-            name="time-outline"
+            name="Clock"
             size={14}
             color={colors.textTertiary}
-            set="ionicons"
           />
           <Text style={styles.timerText}>
             {formatCompactTime(timeRemaining)}
@@ -205,10 +203,9 @@ export function MoodFilterPills({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Icon
-              name="grid-outline"
+              name="LayoutGrid"
               size={18}
               color={colors.textSecondary}
-              set="ionicons"
             />
           </TouchableOpacity>
 
@@ -220,10 +217,9 @@ export function MoodFilterPills({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Icon
-                name="options-outline"
+                name="SlidersHorizontal"
                 size={18}
                 color={colors.accent}
-                set="ionicons"
               />
               <Text style={styles.editText}>Edit</Text>
             </TouchableOpacity>
@@ -236,10 +232,9 @@ export function MoodFilterPills({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Icon
-              name="close-circle-outline"
+              name="XCircle"
               size={20}
               color={colors.textTertiary}
-              set="ionicons"
             />
           </TouchableOpacity>
         </View>
@@ -303,10 +298,9 @@ export function MoodFilterPills({
           <View style={styles.timerPopup}>
             <View style={styles.timerPopupIcon}>
               <Icon
-                name="time"
+                name="Clock"
                 size={32}
                 color={colors.accent}
-                set="ionicons"
               />
             </View>
             <Text style={styles.timerPopupTitle}>Mood Session</Text>

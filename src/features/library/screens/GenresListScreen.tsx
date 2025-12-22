@@ -297,7 +297,7 @@ export function GenresListScreen() {
       {/* Empty State */}
       {filteredGenres.length === 0 && (
         <View style={styles.emptyState}>
-          <Icon name="search" size={48} color="rgba(255,255,255,0.3)" set="ionicons" />
+          <Icon name="Search" size={48} color="rgba(255,255,255,0.3)" />
           <Text style={styles.emptyText}>No genres found</Text>
           <Text style={styles.emptySubtext}>Try a different search term</Text>
         </View>
@@ -358,10 +358,10 @@ export function GenresListScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="chevron-back" size={24} color="#FFFFFF" set="ionicons" />
+          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.searchContainer}>
-          <Icon name="search" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search genres..."
@@ -374,7 +374,7 @@ export function GenresListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="close-circle" size={18} color="rgba(255,255,255,0.5)" set="ionicons" />
+              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
           )}
         </View>
@@ -389,10 +389,10 @@ export function GenresListScreen() {
             onPress={() => setViewMode('grouped')}
           >
             <Icon
-              name="grid-outline"
+              name="LayoutGrid"
               size={16}
               color={viewMode === 'grouped' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
+             
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -400,10 +400,10 @@ export function GenresListScreen() {
             onPress={() => setViewMode('flat')}
           >
             <Icon
-              name="list-outline"
+              name="List"
               size={16}
               color={viewMode === 'flat' ? '#000' : 'rgba(255,255,255,0.6)'}
-              set="ionicons"
+             
             />
           </TouchableOpacity>
         </View>

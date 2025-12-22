@@ -135,10 +135,10 @@ export function MoodResultsScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
-              name="close"
+              name="X"
               size={24}
               color={colors.textPrimary}
-              set="ionicons"
+             
             />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>No Active Mood</Text>
@@ -170,10 +170,10 @@ export function MoodResultsScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
-              name="close"
+              name="X"
               size={24}
               color={colors.textPrimary}
-              set="ionicons"
+             
             />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Finding Matches...</Text>
@@ -193,10 +193,10 @@ export function MoodResultsScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
-              name="close"
+              name="X"
               size={24}
               color={colors.textPrimary}
-              set="ionicons"
+             
             />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Results</Text>
@@ -234,10 +234,10 @@ export function MoodResultsScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
           <Icon
-            name="close"
+            name="X"
             size={24}
             color={colors.textPrimary}
-            set="ionicons"
+           
           />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>

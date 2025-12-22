@@ -20,12 +20,24 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  BookOpen,
+  CheckCircle,
+  Download,
+  ArrowUp,
+  ArrowDown,
+  CloudDownload,
+  Bell,
+  BellOff,
+} from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { SeriesHeartButton } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
+import { useWishlistStore, useIsSeriesTracked } from '@/features/wishlist';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 
@@ -34,6 +46,7 @@ import { BatchActionButtons } from '../components/BatchActionButtons';
 import { SeriesBookRow } from '../components/SeriesBookRow';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { colors, scale, wp, hp, spacing, radius } from '@/shared/theme';
+import { useRenderTracker, useLifecycleTracker } from '@/utils/perfDebug';
 
 type SeriesDetailRouteParams = {
   SeriesDetail: { seriesName: string };
@@ -54,8 +67,8 @@ const STACK_ROTATION = 6;
 
 type SortType = 'asc' | 'desc';
 
-// Get sequence from book metadata - returns null if unknown
-function getSequence(item: LibraryItem): number | null {
+// Get raw sequence from book metadata - returns null if unknown
+function getRawSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
 
   // First check series array (preferred - has explicit sequence)
@@ -86,9 +99,70 @@ function getSequence(item: LibraryItem): number | null {
   return null;
 }
 
-// Get sequence for sorting (returns 999 for unknown to sort at end)
-function getSequenceForSort(item: LibraryItem): number {
-  return getSequence(item) ?? 999;
+// Get publication date for sorting (timestamp or 0)
+function getPublishDate(item: LibraryItem): number {
+  const metadata = (item.media?.metadata as any) || {};
+  // Try publishedDate first (format: YYYY-MM-DD or similar)
+  if (metadata.publishedDate) {
+    const date = new Date(metadata.publishedDate);
+    if (!isNaN(date.getTime())) {
+      return date.getTime();
+    }
+  }
+  // Try publishedYear
+  if (metadata.publishedYear) {
+    return new Date(metadata.publishedYear, 0, 1).getTime();
+  }
+  return 0;
+}
+
+// Get title for sorting
+function getTitle(item: LibraryItem): string {
+  const metadata = (item.media?.metadata as any) || {};
+  return (metadata.title || '').toLowerCase();
+}
+
+// Check if a series has meaningful sequence numbers
+// Returns false if all books have the same sequence (likely server default)
+function hasRealSequences(books: LibraryItem[]): boolean {
+  if (books.length <= 1) return true; // Single book, show sequence if present
+
+  const sequences = books.map(getRawSequence).filter(s => s !== null);
+  if (sequences.length === 0) return false; // No sequences at all
+
+  // If all sequences are the same (e.g., all "1"), it's not a real sequence
+  const uniqueSequences = new Set(sequences);
+  return uniqueSequences.size > 1;
+}
+
+// Get sequence for display - returns null if this book shouldn't show a sequence
+// (Uses series context to detect fake sequences)
+function getSequenceForDisplay(item: LibraryItem, allBooks: LibraryItem[]): number | null {
+  if (!hasRealSequences(allBooks)) {
+    return null; // Don't show sequence if all books have the same one
+  }
+  return getRawSequence(item);
+}
+
+// Get sequence for sorting
+// - If real sequences exist: use sequence number, unknowns sort to end
+// - If no real sequences: sort by publication date, then title
+function getSequenceForSort(item: LibraryItem, allBooks: LibraryItem[]): { primary: number; secondary: number; tertiary: string } {
+  const hasReal = hasRealSequences(allBooks);
+
+  if (hasReal) {
+    // Real sequences: sort by sequence number, unknowns go to end (999)
+    const seq = getRawSequence(item) ?? 999;
+    return { primary: seq, secondary: 0, tertiary: '' };
+  } else {
+    // No real sequences: sort by publication date, then title
+    const pubDate = getPublishDate(item);
+    const title = getTitle(item);
+    // Use 0 as primary to group all non-sequenced books together
+    // Secondary is publication date (negative so earlier dates come first)
+    // Tertiary is title for alphabetical fallback
+    return { primary: 0, secondary: pubDate, tertiary: title };
+  }
 }
 
 // Stacked book covers component - memoized to prevent flashing
@@ -243,6 +317,12 @@ const bgStyles = StyleSheet.create({
 });
 
 export function SeriesDetailScreen() {
+  // Performance tracking (dev only)
+  if (__DEV__) {
+    useRenderTracker('SeriesDetailScreen');
+    useLifecycleTracker('SeriesDetailScreen');
+  }
+
   const route = useRoute<RouteProp<SeriesDetailRouteParams, 'SeriesDetail'>>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -260,23 +340,60 @@ export function SeriesDetailScreen() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const { loadBook } = usePlayerStore();
 
+  // Track series functionality
+  const isTracking = useIsSeriesTracked(seriesName);
+  const { trackSeries, untrackSeries } = useWishlistStore();
+
+  const handleTrackToggle = useCallback(() => {
+    if (isTracking) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      untrackSeries(seriesName);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      trackSeries(seriesName);
+    }
+  }, [isTracking, seriesName, trackSeries, untrackSeries]);
+
   // Get series data from cache
   const seriesInfo = useMemo(() => {
     if (!isLoaded || !seriesName) return null;
     return getSeries(seriesName);
   }, [isLoaded, seriesName, getSeries]);
 
-  // Sort books by sequence
+  // Sort books by sequence (or by publication date/title if no real sequences)
   const sortedBooks = useMemo(() => {
     if (!seriesInfo?.books) return [];
-    const sorted = [...seriesInfo.books];
+    const allBooks = seriesInfo.books;
+    const sorted = [...allBooks];
     sorted.sort((a, b) => {
-      const seqA = getSequenceForSort(a);
-      const seqB = getSequenceForSort(b);
-      return sortOrder === 'asc' ? seqA - seqB : seqB - seqA;
+      const sortA = getSequenceForSort(a, allBooks);
+      const sortB = getSequenceForSort(b, allBooks);
+
+      // Primary sort (sequence or group)
+      const primaryDiff = sortOrder === 'asc'
+        ? sortA.primary - sortB.primary
+        : sortB.primary - sortA.primary;
+      if (primaryDiff !== 0) return primaryDiff;
+
+      // Secondary sort (publication date)
+      const secondaryDiff = sortOrder === 'asc'
+        ? sortA.secondary - sortB.secondary
+        : sortB.secondary - sortA.secondary;
+      if (secondaryDiff !== 0) return secondaryDiff;
+
+      // Tertiary sort (title, alphabetical)
+      return sortOrder === 'asc'
+        ? sortA.tertiary.localeCompare(sortB.tertiary)
+        : sortB.tertiary.localeCompare(sortA.tertiary);
     });
     return sorted;
   }, [seriesInfo?.books, sortOrder]);
+
+  // Check if series has real sequences (for display purposes)
+  const seriesHasRealSequences = useMemo(() => {
+    if (!seriesInfo?.books) return true;
+    return hasRealSequences(seriesInfo.books);
+  }, [seriesInfo?.books]);
 
   // Get download statuses for all books
   useEffect(() => {
@@ -418,13 +535,13 @@ export function SeriesDetailScreen() {
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.header}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Series</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.emptyContainer}>
-          <Ionicons name="book-outline" size={48} color="rgba(255,255,255,0.3)" />
+          <BookOpen size={48} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>Series not found</Text>
           <Text style={styles.emptySubtitle}>This series may have been removed</Text>
         </View>
@@ -445,7 +562,8 @@ export function SeriesDetailScreen() {
   const renderBookItem = ({ item, index }: { item: LibraryItem; index: number }) => {
     const isNowPlaying = item.id === currentBookId;
     const isUpNext = item.id === upNextBook?.id && !isNowPlaying;
-    const seq = getSequence(item);
+    // Use getSequenceForDisplay to hide sequence if all books have the same one
+    const seq = getSequenceForDisplay(item, sortedBooks);
 
     return (
       <SeriesBookRow
@@ -467,6 +585,28 @@ export function SeriesDetailScreen() {
           <Text style={styles.seriesName}>{seriesInfo.name}</Text>
           <SeriesHeartButton seriesName={seriesInfo.name} size={24} />
         </View>
+
+        {/* Track Button */}
+        <TouchableOpacity
+          style={[
+            styles.trackButton,
+            isTracking && styles.trackButtonActive
+          ]}
+          onPress={handleTrackToggle}
+          activeOpacity={0.7}
+        >
+          {isTracking ? (
+            <BellOff size={scale(16)} color="#000" strokeWidth={2} />
+          ) : (
+            <Bell size={scale(16)} color={ACCENT} strokeWidth={2} />
+          )}
+          <Text style={[
+            styles.trackButtonText,
+            isTracking && styles.trackButtonTextActive
+          ]}>
+            {isTracking ? 'Tracking' : 'Track Series'}
+          </Text>
+        </TouchableOpacity>
         <Text style={styles.bookCount}>
           {seriesInfo.bookCount} {seriesInfo.bookCount === 1 ? 'book' : 'books'} · {formatTotalDuration()}
         </Text>
@@ -496,6 +636,7 @@ export function SeriesDetailScreen() {
         inProgressBook={progressStats.inProgressBook}
         inProgressPercent={progressStats.inProgressPercent}
         onContinue={handleContinueSeries}
+        hasRealSequences={seriesHasRealSequences}
       />
 
       {/* Sort Row with Filter Toggle */}
@@ -512,11 +653,11 @@ export function SeriesDetailScreen() {
             ]}
             onPress={() => setShowDownloadedOnly(!showDownloadedOnly)}
           >
-            <Ionicons
-              name={showDownloadedOnly ? 'checkmark-circle' : 'download-outline'}
-              size={scale(14)}
-              color={showDownloadedOnly ? '#000' : 'rgba(255,255,255,0.6)'}
-            />
+            {showDownloadedOnly ? (
+              <CheckCircle size={scale(14)} color="#000" strokeWidth={2} />
+            ) : (
+              <Download size={scale(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+            )}
             <Text style={[
               styles.filterToggleText,
               showDownloadedOnly && styles.filterToggleTextActive,
@@ -530,11 +671,11 @@ export function SeriesDetailScreen() {
             style={styles.sortButton}
             onPress={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
           >
-            <Ionicons
-              name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'}
-              size={14}
-              color="#000"
-            />
+            {sortOrder === 'asc' ? (
+              <ArrowUp size={14} color="#000" strokeWidth={2.5} />
+            ) : (
+              <ArrowDown size={14} color="#000" strokeWidth={2.5} />
+            )}
             <Text style={styles.sortButtonText}>
               {sortOrder === 'asc' ? `1→${sortedBooks.length}` : `${sortedBooks.length}→1`}
             </Text>
@@ -546,7 +687,7 @@ export function SeriesDetailScreen() {
 
   const ListEmpty = () => (
     <View style={styles.emptyListContainer}>
-      <Ionicons name="cloud-download-outline" size={scale(40)} color="rgba(255,255,255,0.3)" />
+      <CloudDownload size={scale(40)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
       <Text style={styles.emptyListTitle}>No downloaded books</Text>
       <Text style={styles.emptyListSubtitle}>
         Download books to see them here when filtering
@@ -559,7 +700,7 @@ export function SeriesDetailScreen() {
           }
         }}
       >
-        <Ionicons name="download" size={scale(16)} color="#000" />
+        <Download size={scale(16)} color="#000" strokeWidth={2} />
         <Text style={styles.downloadFirstButtonText}>Download First Book</Text>
       </TouchableOpacity>
     </View>
@@ -575,7 +716,7 @@ export function SeriesDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+          <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Series</Text>
         <View style={styles.headerButton} />
@@ -687,6 +828,30 @@ const styles = StyleSheet.create({
   bookCount: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.5)',
+  },
+  trackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(20),
+    borderWidth: 1,
+    borderColor: ACCENT,
+    marginTop: scale(12),
+    marginBottom: scale(8),
+  },
+  trackButtonActive: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT,
+  },
+  trackButtonText: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    color: ACCENT,
+  },
+  trackButtonTextActive: {
+    color: '#000',
   },
   sortRow: {
     flexDirection: 'row',

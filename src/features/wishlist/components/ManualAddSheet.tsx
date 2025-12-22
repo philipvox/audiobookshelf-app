@@ -33,7 +33,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { WishlistPriority } from '../types';
 import { useWishlistStore } from '../stores/wishlistStore';
-import { colors, spacing, radius, scale, layout } from '@/shared/theme';
+import { colors, spacing, radius, scale, layout, hp } from '@/shared/theme';
 
 const ACCENT = colors.accent;
 
@@ -177,6 +177,7 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bounces={false}
             >
               {/* Title Field */}
               <View style={styles.fieldContainer}>
@@ -369,7 +370,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1c1e',
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
-    maxHeight: '90%',
+    maxHeight: hp(90),
+    height: hp(75),
   },
   handleContainer: {
     alignItems: 'center',
@@ -402,11 +404,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scrollView: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   scrollContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xl,
+    flexGrow: 1,
   },
   fieldContainer: {
     marginBottom: spacing.md,

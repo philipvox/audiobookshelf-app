@@ -60,7 +60,7 @@ export type { RetryConfig, Priority } from './networkOptimizer';
 export {
   userApi,
   collectionsApi,
-} from './endpoints';
+} from './endpoints/index';
 
 // Offline-aware API functions
 export {
