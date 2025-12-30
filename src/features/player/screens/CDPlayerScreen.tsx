@@ -1145,10 +1145,12 @@ const ChapterTimelineProgressBar = React.memo(({ position, duration, chapters, o
 
   return (
     <View style={chapterTimelineStyles.outerContainer}>
-      {/* Fixed center marker - joystick + line */}
+      {/* Marker line - positioned at bottom, extends up */}
+      <View style={chapterTimelineStyles.markerLine} />
+
+      {/* Fixed center marker - joystick hitbox */}
       <View style={chapterTimelineStyles.markerContainer}>
         {joystickComponent}
-        <View style={chapterTimelineStyles.markerLine} />
       </View>
 
       {/* Scrolling timeline area */}
@@ -1251,11 +1253,12 @@ const chapterTimelineStyles = StyleSheet.create({
   },
   markerLine: {
     position: 'absolute',
-    top: CHAPTER_MARKER_CIRCLE_SIZE, // Align to bottom of circle
-    left: (CHAPTER_MARKER_CIRCLE_SIZE - 2) / 2, // Center horizontally
+    bottom: 0, // Anchored at bottom of timeline
+    left: CHAPTER_MARKER_X - 1, // Center horizontally (line is 2px wide)
     width: 2,
-    height: CHAPTER_MARKER_LINE_HEIGHT,
+    height: CHAPTER_TICKS_AREA_HEIGHT, // Extend up through ticks area
     backgroundColor: '#F50101',
+    zIndex: 5,
   },
   container: {
     position: 'absolute',
