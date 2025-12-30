@@ -1147,6 +1147,7 @@ const ChapterTimelineProgressBar = React.memo(({ position, duration, chapters, o
     <View style={chapterTimelineStyles.outerContainer}>
       {/* Marker line - positioned at bottom, extends up */}
       <View style={chapterTimelineStyles.markerLine} />
+      <View style={chapterTimelineStyles.markerDot} />
 
       {/* Fixed center marker - joystick hitbox */}
       <View style={chapterTimelineStyles.markerContainer}>
@@ -1259,6 +1260,16 @@ const chapterTimelineStyles = StyleSheet.create({
     height: CHAPTER_TICKS_AREA_HEIGHT, // Extend up through ticks area
     backgroundColor: '#F50101',
     zIndex: 5,
+  },
+  markerDot: {
+    position: 'absolute',
+    bottom: CHAPTER_TICKS_AREA_HEIGHT - 3, // At top of line, centered
+    left: CHAPTER_MARKER_X - 3, // Center the 6px dot
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F50101',
+    zIndex: 6,
   },
   container: {
     position: 'absolute',
