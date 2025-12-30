@@ -1,16 +1,13 @@
 /**
  * src/shared/components/CoverPlayButton.tsx
  *
- * Gesture-rich play button with cover art and joystick-style scrubbing.
- * - Tap: Play/pause toggle
- * - Long press (500ms): Open full player
+ * Joystick-style scrubbing control (red circle).
  * - Drag left/right: Scrub rewind/fast-forward (speed based on distance)
+ * - Long press (500ms): Open full player
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { Image } from 'expo-image';
-import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -23,7 +20,6 @@ import Animated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { usePlayerStore } from '@/features/player';
-import { useCoverUrl } from '@/core/cache';
 import { haptics } from '@/core/native/haptics';
 import { audioService } from '@/features/player/services/audioService';
 import { colors, wp } from '@/shared/theme';
@@ -81,19 +77,6 @@ const ACCENT_COLOR = colors.accent;
 // ============================================================================
 // ICONS
 // ============================================================================
-
-const PlayIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M6 4L20 12L6 20V4Z" fill="rgba(255,255,255,0.8)" />
-  </Svg>
-);
-
-const PauseIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M10 4H6V20H10V4Z" fill="rgba(255,255,255,0.8)" />
-    <Path d="M18 4H14V20H18V4Z" fill="rgba(255,255,255,0.8)" />
-  </Svg>
-);
 
 const RewindIcon: React.FC<{ size?: number; opacity?: number }> = ({ size = 16, opacity = 0.8 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -212,8 +195,6 @@ export function CoverPlayButton({
   const play = usePlayerStore((s) => s.play);
   const pause = usePlayerStore((s) => s.pause);
 
-  const coverUrl = useCoverUrl(currentBook?.id || '');
-
   // Animated values
   const translateX = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -272,7 +253,7 @@ export function CoverPlayButton({
   }, [chapters, duration]);
 
   const startScrub = useCallback(() => {
-    scrubStartPosition.value = positionRef.current;
+    scrubStartPosition.value = audioService.lastKnownGoodPosition ?? positionRef.current;
     currentScrubOffset.value = 0;
     setTooltipText('+00:00');
     setScrubPosition(positionRef.current);
@@ -313,6 +294,9 @@ export function CoverPlayButton({
     // Tell audio service we're scrubbing (enables optimizations)
     audioService.setScrubbing(true);
 
+    // Clear any pending smart rewind state - user is manually seeking
+    usePlayerStore.getState().clearSmartRewind();
+
     // Pause playback during scrub
     if (isPlaying) {
       pause();
@@ -327,7 +311,8 @@ export function CoverPlayButton({
       lastTime = now;
 
       const absDisplacement = Math.abs(translateX.value);
-      const directionSign = translateX.value >= 0 ? 1 : -1;
+      // INVERTED: drag RIGHT = backward (-1), drag LEFT = forward (+1)
+      const directionSign = translateX.value >= 0 ? -1 : 1;
 
       // Calculate scrub speed based on whether joystickSettings is provided
       let baseSpeed: number;
@@ -448,16 +433,16 @@ export function CoverPlayButton({
 
         const deltaPosition = speed * deltaTime;
         const newOffset = currentScrubOffset.value + deltaPosition;
-        // Clamp to chapter bounds - can't scrub past current chapter
+        // Clamp to book bounds - allow scrubbing across entire book
         const newPosition = clamp(
           scrubStartPosition.value + newOffset,
-          chapterBoundsRef.current.start,
-          chapterBoundsRef.current.end
+          0,
+          duration
         );
 
-        // Check if we've hit a chapter boundary
-        const atBoundary = (speed > 0 && newPosition >= chapterBoundsRef.current.end - 0.1) ||
-                          (speed < 0 && newPosition <= chapterBoundsRef.current.start + 0.1);
+        // Check if we've hit a book boundary
+        const atBoundary = (speed > 0 && newPosition >= duration - 0.1) ||
+                          (speed < 0 && newPosition <= 0.1);
 
         currentScrubOffset.value = newPosition - scrubStartPosition.value;
 
@@ -490,14 +475,17 @@ export function CoverPlayButton({
           return; // Don't try to seek further
         }
 
-        // Throttled real-time seeking during scrub for responsive audio feedback
-        // Seek every SEEK_THROTTLE_MS to keep audio in sync with visual scrub position
+        // ALWAYS update cached position immediately (not throttled)
+        // This keeps lastKnownGoodPosition in sync with UI during scrub
+        audioService.setPosition(newPosition);
+
+        // Throttled actual audio seeking for performance
+        // Audio catches up every SEEK_THROTTLE_MS
         const now = Date.now();
         if (now - lastSeekTimeRef.current >= SEEK_THROTTLE_MS) {
           // Only seek if position changed significantly (more than 0.5 seconds)
           if (Math.abs(newPosition - lastSeekPositionRef.current) > 0.5) {
             audioService.seekTo(newPosition);
-            usePlayerStore.setState({ position: newPosition });
             lastSeekPositionRef.current = newPosition;
             lastSeekTimeRef.current = now;
           }
@@ -513,7 +501,7 @@ export function CoverPlayButton({
     }, 16); // 60fps update rate for smooth visual feedback
   }, [isPlaying, pause, duration, findChapterAtPosition, onScrubOffsetChange, joystickSettings]);
 
-  const endScrub = useCallback(() => {
+  const endScrub = useCallback(async () => {
     if (scrubIntervalRef.current) {
       clearInterval(scrubIntervalRef.current);
       scrubIntervalRef.current = null;
@@ -542,19 +530,41 @@ export function CoverPlayButton({
       offset: 0,
     });
 
-    // Clamp to chapter bounds
+    // Clamp to book bounds - allow scrubbing across entire book
     const finalPosition = clamp(
       scrubStartPosition.value + currentScrubOffset.value,
-      chapterBoundsRef.current.start,
-      chapterBoundsRef.current.end
+      0,
+      duration
     );
 
-    // Tell audio service scrubbing ended (triggers any pending track switch)
+    // CRITICAL: Set isSeeking=true to block position updates from audio callbacks
+    // This prevents stale values from overwriting our target position during the
+    // entire operation including the 50ms delay.
+    usePlayerStore.setState({ isSeeking: true, seekPosition: finalPosition });
+
+    // CRITICAL: Clear scrubbing flag BEFORE final seek
+    // This ensures track switches execute immediately instead of being queued.
+    // Previously, seeking with isScrubbing=true would queue track switches,
+    // then setScrubbing(false) would clear them without executing!
     audioService.setScrubbing(false);
 
-    audioService.seekTo(finalPosition);
-    usePlayerStore.setState({ position: finalPosition });
+    // Now seek with isScrubbing=false - track switches execute immediately
+    await audioService.seekTo(finalPosition);
 
+    // Small delay for audio to settle at new position
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // CRITICAL: Set position AND clear isSeeking together
+    // This ensures the store has the correct position when we exit seeking mode.
+    // Audio callbacks can resume updating position after this point.
+    const actualPosition = audioService.lastKnownGoodPosition ?? finalPosition;
+    usePlayerStore.setState({
+      position: actualPosition,
+      isSeeking: false,
+      seekDirection: null,
+    });
+
+    // Resume playback if was playing before scrub
     if (wasPlayingRef.current) {
       play();
     }
@@ -562,14 +572,7 @@ export function CoverPlayButton({
     haptics.buttonPress();
   }, [duration, play, playbackRate, onScrubSpeedChange, onScrubOffsetChange]);
 
-  const handlePlayPause = useCallback(async () => {
-    haptics.playbackToggle();
-    if (isPlaying) {
-      await pause();
-    } else {
-      await play();
-    }
-  }, [isPlaying, play, pause]);
+  // handlePlayPause removed - joystick is for scrubbing only
 
   const handleLongPress = useCallback(() => {
     if (onOpenPlayer) {
@@ -617,20 +620,12 @@ export function CoverPlayButton({
       runOnJS(handleLongPress)();
     });
 
-  const tapGesture = Gesture.Tap()
-    .onStart(() => {
-      'worklet';
-      scale.value = withTiming(0.95, { duration: 50 });
-    })
-    .onEnd(() => {
-      'worklet';
-      scale.value = withSpring(1, SCRUB_CONFIG.SPRING_CONFIG);
-      runOnJS(handlePlayPause)();
-    });
+  // Tap gesture removed - joystick is for scrubbing only, not play/pause
+  // Play/pause is handled elsewhere in the UI
 
   const composedGesture = Gesture.Race(
     panGesture,
-    Gesture.Exclusive(longPressGesture, tapGesture)
+    longPressGesture
   );
 
   // ============================================================================
@@ -644,19 +639,8 @@ export function CoverPlayButton({
     ],
   }));
 
+  // INVERTED: Rewind shows when dragging RIGHT (positive translateX = backward)
   const rewindIconStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateX.value,
-      [-SCRUB_CONFIG.DEAD_ZONE, 0],
-      [directionIconOpacity.value, 0],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      { translateX: interpolate(translateX.value, [-80, 0], [-30, 0], Extrapolation.CLAMP) },
-    ],
-  }));
-
-  const fastForwardIconStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
       translateX.value,
       [0, SCRUB_CONFIG.DEAD_ZONE],
@@ -665,6 +649,19 @@ export function CoverPlayButton({
     ),
     transform: [
       { translateX: interpolate(translateX.value, [0, 80], [0, 30], Extrapolation.CLAMP) },
+    ],
+  }));
+
+  // INVERTED: FastForward shows when dragging LEFT (negative translateX = forward)
+  const fastForwardIconStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateX.value,
+      [-SCRUB_CONFIG.DEAD_ZONE, 0],
+      [directionIconOpacity.value, 0],
+      Extrapolation.CLAMP
+    ),
+    transform: [
+      { translateX: interpolate(translateX.value, [-80, 0], [-30, 0], Extrapolation.CLAMP) },
     ],
   }));
 
@@ -685,30 +682,22 @@ export function CoverPlayButton({
 
   return (
     <View style={styles.container}>
-      {/* Main button */}
+      {/* Main button - solid red, scrub only */}
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[
           styles.button,
-          { width: size, height: size, borderRadius: size / 2 },
+          { width: size, height: size, borderRadius: size / 2, backgroundColor: 'transparent' },
           buttonAnimatedStyle,
         ]}>
-          {coverUrl && (
-            <Image
-              source={coverUrl}
-              style={[styles.coverImage, { width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }]}
-              contentFit="cover"
-              transition={200}
-            />
-          )}
-
-          <View style={[styles.blurOverlay, { borderRadius: size / 2 }]}>
-            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
-            <View style={styles.darkOverlay} />
-          </View>
-
-          <View style={styles.iconOverlay}>
-            {isPlaying ? <PauseIcon size={size * 0.35} /> : <PlayIcon size={size * 0.35} />}
-          </View>
+          {/* Invisible hitbox with direction icons */}
+          {/* Rewind icon - shows when dragging RIGHT (backward) */}
+          <Animated.View style={[styles.directionIcon, { left: -30 }, rewindIconStyle]}>
+            <RewindIcon size={20} />
+          </Animated.View>
+          {/* Fast-forward icon - shows when dragging LEFT (forward) */}
+          <Animated.View style={[styles.directionIcon, { right: -30 }, fastForwardIconStyle]}>
+            <FastForwardIcon size={20} />
+          </Animated.View>
         </Animated.View>
       </GestureDetector>
     </View>
