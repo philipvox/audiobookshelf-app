@@ -1149,10 +1149,10 @@ const ChapterTimelineProgressBar = React.memo(({ position, duration, chapters, o
       <View style={chapterTimelineStyles.markerLine} />
       <View style={chapterTimelineStyles.markerDot} />
 
-      {/* Fixed center marker - joystick hitbox */}
-      <View style={chapterTimelineStyles.markerContainer}>
+      {/* Fixed center marker - joystick hitbox (hidden for now) */}
+      {/* <View style={chapterTimelineStyles.markerContainer}>
         {joystickComponent}
-      </View>
+      </View> */}
 
       {/* Scrolling timeline area */}
       <GestureDetector gesture={tapGesture}>
