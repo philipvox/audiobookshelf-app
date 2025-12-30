@@ -1238,7 +1238,7 @@ const chapterTimelineStyles = StyleSheet.create({
   },
   markerContainer: {
     position: 'absolute',
-    top: scale(100), // Moved down ~100px to position over timeline ticks
+    top: scale(115), // Moved down ~115px to position over timeline ticks
     left: CHAPTER_MARKER_X - CHAPTER_MARKER_CIRCLE_SIZE / 2,
     alignItems: 'center',
     zIndex: 10,
