@@ -1,22 +1,19 @@
 /**
  * src/features/discover/components/QuickFilterChips.tsx
  *
- * Quick filter chips using app design system.
+ * Quick filter chips with white styling for hero overlay.
+ * White text, white borders, white fill when selected.
  */
 
 import React, { useCallback } from 'react';
 import {
-  View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { colors, scale, layout } from '@/shared/theme';
-
-const COLORS = { playButton: colors.accent, textSecondary: colors.textSecondary };
-const LAYOUT = { carouselPaddingHorizontal: layout.screenPaddingH };
+import { scale, layout } from '@/shared/theme';
 
 interface QuickFilterChipsProps {
   chips: string[];
@@ -40,11 +37,17 @@ const Chip = React.memo(function Chip({ label, isSelected, onPress }: ChipProps)
 
   return (
     <TouchableOpacity
-      style={[styles.chip, isSelected && styles.chipSelected]}
+      style={[
+        styles.chip,
+        isSelected && styles.chipSelected,
+      ]}
       onPress={handlePress}
       activeOpacity={0.7}
     >
-      <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+      <Text style={[
+        styles.chipText,
+        isSelected && styles.chipTextSelected,
+      ]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -80,27 +83,30 @@ const styles = StyleSheet.create({
     marginBottom: scale(16),
   },
   container: {
-    paddingHorizontal: LAYOUT.carouselPaddingHorizontal,
+    paddingHorizontal: layout.screenPaddingH,
     gap: scale(8),
     flexDirection: 'row',
     alignItems: 'center',
   },
   chip: {
-    paddingHorizontal: scale(14),
-    paddingVertical: scale(8),
-    borderRadius: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(10),
+    borderRadius: scale(20),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'transparent',
   },
   chipSelected: {
-    backgroundColor: COLORS.playButton,
+    backgroundColor: '#E53935',
+    borderColor: '#E53935',
   },
   chipText: {
-    fontSize: scale(13),
+    fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
   },
   chipTextSelected: {
-    color: '#000',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
 });

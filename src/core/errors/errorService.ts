@@ -25,6 +25,7 @@ import {
   DatabaseErrorCode,
 } from './types';
 import { getUserMessage, getCategoryMessage } from './errorMessages';
+import { captureError } from '../monitoring';
 
 /**
  * Default retry configuration
@@ -368,7 +369,13 @@ class ErrorService {
       }
     }
 
-    // TODO: Send to crash reporting service in production
+    // Send to Sentry in production (gracefully degrades if not configured)
+    captureError(error.cause instanceof Error ? error.cause : new Error(error.message), {
+      category: error.category,
+      code: error.code,
+      details: error.details as Record<string, unknown>,
+      level: error.severity === 'critical' ? 'fatal' : error.severity === 'high' ? 'error' : 'warning',
+    });
   }
 
   private isDuplicate(error: AppError): boolean {

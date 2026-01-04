@@ -1,8 +1,8 @@
 /**
  * src/features/mood-discovery/components/MoodDiscoveryCard.tsx
  *
- * Prominent entry point card for mood discovery.
- * Shows on Browse screen to invite users to set their mood.
+ * Simple entry point card for mood discovery.
+ * Clean design: "What sounds good?" with arrow button.
  */
 
 import React from 'react';
@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Pressable,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedStyle,
   withSpring,
@@ -21,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
+import { ArrowRight } from 'lucide-react-native';
 import {
   useHasActiveSession,
   useActiveSession,
@@ -28,7 +28,8 @@ import {
 } from '../stores/moodSessionStore';
 import { MOODS, MoodConfig } from '../types';
 import { Icon } from '@/shared/components/Icon';
-import { colors, spacing, radius } from '@/shared/theme';
+import { spacing, radius, scale, layout } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -39,6 +40,7 @@ interface MoodDiscoveryCardProps {
 
 export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
   const hasSession = useHasActiveSession();
   const session = useActiveSession();
 
@@ -57,7 +59,7 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
   };
 
   const handlePressIn = () => {
-    scaleValue.value = withSpring(0.97, { damping: 15, stiffness: 200 });
+    scaleValue.value = withSpring(0.98, { damping: 15, stiffness: 200 });
   };
 
   const handlePressOut = () => {
@@ -80,28 +82,7 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
         onPressOut={handlePressOut}
         style={[styles.compactContainer, animatedStyle]}
       >
-        <LinearGradient
-          colors={['rgba(243, 182, 12, 0.15)', 'rgba(243, 182, 12, 0.05)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.compactGradient}
-        >
-          <View style={styles.compactIconContainer}>
-            {hasSession && activeMoodConfig ? (
-              <Icon
-                name={activeMoodConfig.icon}
-                size={18}
-                color={colors.accent}
-                set={activeMoodConfig.iconSet as any}
-              />
-            ) : (
-              <Icon
-                name="Wand2"
-                size={20}
-                color={colors.accent}
-              />
-            )}
-          </View>
+        <View style={styles.compactCard}>
           <View style={styles.compactText}>
             <Text style={styles.compactTitle}>
               {hasSession ? 'Your Mood' : 'What sounds good?'}
@@ -112,12 +93,10 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
               </Text>
             )}
           </View>
-          <Icon
-            name="ChevronRight"
-            size={18}
-            color={colors.accent}
-          />
-        </LinearGradient>
+          <View style={styles.arrowButton}>
+            <ArrowRight size={16} color="#FFFFFF" strokeWidth={2} />
+          </View>
+        </View>
       </AnimatedPressable>
     );
   }
@@ -130,63 +109,24 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
         onPressOut={handlePressOut}
         style={animatedStyle}
       >
-        <LinearGradient
-          colors={[
-            'rgba(243, 182, 12, 0.2)',
-            'rgba(243, 182, 12, 0.08)',
-            'rgba(0, 0, 0, 0)',
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.gradient}
-        >
+        <View style={styles.card}>
           {/* Left content */}
           <View style={styles.content}>
-            <View style={styles.iconRow}>
-              {hasSession && activeMoodConfig ? (
-                <View style={styles.iconCircle}>
-                  <Icon
-                    name={activeMoodConfig.icon}
-                    size={18}
-                    color={colors.accent}
-                    set={activeMoodConfig.iconSet as any}
-                  />
-                </View>
-              ) : (
-                <>
-                  <View style={styles.iconCircle}>
-                    <Icon name="Wand2" size={18} color={colors.accent} />
-                  </View>
-                  <View style={styles.iconCircle}>
-                    <Icon name="Zap" size={18} color={colors.accent} />
-                  </View>
-                  <View style={styles.iconCircle}>
-                    <Icon name="Moon" size={18} color={colors.accent} />
-                  </View>
-                </>
-              )}
-            </View>
-
             <Text style={styles.title}>
               {hasSession ? 'Your current mood' : 'What sounds good?'}
             </Text>
-
             <Text style={styles.subtitle}>
               {hasSession
                 ? `${formatTimeRemaining(timeRemaining)} · Tap to see matches`
-                : 'Find your next perfect listen based on how you feel right now'}
+                : 'Find your next listen'}
             </Text>
           </View>
 
-          {/* Right arrow */}
-          <View style={styles.arrowContainer}>
-            <Icon
-              name="ArrowRightCircle"
-              size={28}
-              color={colors.accent}
-            />
+          {/* Right arrow button - outlined */}
+          <View style={styles.arrowButton}>
+            <ArrowRight size={20} color="#FFFFFF" strokeWidth={2} />
           </View>
-        </LinearGradient>
+        </View>
       </AnimatedPressable>
     </Animated.View>
   );
@@ -194,77 +134,66 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.md,
+    paddingHorizontal: layout.screenPaddingH,
+    marginBottom: spacing.lg,
   },
-  gradient: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.md,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(243, 182, 12, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)', // 25% opacity white
   },
   content: {
     flex: 1,
   },
-  iconRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(243, 182, 12, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   title: {
-    fontSize: 18,
+    fontSize: scale(16),
     fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: scale(2),
+    color: '#FFFFFF',
   },
   subtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
+    fontSize: scale(13),
+    color: 'rgba(255,255,255,0.7)',
   },
-  arrowContainer: {
+  arrowButton: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    justifyContent: 'center',
+    alignItems: 'center',
     marginLeft: spacing.md,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
 
   // Compact styles
   compactContainer: {
-    marginHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPaddingH,
     marginVertical: spacing.sm,
   },
-  compactGradient: {
+  compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(243, 182, 12, 0.2)',
-  },
-  compactIconContainer: {
-    flexDirection: 'row',
-    gap: 4,
-    marginRight: spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)', // 25% opacity white
   },
   compactText: {
     flex: 1,
   },
   compactTitle: {
-    fontSize: 14,
+    fontSize: scale(14),
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   compactSubtitle: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginTop: 1,
+    fontSize: scale(11),
+    marginTop: scale(1),
+    color: 'rgba(255,255,255,0.7)',
   },
 });

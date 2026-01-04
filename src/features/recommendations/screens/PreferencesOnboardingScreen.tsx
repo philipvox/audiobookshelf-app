@@ -16,9 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePreferencesStore } from '../stores/preferencesStore';
-import { useAllLibraryItems } from '@/features/search/hooks/useAllLibraryItems';
-import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
-import { extractGenres } from '@/shared/utils/genreUtils';
+import { useLibraryCache, getGenresByPopularity } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
 import { colors, spacing, radius } from '@/shared/theme';
 
@@ -72,10 +70,10 @@ export function PreferencesOnboardingScreen() {
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
-  
-  const { library } = useDefaultLibrary();
-  const { items } = useAllLibraryItems(library?.id || '');
-  const availableGenres = extractGenres(items);
+
+  // Get genres from library cache (already populated)
+  const { isLoaded } = useLibraryCache();
+  const availableGenres = isLoaded ? getGenresByPopularity().map(g => g.name) : [];
 
   const {
     favoriteGenres,
@@ -138,11 +136,8 @@ export function PreferencesOnboardingScreen() {
   const handleNext = () => {
     if (isLastStep) {
       completeOnboarding();
-      // Navigate to recommendations after completing preferences
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }, { name: 'Browse' }],
-      });
+      // Close the modal - user returns to previous screen with preferences now active
+      navigation.goBack();
     } else {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);

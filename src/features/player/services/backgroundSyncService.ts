@@ -12,9 +12,11 @@ import { AppState, AppStateStatus } from 'react-native';
 import { apiClient } from '@/core/api';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { sessionService } from './sessionService';
+import { audioService } from './audioService';
 import { audioLog, formatDuration, logSection } from '@/shared/utils/audioDebug';
 import { trackEvent } from '@/core/monitoring';
 import { eventBus } from '@/core/events';
+import { usePlayerStore } from '../stores/playerStore';
 
 const DEBUG = __DEV__;
 const log = (...args: any[]) => audioLog.sync(args.join(' '));
@@ -35,6 +37,8 @@ class BackgroundSyncService {
   private isRunning = false;
   private appStateSubscription: any = null;
   private lastSyncTime = 0;
+  private processScheduleTimeout: NodeJS.Timeout | null = null;
+  private firstUnprocessedTime: number = 0; // Track when first unsynced item was added
 
   // Sync configuration
   private readonly SYNC_INTERVAL = 10000; // Check every 10 seconds
@@ -42,6 +46,9 @@ class BackgroundSyncService {
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_BASE = 2000; // Exponential backoff base
   private readonly SYNC_CONCURRENCY = 5; // Parallel sync requests
+  private readonly PROCESS_DEBOUNCE = 5000; // 5 seconds of inactivity before processing
+  private readonly PROCESS_MAX_DELAY = 30000; // Max 30 seconds before forced processing
+  private readonly BACKGROUND_SYNC_TIMEOUT = 4000; // 4 seconds - iOS gives ~5s before suspension
 
   /**
    * Initialize background sync service
@@ -85,8 +92,23 @@ class BackgroundSyncService {
   }
 
   /**
-   * Save progress locally and queue for server sync
-   * This is the main entry point for progress updates
+   * Save progress locally only (SQLite) - FAST PATH
+   * Use this during active playback for instant saves without network overhead.
+   * Progress will be synced to server at key moments (pause, background, finish).
+   */
+  async saveProgressLocal(
+    itemId: string,
+    position: number,
+    duration: number
+  ): Promise<void> {
+    // SQLite write only - no network, no queue processing
+    await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
+  }
+
+  /**
+   * Save progress locally AND queue for server sync - KEY MOMENTS ONLY
+   * Use this only at key moments: pause, app background, book finish.
+   * This triggers server sync to ensure data durability.
    */
   async saveProgress(
     itemId: string,
@@ -97,36 +119,62 @@ class BackgroundSyncService {
     log(`saveProgress: ${itemId} @ ${formatDuration(position)}`);
 
     // STEP 1: Write to SQLite immediately (fast, offline-capable)
-    log('  Writing to SQLite...');
     await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
 
-    // STEP 2: Queue for server sync (batched, debounced)
+    // STEP 2: Queue for server sync
     const existing = this.syncQueue.get(itemId);
+    const now = Date.now();
 
-    // Debounce: only queue if enough time has passed or position changed significantly
-    const positionDelta = existing ? Math.abs(existing.position - position) : Infinity;
-    const timeSinceLastAttempt = existing ? Date.now() - existing.lastAttempt : Infinity;
-    const shouldQueue =
-      !existing ||
-      positionDelta > 10 || // Position changed by 10+ seconds
-      timeSinceLastAttempt > this.MIN_SYNC_DELAY;
-
-    if (shouldQueue) {
-      const now = Date.now();
-      log(`  Queuing for sync (delta: ${positionDelta.toFixed(1)}s, timeSince: ${timeSinceLastAttempt}ms)`);
-      this.syncQueue.set(itemId, {
-        itemId,
-        position,
-        duration,
-        sessionId,
-        retryCount: 0,
-        lastAttempt: now,
-        localUpdatedAt: now, // Track when this progress was recorded locally
-      });
-      log(`  Queue size: ${this.syncQueue.size}`);
-    } else {
-      log('  Skipped queue (debounced)');
+    // Track first unprocessed time for max delay enforcement
+    if (this.syncQueue.size === 0) {
+      this.firstUnprocessedTime = now;
     }
+
+    // Update queue entry - newer overwrites older
+    this.syncQueue.set(itemId, {
+      itemId,
+      position,
+      duration,
+      sessionId,
+      retryCount: 0,
+      lastAttempt: existing?.lastAttempt || 0,
+      localUpdatedAt: now,
+    });
+
+    // STEP 3: Schedule debounced processing
+    this.scheduleProcessQueue();
+  }
+
+  /**
+   * Schedule queue processing with debounce
+   * Processes after 5s of inactivity OR 30s max delay (whichever comes first)
+   */
+  private scheduleProcessQueue(): void {
+    // Clear existing timeout
+    if (this.processScheduleTimeout) {
+      clearTimeout(this.processScheduleTimeout);
+    }
+
+    const now = Date.now();
+    const timeSinceFirst = now - this.firstUnprocessedTime;
+
+    // If we've exceeded max delay, process immediately
+    if (timeSinceFirst >= this.PROCESS_MAX_DELAY) {
+      log('  Max delay reached, processing immediately');
+      this.firstUnprocessedTime = 0;
+      this.processSyncQueue();
+      return;
+    }
+
+    // Otherwise, schedule debounced processing
+    const remainingMaxDelay = this.PROCESS_MAX_DELAY - timeSinceFirst;
+    const delay = Math.min(this.PROCESS_DEBOUNCE, remainingMaxDelay);
+
+    this.processScheduleTimeout = setTimeout(() => {
+      this.processScheduleTimeout = null;
+      this.firstUnprocessedTime = 0;
+      this.processSyncQueue();
+    }, delay);
   }
 
   /**
@@ -227,80 +275,29 @@ class BackgroundSyncService {
 
   /**
    * Sync a single item to the server
+   *
+   * OPTIMIZED: Skip conflict detection during sync for better performance.
+   * - Conflict detection requires an extra network round-trip
+   * - Server uses timestamps for conflict resolution
+   * - Sync only happens at key moments when user isn't actively interacting
    */
   private async syncToServer(item: SyncQueueItem): Promise<boolean> {
-    log(`syncToServer: ${item.itemId}`);
-    log(`  Position: ${formatDuration(item.position)}`);
-    log(`  Session ID: ${item.sessionId || 'none'}`);
-    log(`  Retry count: ${item.retryCount}/${this.MAX_RETRIES}`);
-    log(`  Local updated: ${new Date(item.localUpdatedAt).toISOString()}`);
+    log(`syncToServer: ${item.itemId} @ ${formatDuration(item.position)}`);
+
+    // Skip sync if user is actively playing this book (they'll sync on pause)
+    const playerState = usePlayerStore.getState();
+    const isActivelyPlaying = playerState.isPlaying && playerState.currentBook?.id === item.itemId;
+    const isInTransition = audioService.isInTransition();
+    const isCurrentBook = playerState.currentBook?.id === item.itemId;
+
+    if (isActivelyPlaying || (isInTransition && isCurrentBook)) {
+      log(`  Skipping - user active with this book`);
+      // Don't remove from queue - will sync when user pauses
+      return false;
+    }
 
     try {
-      // ============================================================
-      // CONFLICT DETECTION: Check server timestamp before syncing
-      // ============================================================
-      let serverProgress: { lastUpdate: number; currentTime: number } | null = null;
-      try {
-        audioLog.network('GET', `/api/me/progress/${item.itemId}`);
-        serverProgress = await apiClient.get(`/api/me/progress/${item.itemId}`);
-      } catch (fetchError: any) {
-        // 404 means no server progress exists - safe to create
-        if (fetchError.message !== 'Resource not found') {
-          log(`  Warning: Could not fetch server progress: ${fetchError.message}`);
-          // Continue anyway - we'll try to sync
-        }
-      }
-
-      if (serverProgress && serverProgress.lastUpdate > item.localUpdatedAt) {
-        // SERVER IS NEWER - conflict detected
-        const serverDate = new Date(serverProgress.lastUpdate).toISOString();
-        const localDate = new Date(item.localUpdatedAt).toISOString();
-        const serverPos = formatDuration(serverProgress.currentTime);
-        const localPos = formatDuration(item.position);
-
-        audioLog.warn(`CONFLICT: Server progress is newer for ${item.itemId}`);
-        log(`  Server: ${serverPos} @ ${serverDate}`);
-        log(`  Local:  ${localPos} @ ${localDate}`);
-        log(`  Resolution: Keeping server version (last-write-wins)`);
-
-        trackEvent('sync_conflict_detected', {
-          item_id: item.itemId,
-          server_time: serverProgress.lastUpdate,
-          local_time: item.localUpdatedAt,
-          server_position: serverProgress.currentTime,
-          local_position: item.position,
-          resolution: 'server_wins',
-        }, 'warning');
-
-        // Emit conflict event for UI/listeners
-        eventBus.emit('progress:conflict', {
-          bookId: item.itemId,
-          localPosition: item.position,
-          serverPosition: serverProgress.currentTime,
-          winner: 'server',
-        });
-
-        // Update local cache with server's value (if valid)
-        // Guard against undefined/null/NaN positions from server
-        const serverPosition = serverProgress.currentTime;
-        if (typeof serverPosition === 'number' && !isNaN(serverPosition)) {
-          await sqliteCache.setPlaybackProgress(
-            item.itemId,
-            serverPosition,
-            item.duration,
-            true // Mark as synced
-          );
-        } else {
-          // Server has newer timestamp but invalid position - just mark synced
-          log(`  Server position invalid (${serverPosition}), keeping local and marking synced`);
-          await sqliteCache.markProgressSynced(item.itemId);
-        }
-
-        this.syncQueue.delete(item.itemId);
-        return true; // Resolved successfully (by accepting server)
-      }
-
-      // LOCAL IS NEWER (or no server progress) - proceed with upload
+      // Direct upload - server handles timestamp comparison
       let syncedViaSession = false;
 
       // Try session sync first (more accurate)
@@ -429,15 +426,44 @@ class BackgroundSyncService {
 
   /**
    * Handle app state changes (backgrounding/foregrounding)
+   *
+   * FIX 1: Await forceSyncAll with timeout before app suspension
+   * iOS gives ~5 seconds before suspension, so we use 4s timeout
    */
   private handleAppStateChange(nextState: AppStateStatus): void {
     log(`App state change: ${nextState}`);
 
     if (nextState === 'background' || nextState === 'inactive') {
-      // App going to background - force sync
+      // App going to background - force sync with timeout
       logSection('APP BACKGROUNDING');
       log('Forcing sync before background...');
-      this.forceSyncAll();
+
+      // Use IIFE to handle async in callback
+      (async () => {
+        try {
+          // Race forceSyncAll against timeout
+          const timeoutPromise = new Promise<'timeout'>((resolve) =>
+            setTimeout(() => resolve('timeout'), this.BACKGROUND_SYNC_TIMEOUT)
+          );
+
+          const result = await Promise.race([
+            this.forceSyncAll().then(() => 'success' as const),
+            timeoutPromise,
+          ]);
+
+          if (result === 'timeout') {
+            audioLog.warn('Background sync timed out - some progress may not be saved');
+            trackEvent('background_sync_timeout', {
+              queue_size: this.syncQueue.size,
+              timeout_ms: this.BACKGROUND_SYNC_TIMEOUT,
+            }, 'warning');
+          } else {
+            log('Background sync completed successfully');
+          }
+        } catch (error: any) {
+          audioLog.error('Background sync failed:', error.message);
+        }
+      })();
     } else if (nextState === 'active') {
       // App coming to foreground - check for unsynced
       logSection('APP FOREGROUNDING');

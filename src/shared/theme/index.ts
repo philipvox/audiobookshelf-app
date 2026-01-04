@@ -3,10 +3,35 @@
  *
  * Single source of truth for all design tokens.
  * Import from '@/shared/theme' for consistent styling.
+ *
+ * Primary Usage:
+ *   import { useTheme, useColors } from '@/shared/theme';
+ *   const { colors, mode, toggleMode } = useTheme();
  */
 
-// Re-export all modules
-export * from './colors';
+// Theme hooks (primary API)
+export {
+  useTheme,
+  useColors,
+  useThemeMode,
+  useThemeStore,
+  useThemeColors, // deprecated
+  themeColors, // deprecated
+  type ThemeMode,
+} from './themeStore';
+
+// Color tokens
+export {
+  lightColors,
+  darkColors,
+  accentColors,
+  colors, // deprecated legacy export
+  type ThemeColors,
+  type LightColors,
+  type DarkColors,
+} from './colors';
+
+// Re-export all other modules
 export * from './spacing';
 export * from './typography';
 export * from './sizes';

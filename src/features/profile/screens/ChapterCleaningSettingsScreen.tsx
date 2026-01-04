@@ -19,14 +19,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Check, ChevronLeft, Code, Info, ArrowRight, type LucideIcon } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale } from '@/shared/theme';
+import { accentColors, scale } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 import {
   useChapterCleaningStore,
   CLEANING_LEVEL_INFO,
   type ChapterCleaningLevel,
 } from '../stores/chapterCleaningStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
+
+// Helper to create theme-aware colors
+function createColors(themeColors: ThemeColors) {
+  return {
+    accent: ACCENT,
+    background: themeColors.backgroundSecondary,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    card: themeColors.border,
+    border: themeColors.border,
+    iconBg: themeColors.border,
+  };
+}
 
 // Level option data
 const LEVEL_OPTIONS: ChapterCleaningLevel[] = ['off', 'light', 'standard', 'aggressive'];
@@ -37,43 +52,44 @@ interface LevelOptionProps {
   isSelected: boolean;
   onSelect: (level: ChapterCleaningLevel) => void;
   isRecommended?: boolean;
+  colors: ReturnType<typeof createColors>;
 }
 
-function LevelOption({ level, isSelected, onSelect, isRecommended }: LevelOptionProps) {
+function LevelOption({ level, isSelected, onSelect, isRecommended, colors }: LevelOptionProps) {
   const info = CLEANING_LEVEL_INFO[level];
 
   return (
     <TouchableOpacity
-      style={[styles.levelOption, isSelected && styles.levelOptionSelected]}
+      style={[styles.levelOption, { borderBottomColor: colors.border }, isSelected && { backgroundColor: 'rgba(243, 182, 12, 0.08)' }]}
       onPress={() => onSelect(level)}
       activeOpacity={0.7}
     >
       <View style={styles.levelOptionLeft}>
         {/* Radio circle */}
-        <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
-          {isSelected && <View style={styles.radioInner} />}
+        <View style={[styles.radioOuter, { borderColor: colors.textTertiary }, isSelected && { borderColor: colors.accent }]}>
+          {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.accent }]} />}
         </View>
 
         {/* Content */}
         <View style={styles.levelContent}>
           <View style={styles.labelRow}>
-            <Text style={[styles.levelLabel, isSelected && styles.levelLabelSelected]}>
+            <Text style={[styles.levelLabel, { color: colors.text }, isSelected && { color: colors.accent }]}>
               {info.label}
             </Text>
             {isRecommended && (
               <View style={styles.recommendedBadge}>
-                <Text style={styles.recommendedText}>Recommended</Text>
+                <Text style={[styles.recommendedText, { color: colors.accent }]}>Recommended</Text>
               </View>
             )}
           </View>
-          <Text style={styles.levelDescription}>{info.description}</Text>
-          <Text style={styles.levelExample}>{info.example}</Text>
+          <Text style={[styles.levelDescription, { color: colors.textTertiary }]}>{info.description}</Text>
+          <Text style={[styles.levelExample, { color: colors.textTertiary }]}>{info.example}</Text>
         </View>
       </View>
 
       {/* Checkmark for selected */}
       {isSelected && (
-        <Check size={scale(20)} color={ACCENT} strokeWidth={2.5} />
+        <Check size={scale(20)} color={colors.accent} strokeWidth={2.5} />
       )}
     </TouchableOpacity>
   );
@@ -86,28 +102,29 @@ interface SettingsRowProps {
   note?: string;
   switchValue: boolean;
   onSwitchChange: (value: boolean) => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function SettingsRow({ Icon, label, note, switchValue, onSwitchChange }: SettingsRowProps) {
+function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, colors }: SettingsRowProps) {
   return (
-    <View style={styles.settingsRow}>
+    <View style={[styles.settingsRow, { borderBottomColor: colors.border }]}>
       <View style={styles.rowLeft}>
-        <View style={styles.iconContainer}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
           <Icon
             size={scale(18)}
-            color="rgba(255,255,255,0.8)"
+            color={colors.textSecondary}
             strokeWidth={2}
           />
         </View>
         <View style={styles.rowContent}>
-          <Text style={styles.rowLabel}>{label}</Text>
-          {note ? <Text style={styles.rowNote}>{note}</Text> : null}
+          <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
+          {note ? <Text style={[styles.rowNote, { color: colors.textTertiary }]}>{note}</Text> : null}
         </View>
       </View>
       <Switch
         value={switchValue}
         onValueChange={onSwitchChange}
-        trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+        trackColor={{ false: colors.border, true: ACCENT }}
         thumbColor="#fff"
       />
     </View>
@@ -115,13 +132,15 @@ function SettingsRow({ Icon, label, note, switchValue, onSwitchChange }: Setting
 }
 
 // Section Header Component
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
+  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
 }
 
 export function ChapterCleaningSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
 
   // Settings from store
   const level = useChapterCleaningStore((s) => s.level);
@@ -137,8 +156,8 @@ export function ChapterCleaningSettingsScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -147,9 +166,9 @@ export function ChapterCleaningSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chapter Names</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Chapter Names</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -160,7 +179,7 @@ export function ChapterCleaningSettingsScreen() {
       >
         {/* Intro */}
         <View style={styles.introSection}>
-          <Text style={styles.introText}>
+          <Text style={[styles.introText, { color: colors.textSecondary }]}>
             Clean up inconsistent chapter names for a more polished listening experience.
             Original metadata is always preserved.
           </Text>
@@ -168,8 +187,8 @@ export function ChapterCleaningSettingsScreen() {
 
         {/* Cleaning Level Section */}
         <View style={styles.section}>
-          <SectionHeader title="CLEANING LEVEL" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="CLEANING LEVEL" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             {LEVEL_OPTIONS.map((opt) => (
               <LevelOption
                 key={opt}
@@ -177,6 +196,7 @@ export function ChapterCleaningSettingsScreen() {
                 isSelected={level === opt}
                 onSelect={handleLevelSelect}
                 isRecommended={opt === 'standard'}
+                colors={colors}
               />
             ))}
           </View>
@@ -184,38 +204,43 @@ export function ChapterCleaningSettingsScreen() {
 
         {/* Advanced Section */}
         <View style={styles.section}>
-          <SectionHeader title="ADVANCED" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="ADVANCED" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Code}
               label="Show Original Names"
               note="Display original metadata for debugging"
               switchValue={showOriginalNames}
               onSwitchChange={setShowOriginalNames}
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Before/After Examples */}
         <View style={styles.section}>
-          <SectionHeader title="EXAMPLE TRANSFORMATIONS" />
-          <View style={styles.examplesCard}>
+          <SectionHeader title="EXAMPLE TRANSFORMATIONS" colors={colors} />
+          <View style={[styles.examplesCard, { backgroundColor: colors.card }]}>
             <ExampleRow
               before="01 - The Great Gatsby: Chapter 1"
               after="Chapter 1"
+              colors={colors}
             />
             <ExampleRow
               before="D01T05 - Interview With the Vampire"
               after="Chapter 5"
+              colors={colors}
             />
             <ExampleRow
               before="Chapter Twenty-Three: The Discovery"
               after="Chapter 23: The Discovery"
+              colors={colors}
             />
             <ExampleRow
               before="Prologue"
               after="Prologue"
               note="Front/back matter preserved"
+              colors={colors}
             />
           </View>
         </View>
@@ -224,10 +249,10 @@ export function ChapterCleaningSettingsScreen() {
         <View style={styles.infoSection}>
           <Info
             size={scale(16)}
-            color="rgba(255,255,255,0.4)"
+            color={colors.textTertiary}
             strokeWidth={2}
           />
-          <Text style={styles.infoText}>
+          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
             Changes only affect how chapters are displayed. Your server data remains unchanged.
             Based on analysis of 68,000+ real audiobook chapters.
           </Text>
@@ -242,31 +267,33 @@ function ExampleRow({
   before,
   after,
   note,
+  colors,
 }: {
   before: string;
   after: string;
   note?: string;
+  colors: ReturnType<typeof createColors>;
 }) {
   return (
-    <View style={styles.exampleRow}>
+    <View style={[styles.exampleRow, { borderBottomColor: colors.border }]}>
       <View style={styles.exampleBefore}>
-        <Text style={styles.exampleLabel}>Before</Text>
-        <Text style={styles.exampleText} numberOfLines={1}>
+        <Text style={[styles.exampleLabel, { color: colors.textTertiary }]}>Before</Text>
+        <Text style={[styles.exampleText, { color: colors.textTertiary }]} numberOfLines={1}>
           {before}
         </Text>
       </View>
       <ArrowRight
         size={scale(14)}
-        color="rgba(255,255,255,0.3)"
+        color={colors.textTertiary}
         strokeWidth={2}
         style={styles.exampleArrow}
       />
       <View style={styles.exampleAfter}>
-        <Text style={styles.exampleLabel}>After</Text>
-        <Text style={styles.exampleTextClean} numberOfLines={1}>
+        <Text style={[styles.exampleLabel, { color: colors.textTertiary }]}>After</Text>
+        <Text style={[styles.exampleTextClean, { color: colors.accent }]} numberOfLines={1}>
           {after}
         </Text>
-        {note && <Text style={styles.exampleNote}>{note}</Text>}
+        {note && <Text style={[styles.exampleNote, { color: colors.textTertiary }]}>{note}</Text>}
       </View>
     </View>
   );
@@ -275,7 +302,7 @@ function ExampleRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via colors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -293,7 +320,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -310,7 +337,7 @@ const styles = StyleSheet.create({
   },
   introText: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via colors.textSecondary in JSX
     lineHeight: scale(20),
   },
   section: {
@@ -319,14 +346,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -337,10 +364,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  levelOptionSelected: {
-    backgroundColor: 'rgba(243, 182, 12, 0.08)',
+    // borderBottomColor set via colors.border in JSX
   },
   levelOptionLeft: {
     flexDirection: 'row',
@@ -352,19 +376,16 @@ const styles = StyleSheet.create({
     height: scale(20),
     borderRadius: scale(10),
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
+    // borderColor set in JSX
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: scale(2),
-  },
-  radioOuterSelected: {
-    borderColor: ACCENT,
   },
   radioInner: {
     width: scale(10),
     height: scale(10),
     borderRadius: scale(5),
-    backgroundColor: ACCENT,
+    // backgroundColor set in JSX
   },
   levelContent: {
     flex: 1,
@@ -379,13 +400,10 @@ const styles = StyleSheet.create({
   levelLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
-  },
-  levelLabelSelected: {
-    color: ACCENT,
+    // color set in JSX
   },
   recommendedBadge: {
-    backgroundColor: 'rgba(243, 182, 12, 0.15)',
+    backgroundColor: 'rgba(243, 182, 12, 0.15)', // Intentional: accent highlight
     paddingHorizontal: scale(6),
     paddingVertical: scale(2),
     borderRadius: scale(4),
@@ -393,16 +411,16 @@ const styles = StyleSheet.create({
   recommendedText: {
     fontSize: scale(10),
     fontWeight: '600',
-    color: ACCENT,
+    // color set in JSX
   },
   levelDescription: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set in JSX
     marginTop: scale(2),
   },
   levelExample: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.35)',
+    // color set in JSX
     marginTop: scale(4),
     fontFamily: 'monospace',
   },
@@ -413,7 +431,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via colors.border in JSX
   },
   rowLeft: {
     flexDirection: 'row',
@@ -424,7 +442,7 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -436,16 +454,16 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   rowNote: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
   examplesCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -455,7 +473,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.04)',
+    // borderBottomColor set via colors.border in JSX
   },
   exampleBefore: {
     flex: 1,
@@ -470,24 +488,24 @@ const styles = StyleSheet.create({
   exampleLabel: {
     fontSize: scale(10),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.4)',
+    // color set in JSX
     marginBottom: scale(4),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   exampleText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set in JSX
     fontFamily: 'monospace',
   },
   exampleTextClean: {
     fontSize: scale(12),
-    color: ACCENT,
+    // color set via colors.accent in JSX
     fontFamily: 'monospace',
   },
   exampleNote: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.35)',
+    // color set in JSX
     marginTop: scale(2),
     fontStyle: 'italic',
   },
@@ -501,7 +519,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
 });

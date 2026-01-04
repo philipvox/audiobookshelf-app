@@ -74,7 +74,7 @@ class ProgressService {
           currentTime: progress.position,
           duration: progress.duration,
           progress: progress.duration > 0 ? progress.position / progress.duration : 0,
-          isFinished: progress.position >= progress.duration * 0.99,
+          isFinished: progress.position >= progress.duration * 0.95,
           updatedAt: progress.updatedAt,
         };
         log('  Found:');
@@ -120,7 +120,7 @@ class ProgressService {
         currentTime: p.position,
         duration: p.duration,
         progress: p.duration > 0 ? p.position / p.duration : 0,
-        isFinished: p.position >= p.duration * 0.99,
+        isFinished: p.position >= p.duration * 0.95,
         updatedAt: p.updatedAt,
       }));
       log('  Found', result.length, 'unsynced entries');

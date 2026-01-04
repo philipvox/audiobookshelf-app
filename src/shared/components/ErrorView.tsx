@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.backgroundTertiary,
+    backgroundColor: '#FFFFFF',
     padding: spacing.xxl,
   },
   iconContainer: {
@@ -214,13 +214,13 @@ const styles = StyleSheet.create({
   title: {
     ...typography.displaySmall,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: '#000000',
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   message: {
     ...typography.bodyMedium,
-    color: colors.textSecondary,
+    color: 'rgba(0,0,0,0.6)',
     textAlign: 'center',
     maxWidth: scale(280),
     marginBottom: spacing['3xl'],
@@ -255,12 +255,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: layout.minTouchTarget,
     justifyContent: 'center',
-    backgroundColor: colors.cardBackground,
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
   secondaryButtonText: {
     ...typography.labelLarge,
     fontWeight: '500',
-    color: colors.textSecondary,
+    color: 'rgba(0,0,0,0.6)',
   },
   offlineIndicator: {
     flexDirection: 'row',

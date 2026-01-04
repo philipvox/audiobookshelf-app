@@ -1,15 +1,14 @@
 /**
  * src/navigation/components/FloatingTabBar.tsx
  *
- * Floating 5-tab navigation bar: Home | Library | Search | Browse | Profile
- * Dark pill-shaped bar with outline icons and labels
- * Active tab uses accent color with underline indicator
+ * Bottom tab navigation bar: Home | Library | Search | Browse | Profile
+ * Clean white background with black icons and labels
+ * Active tab uses black color with underline indicator
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Image } from 'expo-image';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
@@ -18,131 +17,109 @@ import {
   colors,
   spacing,
   sizes,
-  typography,
-  wp,
 } from '@/shared/theme';
+import { useThemeStore } from '@/shared/theme/themeStore';
+
+// =============================================================================
+// THEME COLORS
+// =============================================================================
+
+const navColors = {
+  light: {
+    background: '#FFFFFF',
+    iconActive: '#000000',
+    iconInactive: 'rgba(0,0,0,0.4)',
+    labelActive: '#000000',
+    labelInactive: 'rgba(0,0,0,0.4)',
+  },
+  dark: {
+    background: '#000000',
+    iconActive: '#FFFFFF',
+    iconInactive: 'rgba(255,255,255,0.5)',
+    labelActive: '#FFFFFF',
+    labelInactive: 'rgba(255,255,255,0.5)',
+  },
+};
+
+function useNavColors() {
+  const mode = useThemeStore((state) => state.mode);
+  return navColors[mode];
+}
 
 // Design constants
-const ICON_COLOR_ACTIVE = colors.accent;
-const ICON_COLOR_INACTIVE = colors.textSecondary;
-const ICON_SIZE = sizes.iconMd;
-const BAR_HEIGHT = 80;
-const BAR_BOTTOM_PADDING = 20; // Extra padding at bottom for touch UX
+const ICON_SIZE = 20; // Slightly smaller for cleaner look
+// Platform-appropriate bar heights (iOS: 49pt, Android: 56dp)
+// Using 52 as a balanced cross-platform value
+const BAR_HEIGHT = 52;
+const BAR_BOTTOM_PADDING = 8; // Minimal extra padding, safe area handles the rest
 
-// Screen width for layout
-const SCREEN_WIDTH = wp(100);
-
-// Nav bar background using the provided SVG
-const NavBarBackground: React.FC<{ width: number; height: number }> = ({ width, height }) => (
-  <Image
-    source={require('@/assets/svg/navigation/nav-background.svg')}
-    style={[StyleSheet.absoluteFill, { width, height }]}
-    contentFit="fill"
-  />
-);
-
-// Browse icon (compass) - matches design
-const BrowseIcon: React.FC<{ size?: number; color?: string }> = ({
-  size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Outer circle */}
-    <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth={1.5} />
-    {/* Inner diamond/compass pointer */}
-    <Path
-      d="M14.5 9.5L10.5 10.5L9.5 14.5L13.5 13.5L14.5 9.5Z"
-      stroke={color}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-// Library icon (books) - matches design
-const LibraryIcon: React.FC<{ size?: number; color?: string }> = ({
-  size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Three book spines */}
-    <Rect x="4" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
-    <Rect x="10" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
-    <Rect x="16" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth={1.5} />
-  </Svg>
-);
-
-// Profile icon (person outline) - matches design
-const ProfileIcon: React.FC<{ size?: number; color?: string }> = ({
-  size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Head circle */}
-    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={1.5} />
-    {/* Body arc */}
-    <Path
-      d="M4 20C4 16.6863 7.13401 14 11 14H13C16.866 14 20 16.6863 20 20"
-      stroke={color}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
-// Home icon (house outline) - matches design
+// Home icon (house with door) - from design
 const HomeIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
   color = ICON_COLOR_INACTIVE
 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* House roof */}
+  <Svg width={size} height={size} viewBox="0 0 13 15" fill="none">
     <Path
-      d="M3 10.5L12 4L21 10.5"
+      d="M4.5 14.5V7.5H8.5V14.5M0.5 5.4L6.5 0.5L12.5 5.4V13.1C12.5 13.4713 12.3595 13.8274 12.1095 14.0899C11.8594 14.3525 11.5203 14.5 11.1667 14.5H1.83333C1.47971 14.5 1.14057 14.3525 0.890524 14.0899C0.640476 13.8274 0.5 13.4713 0.5 13.1V5.4Z"
       stroke={color}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    {/* House body */}
-    <Path
-      d="M5 9.5V19C5 19.5523 5.44772 20 6 20H18C18.5523 20 19 19.5523 19 19V9.5"
-      stroke={color}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    {/* Door */}
-    <Path
-      d="M10 20V15C10 14.4477 10.4477 14 11 14H13C13.5523 14 14 14.4477 14 15V20"
-      stroke={color}
-      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
     />
   </Svg>
 );
 
-// Search icon (magnifying glass)
+// Search icon (magnifying glass) - from design
 const SearchIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
   color = ICON_COLOR_INACTIVE
 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Magnifying glass circle */}
-    <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.5} />
-    {/* Handle */}
+  <Svg width={size} height={size} viewBox="0 0 14 14" fill="none">
     <Path
-      d="M16 16L20 20"
+      d="M13.25 13.25L10.1687 10.1687M11.8333 6.16667C11.8333 9.29628 9.29628 11.8333 6.16667 11.8333C3.03705 11.8333 0.5 9.29628 0.5 6.16667C0.5 3.03705 3.03705 0.5 6.16667 0.5C9.29628 0.5 11.8333 3.03705 11.8333 6.16667Z"
       stroke={color}
-      strokeWidth={1.5}
       strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </Svg>
 );
 
-type TabKey = 'browse' | 'library' | 'search' | 'profile' | 'home';
+// Browse icon (compass) - from design
+const BrowseIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = ICON_SIZE,
+  color = ICON_COLOR_INACTIVE
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <Path
+      d="M8 15.5C12.1421 15.5 15.5 12.1421 15.5 8C15.5 3.85786 12.1421 0.5 8 0.5C3.85786 0.5 0.5 3.85786 0.5 8C0.5 12.1421 3.85786 15.5 8 15.5Z"
+      stroke={color}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M11.18 4.82L9.59 9.59L4.82 11.18L6.41 6.41L11.18 4.82Z"
+      stroke={color}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+// Profile icon (person outline) - from design
+const ProfileIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = ICON_SIZE,
+  color = ICON_COLOR_INACTIVE
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 14 15" fill="none">
+    <Path
+      d="M13.5 13.8333C13.5 12.9493 13.1576 12.1014 12.5481 11.4763C11.9386 10.8512 11.112 10.5 10.25 10.5H3.75C2.88805 10.5 2.0614 10.8512 1.4519 11.4763C0.84241 12.1014 0.5 12.9493 0.5 13.8333M10.25 3.83333C10.25 5.67428 8.79493 7.16667 7 7.16667C5.20508 7.16667 3.75 5.67428 3.75 3.83333C3.75 1.99238 5.20508 0.5 7 0.5C8.79493 0.5 10.25 1.99238 10.25 3.83333Z"
+      stroke={color}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+type TabKey = 'browse' | 'search' | 'profile' | 'home';
 
 interface TabConfig {
   key: TabKey;
@@ -153,16 +130,16 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { key: 'home', label: 'Home', icon: HomeIcon, route: 'Main', screen: 'HomeTab' },
-  { key: 'library', label: 'Library', icon: LibraryIcon, route: 'Main', screen: 'LibraryTab' },
-  { key: 'search', label: 'Search', icon: SearchIcon, route: 'Search' },
   { key: 'browse', label: 'Browse', icon: BrowseIcon, route: 'Main', screen: 'DiscoverTab' },
+  { key: 'search', label: 'Search', icon: SearchIcon, route: 'Search' },
   { key: 'profile', label: 'Profile', icon: ProfileIcon, route: 'Main', screen: 'ProfileTab' },
+  { key: 'home', label: 'Home', icon: HomeIcon, route: 'Main', screen: 'HomeTab' },
 ];
 
 function FloatingTabBarInner() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const themeColors = useNavColors();
 
   // Use useShallow to prevent infinite re-renders
   const { isPlayerVisible } = usePlayerStore(
@@ -196,8 +173,6 @@ function FloatingTabBarInner() {
       case 'DiscoverTab':
       case 'BrowseScreen':
         return 'browse';
-      case 'LibraryTab':
-        return 'library';
       case 'Search':
       case 'SearchScreen':
         return 'search';
@@ -223,16 +198,15 @@ function FloatingTabBarInner() {
   const bottomPadding = Math.max(insets.bottom, 16) + BAR_BOTTOM_PADDING;
   const totalBarHeight = BAR_HEIGHT + bottomPadding;
 
-  // Hide tab bar on full-screen modal routes
+  // Hide tab bar on full-screen modal routes or when player is open
   const hiddenRoutes = ['ReadingHistoryWizard', 'MoodDiscovery', 'MoodResults', 'PreferencesOnboarding'];
-  if (hiddenRoutes.includes(currentRouteName)) {
+  if (hiddenRoutes.includes(currentRouteName) || isPlayerVisible) {
     return null;
   }
 
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
-      <View style={[styles.bar, { paddingBottom: bottomPadding, minHeight: totalBarHeight }]}>
-        <NavBarBackground width={SCREEN_WIDTH} height={totalBarHeight} />
+      <View style={[styles.bar, { paddingBottom: bottomPadding, minHeight: totalBarHeight, backgroundColor: themeColors.background }]}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
           const IconComponent = tab.icon;
@@ -246,15 +220,15 @@ function FloatingTabBarInner() {
             >
               <IconComponent
                 size={ICON_SIZE}
-                color={isActive ? ICON_COLOR_ACTIVE : ICON_COLOR_INACTIVE}
+                color={isActive ? themeColors.iconActive : themeColors.iconInactive}
               />
               <Text style={[
                 styles.label,
-                isActive && styles.labelActive
+                { color: themeColors.labelInactive },
+                isActive && { color: themeColors.labelActive, fontWeight: '600' }
               ]}>
                 {tab.label}
               </Text>
-              {isActive && <View style={styles.activeIndicator} />}
             </TouchableOpacity>
           );
         })}
@@ -304,7 +278,7 @@ export function FloatingTabBar() {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: -10,
+    bottom: 0,
     left: 0,
     right: 0,
     zIndex: 9999,
@@ -317,32 +291,25 @@ const styles = StyleSheet.create({
     minHeight: BAR_HEIGHT,
     paddingHorizontal: spacing.sm,
     paddingTop: 0,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    minHeight: 60,
-    gap: spacing.sm,
+    paddingTop: 10,
+    paddingBottom: 4,
+    minHeight: 48, // Minimum touch target (Material Design)
+    gap: 6, // More space between icon and label
   },
   label: {
-    ...typography.labelSmall,
+    fontSize: 10,
     fontWeight: '500',
-    color: colors.textSecondary,
+    color: 'rgba(0,0,0,0.4)',
     letterSpacing: 0.2,
   },
   labelActive: {
-    color: colors.accent,
+    color: '#000',
     fontWeight: '600',
-  },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: 4,
-    width: 20,
-    height: 2,
-    backgroundColor: colors.accent,
-    borderRadius: 1,
   },
 });

@@ -52,11 +52,12 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useGalleryStore } from '../stores/galleryStore';
+import { useFinishedBookIds, useUndoableMarkFinished } from '@/core/hooks/useUserBooks';
 import { useLibraryCache, getAllAuthors, getAllSeries } from '@/core/cache/libraryCache';
 import { useQueueStore } from '@/features/queue/stores/queueStore';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, wp, hp, moderateScale, spacing } from '@/shared/theme';
+import { useTheme, accentColors, wp, hp, moderateScale, spacing } from '@/shared/theme';
 
 // =============================================================================
 // LAYOUT CONSTANTS (from spec)
@@ -88,32 +89,26 @@ const LAYOUT = {
 };
 
 // =============================================================================
-// COLORS (from spec)
+// THEME COLORS INTERFACE (for createStyles)
 // =============================================================================
 
-const COLORS = {
-  accent: '#F3B60C',
-  accentDim: 'rgba(243, 182, 12, 0.15)',
-
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-  textHint: 'rgba(255, 255, 255, 0.35)',
-
-  surface: 'rgba(255, 255, 255, 0.05)',
-  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
-
-  success: '#22C55E',
-  info: '#3B82F6',
-  skip: 'rgba(255, 255, 255, 0.3)',
-
-  // Badge colors
-  badgeBook: '#F3B60C',
-  badgeAuthor: '#8B5CF6',
-  badgeSeries: '#3B82F6',
-
-  background: '#0A0A0A',
-};
+interface ThemeColorsConfig {
+  accent: string;
+  accentDim: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  textHint: string;
+  surface: string;
+  surfaceBorder: string;
+  success: string;
+  info: string;
+  skip: string;
+  badgeBook: string;
+  badgeAuthor: string;
+  badgeSeries: string;
+  background: string;
+}
 
 // =============================================================================
 // TYPES
@@ -693,13 +688,37 @@ export function MarkBooksScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
 
+  // Theme-aware colors
+  const { colors: themeColors } = useTheme();
+  const COLORS: ThemeColorsConfig = useMemo(() => ({
+    accent: accentColors.gold,
+    accentDim: 'rgba(243, 182, 12, 0.15)',
+    textPrimary: themeColors.text.primary,
+    textSecondary: themeColors.text.secondary,
+    textTertiary: themeColors.text.tertiary,
+    textHint: 'rgba(255, 255, 255, 0.35)',
+    surface: themeColors.surface.default,
+    surfaceBorder: themeColors.border.default,
+    success: themeColors.semantic.success,
+    info: themeColors.semantic.info,
+    skip: 'rgba(255, 255, 255, 0.3)',
+    badgeBook: accentColors.gold,
+    badgeAuthor: '#8B5CF6',
+    badgeSeries: themeColors.semantic.info,
+    background: themeColors.background.primary,
+  }), [themeColors]);
+
+  // Theme-aware styles
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+
   // Library data
   const items = useLibraryCache((s) => s.items);
 
-  // Gallery store
-  const markBook = useGalleryStore((s) => s.markBook);
-  const unmarkBook = useGalleryStore((s) => s.unmarkBook);
-  const markedBooks = useGalleryStore((s) => s.markedBooks);
+  // Finished books from SQLite (single source of truth)
+  const finishedBookIds = useFinishedBookIds();
+  const { mark: markBookFinished, unmark: unmarkBookFinished, undo: undoLastMark, canUndo, isProcessing } = useUndoableMarkFinished();
+
+  // Gallery store for session/wizard UI state only
   const startSession = useGalleryStore((s) => s.startSession);
   const endSession = useGalleryStore((s) => s.endSession);
   const processedAuthors = useGalleryStore((s) => s.processedAuthors);
@@ -747,7 +766,7 @@ export function MarkBooksScreen() {
   // Affinity scores
   const authorAffinityScores = useMemo(() => {
     const scores: Record<string, number> = {};
-    markedBooks.forEach((_, bookId) => {
+    for (const bookId of finishedBookIds) {
       const item = items.find((i) => i.id === bookId);
       if (item) {
         const authorName = getAuthorName(item);
@@ -755,13 +774,13 @@ export function MarkBooksScreen() {
           scores[authorName] = (scores[authorName] || 0) + 1;
         }
       }
-    });
+    }
     return scores;
-  }, [markedBooks, items]);
+  }, [finishedBookIds, items]);
 
   const seriesAffinityScores = useMemo(() => {
     const scores: Record<string, number> = {};
-    markedBooks.forEach((_, bookId) => {
+    for (const bookId of finishedBookIds) {
       const item = items.find((i) => i.id === bookId);
       if (item) {
         const seriesName = getSeriesName(item);
@@ -769,24 +788,24 @@ export function MarkBooksScreen() {
           scores[seriesName] = (scores[seriesName] || 0) + 1;
         }
       }
-    });
+    }
     return scores;
-  }, [markedBooks, items]);
+  }, [finishedBookIds, items]);
 
   // Tab counts
   const tabCounts = useMemo(() => {
     const unmarkedBooks = items.filter(
-      (b) => !skippedBooks.has(b.id) && !markedBooks.has(b.id)
+      (b) => !skippedBooks.has(b.id) && !finishedBookIds.has(b.id)
     ).length;
 
     const unmarkedAuthors = authorsData.filter((a) => {
       if (skippedAuthors.has(a.name)) return false;
-      return a.books.some((b) => !markedBooks.has(b.id));
+      return a.books.some((b) => !finishedBookIds.has(b.id));
     }).length;
 
     const unmarkedSeries = seriesData.filter((s) => {
       if (skippedSeries.has(s.name)) return false;
-      return s.books.some((b) => !markedBooks.has(b.id));
+      return s.books.some((b) => !finishedBookIds.has(b.id));
     }).length;
 
     return {
@@ -794,14 +813,14 @@ export function MarkBooksScreen() {
       authors: unmarkedAuthors,
       series: unmarkedSeries,
     };
-  }, [items, authorsData, seriesData, skippedBooks, skippedAuthors, skippedSeries, markedBooks]);
+  }, [items, authorsData, seriesData, skippedBooks, skippedAuthors, skippedSeries, finishedBookIds]);
 
   // Build cards
   const cards = useMemo((): CardData[] => {
     if (viewLevel === 'top') {
       if (activeTab === 'books') {
         const bookCards = items
-          .filter((book) => !skippedBooks.has(book.id) && !markedBooks.has(book.id))
+          .filter((book) => !skippedBooks.has(book.id) && !finishedBookIds.has(book.id))
           .map((book) => {
             const authorName = getAuthorName(book);
             const seriesName = getSeriesName(book);
@@ -833,7 +852,7 @@ export function MarkBooksScreen() {
         return authorsData
           .filter((a) => !skippedAuthors.has(a.name))
           .map((author) => {
-            const unmarkedBooks = author.books.filter((b) => !markedBooks.has(b.id));
+            const unmarkedBooks = author.books.filter((b) => !finishedBookIds.has(b.id));
             return {
               type: 'author' as CardType,
               id: author.name,
@@ -859,7 +878,7 @@ export function MarkBooksScreen() {
         return seriesData
           .filter((s) => !skippedSeries.has(s.name))
           .map((series) => {
-            const unmarkedBooks = series.books.filter((b) => !markedBooks.has(b.id));
+            const unmarkedBooks = series.books.filter((b) => !finishedBookIds.has(b.id));
             return {
               type: 'series' as CardType,
               id: series.name,
@@ -925,7 +944,7 @@ export function MarkBooksScreen() {
       if (!author) return [];
 
       return author.books
-        .filter((b) => !skippedBooks.has(b.id) && !markedBooks.has(b.id))
+        .filter((b) => !skippedBooks.has(b.id) && !finishedBookIds.has(b.id))
         .map((book) => ({
           type: 'book' as CardType,
           id: book.id,
@@ -943,7 +962,7 @@ export function MarkBooksScreen() {
           const author = authorsData.find((a) => a.name === currentAuthor);
           const booksNotInSeries = author?.books.filter((b) => !getSeriesName(b)) || [];
           return booksNotInSeries
-            .filter((b) => !skippedBooks.has(b.id) && !markedBooks.has(b.id))
+            .filter((b) => !skippedBooks.has(b.id) && !finishedBookIds.has(b.id))
             .map((book) => ({
               type: 'book' as CardType,
               id: book.id,
@@ -957,7 +976,7 @@ export function MarkBooksScreen() {
       }
 
       return series.books
-        .filter((b) => !skippedBooks.has(b.id) && !markedBooks.has(b.id))
+        .filter((b) => !skippedBooks.has(b.id) && !finishedBookIds.has(b.id))
         .map((book) => ({
           type: 'book' as CardType,
           id: book.id,
@@ -971,7 +990,7 @@ export function MarkBooksScreen() {
     return [];
   }, [
     viewLevel, activeTab, currentAuthor, currentSeries, items, authorsData, seriesData,
-    skippedAuthors, skippedSeries, skippedBooks, markedBooks,
+    skippedAuthors, skippedSeries, skippedBooks, finishedBookIds,
     authorAffinityScores, seriesAffinityScores, processedAuthors, processedSeries,
   ]);
 
@@ -1029,9 +1048,9 @@ export function MarkBooksScreen() {
         title: currentCard.title,
         level: viewLevel,
       }]);
-      markBook(currentCard.id, 'tap');
+      markBookFinished(currentCard.id, 'manual');
     }
-  }, [cards, authorsData, viewLevel, currentAuthor, markBook, markAuthorProcessed, markSeriesProcessed]);
+  }, [cards, authorsData, viewLevel, currentAuthor, markBookFinished, markAuthorProcessed, markSeriesProcessed]);
 
   const handleSwipeLeft = useCallback(() => {
     const currentCard = cards[0];
@@ -1075,9 +1094,9 @@ export function MarkBooksScreen() {
     const lastEntry = undoHistory[undoHistory.length - 1];
 
     if (lastEntry.action === 'mark') {
-      lastEntry.ids.forEach((id) => unmarkBook(id));
+      lastEntry.ids.forEach((id) => unmarkBookFinished(id));
     } else if (lastEntry.action === 'mark-all') {
-      lastEntry.ids.forEach((id) => unmarkBook(id));
+      lastEntry.ids.forEach((id) => unmarkBookFinished(id));
       if (lastEntry.cardType === 'author') {
         setSkippedAuthors((prev) => {
           const newSet = new Set(prev);
@@ -1129,7 +1148,7 @@ export function MarkBooksScreen() {
     }
 
     setUndoHistory((prev) => prev.slice(0, -1));
-  }, [undoHistory, unmarkBook, viewLevel]);
+  }, [undoHistory, unmarkBookFinished, viewLevel]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1175,10 +1194,10 @@ export function MarkBooksScreen() {
 
   // Derived state
   const currentCard = cards[0];
-  const markedCount = markedBooks.size;
+  const markedCount = finishedBookIds.size;
   const processedCount = markedCount + skippedBooks.size;
   const isDone = cards.length === 0;
-  const canUndo = undoHistory.length > 0;
+  const canUndoLocal = undoHistory.length > 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1268,7 +1287,7 @@ export function MarkBooksScreen() {
             onUndo={handleUndo}
             onQueue={currentCard.type === 'book' ? handleSwipeUp : undefined}
             onFinished={handleSwipeRight}
-            canUndo={canUndo}
+            canUndo={canUndoLocal}
             undoCount={undoHistory.length}
             cardType={currentCard.type}
           />
@@ -1279,10 +1298,10 @@ export function MarkBooksScreen() {
 }
 
 // =============================================================================
-// STYLES
+// STYLES (factory function for theme support)
 // =============================================================================
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1630,5 +1649,27 @@ const styles = StyleSheet.create({
     paddingTop: hp(1),
   },
 });
+
+// Default dark theme colors (used by helper components outside main component)
+const COLORS: ThemeColorsConfig = {
+  accent: accentColors.gold,
+  accentDim: 'rgba(243, 182, 12, 0.15)',
+  textPrimary: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.7)',
+  textTertiary: 'rgba(255, 255, 255, 0.5)',
+  textHint: 'rgba(255, 255, 255, 0.35)',
+  surface: '#1C1C1E',
+  surfaceBorder: 'rgba(255, 255, 255, 0.1)',
+  success: '#34C759',
+  info: '#0A84FF',
+  skip: 'rgba(255, 255, 255, 0.3)',
+  badgeBook: accentColors.gold,
+  badgeAuthor: '#8B5CF6',
+  badgeSeries: '#0A84FF',
+  background: '#000000',
+};
+
+// Default styles (used by helper components outside main component)
+const styles = createStyles(COLORS);
 
 export default MarkBooksScreen;

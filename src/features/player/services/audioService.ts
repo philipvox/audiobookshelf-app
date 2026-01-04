@@ -74,6 +74,7 @@ class AudioService {
   private tracks: AudioTrackInfo[] = []; // All tracks for multi-file books
   private currentTrackIndex = 0; // Current track in multi-file mode
   private totalDuration = 0; // Total duration across all tracks
+  private lastKnownGoodPosition = 0; // Cache position during track switches to prevent flash to 0
   private metadata: { title?: string; artist?: string; artwork?: string } = {};
   private pendingSeekAfterLoad: number | null = null;
   private autoPlayAfterLoad = true;
@@ -82,19 +83,21 @@ class AudioService {
   private removeMediaControlListener: (() => void) | null = null;
 
   // Dynamic polling rates for better performance
-  private readonly POLL_RATE_PLAYING = 250;  // More responsive when playing
+  private readonly POLL_RATE_PLAYING = 100;  // Sub-second accuracy (10 updates/sec)
   private readonly POLL_RATE_PAUSED = 2000;  // Save battery when paused
-  private currentPollRate = 500;
+  private currentPollRate = 100;
 
   // Pre-buffer threshold (seconds before track end to start preloading)
   private readonly PRELOAD_THRESHOLD = 30;
 
   // Media control position update counter (every N updates)
   private mediaControlUpdateCounter = 0;
-  private readonly MEDIA_CONTROL_UPDATE_INTERVAL = 8; // ~2 seconds at 250ms
+  private readonly MEDIA_CONTROL_UPDATE_INTERVAL = 10; // ~1 second at 100ms
 
   // Scrubbing optimization: debounce track changes during rapid seeking
   private isScrubbing = false;
+  // Skip SmartRewind after scrubbing (prevents race condition with AsyncStorage clear)
+  private skipNextSmartRewind = false;
   private lastSeekTime = 0;
   private pendingTrackSwitch: { trackIndex: number; positionInTrack: number } | null = null;
   private trackSwitchTimeout: NodeJS.Timeout | null = null;
@@ -102,6 +105,9 @@ class AudioService {
   // Track switch synchronization - prevents stale position updates during switch
   private trackSwitchInProgress = false;
   private trackSwitchStartTime = 0;
+
+  // Event listener tracking - prevents listener stacking on retry
+  private playbackStatusSubscription: { remove: () => void } | null = null;
 
   constructor() {
     // Pre-warm on construction - don't await, let it run in background
@@ -185,8 +191,16 @@ class AudioService {
   private setupEventListeners(): void {
     if (!this.player) return;
 
+    // CRITICAL: Remove old listener before adding new one to prevent listener stacking
+    // This can happen if setup() fails after adding listeners and is retried
+    if (this.playbackStatusSubscription) {
+      log('Removing previous playback status listener');
+      this.playbackStatusSubscription.remove();
+      this.playbackStatusSubscription = null;
+    }
+
     // Listen for playback status updates
-    this.player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+    this.playbackStatusSubscription = this.player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
       // DEBUG: Log significant status changes
       const currentPos = this.player?.currentTime || 0;
       const isPlaying = this.player?.playing || false;
@@ -273,13 +287,15 @@ class AudioService {
    * Handle remote control events from lock screen / notification
    */
   private handleMediaControlEvent(event: MediaControlEvent): void {
-    log(`Media control event: ${event.command}`);
+    audioLog.audio(`📱 Media control event: ${event.command} (PLAY=${Command?.PLAY}, PAUSE=${Command?.PAUSE})`);
 
     switch (event.command) {
       case Command.PLAY:
+        audioLog.audio('📱 Received PLAY command from notification');
         this.play();
         break;
       case Command.PAUSE:
+        audioLog.audio('📱 Received PAUSE command from notification');
         this.pause();
         break;
       case Command.SKIP_FORWARD:
@@ -412,8 +428,25 @@ class AudioService {
     const playerDuration = this.player?.duration || 0;
     log(`🔸 handleTrackEnd ENTRY: tracks=${this.tracks.length}, currentIndex=${this.currentTrackIndex}, playerPos=${currentPlayerPos.toFixed(1)}s, playerDur=${playerDuration.toFixed(1)}s, totalDur=${this.totalDuration.toFixed(1)}s`);
 
+    // GUARD: Ignore spurious didJustFinish from pre-buffered tracks
+    // Pre-buffered tracks can report didJustFinish=true with duration=0 or position=0
+    // which causes a cascade of track advances. Only advance if we've actually played.
+    if (playerDuration <= 0 || currentPlayerPos < 1) {
+      log(`🔸 handleTrackEnd IGNORED: spurious event (dur=${playerDuration.toFixed(1)}s, pos=${currentPlayerPos.toFixed(1)}s)`);
+      return;
+    }
+
     // Check if there are more tracks in the queue
     if (this.tracks.length > 0 && this.currentTrackIndex < this.tracks.length - 1) {
+      // CRITICAL: Set flag BEFORE changing track index to prevent race conditions
+      // This ensures getGlobalPositionSync() returns cached position during transition
+      this.trackSwitchInProgress = true;
+      this.trackSwitchStartTime = Date.now();
+
+      // Capture position BEFORE changing track index
+      const positionBeforeSwitch = this.getGlobalPositionSync();
+      this.lastKnownGoodPosition = positionBeforeSwitch;
+
       // Play next track
       this.currentTrackIndex++;
       const nextTrack = this.tracks[this.currentTrackIndex];
@@ -422,6 +455,9 @@ class AudioService {
       // Use preloaded player if available for seamless transition
       if (this.preloadedTrackIndex === this.currentTrackIndex && this.preloadPlayer) {
         log('Using pre-buffered track for seamless transition');
+        // CRITICAL: Stop the old player BEFORE swapping to prevent multiple audio streams
+        this.player?.pause();
+
         // Swap players
         const temp = this.player;
         this.player = this.preloadPlayer;
@@ -433,13 +469,25 @@ class AudioService {
         // Reset preload state and start preloading next-next track
         this.preloadedTrackIndex = -1;
         this.preloadNextTrack();
+
+        // Update lastKnownGoodPosition to new track start
+        this.lastKnownGoodPosition = this.tracks[this.currentTrackIndex].startOffset;
       } else {
         // Fallback: load directly (may have brief gap)
         if (this.player) {
           this.player.replace({ uri: nextTrack.url });
           this.player.play();
+
+          // Wait briefly for track to be ready
+          await this.waitForTrackReady(500);
+
+          // Update lastKnownGoodPosition to new track start
+          this.lastKnownGoodPosition = this.tracks[this.currentTrackIndex].startOffset;
         }
       }
+
+      // Clear flag after transition is complete
+      this.trackSwitchInProgress = false;
     } else if (this.tracks.length === 0) {
       // Single-track mode - check if we're actually at the end
       const currentPos = await this.getPosition();
@@ -496,18 +544,52 @@ class AudioService {
 
 
   private getGlobalPositionSync(): number {
-    if (!this.player) return 0;
+    if (!this.player) return this.lastKnownGoodPosition;
+
+    // During track switch, return cached position to prevent UI flash to chapter 1
+    // Also during scrubbing, trust the cached position set by seekTo()
+    if (this.trackSwitchInProgress || this.isScrubbing) {
+      return this.lastKnownGoodPosition;
+    }
+
+    let position: number;
 
     // For multi-track: add track's startOffset to get global position
     if (this.tracks.length > 0 && this.currentTrackIndex < this.tracks.length) {
-      return this.tracks[this.currentTrackIndex].startOffset + this.player.currentTime;
+      position = this.tracks[this.currentTrackIndex].startOffset + this.player.currentTime;
+    } else {
+      position = this.player.currentTime;
     }
 
-    return this.player.currentTime;
+    // Log significant position changes for debugging (> 30 seconds)
+    // Note: We removed the strict 60s rejection because it was blocking legitimate
+    // track switches and seeks. The trackSwitchInProgress and isScrubbing flags
+    // already provide protection during transitions.
+    const positionDelta = Math.abs(position - this.lastKnownGoodPosition);
+    if (position > 0) {
+      if (this.lastKnownGoodPosition > 0 && positionDelta > 30) {
+        console.warn(`[POSITION_CHANGE] Large change (${positionDelta.toFixed(1)}s):`, {
+          from: this.lastKnownGoodPosition.toFixed(1),
+          to: position.toFixed(1),
+          trackIndex: this.currentTrackIndex,
+          playerCurrentTime: this.player?.currentTime?.toFixed(1),
+        });
+      }
+      this.lastKnownGoodPosition = position;
+    }
+
+    return this.lastKnownGoodPosition;
   }
 
   getIsLoaded(): boolean {
     return this.isLoaded;
+  }
+
+  /**
+   * Check if audio is currently playing (for stuck detection)
+   */
+  getIsPlaying(): boolean {
+    return this.player?.playing ?? false;
   }
 
   getCurrentUrl(): string | null {
@@ -535,19 +617,19 @@ class AudioService {
     const updateProgress = () => {
       if (!this.isLoaded || !this.player) return;
 
-      // Skip position updates during track switch to prevent stale values
-      // Allow updates after 500ms timeout as a fallback
+      // Track switch timeout fallback - clear flag after 1500ms
+      // (extended from 500ms to handle slower network/track loads)
       if (this.trackSwitchInProgress) {
         const elapsed = Date.now() - this.trackSwitchStartTime;
-        if (elapsed < 500) {
-          return; // Skip this update
+        if (elapsed >= 1500) {
+          log('Track switch timeout - clearing flag');
+          this.trackSwitchInProgress = false;
         }
-        // Fallback: clear the flag after timeout
-        log('Track switch timeout - clearing flag');
-        this.trackSwitchInProgress = false;
       }
 
       try {
+        // ALWAYS get position from getGlobalPositionSync - it returns cached value during
+        // track switch/scrubbing, ensuring consistent position even during transitions
         const position = this.getGlobalPositionSync();
         const isPlaying = this.player.playing;
         const isBuffering = this.player.isBuffering;
@@ -648,6 +730,7 @@ class AudioService {
       this.metadata = metadata || {};
       this.tracks = [];
       this.currentTrackIndex = 0;
+      this.lastKnownGoodPosition = 0; // Reset position cache for new load
       this.hasReachedEnd = false; // Reset end flag for new load
       // Use known duration immediately if provided
       this.totalDuration = knownDuration || 0;
@@ -860,7 +943,7 @@ class AudioService {
 
     if (this.tracks.length === 0) {
       // Single track mode - just seek directly
-      this.player.seekTo(globalPositionSec);
+      await this.player.seekTo(globalPositionSec);
       return;
     }
 
@@ -906,7 +989,9 @@ class AudioService {
           clearTimeout(this.trackSwitchTimeout);
         }
 
-        // Execute track switch after scrubbing settles (50ms of no new seeks)
+        // Execute track switch after scrubbing settles
+        // Increased from 50ms to 150ms - 50ms was too short for typical scrub gestures
+        // and caused pending track switches to be overwritten during rapid scrubbing
         this.trackSwitchTimeout = setTimeout(() => {
           if (this.pendingTrackSwitch) {
             this.executeTrackSwitch(
@@ -915,7 +1000,7 @@ class AudioService {
             );
             this.pendingTrackSwitch = null;
           }
-        }, 50);
+        }, 150);
         return;
       }
 
@@ -923,7 +1008,7 @@ class AudioService {
       await this.executeTrackSwitch(targetTrackIndex, positionInTrack);
     } else {
       // Same track - seek directly (fast path)
-      this.player.seekTo(positionInTrack);
+      await this.player.seekTo(positionInTrack);
     }
   }
 
@@ -934,37 +1019,50 @@ class AudioService {
   private async executeTrackSwitch(targetTrackIndex: number, positionInTrack: number): Promise<void> {
     if (!this.player) return;
 
-    const wasPlaying = this.player.playing;
-    this.currentTrackIndex = targetTrackIndex;
-    const newTrack = this.tracks[targetTrackIndex];
-
-    log(`⏩ Track switch → ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
-
-    // Set flag to suppress stale position updates during switch
+    // CRITICAL: Set flag FIRST to prevent race condition where currentTrackIndex
+    // is updated but flag isn't set, causing getGlobalPositionSync to return bad value
     this.trackSwitchInProgress = true;
     this.trackSwitchStartTime = Date.now();
 
+    const wasPlaying = this.player.playing;
+    const newTrack = this.tracks[targetTrackIndex];
+
+    // FIX: Set lastKnownGoodPosition to TARGET position BEFORE changing currentTrackIndex
+    // This ensures that if the flag clears prematurely for any reason, getGlobalPositionSync()
+    // will return the correct target position instead of a stale value
+    const targetGlobalPosition = newTrack.startOffset + positionInTrack;
+    log(`📍 Pre-setting lastKnownGoodPosition to ${targetGlobalPosition.toFixed(1)}s before track switch`);
+    this.lastKnownGoodPosition = targetGlobalPosition;
+
+    this.currentTrackIndex = targetTrackIndex;
+
+    log(`⏩ Track switch → ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
+
     // Check if we have this track preloaded for instant switch
     if (this.preloadedTrackIndex === targetTrackIndex && this.preloadPlayer) {
+      // CRITICAL: Stop the old player BEFORE swapping to prevent multiple audio streams
+      this.player.pause();
+
       // Swap players for seamless transition
       const temp = this.player;
       this.player = this.preloadPlayer;
       this.preloadPlayer = temp;
       this.preloadedTrackIndex = -1;
 
-      this.player.seekTo(positionInTrack);
+      await this.player.seekTo(positionInTrack);
       if (wasPlaying) {
         this.player.play();
       }
-      // Clear flag after a short delay to let the seek take effect
-      setTimeout(() => {
-        this.trackSwitchInProgress = false;
-      }, 100);
+      // Clear flag - seek is complete
+      this.trackSwitchInProgress = false;
       return;
     }
 
     // Store the desired seek position - will be applied after track loads
     this.pendingSeekAfterLoad = positionInTrack;
+
+    // CRITICAL: Pause before replacing to prevent audio overlap
+    this.player.pause();
 
     // Load the new track
     this.player.replace({ uri: newTrack.url });
@@ -976,12 +1074,20 @@ class AudioService {
     // Now perform the seek
     if (this.pendingSeekAfterLoad !== null) {
       log(`📍 Applying pending seek to ${this.pendingSeekAfterLoad.toFixed(1)}s`);
-      this.player.seekTo(this.pendingSeekAfterLoad);
+      await this.player.seekTo(this.pendingSeekAfterLoad);
       this.pendingSeekAfterLoad = null;
     }
 
     if (wasPlaying) {
       this.player.play();
+    }
+
+    // Refine lastKnownGoodPosition with actual player position after seek completes
+    // (We pre-set it before track switch as a safety net, now we update with actual value)
+    if (this.player && this.tracks.length > 0 && targetTrackIndex < this.tracks.length) {
+      const refinedPosition = this.tracks[targetTrackIndex].startOffset + this.player.currentTime;
+      log(`📍 Refined lastKnownGoodPosition: ${this.lastKnownGoodPosition.toFixed(1)}s → ${refinedPosition.toFixed(1)}s`);
+      this.lastKnownGoodPosition = refinedPosition;
     }
 
     // Clear flag after seek is complete
@@ -991,8 +1097,9 @@ class AudioService {
   /**
    * Wait for the current track to be ready for seeking
    * Polls player.duration until it's available (indicates track is loaded)
+   * Increased from 300ms to 500ms to give more time for network latency
    */
-  private async waitForTrackReady(maxWaitMs: number = 300): Promise<void> {
+  private async waitForTrackReady(maxWaitMs: number = 500): Promise<void> {
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
       if (this.player && this.player.duration > 0) {
@@ -1005,10 +1112,31 @@ class AudioService {
   }
 
   /**
+   * Check if currently in a scrubbing session
+   */
+  getIsScrubbing(): boolean {
+    return this.isScrubbing;
+  }
+
+  /**
+   * Check if player is in a transition state (track switch, scrubbing, etc.)
+   * Use this to guard against position overwrites during transitions
+   */
+  isInTransition(): boolean {
+    return this.trackSwitchInProgress || this.isScrubbing;
+  }
+
+  /**
    * Mark start of scrubbing session - enables optimizations
    */
   setScrubbing(scrubbing: boolean): void {
     this.isScrubbing = scrubbing;
+
+    if (scrubbing) {
+      // Scrubbing started - skip SmartRewind on next play
+      // This prevents race condition where AsyncStorage clear hasn't completed
+      this.skipNextSmartRewind = true;
+    }
 
     if (!scrubbing) {
       // Scrubbing ended - clear any pending track switch
@@ -1022,6 +1150,18 @@ class AudioService {
     }
   }
 
+  /**
+   * Check and consume the skipNextSmartRewind flag.
+   * Returns true if SmartRewind should be skipped, then clears the flag.
+   */
+  consumeSkipSmartRewind(): boolean {
+    if (this.skipNextSmartRewind) {
+      this.skipNextSmartRewind = false;
+      return true;
+    }
+    return false;
+  }
+
   async play(): Promise<void> {
     log('▶ Play');
     this.player?.play();
@@ -1030,20 +1170,40 @@ class AudioService {
 
   async pause(): Promise<void> {
     log('⏸ Pause');
-    this.player?.pause();
-    this.updateMediaControlPlaybackState(false);
+    if (!this.player) {
+      audioLog.warn('Pause called but player is null');
+      return;
+    }
+    try {
+      this.player.pause();
+      this.updateMediaControlPlaybackState(false);
+    } catch (error: any) {
+      audioLog.warn('Pause failed:', error.message);
+    }
+  }
+
+  /**
+   * Set the cached position without seeking audio.
+   * Use during scrubbing to keep lastKnownGoodPosition in sync
+   * with UI position even when actual audio seeks are throttled.
+   */
+  setPosition(positionSec: number): void {
+    this.lastKnownGoodPosition = positionSec;
   }
 
   async seekTo(positionSec: number): Promise<void> {
     // Reset end flag on seek (allows replay after seeking backward)
     this.hasReachedEnd = false;
 
+    // Update cached position immediately to prevent UI flash during seek
+    this.lastKnownGoodPosition = positionSec;
+
     // Use global seek if we have multiple tracks
     if (this.tracks.length > 0) {
       await this.seekToGlobal(positionSec);
-    } else {
+    } else if (this.player) {
       log(`⏩ Seek to ${positionSec.toFixed(1)}s`);
-      this.player?.seekTo(positionSec);
+      await this.player.seekTo(positionSec);
     }
   }
 
@@ -1099,8 +1259,9 @@ class AudioService {
     this.tracks = [];
     this.currentTrackIndex = 0;
     this.totalDuration = 0;
+    this.lastKnownGoodPosition = 0; // Reset position cache
     this.preloadedTrackIndex = -1;
-    this.currentPollRate = 500; // Reset poll rate
+    this.currentPollRate = 100; // Reset poll rate
     this.hasReachedEnd = false; // Reset end flag
   }
 
@@ -1146,6 +1307,12 @@ class AudioService {
    */
   async cleanup(): Promise<void> {
     await this.unloadAudio();
+
+    // Remove playback status listener
+    if (this.playbackStatusSubscription) {
+      this.playbackStatusSubscription.remove();
+      this.playbackStatusSubscription = null;
+    }
 
     // Remove media control listener
     if (this.removeMediaControlListener) {

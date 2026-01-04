@@ -1,9 +1,9 @@
 /**
  * src/features/discover/components/HeroSection.tsx
  *
- * Immersive hero section with large centered cover art (Option B).
- * Background is rendered in BrowseScreen for seamless blur effect.
- * Uses book-detail-style Play and Download buttons.
+ * Featured book hero with cover art and overlay action buttons.
+ * Shows "Written by" and "Read by" credits below.
+ * Supports light and dark themes.
  */
 
 import React, { useCallback } from 'react';
@@ -15,11 +15,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Play, Pause, CheckCircle, ArrowDownCircle } from 'lucide-react-native';
+import { Play, Pause, Check, Download } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
-import { Icon } from '@/shared/components/Icon';
-import { colors, scale, spacing, radius, layout, elevation } from '@/shared/theme';
+import { scale, spacing, radius, layout, elevation, accentColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { usePlayerStore } from '@/features/player';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
@@ -28,29 +28,14 @@ import { apiClient } from '@/core/api';
 import { haptics } from '@/core/native/haptics';
 import { HeroRecommendation } from '../types';
 
-// Immersive hero with larger cover
-const COVER_SIZE = scale(250); // Square cover
+// Large centered cover
+const COVER_SIZE = scale(300);
 
-const ACCENT = colors.accent;
+// Small overlay button size
+const BUTTON_SIZE = scale(40);
 
-// Format duration
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
-}
-
-// Format bytes
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
+// Use white for most UI elements, red only for progress
+const ACCENT_WHITE = '#FFFFFF';
 
 interface HeroSectionProps {
   hero: HeroRecommendation;
@@ -58,6 +43,7 @@ interface HeroSectionProps {
 
 export function HeroSection({ hero }: HeroSectionProps) {
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
   const loadBook = usePlayerStore((s) => s.loadBook);
   const currentBook = usePlayerStore((s) => s.currentBook);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -69,8 +55,6 @@ export function HeroSection({ hero }: HeroSectionProps) {
     isPending,
     isPaused,
     progress: downloadProgress,
-    bytesDownloaded,
-    totalBytes,
   } = useDownloadStatus(hero.book.id);
 
   // Use cached cover URL
@@ -127,14 +111,14 @@ export function HeroSection({ hero }: HeroSectionProps) {
     }
   }, [hero.book.id, isDownloaded, isDownloading, isPaused, isPending]);
 
-  const { book, reason } = hero;
+  const { book } = hero;
 
-  // Get file size from book data
-  const fileSize = book.duration ? Math.round(book.duration * 16000) : 0; // Rough estimate: ~128kbps
+  // Get narrator from book (if available)
+  const narrator = book.narrator || null;
 
   return (
     <View style={styles.container}>
-      {/* Centered cover with shadow */}
+      {/* Cover with overlay buttons */}
       <TouchableOpacity
         style={styles.coverWrapper}
         onPress={handlePress}
@@ -149,123 +133,68 @@ export function HeroSection({ hero }: HeroSectionProps) {
             transition={200}
           />
           <CompleteBadgeOverlay bookId={book.id} size="medium" />
+
+          {/* Download button overlay - bottom left */}
+          <TouchableOpacity
+            style={[
+              styles.overlayButton,
+              styles.overlayButtonLeft,
+              styles.overlayButtonDownload,
+              isDownloaded && styles.overlayButtonDownloaded,
+            ]}
+            onPress={handleDownload}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {isDownloading || isPending ? (
+              <View style={styles.progressContainer}>
+                <ActivityIndicator size="small" color="rgba(0,0,0,0.7)" />
+              </View>
+            ) : isDownloaded ? (
+              <Check size={scale(18)} color="#34C759" strokeWidth={2.5} />
+            ) : (
+              <Download size={scale(20)} color="rgba(0,0,0,0.7)" strokeWidth={2} />
+            )}
+          </TouchableOpacity>
+
+          {/* Play button overlay - bottom right */}
+          <TouchableOpacity
+            style={[
+              styles.overlayButton,
+              styles.overlayButtonRight,
+              styles.overlayButtonPlay,
+            ]}
+            onPress={handlePlay}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {isCurrentlyPlaying ? (
+              <Pause size={scale(18)} color="#000" strokeWidth={2.5} />
+            ) : (
+              <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} style={{ marginLeft: scale(2) }} />
+            )}
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
 
-      {/* Title and metadata below cover */}
-      <View style={styles.infoContainer}>
-        {/* Recommendation reason */}
-        <View style={styles.reasonRow}>
-          <Icon name="Sparkles" size={scale(12)} color={colors.accent} />
-          <Text style={styles.reason}>{reason || 'Recommended for you'}</Text>
-        </View>
+      {/* Title below cover */}
+      <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
+        {book.title}
+      </Text>
 
-        <Text style={styles.title} numberOfLines={2}>{book.title}</Text>
-        <Text style={styles.author} numberOfLines={1}>by {book.author}</Text>
-
-        {/* Meta info row */}
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Icon name="Clock" size={scale(12)} color={colors.textTertiary} />
-            <Text style={styles.metaText}>{formatDuration(book.duration)}</Text>
-          </View>
-          {book.genres[0] && (
-            <>
-              <View style={styles.metaDot} />
-              <Text style={styles.metaText}>{book.genres[0]}</Text>
-            </>
-          )}
-        </View>
-
-        {/* Action buttons - book detail style */}
-        <View style={styles.actionRow}>
-          {/* Download Button */}
-          {isDownloading || isPending || isPaused ? (
-            <TouchableOpacity
-              style={styles.downloadProgressButton}
-              onPress={handleDownload}
-              activeOpacity={0.7}
-            >
-              <View style={styles.downloadProgressHeader}>
-                <View style={styles.downloadStatusRow}>
-                  {isPending ? (
-                    <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
-                  ) : isPaused ? (
-                    <Play size={scale(14)} color="rgba(255,255,255,0.6)" fill="rgba(255,255,255,0.6)" strokeWidth={0} />
-                  ) : (
-                    <Pause size={scale(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-                  )}
-                  <Text style={styles.downloadStatusText}>
-                    {isPending ? 'Queued' : isPaused ? 'Paused' : `${Math.round(downloadProgress * 100)}%`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.downloadProgressTrack}>
-                <View style={[
-                  styles.downloadProgressFill,
-                  { width: `${downloadProgress * 100}%` },
-                  isPaused && styles.downloadProgressFillPaused,
-                ]} />
-              </View>
-              <Text style={styles.downloadBytesText}>
-                {formatBytes(bytesDownloaded)} / {formatBytes(totalBytes)}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                isDownloaded && styles.primaryButtonDownloaded,
-              ]}
-              onPress={handleDownload}
-              activeOpacity={0.7}
-              disabled={isDownloaded}
-            >
-              {isDownloaded ? (
-                <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
-              ) : (
-                <ArrowDownCircle size={scale(18)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
-              )}
-              <View style={styles.buttonTextContainer}>
-                <Text style={[styles.buttonText, isDownloaded && styles.buttonTextAccent]}>
-                  {isDownloaded ? 'Downloaded' : 'Download'}
-                </Text>
-                {!isDownloaded && fileSize > 0 && (
-                  <Text style={styles.buttonSubtext}>{formatBytes(fileSize)}</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Play Button */}
-          <TouchableOpacity
-            style={[
-              styles.playButton,
-              isCurrentlyPlaying && styles.playButtonActive,
-              !isDownloaded && styles.playButtonStream,
-            ]}
-            onPress={handlePlay}
-            activeOpacity={0.7}
-          >
-            {isCurrentlyPlaying ? (
-              <Pause size={scale(18)} color="#000" strokeWidth={2} />
-            ) : (
-              <Play size={scale(18)} color={isDownloaded ? '#000' : 'rgba(255,255,255,0.9)'} fill={isDownloaded ? '#000' : 'rgba(255,255,255,0.9)'} strokeWidth={0} />
-            )}
-            <View style={styles.buttonTextContainer}>
-              <Text style={[
-                styles.playButtonText,
-                isCurrentlyPlaying && styles.playButtonTextActive,
-                !isDownloaded && styles.playButtonTextStream,
-              ]}>
-                {isCurrentlyPlaying ? 'Pause' : (isDownloaded ? 'Play' : 'Stream')}
-              </Text>
-              {!isDownloaded && !isCurrentlyPlaying && (
-                <Text style={styles.streamSubtext}>May buffer</Text>
-              )}
-            </View>
-          </TouchableOpacity>
-        </View>
+      {/* Credits row: Written by / Read by */}
+      <View style={styles.creditsRow}>
+        <Text style={[styles.creditText, { color: themeColors.textSecondary }]}>
+          Written by <Text style={[styles.creditName, { color: themeColors.text }]}>{book.author}</Text>
+        </Text>
+        {narrator && (
+          <>
+            <View style={[styles.creditDivider, { backgroundColor: themeColors.border }]} />
+            <Text style={[styles.creditText, { color: themeColors.textSecondary }]}>
+              Read by <Text style={[styles.creditName, { color: themeColors.text }]}>{narrator}</Text>
+            </Text>
+          </>
+        )}
       </View>
     </View>
   );
@@ -274,9 +203,9 @@ export function HeroSection({ hero }: HeroSectionProps) {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
-    marginBottom: layout.sectionGap,
+    marginBottom: spacing.md,
   },
   coverWrapper: {
     marginBottom: spacing.lg,
@@ -287,184 +216,106 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     ...elevation.large,
+    position: 'relative',
   },
   cover: {
     width: '100%',
     height: '100%',
   },
-  infoContainer: {
+
+  // Overlay buttons on cover
+  overlayButton: {
+    position: 'absolute',
+    bottom: scale(12),
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: layout.screenPaddingH,
-    width: '100%',
   },
-  reasonRow: {
-    flexDirection: 'row',
+  overlayButtonLeft: {
+    left: scale(12),
+  },
+  overlayButtonRight: {
+    right: scale(12),
+  },
+  overlayButtonDownload: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    // Drop shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  overlayButtonDownloaded: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  overlayButtonPlay: {
+    backgroundColor: ACCENT_WHITE,
+    // Drop shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  // Progress indicator for downloading
+  progressContainer: {
+    position: 'relative',
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
   },
-  reason: {
-    fontSize: scale(11),
-    color: colors.accent,
-    fontWeight: '500',
-    letterSpacing: 0.3,
+  progressRing: {
+    position: 'absolute',
+    width: BUTTON_SIZE - scale(8),
+    height: BUTTON_SIZE - scale(8),
+    borderRadius: (BUTTON_SIZE - scale(8)) / 2,
+    borderWidth: 2,
+    overflow: 'hidden',
+    opacity: 0.3,
   },
+  progressFill: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: ACCENT_WHITE,
+  },
+
+  // Title below cover
   title: {
     fontSize: scale(20),
     fontWeight: '700',
-    color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: scale(26),
-    marginBottom: spacing.xs,
-  },
-  author: {
-    fontSize: scale(14),
-    color: colors.textSecondary,
-    textAlign: 'center',
     marginBottom: spacing.sm,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  metaDot: {
-    width: scale(3),
-    height: scale(3),
-    borderRadius: scale(1.5),
-    backgroundColor: colors.textTertiary,
-    marginHorizontal: spacing.sm,
-  },
-  metaText: {
-    fontSize: scale(12),
-    color: colors.textTertiary,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: scale(10),
-    width: '100%',
-    maxWidth: scale(320),
+    paddingHorizontal: layout.screenPaddingH,
+    // color set via themeColors.text in JSX
   },
 
-  // Primary Button (Download)
-  primaryButton: {
-    flex: 1,
+  // Credits row: "Written by X | Read by Y"
+  creditsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    height: scale(52),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: scale(12),
-    gap: scale(8),
-    paddingHorizontal: scale(12),
+    paddingHorizontal: layout.screenPaddingH,
+    gap: spacing.sm,
   },
-  primaryButtonDownloaded: {
-    backgroundColor: 'rgba(193,244,12,0.1)',
-  },
-
-  // Button text
-  buttonTextContainer: {
-    alignItems: 'flex-start',
-  },
-  buttonText: {
+  creditText: {
     fontSize: scale(13),
+    // color set via themeColors.textSecondary in JSX
+  },
+  creditName: {
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
+    // color set via themeColors.text in JSX
   },
-  buttonTextAccent: {
-    color: ACCENT,
-  },
-  buttonSubtext: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: scale(1),
-  },
-
-  // Play Button
-  playButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: scale(52),
-    backgroundColor: ACCENT,
-    borderRadius: scale(12),
-    gap: scale(8),
-    paddingHorizontal: scale(12),
-  },
-  playButtonActive: {
-    backgroundColor: '#fff',
-  },
-  playButtonStream: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  playButtonText: {
-    fontSize: scale(13),
-    fontWeight: '600',
-    color: '#000',
-  },
-  playButtonTextActive: {
-    color: '#000',
-  },
-  playButtonTextStream: {
-    color: 'rgba(255,255,255,0.9)',
-  },
-  streamSubtext: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: scale(1),
-  },
-
-  // Download Progress Button
-  downloadProgressButton: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: scale(12),
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(8),
-    justifyContent: 'center',
-  },
-  downloadProgressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: scale(6),
-  },
-  downloadStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(6),
-  },
-  downloadStatusText: {
-    fontSize: scale(13),
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
-  },
-  downloadProgressTrack: {
-    height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: scale(2),
-    overflow: 'hidden',
-  },
-  downloadProgressFill: {
-    height: '100%',
-    backgroundColor: ACCENT,
-    borderRadius: scale(2),
-  },
-  downloadProgressFillPaused: {
-    backgroundColor: '#FF9800',
-  },
-  downloadBytesText: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: scale(4),
+  creditDivider: {
+    width: 1,
+    height: scale(14),
+    // backgroundColor set via themeColors.border in JSX
   },
 });

@@ -16,6 +16,7 @@ export { MoodFilterPills } from './components/MoodFilterPills';
 export { CategoryGrid } from './components/CategoryGrid';
 export { PopularSeriesSection } from './components/PopularSeriesSection';
 export { TopAuthorsSection } from './components/TopAuthorsSection';
+export { PreferencesPromoCard } from './components/PreferencesPromoCard';
 
 // Hooks
 export { useDiscoverData } from './hooks/useDiscoverData';

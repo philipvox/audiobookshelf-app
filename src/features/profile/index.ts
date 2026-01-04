@@ -4,6 +4,7 @@ export { StorageSettingsScreen } from './screens/StorageSettingsScreen';
 export { JoystickSeekSettingsScreen } from './screens/JoystickSeekSettingsScreen';
 export { HapticSettingsScreen } from './screens/HapticSettingsScreen';
 export { ChapterCleaningSettingsScreen } from './screens/ChapterCleaningSettingsScreen';
+export { HiddenItemsScreen } from './screens/HiddenItemsScreen';
 
 // Stores
 export { useHapticSettingsStore, useHapticSettings, isHapticEnabled } from './stores/hapticSettingsStore';

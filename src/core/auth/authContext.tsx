@@ -5,10 +5,12 @@
  * Provides useAuth hook for accessing auth state and operations.
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { authService } from './authService';
+import { apiClient } from '../api/apiClient';
 import { User } from '../types';
 import { prefetchMainTabData } from '../queryClient';
+import { appInitializer } from '../services/appInitializer';
 
 /**
  * Authentication context state and operations
@@ -65,6 +67,34 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   }, [initialSession]);
 
   /**
+   * Handle auth failure from API client (401 after re-auth attempt failed)
+   * Triggers automatic logout
+   */
+  const handleAuthFailure = useCallback(async () => {
+    console.log('[AuthContext] Auth failure detected - logging out');
+    try {
+      // Clear auth state without calling server (token is already invalid)
+      apiClient.clearAuthToken();
+      await authService.clearStorage();
+      setUser(null);
+      setServerUrl(null);
+      setError('Your session has expired. Please log in again.');
+    } catch (err) {
+      console.error('[AuthContext] Error during auth failure logout:', err);
+    }
+  }, []);
+
+  /**
+   * Wire up API client auth failure callback
+   */
+  useEffect(() => {
+    apiClient.setOnAuthFailure(handleAuthFailure);
+    return () => {
+      apiClient.setOnAuthFailure(null);
+    };
+  }, [handleAuthFailure]);
+
+  /**
    * Restore session from stored credentials
    */
   const restoreSession = async () => {
@@ -110,6 +140,9 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       // Prefetch main tab data in background after successful login
       // Don't await - let user see home screen immediately
       prefetchMainTabData();
+
+      // Connect WebSocket for real-time sync
+      appInitializer.connectWebSocket();
     } catch (err: any) {
       console.error('Login failed:', err);
       const errorMessage = err.message || 'Login failed. Please try again.';
@@ -127,6 +160,9 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
+
+      // Disconnect WebSocket before logout
+      appInitializer.disconnectWebSocket();
 
       await authService.logout();
 

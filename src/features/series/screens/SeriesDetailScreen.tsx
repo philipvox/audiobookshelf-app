@@ -1,8 +1,7 @@
 /**
  * src/features/series/screens/SeriesDetailScreen.tsx
  *
- * Enhanced series detail screen with progress tracking, batch downloads,
- * and per-book status indicators.
+ * Clean series detail screen with progress tracking and batch downloads.
  */
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
@@ -30,12 +29,16 @@ import {
   CloudDownload,
   Bell,
   BellOff,
+  LayoutGrid,
+  List,
+  Play,
+  Heart,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
-import { SeriesHeartButton } from '@/shared/components';
 import { LibraryItem } from '@/core/types';
+import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { usePlayerStore } from '@/features/player';
 import { useWishlistStore, useIsSeriesTracked } from '@/features/wishlist';
 import { useDownloads } from '@/core/hooks/useDownloads';
@@ -44,26 +47,33 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { SeriesProgressHeader } from '../components/SeriesProgressHeader';
 import { BatchActionButtons } from '../components/BatchActionButtons';
 import { SeriesBookRow } from '../components/SeriesBookRow';
+import { ThumbnailProgressBar } from '@/shared/components/ThumbnailProgressBar';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, wp, hp, spacing, radius } from '@/shared/theme';
+import { scale, wp, hp, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { useRenderTracker, useLifecycleTracker } from '@/utils/perfDebug';
+
+type ViewMode = 'list' | 'grid';
+
+// Grid constants for 2-column layout
+const SCREEN_WIDTH = wp(100);
+const SCREEN_HEIGHT = hp(100);
+const GRID_GAP = scale(12);
+const GRID_PADDING = scale(16);
+const GRID_CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
+const GRID_COVER_SIZE = GRID_CARD_WIDTH;
+const CARD_RADIUS = radius.sm;
+
+// Stacked covers constants
+const STACK_COVER_SIZE = SCREEN_WIDTH * 0.38;
+const STACK_OFFSET = SCREEN_WIDTH * 0.12;
+const STACK_ROTATION = 8;
+const STACK_VERTICAL_OFFSET = scale(12);
+const MAX_STACK_COVERS = 5;
 
 type SeriesDetailRouteParams = {
   SeriesDetail: { seriesName: string };
 };
-
-const SCREEN_WIDTH = wp(100);
-const SCREEN_HEIGHT = hp(100);
-
-const BG_COLOR = colors.backgroundPrimary;
-const CARD_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
-const CARD_RADIUS = radius.sm;
-
-// Stacked covers constants
-const STACK_COVER_SIZE = SCREEN_WIDTH * 0.35;
-const STACK_OFFSET = 12;
-const STACK_ROTATION = 6;
 
 type SortType = 'asc' | 'desc';
 
@@ -71,7 +81,6 @@ type SortType = 'asc' | 'desc';
 function getRawSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
 
-  // First check series array (preferred - has explicit sequence)
   if (metadata.series?.length > 0) {
     const primarySeries = metadata.series[0];
     if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
@@ -82,95 +91,76 @@ function getRawSequence(item: LibraryItem): number | null {
     }
   }
 
-  // Fallback: check seriesName for #N pattern
   const seriesName = metadata.seriesName || '';
   const match = seriesName.match(/#([\d.]+)/);
   if (match) {
     return parseFloat(match[1]);
   }
 
-  // Fallback: check title for "Book N" pattern
   const titleMatch = (metadata.title || '').match(/Book\s*(\d+)/i);
   if (titleMatch) {
     return parseInt(titleMatch[1], 10);
   }
 
-  // No sequence found
   return null;
 }
 
-// Get publication date for sorting (timestamp or 0)
 function getPublishDate(item: LibraryItem): number {
   const metadata = (item.media?.metadata as any) || {};
-  // Try publishedDate first (format: YYYY-MM-DD or similar)
   if (metadata.publishedDate) {
     const date = new Date(metadata.publishedDate);
     if (!isNaN(date.getTime())) {
       return date.getTime();
     }
   }
-  // Try publishedYear
   if (metadata.publishedYear) {
     return new Date(metadata.publishedYear, 0, 1).getTime();
   }
   return 0;
 }
 
-// Get title for sorting
 function getTitle(item: LibraryItem): string {
   const metadata = (item.media?.metadata as any) || {};
   return (metadata.title || '').toLowerCase();
 }
 
-// Check if a series has meaningful sequence numbers
-// Returns false if all books have the same sequence (likely server default)
 function hasRealSequences(books: LibraryItem[]): boolean {
-  if (books.length <= 1) return true; // Single book, show sequence if present
-
+  if (books.length <= 1) return true;
   const sequences = books.map(getRawSequence).filter(s => s !== null);
-  if (sequences.length === 0) return false; // No sequences at all
-
-  // If all sequences are the same (e.g., all "1"), it's not a real sequence
+  if (sequences.length === 0) return false;
   const uniqueSequences = new Set(sequences);
   return uniqueSequences.size > 1;
 }
 
-// Get sequence for display - returns null if this book shouldn't show a sequence
-// (Uses series context to detect fake sequences)
 function getSequenceForDisplay(item: LibraryItem, allBooks: LibraryItem[]): number | null {
   if (!hasRealSequences(allBooks)) {
-    return null; // Don't show sequence if all books have the same one
+    return null;
   }
   return getRawSequence(item);
 }
 
-// Get sequence for sorting
-// - If real sequences exist: use sequence number, unknowns sort to end
-// - If no real sequences: sort by publication date, then title
 function getSequenceForSort(item: LibraryItem, allBooks: LibraryItem[]): { primary: number; secondary: number; tertiary: string } {
   const hasReal = hasRealSequences(allBooks);
-
   if (hasReal) {
-    // Real sequences: sort by sequence number, unknowns go to end (999)
     const seq = getRawSequence(item) ?? 999;
     return { primary: seq, secondary: 0, tertiary: '' };
   } else {
-    // No real sequences: sort by publication date, then title
     const pubDate = getPublishDate(item);
     const title = getTitle(item);
-    // Use 0 as primary to group all non-sequenced books together
-    // Secondary is publication date (negative so earlier dates come first)
-    // Tertiary is title for alphabetical fallback
     return { primary: 0, secondary: pubDate, tertiary: title };
   }
 }
 
-// Stacked book covers component - memoized to prevent flashing
-const StackedCovers = React.memo(function StackedCovers({ bookIds }: { bookIds: string[] }) {
-  const stackBooks = useMemo(() => bookIds.slice(0, Math.min(3, bookIds.length)), [bookIds]);
-  const count = stackBooks.length;
+// Stacked book covers component
+interface StackedCoversProps {
+  bookIds: string[];
+}
 
-  // Memoize cover URLs to prevent re-fetching
+const StackedCovers = React.memo(function StackedCovers({ bookIds }: StackedCoversProps) {
+  const stackBooks = useMemo(() => bookIds.slice(0, Math.min(MAX_STACK_COVERS, bookIds.length)), [bookIds]);
+  const count = stackBooks.length;
+  const themeColors = useThemeColors();
+
   const coverUrls = useMemo(() =>
     stackBooks.map(id => apiClient.getItemCoverUrl(id)),
     [stackBooks]
@@ -179,20 +169,33 @@ const StackedCovers = React.memo(function StackedCovers({ bookIds }: { bookIds: 
   if (count === 0) {
     return (
       <View style={stackStyles.container}>
-        <View style={[stackStyles.cover, stackStyles.placeholder]}>
+        <View style={[stackStyles.cover, stackStyles.placeholder, { backgroundColor: themeColors.surfaceElevated }]}>
           <Text style={stackStyles.placeholderText}>📚</Text>
         </View>
       </View>
     );
   }
 
+  // Dynamic container width based on number of covers
+  const containerWidth = STACK_COVER_SIZE + (count - 1) * STACK_OFFSET;
+
   return (
-    <View style={stackStyles.container}>
+    <View style={[stackStyles.container, { width: containerWidth }]}>
       {stackBooks.map((bookId, index) => {
-        const reverseIndex = count - 1 - index;
-        const rotation = (reverseIndex - Math.floor(count / 2)) * STACK_ROTATION;
-        const translateX = (reverseIndex - Math.floor(count / 2)) * STACK_OFFSET;
-        const zIndex = count - reverseIndex;
+        // Fan rotation: left books tilt left, right books tilt right
+        const middleIndex = (count - 1) / 2;
+        const rotation = (index - middleIndex) * STACK_ROTATION;
+        // Z-index: center is highest, sides go down
+        const distanceFromCenter = Math.abs(index - middleIndex);
+        const zIndex = count - Math.floor(distanceFromCenter);
+        // Scale: center is biggest, sides get smaller
+        const scaleValue = 1 - (distanceFromCenter * 0.12);
+        const coverSize = STACK_COVER_SIZE * scaleValue;
+        // Horizontal offset: center each cover at its position
+        const sizeDiff = (STACK_COVER_SIZE - coverSize) / 2;
+        const horizontalOffset = index * STACK_OFFSET + sizeDiff;
+        // Vertical offset: center the smaller covers, then push sides down
+        const verticalOffset = sizeDiff + (distanceFromCenter * STACK_VERTICAL_OFFSET);
 
         return (
           <View
@@ -200,14 +203,23 @@ const StackedCovers = React.memo(function StackedCovers({ bookIds }: { bookIds: 
             style={[
               stackStyles.coverWrapper,
               {
+                left: horizontalOffset,
+                top: verticalOffset,
                 zIndex,
-                transform: [{ translateX }, { rotate: `${rotation}deg` }],
+                transform: [{ rotate: `${rotation}deg` }],
               },
             ]}
           >
             <Image
               source={coverUrls[index]}
-              style={stackStyles.cover}
+              style={[
+                stackStyles.cover,
+                {
+                  width: coverSize,
+                  height: coverSize,
+                  backgroundColor: themeColors.surfaceElevated,
+                },
+              ]}
               contentFit="cover"
               cachePolicy="memory-disk"
             />
@@ -220,25 +232,25 @@ const StackedCovers = React.memo(function StackedCovers({ bookIds }: { bookIds: 
 
 const stackStyles = StyleSheet.create({
   container: {
-    width: STACK_COVER_SIZE + STACK_OFFSET * 4,
-    height: STACK_COVER_SIZE * 1.1,
+    // width set dynamically based on number of covers
+    height: STACK_COVER_SIZE + STACK_VERTICAL_OFFSET * 2 + 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: scale(40),
+    marginBottom: 24,
   },
   coverWrapper: {
     position: 'absolute',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 1, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowRadius: 4,
+    elevation: 4,
   },
   cover: {
     width: STACK_COVER_SIZE,
     height: STACK_COVER_SIZE,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: CARD_COLOR,
+    borderRadius: radius.sm,
   },
   placeholder: {
     justifyContent: 'center',
@@ -249,75 +261,7 @@ const stackStyles = StyleSheet.create({
   },
 });
 
-// Background component
-function SeriesBackground({ coverUrl }: { coverUrl: string | null }) {
-  if (!coverUrl) {
-    return (
-      <View style={bgStyles.container}>
-        <View style={bgStyles.baseColor} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={bgStyles.container}>
-      <View style={bgStyles.baseColor} />
-      <View style={bgStyles.imageContainer}>
-        <Image
-          source={coverUrl}
-          style={bgStyles.image}
-          contentFit="cover"
-          blurRadius={25}
-        />
-        <BlurView intensity={40} style={bgStyles.blur} tint="dark" />
-        <View style={bgStyles.brightnessOverlay} />
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.5)', BG_COLOR]}
-          locations={[0, 0.5, 1]}
-          style={bgStyles.fadeGradient}
-        />
-      </View>
-    </View>
-  );
-}
-
-const bgStyles = StyleSheet.create({
-  container: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  baseColor: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: BG_COLOR,
-  },
-  imageContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.5,
-    overflow: 'hidden',
-  },
-  image: {
-    position: 'absolute',
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.5,
-    transform: [{ scale: 1.2 }],
-    opacity: 0.7,
-  },
-  blur: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  brightnessOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  fadeGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-});
-
 export function SeriesDetailScreen() {
-  // Performance tracking (dev only)
   if (__DEV__) {
     useRenderTracker('SeriesDetailScreen');
     useLifecycleTracker('SeriesDetailScreen');
@@ -329,20 +273,24 @@ export function SeriesDetailScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { seriesName } = route.params;
 
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
   const [sortOrder, setSortOrder] = useState<SortType>('asc');
   const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   const { getSeries, isLoaded, refreshCache } = useLibraryCache();
   const { downloads } = useDownloads();
   const currentBookId = usePlayerStore((s) => s.currentBook?.id);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const { loadBook } = usePlayerStore();
 
-  // Track series functionality
   const isTracking = useIsSeriesTracked(seriesName);
   const { trackSeries, untrackSeries } = useWishlistStore();
+  const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
+  const isFavourite = isSeriesFavorite(seriesName);
 
   const handleTrackToggle = useCallback(() => {
     if (isTracking) {
@@ -354,13 +302,21 @@ export function SeriesDetailScreen() {
     }
   }, [isTracking, seriesName, trackSeries, untrackSeries]);
 
-  // Get series data from cache
+  const handleFavouriteToggle = useCallback(() => {
+    if (isFavourite) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      removeSeriesFromFavorites(seriesName);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addSeriesToFavorites(seriesName);
+    }
+  }, [isFavourite, seriesName, addSeriesToFavorites, removeSeriesFromFavorites]);
+
   const seriesInfo = useMemo(() => {
     if (!isLoaded || !seriesName) return null;
     return getSeries(seriesName);
   }, [isLoaded, seriesName, getSeries]);
 
-  // Sort books by sequence (or by publication date/title if no real sequences)
   const sortedBooks = useMemo(() => {
     if (!seriesInfo?.books) return [];
     const allBooks = seriesInfo.books;
@@ -368,34 +324,20 @@ export function SeriesDetailScreen() {
     sorted.sort((a, b) => {
       const sortA = getSequenceForSort(a, allBooks);
       const sortB = getSequenceForSort(b, allBooks);
-
-      // Primary sort (sequence or group)
-      const primaryDiff = sortOrder === 'asc'
-        ? sortA.primary - sortB.primary
-        : sortB.primary - sortA.primary;
+      const primaryDiff = sortOrder === 'asc' ? sortA.primary - sortB.primary : sortB.primary - sortA.primary;
       if (primaryDiff !== 0) return primaryDiff;
-
-      // Secondary sort (publication date)
-      const secondaryDiff = sortOrder === 'asc'
-        ? sortA.secondary - sortB.secondary
-        : sortB.secondary - sortA.secondary;
+      const secondaryDiff = sortOrder === 'asc' ? sortA.secondary - sortB.secondary : sortB.secondary - sortA.secondary;
       if (secondaryDiff !== 0) return secondaryDiff;
-
-      // Tertiary sort (title, alphabetical)
-      return sortOrder === 'asc'
-        ? sortA.tertiary.localeCompare(sortB.tertiary)
-        : sortB.tertiary.localeCompare(sortA.tertiary);
+      return sortOrder === 'asc' ? sortA.tertiary.localeCompare(sortB.tertiary) : sortB.tertiary.localeCompare(sortA.tertiary);
     });
     return sorted;
   }, [seriesInfo?.books, sortOrder]);
 
-  // Check if series has real sequences (for display purposes)
   const seriesHasRealSequences = useMemo(() => {
     if (!seriesInfo?.books) return true;
     return hasRealSequences(seriesInfo.books);
   }, [seriesInfo?.books]);
 
-  // Get download statuses for all books
   useEffect(() => {
     const checkStatuses = async () => {
       const statuses: Record<string, boolean> = {};
@@ -410,13 +352,11 @@ export function SeriesDetailScreen() {
     }
   }, [sortedBooks, downloads]);
 
-  // Filter books if showing downloaded only
   const displayedBooks = useMemo(() => {
     if (!showDownloadedOnly) return sortedBooks;
     return sortedBooks.filter(book => downloadStatuses[book.id]);
   }, [sortedBooks, showDownloadedOnly, downloadStatuses]);
 
-  // Calculate progress stats
   const progressStats = useMemo(() => {
     let completed = 0;
     let inProgress = 0;
@@ -439,7 +379,6 @@ export function SeriesDetailScreen() {
     return { completed, inProgress, inProgressBook, inProgressPercent };
   }, [sortedBooks]);
 
-  // Find next book to listen to
   const nextBook = useMemo(() => {
     return sortedBooks.find(book => {
       const progress = (book as any).userMediaProgress?.progress || 0;
@@ -447,7 +386,6 @@ export function SeriesDetailScreen() {
     }) || null;
   }, [sortedBooks]);
 
-  // Find up next book (for highlighting - first incomplete that isn't currently playing)
   const upNextBook = useMemo(() => {
     return sortedBooks.find(book => {
       const progress = (book as any).userMediaProgress?.progress || 0;
@@ -455,37 +393,26 @@ export function SeriesDetailScreen() {
     }) || null;
   }, [sortedBooks, currentBookId]);
 
-  // Get books to download (not downloaded, in sequence order)
   const booksToDownload = useMemo(() => {
     return sortedBooks.filter(book => !downloadStatuses[book.id]);
   }, [sortedBooks, downloadStatuses]);
 
-  // Check if all downloaded
   const allDownloaded = booksToDownload.length === 0;
-
-  // Check if series is complete
   const seriesComplete = progressStats.completed === sortedBooks.length;
-
-  // Check if next book is downloaded
   const nextBookDownloaded = nextBook ? downloadStatuses[nextBook.id] || false : false;
 
-  // Auto-scroll to current or next book
   useEffect(() => {
     if (displayedBooks.length === 0) return;
-
-    const targetBook = currentBookId
-      ? displayedBooks.find(b => b.id === currentBookId)
-      : upNextBook;
-
+    const targetBook = currentBookId ? displayedBooks.find(b => b.id === currentBookId) : upNextBook;
     if (targetBook) {
       const index = displayedBooks.findIndex(b => b.id === targetBook.id);
-      if (index > 0) {
+      if (index > 0 && index < displayedBooks.length) {
         setTimeout(() => {
-          flatListRef.current?.scrollToIndex({
-            index,
-            animated: true,
-            viewPosition: 0.3,
-          });
+          try {
+            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+          } catch {
+            // Ignore scroll errors if list changed
+          }
         }, 300);
       }
     }
@@ -517,60 +444,94 @@ export function SeriesDetailScreen() {
     await loadBook(nextBook, { autoPlay: true, showPlayer: true });
   }, [nextBook, loadBook]);
 
-  // Loading/error states
+  // Loading state
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+        <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
+  // Not found state
   if (!seriesInfo) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={styles.header}>
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+        <View style={[styles.scrollHeader, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-            <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
+            <ChevronLeft size={24} color={themeColors.text} strokeWidth={2} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Series</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Series</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.emptyContainer}>
-          <BookOpen size={48} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>Series not found</Text>
-          <Text style={styles.emptySubtitle}>This series may have been removed</Text>
+          <BookOpen size={48} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Series not found</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>This series may have been removed</Text>
         </View>
       </View>
     );
   }
 
-  // Memoize bookIds to prevent re-creating array on every render
   const bookIds = useMemo(() => sortedBooks.map(b => b.id), [sortedBooks]);
+  const firstBookCoverUrl = useMemo(() => bookIds[0] ? apiClient.getItemCoverUrl(bookIds[0]) : null, [bookIds]);
 
-  // Memoize cover URL to prevent background image flickering
-  const firstBookCoverUrl = useMemo(
-    () => bookIds[0] ? apiClient.getItemCoverUrl(bookIds[0]) : null,
-    [bookIds]
-  );
-
-  // Calculate total duration
   const totalDuration = sortedBooks.reduce((sum, book) => sum + ((book.media as any)?.duration || 0), 0);
   const formatTotalDuration = () => {
     const hours = Math.floor(totalDuration / 3600);
     return `${hours}h`;
   };
 
-  // Memoized render function for book items to prevent flickering
-  const renderBookItem = useCallback(({ item, index }: { item: LibraryItem; index: number }) => {
+  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await loadBook(book, { autoPlay: true, showPlayer: true });
+  }, [loadBook]);
+
+  const renderBookItem = useCallback(({ item }: { item: LibraryItem }) => {
     const isNowPlaying = item.id === currentBookId;
     const isUpNext = item.id === upNextBook?.id && !isNowPlaying;
-    // Use getSequenceForDisplay to hide sequence if all books have the same one
     const seq = getSequenceForDisplay(item, sortedBooks);
+
+    if (viewMode === 'grid') {
+      const metadata = item.media?.metadata as any;
+      const title = metadata?.title || 'Unknown';
+      const coverUrl = apiClient.getItemCoverUrl(item.id);
+      const userProgress = (item as any).userMediaProgress?.progress || 0;
+
+      return (
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => handleBookPress(item.id)}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.gridCoverContainer, { backgroundColor: themeColors.surfaceElevated }]}>
+            <Image source={coverUrl} style={styles.gridCover} contentFit="cover" />
+            {userProgress > 0 && <ThumbnailProgressBar progress={userProgress} />}
+
+            {/* Sequence badge - top right */}
+            {seq !== null && (
+              <View style={styles.sequenceBadge}>
+                <Text style={styles.sequenceBadgeText}>{seq}</Text>
+              </View>
+            )}
+
+            {/* Play button - bottom right with shadow */}
+            <TouchableOpacity
+              style={styles.gridPlayButton}
+              onPress={() => handlePlayBook(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Play size={scale(14)} color="#000" fill="#000" strokeWidth={0} />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.gridTitle, { color: themeColors.text }]} numberOfLines={2}>{title}</Text>
+        </TouchableOpacity>
+      );
+    }
 
     return (
       <SeriesBookRow
@@ -581,41 +542,81 @@ export function SeriesDetailScreen() {
         onPress={() => handleBookPress(item.id)}
       />
     );
-  }, [currentBookId, upNextBook?.id, sortedBooks, handleBookPress]);
+  }, [currentBookId, upNextBook?.id, sortedBooks, handleBookPress, viewMode, themeColors, handlePlayBook]);
 
-  // Memoized header component to prevent flickering
   const ListHeader = useMemo(() => (
     <>
+      {/* Scrollable blurred background - like BrowseScreen */}
+      {firstBookCoverUrl && (
+        <View style={styles.heroBackgroundScrollable}>
+          <Image
+            source={firstBookCoverUrl}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            blurRadius={25}
+          />
+          <BlurView intensity={30} tint={isDarkMode ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={
+              isDarkMode
+                ? ['transparent', 'transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', themeColors.background]
+                : ['transparent', 'transparent', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)', themeColors.background]
+            }
+            locations={[0, 0.5, 0.7, 0.85, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      )}
+
+      {/* Header - scrolls with content */}
+      <View style={styles.scrollHeader}>
+        <TouchableOpacity style={styles.headerActionButton} onPress={handleBack}>
+          <ChevronLeft size={scale(18)} color="#000" strokeWidth={2.5} />
+        </TouchableOpacity>
+
+        {/* Action Buttons in Header */}
+        <View style={styles.headerActions}>
+          {/* Track Button */}
+          <TouchableOpacity
+            style={[
+              styles.headerActionButton,
+              isTracking && { backgroundColor: '#000' }
+            ]}
+            onPress={handleTrackToggle}
+            activeOpacity={0.7}
+          >
+            {isTracking ? (
+              <BellOff size={scale(16)} color="#fff" strokeWidth={2} />
+            ) : (
+              <Bell size={scale(16)} color="#000" strokeWidth={2} />
+            )}
+          </TouchableOpacity>
+
+          {/* Favourite Button */}
+          <TouchableOpacity
+            style={[
+              styles.headerActionButton,
+              isFavourite && { backgroundColor: '#E53935' }
+            ]}
+            onPress={handleFavouriteToggle}
+            activeOpacity={0.7}
+          >
+            <Heart
+              size={scale(16)}
+              color={isFavourite ? '#fff' : '#000'}
+              fill={isFavourite ? '#fff' : 'transparent'}
+              strokeWidth={2}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Series Info with Stacked Covers */}
       <View style={styles.seriesHeader}>
         <StackedCovers bookIds={bookIds} />
-        <View style={styles.seriesNameRow}>
-          <Text style={styles.seriesName}>{seriesInfo.name}</Text>
-          <SeriesHeartButton seriesName={seriesInfo.name} size={24} />
-        </View>
+        <Text style={[styles.seriesName, { color: themeColors.text }]}>{seriesInfo.name}</Text>
 
-        {/* Track Button */}
-        <TouchableOpacity
-          style={[
-            styles.trackButton,
-            isTracking && styles.trackButtonActive
-          ]}
-          onPress={handleTrackToggle}
-          activeOpacity={0.7}
-        >
-          {isTracking ? (
-            <BellOff size={scale(16)} color="#000" strokeWidth={2} />
-          ) : (
-            <Bell size={scale(16)} color={ACCENT} strokeWidth={2} />
-          )}
-          <Text style={[
-            styles.trackButtonText,
-            isTracking && styles.trackButtonTextActive
-          ]}>
-            {isTracking ? 'Tracking' : 'Track Series'}
-          </Text>
-        </TouchableOpacity>
-        <Text style={styles.bookCount}>
+        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
           {seriesInfo.bookCount} {seriesInfo.bookCount === 1 ? 'book' : 'books'} · {formatTotalDuration()}
         </Text>
       </View>
@@ -647,118 +648,143 @@ export function SeriesDetailScreen() {
         hasRealSequences={seriesHasRealSequences}
       />
 
-      {/* Sort Row with Filter Toggle */}
-      <View style={styles.sortRow}>
-        <Text style={styles.sectionTitle}>
-          Books{showDownloadedOnly ? ` (${displayedBooks.length})` : ''}
-        </Text>
-        <View style={styles.sortControls}>
-          {/* Downloaded Only Toggle */}
+      {/* Books section options */}
+      <View style={styles.booksSection}>
+        {/* Single Options Bar - chip pattern with clear labels */}
+        <View style={styles.optionsBar}>
+          {/* Downloaded Filter Chip */}
           <TouchableOpacity
             style={[
-              styles.filterToggle,
-              showDownloadedOnly && styles.filterToggleActive,
+              styles.filterChip,
+              {
+                backgroundColor: showDownloadedOnly
+                  ? themeColors.text
+                  : isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                borderColor: showDownloadedOnly ? themeColors.text : 'transparent',
+              }
             ]}
             onPress={() => setShowDownloadedOnly(!showDownloadedOnly)}
+            activeOpacity={0.7}
           >
-            {showDownloadedOnly ? (
-              <CheckCircle size={scale(14)} color="#000" strokeWidth={2} />
-            ) : (
-              <Download size={scale(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-            )}
+            <Download
+              size={scale(14)}
+              color={showDownloadedOnly ? themeColors.background : themeColors.textSecondary}
+              strokeWidth={2}
+            />
             <Text style={[
-              styles.filterToggleText,
-              showDownloadedOnly && styles.filterToggleTextActive,
+              styles.filterChipText,
+              { color: showDownloadedOnly ? themeColors.background : themeColors.textSecondary }
             ]}>
               Downloaded
             </Text>
           </TouchableOpacity>
 
-          {/* Sort Toggle */}
+          {/* Sort Chip */}
           <TouchableOpacity
-            style={styles.sortButton}
+            style={[
+              styles.filterChip,
+              { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }
+            ]}
             onPress={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+            activeOpacity={0.7}
           >
             {sortOrder === 'asc' ? (
-              <ArrowUp size={14} color="#000" strokeWidth={2.5} />
+              <ArrowUp size={scale(14)} color={themeColors.textSecondary} strokeWidth={2} />
             ) : (
-              <ArrowDown size={14} color="#000" strokeWidth={2.5} />
+              <ArrowDown size={scale(14)} color={themeColors.textSecondary} strokeWidth={2} />
             )}
-            <Text style={styles.sortButtonText}>
-              {sortOrder === 'asc' ? `1→${sortedBooks.length}` : `${sortedBooks.length}→1`}
+            <Text style={[styles.filterChipText, { color: themeColors.textSecondary }]}>
+              {sortOrder === 'asc' ? 'Oldest First' : 'Newest First'}
             </Text>
           </TouchableOpacity>
+
+          {/* View Mode Segmented Control */}
+          <View style={[
+            styles.segmentedControl,
+            { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }
+          ]}>
+            <TouchableOpacity
+              style={[
+                styles.segmentButton,
+                viewMode === 'grid' && { backgroundColor: themeColors.text }
+              ]}
+              onPress={() => setViewMode('grid')}
+              activeOpacity={0.7}
+            >
+              <LayoutGrid
+                size={scale(16)}
+                color={viewMode === 'grid' ? themeColors.background : themeColors.textSecondary}
+                strokeWidth={2}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.segmentButton,
+                viewMode === 'list' && { backgroundColor: themeColors.text }
+              ]}
+              onPress={() => setViewMode('list')}
+              activeOpacity={0.7}
+            >
+              <List
+                size={scale(16)}
+                color={viewMode === 'list' ? themeColors.background : themeColors.textSecondary}
+                strokeWidth={2}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </>
   ), [
-    bookIds,
-    seriesInfo.name,
-    seriesInfo.bookCount,
-    isTracking,
-    handleTrackToggle,
-    sortedBooks,
-    progressStats,
-    nextBook,
-    handleBookPress,
-    loadBook,
-    booksToDownload,
-    nextBookDownloaded,
-    allDownloaded,
-    seriesComplete,
-    handleContinueSeries,
-    seriesHasRealSequences,
-    showDownloadedOnly,
-    displayedBooks.length,
-    sortOrder,
+    bookIds, seriesInfo.name, seriesInfo.bookCount, isTracking, handleTrackToggle,
+    isFavourite, handleFavouriteToggle,
+    sortedBooks, progressStats, nextBook, handleBookPress, loadBook, booksToDownload,
+    nextBookDownloaded, allDownloaded, seriesComplete, handleContinueSeries,
+    seriesHasRealSequences, showDownloadedOnly, displayedBooks.length, sortOrder,
+    viewMode, themeColors, firstBookCoverUrl, isDarkMode, handleBack
   ]);
 
   const ListEmpty = () => (
     <View style={styles.emptyListContainer}>
-      <CloudDownload size={scale(40)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
-      <Text style={styles.emptyListTitle}>No downloaded books</Text>
-      <Text style={styles.emptyListSubtitle}>
+      <CloudDownload size={scale(40)} color={themeColors.textTertiary} strokeWidth={1.5} />
+      <Text style={[styles.emptyListTitle, { color: themeColors.text }]}>No downloaded books</Text>
+      <Text style={[styles.emptyListSubtitle, { color: themeColors.textSecondary }]}>
         Download books to see them here when filtering
       </Text>
       <TouchableOpacity
-        style={styles.downloadFirstButton}
+        style={[styles.downloadFirstButton, { backgroundColor: themeColors.text }]}
         onPress={() => {
           if (sortedBooks[0]) {
             downloadManager.queueDownload(sortedBooks[0]);
           }
         }}
       >
-        <Download size={scale(16)} color="#000" strokeWidth={2} />
-        <Text style={styles.downloadFirstButtonText}>Download First Book</Text>
+        <Download size={scale(16)} color={themeColors.background} strokeWidth={2} />
+        <Text style={[styles.downloadFirstButtonText, { color: themeColors.background }]}>Download First Book</Text>
       </TouchableOpacity>
     </View>
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor="transparent" translucent />
 
-      {/* Blurred background */}
-      <SeriesBackground coverUrl={firstBookCoverUrl} />
-
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10 }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Series</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      {/* Book List */}
+      {/* Book List - header and background scroll together */}
       <FlatList
         ref={flatListRef}
         data={displayedBooks}
         renderItem={renderBookItem}
         keyExtractor={(item) => item.id}
+        key={viewMode}
+        numColumns={viewMode === 'grid' ? 2 : 1}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={showDownloadedOnly ? ListEmpty : null}
-        contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
+        style={{ backgroundColor: themeColors.background }}
+        contentContainerStyle={{
+          paddingTop: insets.top,
+          paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom,
+        }}
+        columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
         windowSize={5}
@@ -768,16 +794,13 @@ export function SeriesDetailScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={ACCENT}
+            tintColor={themeColors.text}
             progressViewOffset={20}
           />
         }
         onScrollToIndexFailed={(info) => {
           setTimeout(() => {
-            flatListRef.current?.scrollToIndex({
-              index: info.index,
-              animated: true,
-            });
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
           }, 100);
         }}
       />
@@ -788,14 +811,22 @@ export function SeriesDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
   },
-  header: {
+  heroBackgroundScrollable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: scale(550),
+    marginTop: -scale(100),
+  },
+  scrollHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   headerButton: {
     width: 40,
@@ -806,7 +837,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#FFFFFF',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+  },
+  headerActionButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -814,7 +857,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 16,
   },
   emptyContainer: {
@@ -824,13 +866,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
     marginTop: 16,
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
     marginTop: 4,
     textAlign: 'center',
@@ -841,57 +881,62 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
   },
-  seriesNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 4,
-  },
   seriesName: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#FFFFFF',
     textAlign: 'center',
+    marginBottom: scale(4),
   },
   bookCount: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+    marginTop: scale(4),
   },
-  trackButton: {
+  booksSection: {
+    paddingTop: scale(16),
+    paddingHorizontal: scale(16),
+  },
+  optionsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    marginBottom: scale(12),
+    flexWrap: 'wrap',
+  },
+  filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(6),
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(12),
     paddingVertical: scale(8),
     borderRadius: scale(20),
-    borderWidth: 1,
-    borderColor: ACCENT,
-    marginTop: scale(12),
-    marginBottom: scale(8),
   },
-  trackButtonActive: {
-    backgroundColor: ACCENT,
-    borderColor: ACCENT,
+  filterChipText: {
+    fontSize: scale(13),
+    fontWeight: '500',
   },
-  trackButtonText: {
-    fontSize: scale(14),
-    fontWeight: '600',
-    color: ACCENT,
+  segmentedControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: scale(10),
+    padding: scale(3),
+    marginLeft: 'auto',
   },
-  trackButtonTextActive: {
-    color: '#000',
+  segmentButton: {
+    width: scale(36),
+    height: scale(32),
+    borderRadius: scale(8),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sortRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: scale(16),
     marginBottom: scale(12),
   },
   sectionTitle: {
     fontSize: scale(16),
     fontWeight: '700',
-    color: '#FFFFFF',
   },
   sortControls: {
     flexDirection: 'row',
@@ -905,18 +950,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(10),
     paddingVertical: scale(6),
     borderRadius: scale(12),
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  filterToggleActive: {
-    backgroundColor: ACCENT,
+    borderWidth: 1,
   },
   filterToggleText: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.6)',
-  },
-  filterToggleTextActive: {
-    color: '#000',
   },
   sortButton: {
     flexDirection: 'row',
@@ -925,12 +963,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: ACCENT,
   },
   sortButtonText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#000',
   },
   emptyListContainer: {
     alignItems: 'center',
@@ -940,12 +976,10 @@ const styles = StyleSheet.create({
   emptyListTitle: {
     fontSize: scale(16),
     fontWeight: '600',
-    color: '#fff',
     marginTop: scale(12),
   },
   emptyListSubtitle: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.5)',
     marginTop: scale(4),
     textAlign: 'center',
   },
@@ -956,12 +990,82 @@ const styles = StyleSheet.create({
     marginTop: scale(20),
     paddingHorizontal: scale(20),
     paddingVertical: scale(12),
-    backgroundColor: ACCENT,
     borderRadius: scale(10),
   },
   downloadFirstButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#000',
+  },
+  viewModeRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: scale(12),
+    gap: scale(4),
+  },
+  viewModeButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(8),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  gridRow: {
+    justifyContent: 'space-between',
+    paddingHorizontal: GRID_PADDING,
+  },
+  gridCard: {
+    width: GRID_CARD_WIDTH,
+    marginBottom: scale(16),
+  },
+  gridCoverContainer: {
+    position: 'relative',
+    width: GRID_COVER_SIZE,
+    height: GRID_COVER_SIZE,
+    borderRadius: scale(8),
+    overflow: 'hidden',
+  },
+  gridCover: {
+    width: '100%',
+    height: '100%',
+  },
+  gridTitle: {
+    fontSize: scale(13),
+    fontWeight: '500',
+    marginTop: scale(8),
+    lineHeight: scale(16),
+  },
+  sequenceBadge: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: scale(6),
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(4),
+    minWidth: scale(28),
+    alignItems: 'center',
+  },
+  sequenceBadgeText: {
+    color: '#fff',
+    fontSize: scale(16),
+    fontWeight: '700',
+  },
+  gridPlayButton: {
+    position: 'absolute',
+    bottom: scale(8),
+    right: scale(8),
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
 });

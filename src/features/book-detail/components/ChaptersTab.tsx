@@ -14,10 +14,8 @@ import {
 import { Check, Volume2, Play, List } from 'lucide-react-native';
 import { BookChapter, LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { useColors, scale, spacing, radius } from '@/shared/theme';
 import { useNormalizedChapters } from '@/shared/hooks';
-
-const ACCENT = colors.accent;
 
 interface ChaptersTabProps {
   chapters: BookChapter[];
@@ -48,6 +46,7 @@ function formatShortDuration(seconds: number): string {
 
 export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: ChaptersTabProps) {
   const { seekTo, currentBook, loadBook, play } = usePlayerStore();
+  const colors = useColors();
 
   // Get normalized chapter names based on user settings
   const bookTitle = book?.media?.metadata?.title;
@@ -88,8 +87,8 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
   if (!chapters || chapters.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <List size={scale(40)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-        <Text style={styles.emptyText}>No chapters available</Text>
+        <List size={scale(40)} color={colors.text.tertiary} strokeWidth={1.5} />
+        <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>No chapters available</Text>
       </View>
     );
   }
@@ -100,6 +99,9 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
       if (currentBook?.id === bookId) {
         console.log('[ChaptersTab] Same book loaded, seeking to:', chapter.start);
         await seekTo(chapter.start);
+        // Small delay to ensure seek completes before playing
+        // This prevents race conditions where play() is called before audio is ready
+        await new Promise(resolve => setTimeout(resolve, 50));
         await play();
       } else if (book) {
         console.log('[ChaptersTab] Different/no book loaded, loading with startPosition:', chapter.start);
@@ -121,12 +123,12 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
   return (
     <View style={styles.container}>
       {/* Progress summary */}
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryText}>
+      <View style={[styles.summaryRow, { borderBottomColor: colors.border.default }]}>
+        <Text style={[styles.summaryText, { color: colors.text.secondary }]}>
           {completedCount} of {chapters.length} completed
         </Text>
         {currentIndex >= 0 && (
-          <Text style={styles.currentText}>
+          <Text style={[styles.currentText, { color: colors.text.primary }]}>
             Currently on Chapter {currentIndex + 1}
           </Text>
         )}
@@ -146,7 +148,7 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
               key={chapter.id}
               style={[
                 styles.chapterItem,
-                state.isCurrent && styles.chapterItemCurrent,
+                state.isCurrent && { backgroundColor: colors.surface.default },
               ]}
               onPress={() => handleChapterPress(chapter)}
               activeOpacity={0.7}
@@ -157,15 +159,16 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
               {/* Status indicator */}
               <View style={[
                 styles.statusIndicator,
-                state.isCompleted && styles.statusCompleted,
-                state.isCurrent && styles.statusCurrent,
+                { backgroundColor: colors.surface.default },
+                state.isCompleted && { backgroundColor: colors.text.primary },
+                state.isCurrent && { backgroundColor: colors.text.primary },
               ]}>
                 {state.isCompleted ? (
-                  <Check size={scale(12)} color="#000" strokeWidth={3} />
+                  <Check size={scale(12)} color={colors.background.primary} strokeWidth={3} />
                 ) : state.isCurrent ? (
-                  <Volume2 size={scale(10)} color="#000" strokeWidth={2} />
+                  <Volume2 size={scale(10)} color={colors.background.primary} strokeWidth={2} />
                 ) : (
-                  <Text style={styles.chapterNumber}>{index + 1}</Text>
+                  <Text style={[styles.chapterNumber, { color: colors.text.tertiary }]}>{index + 1}</Text>
                 )}
               </View>
 
@@ -174,8 +177,9 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
                 <Text
                   style={[
                     styles.chapterTitle,
-                    state.isCompleted && styles.chapterTitleCompleted,
-                    state.isCurrent && styles.chapterTitleCurrent,
+                    { color: colors.text.primary },
+                    state.isCompleted && { color: colors.text.secondary },
+                    state.isCurrent && { color: colors.text.primary, fontWeight: '600' },
                   ]}
                   numberOfLines={1}
                 >
@@ -185,15 +189,15 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
                 {/* Progress bar for current chapter */}
                 {state.isCurrent && (
                   <View style={styles.progressBarContainer}>
-                    <View style={styles.progressTrack}>
+                    <View style={[styles.progressTrack, { backgroundColor: colors.border.default }]}>
                       <View
                         style={[
                           styles.progressFill,
-                          { width: `${state.chapterProgress * 100}%` }
+                          { width: `${state.chapterProgress * 100}%`, backgroundColor: colors.text.primary }
                         ]}
                       />
                     </View>
-                    <Text style={styles.timeRemaining}>
+                    <Text style={[styles.timeRemaining, { color: colors.text.primary }]}>
                       {formatShortDuration(state.timeRemaining)} left
                     </Text>
                   </View>
@@ -203,7 +207,8 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
                 {!state.isCurrent && (
                   <Text style={[
                     styles.chapterDuration,
-                    state.isCompleted && styles.chapterDurationCompleted,
+                    { color: colors.text.tertiary },
+                    state.isCompleted && { color: colors.text.tertiary },
                   ]}>
                     {formatDuration(state.duration)}
                   </Text>
@@ -213,12 +218,12 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
               {/* Play indicator */}
               <View style={styles.playIndicator}>
                 {state.isCurrent ? (
-                  <View style={styles.nowPlayingDot} />
+                  <View style={[styles.nowPlayingDot, { backgroundColor: colors.text.primary }]} />
                 ) : (
                   <Play
                     size={scale(14)}
-                    color={state.isCompleted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'}
-                    fill={state.isCompleted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'}
+                    color={state.isCompleted ? colors.text.tertiary : colors.text.secondary}
+                    fill={state.isCompleted ? colors.text.tertiary : colors.text.secondary}
                     strokeWidth={0}
                   />
                 )}
@@ -242,7 +247,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.4)',
   },
 
   // Summary
@@ -253,15 +257,12 @@ const styles = StyleSheet.create({
     marginBottom: scale(16),
     paddingBottom: scale(12),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   summaryText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
   },
   currentText: {
     fontSize: scale(12),
-    color: ACCENT,
     fontWeight: '600',
   },
 
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(10),
   },
   chapterItemCurrent: {
-    backgroundColor: 'rgba(193,244,12,0.08)',
+    // Colors now applied inline
   },
 
   // Status indicator
@@ -286,21 +287,19 @@ const styles = StyleSheet.create({
     width: scale(26),
     height: scale(26),
     borderRadius: scale(13),
-    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: scale(12),
   },
   statusCompleted: {
-    backgroundColor: ACCENT,
+    // Colors now applied inline
   },
   statusCurrent: {
-    backgroundColor: '#fff',
+    // Colors now applied inline
   },
   chapterNumber: {
     fontSize: scale(10),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.4)',
   },
 
   // Chapter info
@@ -310,23 +309,20 @@ const styles = StyleSheet.create({
   },
   chapterTitle: {
     fontSize: scale(14),
-    color: '#fff',
     fontWeight: '500',
   },
   chapterTitleCompleted: {
-    color: 'rgba(255,255,255,0.5)',
+    // Colors now applied inline
   },
   chapterTitleCurrent: {
-    color: '#fff',
     fontWeight: '600',
   },
   chapterDuration: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.4)',
     marginTop: scale(4),
   },
   chapterDurationCompleted: {
-    color: 'rgba(255,255,255,0.3)',
+    // Colors now applied inline
   },
 
   // Progress bar (current chapter)
@@ -339,18 +335,15 @@ const styles = StyleSheet.create({
   progressTrack: {
     flex: 1,
     height: scale(3),
-    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: scale(2),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT,
     borderRadius: scale(2),
   },
   timeRemaining: {
     fontSize: scale(10),
-    color: ACCENT,
     fontWeight: '500',
   },
 
@@ -363,6 +356,5 @@ const styles = StyleSheet.create({
     width: scale(8),
     height: scale(8),
     borderRadius: scale(4),
-    backgroundColor: ACCENT,
   },
 });

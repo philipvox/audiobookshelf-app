@@ -1,191 +1,153 @@
 /**
  * src/features/home/components/SeriesCard.tsx
  *
- * Series card with 5 horizontal stacked covers
- * Anima: 110x86.5px total
- * 5 covers at left: 0, 17, 34, 51, 68 (17px offset)
- * Each cover: 35x51px rounded-[5px] shadow-[9px_4px_2px_#00000075]
- * Title at top:60
+ * Series card with fanned cover design matching SeriesListScreen
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
-import Svg, { Path } from 'react-native-svg';
 import { apiClient } from '@/core/api';
-import { colors, scale } from '@/shared/theme';
+import { colors, scale, spacing, radius } from '@/shared/theme';
 import { SeriesCardProps } from '../types';
 import { SeriesHeartButton } from '@/shared/components';
-import { useQueueStore } from '@/features/queue';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
-const COLORS = { textPrimary: colors.textPrimary, heart: colors.heartFill };
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const PADDING = 16;
+const GAP = 12;
+const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
 
-// Queue Plus icon SVG
-const QueuePlusIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M12 5v14M5 12h14"
-      stroke={color}
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-// Queue Checkmark icon SVG
-const QueueCheckIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M20 6L9 17l-5-5"
-      stroke={color}
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
+// Fanned cover dimensions
+const COVER_SIZE = 60;
+const FAN_OFFSET = 18;
+const FAN_ROTATION = 8;
+const FAN_VERTICAL_OFFSET = 6;
+const MAX_VISIBLE_BOOKS = 5;
 
 export function SeriesCard({ series, onPress, onLongPress }: SeriesCardProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
   // Get cover URLs for up to 5 books
-  const coverUrls = series.books.slice(0, 5).map((book) => apiClient.getItemCoverUrl(book.id));
+  const bookCovers = useMemo(() => {
+    return series.books.slice(0, MAX_VISIBLE_BOOKS).map((book) => apiClient.getItemCoverUrl(book.id));
+  }, [series.books]);
 
-  // Anima positions: left 0, 17, 34, 51, 68
-  const positions = [0, 17, 34, 51, 68];
-
-  // Queue state - check if all books are in queue
-  const queue = useQueueStore((state) => state.queue);
-  const addBooksToQueue = useQueueStore((state) => state.addBooksToQueue);
-  const removeFromQueue = useQueueStore((state) => state.removeFromQueue);
-
-  // Check if any book from the series is in the queue
-  const seriesInQueue = useMemo(() => {
-    const queueBookIds = new Set(queue.map((item) => item.bookId));
-    return series.books.some((book) => queueBookIds.has(book.id));
-  }, [queue, series.books]);
-
-  const handleQueueToggle = useCallback(() => {
-    if (seriesInQueue) {
-      // Remove all series books from queue
-      series.books.forEach((book) => removeFromQueue(book.id));
-    } else {
-      // Add all series books to queue
-      addBooksToQueue(series.books);
-    }
-  }, [seriesInQueue, series.books, addBooksToQueue, removeFromQueue]);
+  const numCovers = bookCovers.length;
+  const cardBgColor = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
 
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.card, { backgroundColor: cardBgColor }]}
       onPress={onPress}
       onLongPress={onLongPress}
-      activeOpacity={0.8}
+      activeOpacity={0.7}
     >
-      {/* 5 Stacked Covers */}
-      <View style={styles.stackContainer}>
-        {positions.map((left, index) => (
-          <View
-            key={index}
-            style={[
-              styles.coverWrapper,
-              {
-                left: scale(left),
-                zIndex: 5 - index, // First cover on top
-              },
-            ]}
-          >
-            {coverUrls[index] ? (
-              <Image
-                source={{ uri: coverUrls[index] }}
-                style={styles.cover}
-                contentFit="cover"
-                transition={200}
-              />
-            ) : (
-              <View style={styles.placeholder} />
-            )}
+      {/* Heart button - top right */}
+      <SeriesHeartButton
+        seriesName={series.name}
+        size={10}
+        showCircle
+        style={styles.heartButton}
+      />
+
+      {/* Fanned covers */}
+      <View style={styles.coverFan}>
+        {numCovers > 0 ? (
+          <View style={[
+            styles.fanContainer,
+            { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }
+          ]}>
+            {bookCovers.map((coverUrl, idx) => {
+              const middleIndex = (numCovers - 1) / 2;
+              const rotation = (idx - middleIndex) * FAN_ROTATION;
+              const distanceFromCenter = Math.abs(idx - middleIndex);
+              const zIndex = numCovers - Math.floor(distanceFromCenter);
+              const scaleValue = 1 - (distanceFromCenter * 0.12);
+              const coverSize = COVER_SIZE * scaleValue;
+              const sizeOffset = (COVER_SIZE - coverSize) / 2;
+              const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
+              const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
+
+              return (
+                <Image
+                  key={idx}
+                  source={coverUrl}
+                  style={[
+                    styles.fanCover,
+                    {
+                      width: coverSize,
+                      height: coverSize,
+                      left: horizontalOffset,
+                      top: verticalOffset,
+                      zIndex,
+                      transform: [{ rotate: `${rotation}deg` }],
+                    },
+                  ]}
+                  contentFit="cover"
+                  transition={150}
+                />
+              );
+            })}
           </View>
-        ))}
+        ) : null}
       </View>
 
-      {/* Title and buttons in a row */}
-      <View style={styles.titleRow}>
-        <Text style={styles.title} numberOfLines={1}>
-          {series.name}
-        </Text>
-        <Pressable style={styles.queueButton} onPress={handleQueueToggle}>
-          {seriesInQueue ? (
-            <QueueCheckIcon size={scale(12)} color={COLORS.heart} />
-          ) : (
-            <QueuePlusIcon size={scale(12)} color="rgba(255,255,255,0.3)" />
-          )}
-        </Pressable>
-        <SeriesHeartButton
-          seriesName={series.name}
-          size={scale(12)}
-          activeColor={COLORS.heart}
-          inactiveColor="rgba(255,255,255,0.3)"
-        />
-      </View>
+      {/* Series name */}
+      <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>
+        {series.name}
+      </Text>
+      <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
+        {series.books.length} {series.books.length === 1 ? 'book' : 'books'}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    width: scale(110),
-    height: scale(86),
-    position: 'relative',
+  card: {
+    width: CARD_WIDTH,
+    padding: spacing.md,
+    borderRadius: radius.lg,
   },
-  stackContainer: {
+  heartButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    width: scale(103), // 68 + 35 = 103
-    height: scale(51),
+    top: 8,
+    right: 8,
+    zIndex: 10,
   },
-  coverWrapper: {
-    position: 'absolute',
-    top: 0,
-    width: scale(35),
-    height: scale(51),
-    borderRadius: scale(5),
-    overflow: 'hidden',
-    backgroundColor: '#7D7D7D',
-    // Anima shadow: 9px 4px 2px rgba(0,0,0,0.46)
-    shadowColor: '#000000',
-    shadowOffset: { width: 9, height: 4 },
-    shadowOpacity: 0.46,
-    shadowRadius: 2,
-    elevation: 4,
-  },
-  cover: {
-    width: '100%',
-    height: '100%',
-  },
-  placeholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#7D7D7D',
-  },
-  titleRow: {
-    position: 'absolute',
-    top: scale(56),
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
+  coverFan: {
+    height: COVER_SIZE + 10,
+    marginBottom: 10,
     alignItems: 'center',
-    gap: scale(4),
+    justifyContent: 'center',
   },
-  queueButton: {
-    padding: scale(2),
+  fanContainer: {
+    position: 'relative',
+    height: COVER_SIZE,
   },
-  title: {
-    flex: 1,
-    fontFamily: 'System',
-    fontSize: scale(12),
-    fontWeight: '400',
-    color: COLORS.textPrimary,
-    lineHeight: scale(14),
+  fanCover: {
+    position: 'absolute',
+    width: COVER_SIZE,
+    height: COVER_SIZE,
+    borderRadius: 5,
+    backgroundColor: 'rgba(128,128,128,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  seriesName: {
+    fontSize: scale(13),
+    fontWeight: '600',
+    lineHeight: scale(17),
+    textAlign: 'center',
+  },
+  bookCount: {
+    fontSize: scale(11),
+    textAlign: 'center',
+    marginTop: 2,
   },
 });

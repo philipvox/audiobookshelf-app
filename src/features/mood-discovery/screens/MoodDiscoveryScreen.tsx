@@ -1,12 +1,13 @@
 /**
  * src/features/mood-discovery/screens/MoodDiscoveryScreen.tsx
  *
- * 4-Step Discovery Quiz Screen.
+ * 5-Step Discovery Quiz Screen with situational questions.
  * Uses orthogonal dimensions for precise recommendations:
  * 1. Mood (required) - What emotional experience
- * 2. Pace (optional) - How fast it moves
- * 3. Weight (optional) - How emotionally demanding
+ * 2. Energy (optional) - How fast it moves
+ * 3. Tone (optional) - How emotionally demanding
  * 4. World (optional) - Setting type
+ * 5. Length (optional) - How much time you have
  */
 
 import React, { useCallback } from 'react';
@@ -36,14 +37,18 @@ import {
   PACES,
   WEIGHTS,
   WORLDS,
+  LENGTHS,
+  TOTAL_QUIZ_STEPS,
   Mood,
   Pace,
   Weight,
   World,
+  LengthPreference,
   MoodConfig,
   PaceConfig,
   WeightConfig,
   WorldConfig,
+  LengthConfig,
 } from '../types';
 import {
   useMoodDraft,
@@ -59,20 +64,29 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const STEP_CONFIG = {
   1: {
-    question: 'What kind of experience are you looking for?',
+    question: "It's your perfect listening moment. Where are you?",
     subtitle: 'Choose the mood that fits right now',
+    label: 'MOOD',
   },
   2: {
-    question: 'How should it feel to listen?',
-    subtitle: 'Pick your preferred pacing',
+    question: 'What kind of energy fits right now?',
+    subtitle: 'Optional',
+    label: 'ENERGY',
   },
   3: {
-    question: 'How heavy do you want it to be?',
-    subtitle: 'Choose emotional intensity',
+    question: 'What emotional territory feels right?',
+    subtitle: 'Optional',
+    label: 'TONE',
   },
   4: {
-    question: 'What kind of world?',
-    subtitle: 'Select your preferred setting',
+    question: 'Where do you want the story to take you?',
+    subtitle: 'Optional',
+    label: 'WORLD',
+  },
+  5: {
+    question: 'How much time do you have?',
+    subtitle: 'Optional',
+    label: 'TIME',
   },
 };
 
@@ -206,6 +220,7 @@ export function MoodDiscoveryScreen() {
     setPace,
     setWeight,
     setWorld,
+    setDraftLength,
     nextStep,
     prevStep,
     resetDraft,
@@ -225,7 +240,7 @@ export function MoodDiscoveryScreen() {
 
   const handleNext = useCallback(() => {
     haptics.impact('light');
-    if (draft.currentStep === 4) {
+    if (draft.currentStep === TOTAL_QUIZ_STEPS) {
       // Final step - commit and go back
       haptics.impact('medium');
       commitSession();
@@ -332,6 +347,24 @@ export function MoodDiscoveryScreen() {
           </Animated.View>
         );
 
+      case 5:
+        return (
+          <Animated.View
+            entering={FadeIn.duration(150)}
+            exiting={FadeOut.duration(100)}
+            style={styles.optionsList}
+          >
+            {LENGTHS.map((length) => (
+              <OptionCard
+                key={length.id}
+                config={length}
+                selected={draft.length === length.id}
+                onSelect={() => setDraftLength(length.id)}
+              />
+            ))}
+          </Animated.View>
+        );
+
       default:
         return null;
     }
@@ -345,7 +378,7 @@ export function MoodDiscoveryScreen() {
           <Icon name="X" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
 
-        <ProgressIndicator current={draft.currentStep} total={4} />
+        <ProgressIndicator current={draft.currentStep} total={TOTAL_QUIZ_STEPS} />
 
         {draft.currentStep > 1 && draft.mood ? (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
@@ -377,7 +410,7 @@ export function MoodDiscoveryScreen() {
       >
         {/* Step indicator */}
         <Text style={styles.stepIndicator}>
-          STEP {draft.currentStep} OF 4
+          STEP {draft.currentStep} OF {TOTAL_QUIZ_STEPS} • {stepConfig.label}
         </Text>
 
         {/* Question */}
@@ -414,10 +447,10 @@ export function MoodDiscoveryScreen() {
               ]}
             >
               <Text style={[styles.nextText, !canProceed && styles.nextTextDisabled]}>
-                {draft.currentStep === 4 ? 'Find Books' : 'Next'}
+                {draft.currentStep === TOTAL_QUIZ_STEPS ? 'Find Books' : 'Next'}
               </Text>
               <Icon
-                name={draft.currentStep === 4 ? 'Sparkles' : 'ArrowRight'}
+                name={draft.currentStep === TOTAL_QUIZ_STEPS ? 'Sparkles' : 'ArrowRight'}
                 size={20}
                 color={canProceed ? '#000' : colors.textTertiary}
               />

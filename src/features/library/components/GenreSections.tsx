@@ -7,13 +7,12 @@
  * - PopularGenresSection: Top genres grid
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -26,6 +25,10 @@ import {
 import { MetaCategory, GenreWithData } from '../constants/genreCategories';
 import { StackedCovers } from '@/shared/components';
 import { apiClient } from '@/core/api';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { accentColors } from '@/shared/theme';
+
+const ACCENT = accentColors.red;
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -53,6 +56,9 @@ export function MetaCategorySection({
   onToggle,
   onGenrePress,
 }: MetaCategorySectionProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
   const handleToggle = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     onToggle();
@@ -78,7 +84,10 @@ export function MetaCategorySection({
     <View style={styles.metaSection}>
       {/* Header */}
       <TouchableOpacity
-        style={styles.metaHeader}
+        style={[
+          styles.metaHeader,
+          { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }
+        ]}
         onPress={handleToggle}
         activeOpacity={0.7}
       >
@@ -94,16 +103,16 @@ export function MetaCategorySection({
             />
           </View>
           <View>
-            <Text style={styles.metaTitle}>{metaCategory.name}</Text>
-            <Text style={styles.metaSubtitle}>
+            <Text style={[styles.metaTitle, { color: themeColors.text }]}>{metaCategory.name}</Text>
+            <Text style={[styles.metaSubtitle, { color: themeColors.textSecondary }]}>
               {genres.length} genres · {totalBooks} books
             </Text>
           </View>
         </View>
         {isExpanded ? (
-          <ChevronDown size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+          <ChevronDown size={20} color={themeColors.textTertiary} strokeWidth={2} />
         ) : (
-          <ChevronRight size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+          <ChevronRight size={20} color={themeColors.textTertiary} strokeWidth={2} />
         )}
       </TouchableOpacity>
 
@@ -140,34 +149,32 @@ export function YourGenresSection({
   onGenrePress,
   onSeeAll,
 }: YourGenresSectionProps) {
+  const themeColors = useThemeColors();
+
   if (genres.length === 0) return null;
 
   return (
     <View style={styles.section}>
       {/* Header */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your Genres</Text>
+        <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Your Genres</Text>
         {onSeeAll && (
           <TouchableOpacity onPress={onSeeAll}>
-            <Text style={styles.seeAllText}>See all</Text>
+            <Text style={[styles.seeAllText, { color: ACCENT }]}>See all</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Horizontal Scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalScroll}
-      >
-        {genres.slice(0, 5).map((genre) => (
+      {/* 2-Column Grid */}
+      <View style={styles.genreGrid}>
+        {genres.slice(0, 6).map((genre) => (
           <GenreCardLarge
             key={genre.name}
             genre={genre}
             onPress={() => onGenrePress(genre.name)}
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -185,21 +192,19 @@ export function PopularGenresSection({
   genres,
   onGenrePress,
 }: PopularGenresSectionProps) {
+  const themeColors = useThemeColors();
+
   if (genres.length === 0) return null;
 
   return (
     <View style={styles.section}>
       {/* Header */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Popular Genres</Text>
+        <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Popular Genres</Text>
       </View>
 
-      {/* Horizontal Scroll - same as Your Genres */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalScroll}
-      >
+      {/* 2-Column Grid - same as Your Genres */}
+      <View style={styles.genreGrid}>
         {genres.slice(0, 6).map((genre) => (
           <GenreCardLarge
             key={genre.name}
@@ -207,7 +212,7 @@ export function PopularGenresSection({
             onPress={() => onGenrePress(genre.name)}
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -227,6 +232,8 @@ export function AlphabetIndex({
   activeLetter,
   onLetterPress,
 }: AlphabetIndexProps) {
+  const themeColors = useThemeColors();
+
   return (
     <View style={styles.alphabetIndex}>
       {letters.map((letter) => (
@@ -234,13 +241,14 @@ export function AlphabetIndex({
           key={letter}
           style={[
             styles.alphabetLetter,
-            activeLetter === letter && styles.alphabetLetterActive,
+            activeLetter === letter && [styles.alphabetLetterActive, { backgroundColor: ACCENT }],
           ]}
           onPress={() => onLetterPress(letter)}
         >
           <Text
             style={[
               styles.alphabetText,
+              { color: themeColors.textSecondary },
               activeLetter === letter && styles.alphabetTextActive,
             ]}
           >
@@ -261,9 +269,12 @@ interface SectionStickyHeaderProps {
 }
 
 export function SectionStickyHeader({ letter }: SectionStickyHeaderProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
   return (
-    <View style={styles.stickyHeader}>
-      <Text style={styles.stickyHeaderText}>{letter}</Text>
+    <View style={[styles.stickyHeader, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)' }]}>
+      <Text style={[styles.stickyHeaderText, { color: ACCENT }]}>{letter}</Text>
     </View>
   );
 }
@@ -287,16 +298,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
     letterSpacing: 0.5,
   },
   seeAllText: {
     fontSize: 13,
-    color: '#F4B60C',
+    // color set via themeColors in JSX
     fontWeight: '500',
   },
-  horizontalScroll: {
+  genreGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 16,
+    gap: 12,
   },
 
   // Meta Category Section
@@ -309,7 +323,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    // backgroundColor set via themeColors in JSX
     marginHorizontal: 16,
     borderRadius: 12,
   },
@@ -327,11 +341,11 @@ const styles = StyleSheet.create({
   metaTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    // color set via themeColors in JSX
   },
   metaSubtitle: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
     marginTop: 2,
   },
   metaContent: {
@@ -362,13 +376,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   alphabetLetterActive: {
-    backgroundColor: '#F4B60C',
+    // backgroundColor set via themeColors in JSX
     borderRadius: 9,
   },
   alphabetText: {
     fontSize: 10,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
   },
   alphabetTextActive: {
     color: '#000',
@@ -376,13 +390,13 @@ const styles = StyleSheet.create({
 
   // Sticky Header
   stickyHeader: {
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    // backgroundColor set via themeColors in JSX
     paddingVertical: 6,
     paddingHorizontal: 16,
   },
   stickyHeaderText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#F4B60C',
+    // color set via themeColors in JSX
   },
 });

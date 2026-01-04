@@ -189,6 +189,16 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('expo-crypto', () => ({
+  digestStringAsync: jest.fn().mockResolvedValue('mockhash'),
+  CryptoDigestAlgorithm: {
+    SHA256: 'SHA-256',
+    SHA384: 'SHA-384',
+    SHA512: 'SHA-512',
+    MD5: 'MD5',
+  },
+}));
+
 jest.mock('expo-image', () => ({
   Image: 'Image',
 }));
@@ -201,26 +211,6 @@ jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));
 
-jest.mock('expo-av', () => ({
-  Audio: {
-    Sound: {
-      createAsync: jest.fn().mockResolvedValue({
-        sound: {
-          playAsync: jest.fn(),
-          pauseAsync: jest.fn(),
-          stopAsync: jest.fn(),
-          unloadAsync: jest.fn(),
-          setPositionAsync: jest.fn(),
-          setRateAsync: jest.fn(),
-          getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true }),
-        },
-        status: { isLoaded: true },
-      }),
-    },
-    setAudioModeAsync: jest.fn(),
-  },
-}));
-
 jest.mock('expo-audio', () => ({
   useAudioPlayer: jest.fn(() => ({
     play: jest.fn(),
@@ -231,6 +221,16 @@ jest.mock('expo-audio', () => ({
     playing: false,
   })),
   AudioPlayer: jest.fn(),
+}));
+
+jest.mock('socket.io-client', () => ({
+  io: jest.fn(() => ({
+    on: jest.fn(),
+    emit: jest.fn(),
+    disconnect: jest.fn(),
+    removeAllListeners: jest.fn(),
+    connected: false,
+  })),
 }));
 
 // =============================================================================

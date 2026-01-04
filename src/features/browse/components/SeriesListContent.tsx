@@ -1,16 +1,121 @@
-import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, RefreshControl } from 'react-native';
+import React, { useState, useCallback, useMemo, memo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  RefreshControl,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
+import { Image } from 'expo-image';
 import { FlashList } from '@shopify/flash-list';
-import { SeriesCard } from '@/features/series';
+import { useNavigation } from '@react-navigation/native';
+import { Library } from 'lucide-react-native';
 import { useSeries } from '@/features/series';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { SeriesInfo } from '@/features/series';
-import { colors, spacing } from '@/shared/theme';
+import { apiClient } from '@/core/api';
+import { colors, spacing, radius, accentColors } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+
+const ACCENT = accentColors.red;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// Fanned card dimensions matching GenreCardLarge
+const CARD_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
+const COVER_WIDTH = 65;
+const COVER_HEIGHT = 95;
+const FAN_OFFSET = 28;
+const FAN_ROTATION = 8;
+const MAX_VISIBLE_BOOKS = 3;
+
+// =============================================================================
+// SeriesFannedCard - Fanned cover design matching genre cards
+// =============================================================================
+
+interface SeriesFannedCardProps {
+  series: SeriesInfo;
+}
+
+const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFannedCardProps) {
+  const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
+  const handlePress = () => {
+    navigation.navigate('SeriesDetail', { seriesName: series.name });
+  };
+
+  // Get cover URLs for fan effect
+  const covers = useMemo(() => {
+    if (series.books && series.books.length > 0) {
+      return series.books
+        .slice(0, MAX_VISIBLE_BOOKS)
+        .map(book => apiClient.getItemCoverUrl(book.id));
+    }
+    return [];
+  }, [series.books]);
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.fannedCard,
+        {
+          width: CARD_WIDTH,
+          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+        },
+      ]}
+      onPress={handlePress}
+      activeOpacity={0.7}
+    >
+      {/* Cover Fan */}
+      <View style={styles.coverFan}>
+        {covers.length > 0 ? (
+          <View style={styles.fanContainer}>
+            {covers.map((url, index) => (
+              <Image
+                key={index}
+                source={url}
+                style={[
+                  styles.fanCover,
+                  {
+                    left: index * FAN_OFFSET,
+                    zIndex: covers.length - index,
+                    transform: [{ rotate: `${(index - 1) * FAN_ROTATION}deg` }],
+                  },
+                ]}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={[styles.fanPlaceholder, { backgroundColor: ACCENT + '30' }]}>
+            <Library size={40} color={ACCENT} strokeWidth={1.5} />
+          </View>
+        )}
+      </View>
+
+      {/* Series Info */}
+      <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>
+        {series.name}
+      </Text>
+      <Text style={[styles.seriesCount, { color: themeColors.textTertiary }]}>
+        {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+// =============================================================================
+// SeriesListContent - Main list component
+// =============================================================================
 
 export function SeriesListContent() {
   const [searchQuery, setSearchQuery] = useState('');
+  const themeColors = useThemeColors();
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { series, seriesCount, isLoading, error, refetch } = useSeries(
     library?.id || '',
@@ -36,7 +141,7 @@ export function SeriesListContent() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -46,11 +151,18 @@ export function SeriesListContent() {
         />
       </View>
 
+      {/* Series count */}
+      <View style={styles.countContainer}>
+        <Text style={[styles.countText, { color: themeColors.textSecondary }]}>
+          {seriesCount} {seriesCount === 1 ? 'series' : 'series'}
+        </Text>
+      </View>
+
       <FlashList
         data={series}
         renderItem={({ item }) => (
           <View style={styles.itemWrapper}>
-            <SeriesCard series={item} />
+            <SeriesFannedCard series={item} />
           </View>
         )}
         keyExtractor={(item: SeriesInfo) => item.id}
@@ -62,7 +174,7 @@ export function SeriesListContent() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refetch}
-            tintColor={colors.accent}
+            tintColor={ACCENT}
           />
         }
         ListEmptyComponent={
@@ -80,11 +192,17 @@ export function SeriesListContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
   },
   searchContainer: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  countContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  countText: {
+    fontSize: 14,
   },
   listContent: {
     paddingHorizontal: spacing.lg,
@@ -92,6 +210,51 @@ const styles = StyleSheet.create({
   },
   itemWrapper: {
     flex: 1,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    paddingBottom: 12,
+  },
+  // Fanned card styles
+  fannedCard: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  coverFan: {
+    height: COVER_HEIGHT,
+    marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanContainer: {
+    position: 'relative',
+    width: 120,
+    height: COVER_HEIGHT,
+  },
+  fanCover: {
+    position: 'absolute',
+    width: COVER_WIDTH,
+    height: COVER_HEIGHT,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  fanPlaceholder: {
+    width: COVER_WIDTH,
+    height: COVER_HEIGHT,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  seriesName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: spacing.xxs,
+    textAlign: 'center',
+  },
+  seriesCount: {
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

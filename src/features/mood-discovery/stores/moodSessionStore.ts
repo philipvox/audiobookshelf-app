@@ -5,11 +5,12 @@
  * Sessions expire after 24 hours - this is "What do you want RIGHT NOW?"
  * not permanent profile data.
  *
- * Supports the 4-step discovery quiz:
+ * Supports the 5-step discovery quiz:
  * 1. Mood (required) - What emotional experience
- * 2. Pace (optional) - How fast it moves
- * 3. Weight (optional) - How emotionally demanding
+ * 2. Energy/Pace (optional) - How fast it moves
+ * 3. Tone/Weight (optional) - How emotionally demanding
  * 4. World (optional) - Setting type
+ * 5. Length (optional) - How much time you have
  */
 
 import { create } from 'zustand';
@@ -27,6 +28,7 @@ import {
   QuizDraft,
   INITIAL_QUIZ_DRAFT,
   SESSION_DURATION_MS,
+  TOTAL_QUIZ_STEPS,
 } from '../types';
 
 // ============================================================================
@@ -49,6 +51,8 @@ interface MoodSessionState {
   setWeight: (weight: Weight) => void;
   /** Set the world selection */
   setWorld: (world: World) => void;
+  /** Set the length selection in draft */
+  setDraftLength: (length: LengthPreference) => void;
   /** Go to next step */
   nextStep: () => void;
   /** Go to previous step */
@@ -69,7 +73,7 @@ interface MoodSessionState {
   getTimeRemaining: () => number;
   /** Update session with quick-tune adjustments */
   quickTune: (updates: Partial<Pick<MoodSession, 'mood' | 'pace' | 'weight' | 'world' | 'length'>>) => void;
-  /** Set length preference (can be adjusted on results) */
+  /** Set length preference on active session (can be adjusted on results) */
   setLength: (length: LengthPreference) => void;
 }
 
@@ -104,9 +108,14 @@ export const useMoodSessionStore = create<MoodSessionState>()(
         set({ draft: { ...draft, world } });
       },
 
+      setDraftLength: (length) => {
+        const { draft } = get();
+        set({ draft: { ...draft, length } });
+      },
+
       nextStep: () => {
         const { draft } = get();
-        if (draft.currentStep < 4) {
+        if (draft.currentStep < TOTAL_QUIZ_STEPS) {
           set({ draft: { ...draft, currentStep: (draft.currentStep + 1) as QuizStep } });
         }
       },
@@ -138,7 +147,7 @@ export const useMoodSessionStore = create<MoodSessionState>()(
           pace: draft.pace,
           weight: draft.weight,
           world: draft.world,
-          length: 'any', // Default, can be adjusted on results
+          length: draft.length,
           createdAt: now,
           expiresAt: now + SESSION_DURATION_MS,
         };
@@ -239,6 +248,7 @@ export const useQuizActions = () =>
       setPace: state.setPace,
       setWeight: state.setWeight,
       setWorld: state.setWorld,
+      setDraftLength: state.setDraftLength,
       nextStep: state.nextStep,
       prevStep: state.prevStep,
       goToStep: state.goToStep,

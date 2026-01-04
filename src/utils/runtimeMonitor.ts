@@ -616,13 +616,46 @@ class StorageMonitor {
 export const storageMonitor = new StorageMonitor();
 
 // ============================================================
-// 7. MEMORY MONITORING
+// 7. MEMORY MONITORING (with native module support)
 // ============================================================
 
+// Import native memory module (may not be available on all platforms)
+let nativeMemoryModule: {
+  getMemoryInfo: () => Promise<{
+    usedMb: number;
+    totalMb: number;
+    usedPercent: number;
+    platform: string;
+    lowMemory?: boolean;
+  }>;
+  getMemoryUsageMb: () => number;
+} | null = null;
+
+// Try to load native module (safe to fail)
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  nativeMemoryModule = require('memory-module');
+} catch {
+  // Native module not available, will use JS fallback
+  if (__DEV__) {
+    console.log('[MONITOR:memory] Native memory module not available, using JS fallback');
+  }
+}
+
+interface MemorySample {
+  time: number;
+  usedMb: number;
+  totalMb?: number;
+  usedPercent?: number;
+  platform?: string;
+  lowMemory?: boolean;
+}
+
 class MemoryMonitor {
-  private samples: { time: number; heap: number }[] = [];
-  private initialHeap: number | null = null;
+  private samples: MemorySample[] = [];
+  private initialUsedMb: number | null = null;
   private interval: ReturnType<typeof setInterval> | null = null;
+  private useNative: boolean = !!nativeMemoryModule;
 
   start(intervalMs: number = 10000) {
     this.interval = setInterval(() => this.sample(), intervalMs);
@@ -633,50 +666,119 @@ class MemoryMonitor {
     if (this.interval) clearInterval(this.interval);
   }
 
-  private sample() {
-    // React Native doesn't expose memory directly, but we can track estimates
-    // In a real implementation, you'd use native modules for precise memory
+  private async sample() {
+    const now = Date.now();
+
+    if (this.useNative && nativeMemoryModule) {
+      // Use native module for accurate memory info
+      try {
+        const info = await nativeMemoryModule.getMemoryInfo();
+
+        if (this.initialUsedMb === null) {
+          this.initialUsedMb = info.usedMb;
+          console.log(
+            `[MONITOR:memory] Native monitoring active (${info.platform}), initial: ${info.usedMb.toFixed(1)}MB`
+          );
+        }
+
+        const sample: MemorySample = {
+          time: now,
+          usedMb: info.usedMb,
+          totalMb: info.totalMb,
+          usedPercent: info.usedPercent,
+          platform: info.platform,
+          lowMemory: info.lowMemory,
+        };
+
+        this.samples.push(sample);
+        if (this.samples.length > 100) this.samples.shift();
+
+        // Detect memory growth
+        const growthMb = info.usedMb - (this.initialUsedMb || 0);
+
+        if (growthMb > 100) {
+          errorStore.addError({
+            type: 'memory_warning',
+            severity: growthMb > 200 ? 'critical' : 'high',
+            message: `Memory growth: +${growthMb.toFixed(0)}MB since start`,
+            details: {
+              initialMB: this.initialUsedMb?.toFixed(1),
+              currentMB: info.usedMb.toFixed(1),
+              totalMB: info.totalMb.toFixed(1),
+              usedPercent: info.usedPercent.toFixed(1),
+              growthMb: growthMb.toFixed(1),
+            },
+          });
+        }
+
+        // Android low memory warning
+        if (info.lowMemory) {
+          errorStore.addError({
+            type: 'memory_warning',
+            severity: 'high',
+            message: 'Device is in low memory state',
+            details: {
+              usedMb: info.usedMb.toFixed(1),
+              usedPercent: info.usedPercent.toFixed(1),
+            },
+          });
+        }
+
+        if (__DEV__) {
+          console.log(
+            `[MONITOR:memory] ${info.usedMb.toFixed(1)}MB / ${info.totalMb.toFixed(0)}MB (${info.usedPercent.toFixed(1)}%) ${growthMb > 0 ? `+${growthMb.toFixed(1)}MB` : ''}`
+          );
+        }
+
+        return;
+      } catch (error) {
+        // Fall through to JS fallback
+        if (__DEV__) {
+          console.warn('[MONITOR:memory] Native call failed, using JS fallback:', error);
+        }
+        this.useNative = false;
+      }
+    }
+
+    // JS fallback (limited accuracy)
     const estimatedHeap = (global as any).performance?.memory?.usedJSHeapSize;
 
     if (!estimatedHeap) {
-      // Fallback: just log that we're monitoring
       if (this.samples.length === 0) {
-        console.log('[MONITOR:memory] Memory monitoring active (limited in RN)');
+        console.log('[MONITOR:memory] Memory monitoring active (limited - no native module)');
       }
       return;
     }
 
-    const now = Date.now();
+    const usedMb = estimatedHeap / 1024 / 1024;
 
-    if (this.initialHeap === null) {
-      this.initialHeap = estimatedHeap;
+    if (this.initialUsedMb === null) {
+      this.initialUsedMb = usedMb;
     }
 
-    this.samples.push({ time: now, heap: estimatedHeap });
-
-    // Keep last 100 samples
+    this.samples.push({ time: now, usedMb });
     if (this.samples.length > 100) this.samples.shift();
 
-    // Detect memory growth
-    const growth = this.initialHeap !== null ? estimatedHeap - this.initialHeap : 0;
-    const growthMB = growth / 1024 / 1024;
+    const growthMb = usedMb - this.initialUsedMb;
 
-    if (this.initialHeap !== null && growthMB > 100) {
+    if (growthMb > 100) {
       errorStore.addError({
         type: 'memory_warning',
-        severity: growthMB > 200 ? 'critical' : 'high',
-        message: `Memory growth: +${growthMB.toFixed(0)}MB since start`,
+        severity: growthMb > 200 ? 'critical' : 'high',
+        message: `Memory growth: +${growthMb.toFixed(0)}MB since start`,
         details: {
-          initialMB: (this.initialHeap / 1024 / 1024).toFixed(1),
-          currentMB: (estimatedHeap / 1024 / 1024).toFixed(1),
-          growthMB: growthMB.toFixed(1),
+          initialMB: this.initialUsedMb.toFixed(1),
+          currentMB: usedMb.toFixed(1),
+          growthMb: growthMb.toFixed(1),
         },
       });
     }
 
-    console.log(
-      `[MONITOR:memory] ${(estimatedHeap / 1024 / 1024).toFixed(1)}MB (${growth > 0 ? '+' : ''}${growthMB.toFixed(1)}MB)`
-    );
+    if (__DEV__) {
+      console.log(
+        `[MONITOR:memory] ${usedMb.toFixed(1)}MB (${growthMb > 0 ? '+' : ''}${growthMb.toFixed(1)}MB) [JS estimate]`
+      );
+    }
   }
 
   getStats() {
@@ -686,29 +788,39 @@ class MemoryMonitor {
         initialMB: 'N/A',
         growthMB: 'N/A',
         trend: 'unknown',
+        usingNative: this.useNative,
       };
     }
 
     const latest = this.samples[this.samples.length - 1];
 
     return {
-      currentMB: (latest.heap / 1024 / 1024).toFixed(1),
-      initialMB: this.initialHeap
-        ? (this.initialHeap / 1024 / 1024).toFixed(1)
-        : null,
-      growthMB: this.initialHeap
-        ? ((latest.heap - this.initialHeap) / 1024 / 1024).toFixed(1)
-        : null,
+      currentMB: latest.usedMb.toFixed(1),
+      totalMB: latest.totalMb?.toFixed(0) || 'N/A',
+      usedPercent: latest.usedPercent?.toFixed(1) || 'N/A',
+      initialMB: this.initialUsedMb?.toFixed(1) || 'N/A',
+      growthMB: this.initialUsedMb
+        ? (latest.usedMb - this.initialUsedMb).toFixed(1)
+        : 'N/A',
       trend: this.samples.length > 10 ? this.calculateTrend() : 'unknown',
+      platform: latest.platform || 'js',
+      lowMemory: latest.lowMemory || false,
+      usingNative: this.useNative,
     };
   }
 
   // For stress tests - get current heap value
   getState() {
+    if (this.useNative && nativeMemoryModule) {
+      try {
+        const usedMb = nativeMemoryModule.getMemoryUsageMb();
+        return { heapUsed: usedMb * 1024 * 1024, usedMb };
+      } catch {
+        // Fall through
+      }
+    }
     const estimatedHeap = (global as any).performance?.memory?.usedJSHeapSize || 0;
-    return {
-      heapUsed: estimatedHeap,
-    };
+    return { heapUsed: estimatedHeap, usedMb: estimatedHeap / 1024 / 1024 };
   }
 
   private calculateTrend(): 'growing' | 'stable' | 'shrinking' {
@@ -719,8 +831,8 @@ class MemoryMonitor {
 
     if (older.length === 0) return 'stable';
 
-    const recentAvg = recent.reduce((a, s) => a + s.heap, 0) / recent.length;
-    const olderAvg = older.reduce((a, s) => a + s.heap, 0) / older.length;
+    const recentAvg = recent.reduce((a, s) => a + s.usedMb, 0) / recent.length;
+    const olderAvg = older.reduce((a, s) => a + s.usedMb, 0) / older.length;
 
     const diff = recentAvg - olderAvg;
     const percentChange = (diff / olderAvg) * 100;
@@ -728,6 +840,16 @@ class MemoryMonitor {
     if (percentChange > 5) return 'growing';
     if (percentChange < -5) return 'shrinking';
     return 'stable';
+  }
+
+  // Check if native module is being used
+  isUsingNative(): boolean {
+    return this.useNative;
+  }
+
+  // Get recent samples for analysis
+  getRecentSamples(count: number = 10): MemorySample[] {
+    return this.samples.slice(-count);
   }
 }
 
@@ -775,6 +897,206 @@ class ANRMonitor {
 }
 
 export const anrMonitor = new ANRMonitor();
+
+// ============================================================
+// 8.5 FPS MONITORING
+// ============================================================
+
+interface FpsSample {
+  context: string;
+  fps: number;
+  droppedFrames: number;
+  timestamp: number;
+}
+
+class FpsMonitor {
+  private isMonitoring = false;
+  private frameTimestamps: number[] = [];
+  private samples: FpsSample[] = [];
+  private currentContext: string = 'idle';
+  private rafId: number | null = null;
+  private lastReportTime = 0;
+  private droppedFrames = 0;
+
+  private readonly TARGET_FRAME_TIME = 16.67; // 60fps
+  private readonly SAMPLE_INTERVAL = 1000; // Report every second
+  private readonly MAX_SAMPLES = 500;
+  private readonly FPS_BUDGET = 55; // From performanceBudgets
+
+  start(context: string) {
+    if (this.isMonitoring && this.currentContext === context) return;
+
+    this.stop(); // Stop any existing monitoring
+    this.currentContext = context;
+    this.isMonitoring = true;
+    this.frameTimestamps = [];
+    this.droppedFrames = 0;
+    this.lastReportTime = performance.now();
+
+    this.measureFrame();
+
+    if (__DEV__) {
+      console.log(`[FPS] Started monitoring: ${context}`);
+    }
+  }
+
+  stop() {
+    if (!this.isMonitoring) return;
+
+    // Final report for this context
+    this.reportCurrentFps();
+
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+
+    this.isMonitoring = false;
+
+    if (__DEV__) {
+      console.log(`[FPS] Stopped monitoring: ${this.currentContext}`);
+    }
+  }
+
+  private measureFrame = () => {
+    if (!this.isMonitoring) return;
+
+    const now = performance.now();
+
+    if (this.frameTimestamps.length > 0) {
+      const lastFrame = this.frameTimestamps[this.frameTimestamps.length - 1];
+      const delta = now - lastFrame;
+
+      // Count dropped frames (frame took > 2x target time)
+      if (delta > this.TARGET_FRAME_TIME * 2) {
+        this.droppedFrames += Math.floor(delta / this.TARGET_FRAME_TIME) - 1;
+      }
+    }
+
+    this.frameTimestamps.push(now);
+
+    // Keep only last 120 frames (2 seconds at 60fps)
+    if (this.frameTimestamps.length > 120) {
+      this.frameTimestamps.shift();
+    }
+
+    // Report every second
+    if (now - this.lastReportTime >= this.SAMPLE_INTERVAL) {
+      this.reportCurrentFps();
+      this.lastReportTime = now;
+    }
+
+    this.rafId = requestAnimationFrame(this.measureFrame);
+  };
+
+  private reportCurrentFps() {
+    if (this.frameTimestamps.length < 10) return;
+
+    const fps = this.calculateFps();
+
+    const sample: FpsSample = {
+      context: this.currentContext,
+      fps: Math.round(fps),
+      droppedFrames: this.droppedFrames,
+      timestamp: Date.now(),
+    };
+
+    this.samples.push(sample);
+    if (this.samples.length > this.MAX_SAMPLES) {
+      this.samples.shift();
+    }
+
+    // Log warning if below budget
+    if (fps < this.FPS_BUDGET) {
+      if (__DEV__) {
+        console.warn(
+          `[FPS] ⚠️ Low: ${fps.toFixed(1)} in ${this.currentContext} (${this.droppedFrames} dropped)`
+        );
+      }
+
+      // Record as error if significantly below budget
+      if (fps < 45) {
+        errorStore.addError({
+          type: 'slow_render',
+          severity: fps < 30 ? 'high' : 'medium',
+          message: `Low FPS: ${fps.toFixed(1)} during ${this.currentContext}`,
+          details: {
+            fps: Math.round(fps),
+            droppedFrames: this.droppedFrames,
+            context: this.currentContext,
+          },
+        });
+      }
+    }
+
+    // Reset dropped frame counter for next interval
+    this.droppedFrames = 0;
+  }
+
+  private calculateFps(): number {
+    if (this.frameTimestamps.length < 2) return 60;
+
+    const first = this.frameTimestamps[0];
+    const last = this.frameTimestamps[this.frameTimestamps.length - 1];
+    const elapsed = last - first;
+
+    if (elapsed === 0) return 60;
+
+    return ((this.frameTimestamps.length - 1) / elapsed) * 1000;
+  }
+
+  getCurrentFps(): number {
+    return Math.round(this.calculateFps());
+  }
+
+  isActive(): boolean {
+    return this.isMonitoring;
+  }
+
+  getContext(): string {
+    return this.currentContext;
+  }
+
+  getStats(context?: string) {
+    const filtered = context
+      ? this.samples.filter((s) => s.context === context)
+      : this.samples;
+
+    if (filtered.length === 0) return null;
+
+    const fpsValues = filtered.map((s) => s.fps);
+    const totalDropped = filtered.reduce((sum, s) => sum + s.droppedFrames, 0);
+
+    return {
+      context: context || 'all',
+      sampleCount: filtered.length,
+      avgFps: Math.round(fpsValues.reduce((a, b) => a + b) / fpsValues.length),
+      minFps: Math.min(...fpsValues),
+      maxFps: Math.max(...fpsValues),
+      totalDroppedFrames: totalDropped,
+      belowBudgetCount: fpsValues.filter((f) => f < this.FPS_BUDGET).length,
+    };
+  }
+
+  getAllStats() {
+    const contexts = [...new Set(this.samples.map((s) => s.context))];
+    return Object.fromEntries(
+      contexts.map((ctx) => [ctx, this.getStats(ctx)])
+    );
+  }
+
+  getRecentSamples(count: number = 10): FpsSample[] {
+    return this.samples.slice(-count);
+  }
+
+  reset() {
+    this.samples = [];
+    this.frameTimestamps = [];
+    this.droppedFrames = 0;
+  }
+}
+
+export const fpsMonitor = new FpsMonitor();
 
 // ============================================================
 // 9. NAVIGATION MONITORING
@@ -921,6 +1243,39 @@ export const useImageMonitor = (uri: string, componentName: string) => {
 };
 
 /**
+ * Monitor FPS for a specific context (e.g., 'scrubbing', 'discAnimation', 'scroll')
+ * Automatically starts when mounted and stops when unmounted.
+ *
+ * @example
+ * ```tsx
+ * // Monitor FPS while player screen is visible
+ * function CDPlayerScreen() {
+ *   useFpsMonitor('fullPlayer');
+ *   return <View>...</View>;
+ * }
+ *
+ * // Monitor FPS during a specific interaction
+ * function ProgressBar({ isSeeking }) {
+ *   useFpsMonitor(isSeeking ? 'scrubbing' : null);
+ *   return <View>...</View>;
+ * }
+ * ```
+ */
+export const useFpsMonitor = (context: string | null) => {
+  useEffect(() => {
+    if (context) {
+      fpsMonitor.start(context);
+      return () => fpsMonitor.stop();
+    }
+  }, [context]);
+
+  return {
+    getCurrentFps: () => fpsMonitor.getCurrentFps(),
+    getStats: () => fpsMonitor.getStats(context || undefined),
+  };
+};
+
+/**
  * Monitor audio player
  */
 export const useAudioMonitor = () => {
@@ -979,6 +1334,7 @@ export const startAllMonitoring = () => {
     console.log('\n========== MONITORING STATS ==========');
     console.log('Errors:', errorStore.getSummary());
     console.log('Memory:', memoryMonitor.getStats());
+    console.log('FPS:', fpsMonitor.getAllStats());
     console.log('Images:', imageMonitor.getStats());
     console.log('Audio:', audioMonitor.getStats());
     console.log('Storage:', storageMonitor.getStats());
@@ -1010,6 +1366,7 @@ export interface ErrorReport {
   low: RuntimeError[];
   summary: ReturnType<typeof errorStore.getSummary>;
   memory: ReturnType<typeof memoryMonitor.getStats>;
+  fps: ReturnType<typeof fpsMonitor.getAllStats>;
   images: ReturnType<typeof imageMonitor.getStats>;
   audio: ReturnType<typeof audioMonitor.getStats>;
   storage: ReturnType<typeof storageMonitor.getStats>;
@@ -1032,6 +1389,7 @@ export const generateErrorReport = (): ErrorReport => {
     low: errors.filter((e) => e.severity === 'low'),
     summary: errorStore.getSummary(),
     memory: memoryMonitor.getStats(),
+    fps: fpsMonitor.getAllStats(),
     images: imageMonitor.getStats(),
     audio: audioMonitor.getStats(),
     storage: storageMonitor.getStats(),

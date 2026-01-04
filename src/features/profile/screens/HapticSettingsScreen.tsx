@@ -32,11 +32,26 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale } from '@/shared/theme';
+import { accentColors, scale } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 import { haptics } from '@/core/native/haptics';
 import { useHapticSettingsStore } from '../stores/hapticSettingsStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
+
+// Helper to create theme-aware colors
+function createColors(themeColors: ThemeColors) {
+  return {
+    accent: ACCENT,
+    background: themeColors.backgroundSecondary,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    card: themeColors.border,
+    border: themeColors.border,
+    iconBg: themeColors.border,
+  };
+}
 
 // Settings Row Component
 interface SettingsRowProps {
@@ -46,9 +61,10 @@ interface SettingsRowProps {
   switchValue: boolean;
   onSwitchChange: (value: boolean) => void;
   disabled?: boolean;
+  colors: ReturnType<typeof createColors>;
 }
 
-function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled }: SettingsRowProps) {
+function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled, colors }: SettingsRowProps) {
   const handleChange = useCallback((value: boolean) => {
     // Play haptic feedback when enabling
     if (value) {
@@ -58,24 +74,24 @@ function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled 
   }, [onSwitchChange]);
 
   return (
-    <View style={[styles.settingsRow, disabled && styles.settingsRowDisabled]}>
+    <View style={[styles.settingsRow, { borderBottomColor: colors.border }, disabled && styles.settingsRowDisabled]}>
       <View style={styles.rowLeft}>
-        <View style={[styles.iconContainer, disabled && styles.iconContainerDisabled]}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }, disabled && { opacity: 0.5 }]}>
           <Icon
             size={scale(18)}
-            color={disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)'}
+            color={disabled ? colors.textTertiary : colors.textSecondary}
             strokeWidth={2}
           />
         </View>
         <View style={styles.rowContent}>
-          <Text style={[styles.rowLabel, disabled && styles.rowLabelDisabled]}>{label}</Text>
-          {note ? <Text style={[styles.rowNote, disabled && styles.rowNoteDisabled]}>{note}</Text> : null}
+          <Text style={[styles.rowLabel, { color: colors.text }, disabled && { color: colors.textTertiary }]}>{label}</Text>
+          {note ? <Text style={[styles.rowNote, { color: colors.textTertiary }, disabled && { opacity: 0.6 }]}>{note}</Text> : null}
         </View>
       </View>
       <Switch
         value={switchValue}
         onValueChange={handleChange}
-        trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+        trackColor={{ false: colors.border, true: ACCENT }}
         thumbColor="#fff"
         disabled={disabled}
       />
@@ -84,13 +100,15 @@ function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled 
 }
 
 // Section Header Component
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
+  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
 }
 
 export function HapticSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
 
   // Haptic settings from store
   const enabled = useHapticSettingsStore((s) => s.enabled);
@@ -123,8 +141,8 @@ export function HapticSettingsScreen() {
   }, [setEnabled]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -133,9 +151,9 @@ export function HapticSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Haptic Feedback</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Haptic Feedback</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -146,13 +164,14 @@ export function HapticSettingsScreen() {
       >
         {/* Master Toggle Section */}
         <View style={styles.section}>
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Circle}
               label="Haptic Feedback"
               note="Enable tactile feedback throughout the app"
               switchValue={enabled}
               onSwitchChange={handleMasterToggle}
+              colors={colors}
             />
           </View>
         </View>
@@ -162,14 +181,15 @@ export function HapticSettingsScreen() {
           <>
             {/* Playback Section */}
             <View style={styles.section}>
-              <SectionHeader title="Playback" />
-              <View style={styles.sectionCard}>
+              <SectionHeader title="Playback" colors={colors} />
+              <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
                 <SettingsRow
                   Icon={PlayCircle}
                   label="Playback Controls"
                   note="Play, pause, skip forward/back"
                   switchValue={playbackControls}
                   onSwitchChange={setPlaybackControls}
+                  colors={colors}
                 />
                 <SettingsRow
                   Icon={GitCommitHorizontal}
@@ -177,6 +197,7 @@ export function HapticSettingsScreen() {
                   note="Scrubbing feedback, chapter markers"
                   switchValue={scrubberFeedback}
                   onSwitchChange={setScrubberFeedback}
+                  colors={colors}
                 />
                 <SettingsRow
                   Icon={Gauge}
@@ -184,6 +205,7 @@ export function HapticSettingsScreen() {
                   note="Speed selection changes"
                   switchValue={speedControl}
                   onSwitchChange={setSpeedControl}
+                  colors={colors}
                 />
                 <SettingsRow
                   Icon={Moon}
@@ -191,20 +213,22 @@ export function HapticSettingsScreen() {
                   note="Timer set, warning, expiration"
                   switchValue={sleepTimer}
                   onSwitchChange={setSleepTimer}
+                  colors={colors}
                 />
               </View>
             </View>
 
             {/* Library Section */}
             <View style={styles.section}>
-              <SectionHeader title="Library" />
-              <View style={styles.sectionCard}>
+              <SectionHeader title="Library" colors={colors} />
+              <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
                 <SettingsRow
                   Icon={Download}
                   label="Downloads"
                   note="Download start and completion"
                   switchValue={downloads}
                   onSwitchChange={setDownloads}
+                  colors={colors}
                 />
                 <SettingsRow
                   Icon={Bookmark}
@@ -212,6 +236,7 @@ export function HapticSettingsScreen() {
                   note="Create, delete, jump to bookmark"
                   switchValue={bookmarks}
                   onSwitchChange={setBookmarks}
+                  colors={colors}
                 />
                 <SettingsRow
                   Icon={Trophy}
@@ -219,20 +244,22 @@ export function HapticSettingsScreen() {
                   note="Book and series celebrations"
                   switchValue={completions}
                   onSwitchChange={setCompletions}
+                  colors={colors}
                 />
               </View>
             </View>
 
             {/* UI Section */}
             <View style={styles.section}>
-              <SectionHeader title="Interface" />
-              <View style={styles.sectionCard}>
+              <SectionHeader title="Interface" colors={colors} />
+              <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
                 <SettingsRow
                   Icon={Hand}
                   label="UI Interactions"
                   note="Buttons, toggles, long press"
                   switchValue={uiInteractions}
                   onSwitchChange={setUiInteractions}
+                  colors={colors}
                 />
               </View>
             </View>
@@ -241,8 +268,8 @@ export function HapticSettingsScreen() {
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
-          <Text style={styles.infoText}>
+          <Info size={scale(16)} color={colors.textTertiary} strokeWidth={2} />
+          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
             Haptic feedback provides tactile confirmation for actions without requiring you to look at the screen.
             Disable individual categories to customize your experience.
           </Text>
@@ -255,7 +282,7 @@ export function HapticSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via colors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -273,7 +300,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -290,14 +317,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -308,7 +335,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via colors.border in JSX
   },
   settingsRowDisabled: {
     opacity: 0.5,
@@ -322,12 +349,9 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconContainerDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   rowContent: {
     flex: 1,
@@ -337,18 +361,12 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
-  },
-  rowLabelDisabled: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.text in JSX
   },
   rowNote: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
-  },
-  rowNoteDisabled: {
-    color: 'rgba(255,255,255,0.3)',
   },
   infoSection: {
     flexDirection: 'row',
@@ -360,7 +378,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
 });

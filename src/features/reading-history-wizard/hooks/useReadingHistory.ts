@@ -1,20 +1,24 @@
 /**
  * src/features/reading-history-wizard/hooks/useReadingHistory.ts
  *
- * Hook that combines local reading history (galleryStore) with server-side progress.
+ * Hook that combines local reading history (SQLite user_books) with server-side progress.
  * Provides utilities to:
- * - Check if a book is finished (locally marked or server progress >= 95%)
+ * - Check if a book is finished (SQLite or server progress >= 95%)
  * - Extract patterns from reading history for recommendations
  * - Get preference boosts based on what user has listened to
  */
 
 import { useMemo } from 'react';
-import { useGalleryStore } from '../stores/galleryStore';
+import { useFinishedBooks, useFinishedBookIds } from '@/core/hooks/useUserBooks';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { LibraryItem } from '@/core/types';
 
-// Threshold for considering a book "finished" based on server progress
-const FINISHED_THRESHOLD = 0.95;
+/**
+ * SINGLE SOURCE OF TRUTH: Threshold for considering a book "finished"
+ * Used by SQLite auto-finish, recommendations, book detail, etc.
+ * Export this constant so all features use the same threshold.
+ */
+export const FINISHED_THRESHOLD = 0.95;
 
 /**
  * Get metadata from a library item safely
@@ -90,20 +94,21 @@ interface UseReadingHistoryResult {
  * Main hook for reading history integration
  */
 export function useReadingHistory(): UseReadingHistoryResult {
-  const markedBooks = useGalleryStore((s) => s.markedBooks);
+  // Get finished books from SQLite (single source of truth)
+  const { data: finishedBooksData = [] } = useFinishedBooks();
   const items = useLibraryCache((s) => s.items);
   const getItem = useLibraryCache((s) => s.getItem);
 
-  // Build set of finished book IDs (combining local + server)
+  // Build set of finished book IDs (combining SQLite + server progress)
   const finishedBookIds = useMemo(() => {
     const finished = new Set<string>();
 
-    // Add locally marked books
-    for (const [bookId] of markedBooks) {
-      finished.add(bookId);
+    // Add books marked finished in SQLite
+    for (const book of finishedBooksData) {
+      finished.add(book.bookId);
     }
 
-    // Add books with >= 95% server progress
+    // Add books with >= 95% server progress (not yet in SQLite)
     for (const item of items) {
       const progress = (item as any).userMediaProgress?.progress || 0;
       if (progress >= FINISHED_THRESHOLD) {
@@ -112,24 +117,24 @@ export function useReadingHistory(): UseReadingHistoryResult {
     }
 
     return finished;
-  }, [markedBooks, items]);
+  }, [finishedBooksData, items]);
 
   // Check if a specific book is finished
   const isFinished = useMemo(() => {
     return (itemId: string): boolean => {
-      // Check local marks first (faster)
-      if (markedBooks.has(itemId)) return true;
+      // Check SQLite finished books first
+      if (finishedBookIds.has(itemId)) return true;
 
-      // Check server progress
+      // Check server progress as fallback
       const item = getItem(itemId);
       if (item) {
         const progress = (item as any).userMediaProgress?.progress || 0;
         return progress >= FINISHED_THRESHOLD;
       }
 
-      return finishedBookIds.has(itemId);
+      return false;
     };
-  }, [markedBooks, getItem, finishedBookIds]);
+  }, [finishedBookIds, getItem]);
 
   // Check if a book has been started (any progress)
   const hasBeenStarted = useMemo(() => {
@@ -255,14 +260,15 @@ export function useReadingHistory(): UseReadingHistoryResult {
 
 /**
  * Convenience hook to check if a single book is finished
+ * Uses SQLite as single source of truth + server progress fallback
  */
 export function useIsBookFinished(bookId: string): boolean {
-  const markedBooks = useGalleryStore((s) => s.markedBooks);
+  const finishedBookIds = useFinishedBookIds();
   const getItem = useLibraryCache((s) => s.getItem);
 
   return useMemo(() => {
-    // Check local marks first
-    if (markedBooks.has(bookId)) return true;
+    // Check SQLite first
+    if (finishedBookIds.has(bookId)) return true;
 
     // Check server progress
     const item = getItem(bookId);
@@ -272,7 +278,7 @@ export function useIsBookFinished(bookId: string): boolean {
     }
 
     return false;
-  }, [markedBooks, bookId, getItem]);
+  }, [finishedBookIds, bookId, getItem]);
 }
 
 /**

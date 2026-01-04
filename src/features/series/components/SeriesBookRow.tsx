@@ -18,15 +18,17 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Check, CheckCircle, Volume2, Play, Pause, ArrowDown } from 'lucide-react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { LibraryItem } from '@/core/types';
 import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
+import { downloadManager } from '@/core/services/downloadManager';
 import { usePlayerStore } from '@/features/player';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { colors, scale, spacing, radius, accentColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.red;
 
 interface SeriesBookRowProps {
   book: LibraryItem;
@@ -58,35 +60,43 @@ function formatDurationTimestamp(seconds: number): string {
 }
 
 // Progress Ring for downloading
-function ProgressRing({ progress, size = 24 }: { progress: number; size?: number }) {
+function ProgressRing({ progress, size = 24, isPaused = false }: { progress: number; size?: number; isPaused?: boolean }) {
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - progress * circumference;
+  const progressColor = isPaused ? '#FF9800' : ACCENT;
 
   return (
-    <Svg width={size} height={size}>
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="rgba(255,255,255,0.2)"
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={ACCENT}
-        strokeWidth={strokeWidth}
-        fill="none"
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={strokeDashoffset}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </Svg>
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="rgba(255,255,255,0.2)"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={progressColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      {isPaused && (
+        <Svg width={size * 0.4} height={size * 0.4} viewBox="0 0 24 24">
+          <Path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" fill="#FF9800" />
+        </Svg>
+      )}
+    </View>
   );
 }
 
@@ -97,8 +107,11 @@ export const SeriesBookRow = memo(function SeriesBookRow({
   isUpNext,
   onPress,
 }: SeriesBookRowProps) {
+  // Theme-aware colors
+  const themeColors = useThemeColors();
+
   const coverUrl = useCoverUrl(book.id);
-  const { isDownloaded, isDownloading, progress: downloadProgress } = useDownloadStatus(book.id);
+  const { isDownloaded, isDownloading, isPaused, isPending, progress: downloadProgress } = useDownloadStatus(book.id);
   const { queueDownload } = useDownloads();
   const { loadBook, play, pause, isPlaying } = usePlayerStore();
 
@@ -116,11 +129,31 @@ export const SeriesBookRow = memo(function SeriesBookRow({
   const timeRemaining = duration * (1 - userProgress);
   const timeRemainingText = formatDurationReadable(timeRemaining);
 
-  // Handle download press
-  const handleDownloadPress = useCallback(() => {
+  // Handle download press - supports pause/resume
+  const handleDownloadPress = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // If downloading, pause it
+    if (isDownloading && !isPaused) {
+      await downloadManager.pauseDownload(book.id);
+      return;
+    }
+
+    // If paused, resume it
+    if (isPaused) {
+      await downloadManager.resumeDownload(book.id);
+      return;
+    }
+
+    // If pending, cancel it
+    if (isPending) {
+      await downloadManager.cancelDownload(book.id);
+      return;
+    }
+
+    // Otherwise queue the download
     queueDownload(book);
-  }, [book, queueDownload]);
+  }, [book, queueDownload, isDownloading, isPaused, isPending]);
 
   // Handle play press
   const handlePlayPress = useCallback(async () => {
@@ -139,7 +172,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
       style={[
         styles.container,
         isNowPlaying && styles.containerNowPlaying,
-        isUpNext && !isNowPlaying && styles.containerUpNext,
+        isUpNext && !isNowPlaying && [styles.containerUpNext, { backgroundColor: themeColors.surfaceElevated, borderColor: themeColors.border }],
         isCompleted && !isNowPlaying && styles.containerCompleted,
       ]}
       onPress={onPress}
@@ -151,8 +184,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
           source={coverUrl}
           style={[
             styles.cover,
-            !isDownloaded && !isDownloading && styles.coverNotDownloaded,
-            isCompleted && !isNowPlaying && styles.coverCompleted,
+            { backgroundColor: themeColors.surfaceElevated },
           ]}
           contentFit="cover"
         />
@@ -181,8 +213,9 @@ export const SeriesBookRow = memo(function SeriesBookRow({
           <Text
             style={[
               styles.title,
+              { color: themeColors.text },
               isNowPlaying && styles.titleNowPlaying,
-              isCompleted && !isNowPlaying && styles.titleCompleted,
+              isCompleted && !isNowPlaying && [styles.titleCompleted, { color: themeColors.textSecondary }],
             ]}
             numberOfLines={1}
           >
@@ -206,35 +239,40 @@ export const SeriesBookRow = memo(function SeriesBookRow({
           <View style={styles.statusRow}>
             <CheckCircle size={scale(14)} color={ACCENT} strokeWidth={2} />
             <Text style={styles.completedText}>Done</Text>
-            <Text style={styles.durationTextDim}>· {formatDurationReadable(duration)}</Text>
+            <Text style={[styles.durationTextDim, { color: themeColors.textTertiary }]}>· {formatDurationReadable(duration)}</Text>
           </View>
         ) : isInProgress ? (
           // In progress state - show progress bar and time remaining
           <View style={styles.progressSection}>
             <View style={styles.progressContainer}>
-              <View style={styles.progressTrack}>
+              <View style={[styles.progressTrack, { backgroundColor: themeColors.border }]}>
                 <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
               </View>
               <Text style={styles.progressText}>{progressPercent}%</Text>
             </View>
-            <Text style={styles.timeRemainingText}>{timeRemainingText} left</Text>
+            <Text style={[styles.timeRemainingText, { color: themeColors.textTertiary }]}>{timeRemainingText} left</Text>
           </View>
         ) : (
           // Not started state
-          <Text style={styles.durationText}>{formatDurationReadable(duration)}</Text>
+          <Text style={[styles.durationText, { color: themeColors.textSecondary }]}>{formatDurationReadable(duration)}</Text>
         )}
       </View>
 
       {/* Right action button */}
       <View style={styles.actionContainer}>
-        {isDownloading ? (
-          <View style={styles.downloadingIndicator}>
-            <ProgressRing progress={downloadProgress} size={scale(28)} />
-          </View>
+        {isDownloading || isPaused || isPending ? (
+          <TouchableOpacity
+            style={styles.downloadingIndicator}
+            onPress={handleDownloadPress}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ProgressRing progress={downloadProgress} size={scale(28)} isPaused={isPaused} />
+          </TouchableOpacity>
         ) : isDownloaded ? (
           <TouchableOpacity
             style={[
               styles.playButton,
+              { backgroundColor: themeColors.surfaceElevated },
               isNowPlaying && styles.playButtonActive,
             ]}
             onPress={handlePlayPress}
@@ -243,7 +281,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
             {isNowPlaying && isPlaying ? (
               <Pause size={scale(18)} color="#000" strokeWidth={2} />
             ) : (
-              <Play size={scale(18)} color={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'} fill={isNowPlaying ? '#000' : 'rgba(255,255,255,0.8)'} strokeWidth={0} />
+              <Play size={scale(18)} color={isNowPlaying ? '#000' : themeColors.textSecondary} fill={isNowPlaying ? '#000' : themeColors.textSecondary} strokeWidth={0} />
             )}
           </TouchableOpacity>
         ) : (
@@ -252,7 +290,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
             onPress={handleDownloadPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <ArrowDown size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+            <ArrowDown size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
           </TouchableOpacity>
         )}
       </View>
@@ -281,7 +319,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   containerCompleted: {
-    opacity: 0.7,
+    // Full opacity - no dimming
   },
   coverContainer: {
     position: 'relative',
@@ -290,13 +328,12 @@ const styles = StyleSheet.create({
     width: scale(52),
     height: scale(52),
     borderRadius: scale(6),
-    backgroundColor: '#262626',
   },
   coverNotDownloaded: {
-    opacity: 0.6,
+    // Full opacity - don't dim covers
   },
   coverCompleted: {
-    opacity: 0.8,
+    // Full opacity - no dimming
   },
   statusBadge: {
     position: 'absolute',
@@ -419,7 +456,6 @@ const styles = StyleSheet.create({
     width: scale(38),
     height: scale(38),
     borderRadius: scale(19),
-    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },

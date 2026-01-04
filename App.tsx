@@ -15,7 +15,7 @@ import { queryClient } from './src/core/queryClient';
 import { appInitializer, InitResult } from './src/core/services/appInitializer';
 import { AnimatedSplash } from './src/shared/components/AnimatedSplash';
 import { useAppHealthMonitor } from './src/utils/perfDebug';
-import { startAllMonitoring, stopAllMonitoring } from './src/utils/runtimeMonitor';
+import { startAllMonitoring, stopAllMonitoring, fpsMonitor, memoryMonitor } from './src/utils/runtimeMonitor';
 
 export default function App() {
   // Performance monitoring in development
@@ -27,7 +27,18 @@ export default function App() {
   useEffect(() => {
     if (__DEV__) {
       startAllMonitoring();
+
+      // Instrumentation check after 10 seconds
+      const checkTimer = setTimeout(() => {
+        console.log('\n=== INSTRUMENTATION CHECK ===');
+        console.log('Memory native:', memoryMonitor.isUsingNative());
+        console.log('Memory stats:', memoryMonitor.getStats());
+        console.log('FPS contexts:', Object.keys(fpsMonitor.getAllStats()));
+        console.log('=============================\n');
+      }, 10000);
+
       return () => {
+        clearTimeout(checkTimer);
         stopAllMonitoring();
       };
     }

@@ -16,29 +16,23 @@ import {
   Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Animated, {
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '@/shared/components/Icon';
-import { colors, scale, layout, radius, spacing } from '@/shared/theme';
+import { scale, layout, radius, spacing } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import {
   MoodSession,
   MOODS,
   PACES,
   WEIGHTS,
   WORLDS,
-  Mood,
-  Pace,
-  Weight,
-  World,
 } from '@/features/mood-discovery/types';
 import {
   useSessionInfo,
   getTimeRemainingFromExpiry,
-  getSessionDisplayLabel,
 } from '@/features/mood-discovery/stores/moodSessionStore';
+
+// White styling for hero overlay
 
 // ============================================================================
 // TYPES
@@ -93,23 +87,18 @@ function formatFullTime(ms: number): string {
 // SUB-COMPONENTS
 // ============================================================================
 
-function FilterChip({ label, icon, active = true, onPress }: FilterChipProps) {
+function FilterChip({ label, icon, active = false }: FilterChipProps) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[styles.filterChip, active && styles.filterChipActive]}
-      activeOpacity={0.7}
-      disabled={!onPress}
-    >
+    <View style={[styles.filterChip, active && styles.filterChipActive]}>
       <Icon
         name={icon as any}
         size={16}
-        color={active ? '#000' : colors.textSecondary}
+        color="#FFFFFF"
       />
-      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+      <Text style={[styles.filterChipText, { color: '#FFFFFF' }]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -123,6 +112,7 @@ export function MoodFilterPills({
   onClear,
 }: MoodFilterPillsProps) {
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
   const { expiresAt, clearSession } = useSessionInfo();
   const [showTimerPopup, setShowTimerPopup] = useState(false);
 
@@ -188,7 +178,7 @@ export function MoodFilterPills({
           <Icon
             name="Clock"
             size={14}
-            color={colors.textTertiary}
+            color="rgba(255,255,255,0.7)"
           />
           <Text style={styles.timerText}>
             {formatCompactTime(timeRemaining)}
@@ -205,7 +195,7 @@ export function MoodFilterPills({
             <Icon
               name="LayoutGrid"
               size={18}
-              color={colors.textSecondary}
+              color="rgba(255,255,255,0.7)"
             />
           </TouchableOpacity>
 
@@ -219,7 +209,7 @@ export function MoodFilterPills({
               <Icon
                 name="SlidersHorizontal"
                 size={18}
-                color={colors.accent}
+                color="#FFFFFF"
               />
               <Text style={styles.editText}>Edit</Text>
             </TouchableOpacity>
@@ -234,7 +224,7 @@ export function MoodFilterPills({
             <Icon
               name="XCircle"
               size={20}
-              color={colors.textTertiary}
+              color="rgba(255,255,255,0.5)"
             />
           </TouchableOpacity>
         </View>
@@ -252,7 +242,6 @@ export function MoodFilterPills({
             label={moodConfig.label}
             icon={moodConfig.icon}
             iconSet={moodConfig.iconSet}
-            active
           />
         )}
 
@@ -295,27 +284,27 @@ export function MoodFilterPills({
           style={styles.modalOverlay}
           onPress={() => setShowTimerPopup(false)}
         >
-          <View style={styles.timerPopup}>
-            <View style={styles.timerPopupIcon}>
+          <View style={[styles.timerPopup, { backgroundColor: themeColors.backgroundSecondary }]}>
+            <View style={[styles.timerPopupIcon, { backgroundColor: 'rgba(0, 0, 0, 0.08)' }]}>
               <Icon
                 name="Clock"
                 size={32}
-                color={colors.accent}
+                color={themeColors.text}
               />
             </View>
-            <Text style={styles.timerPopupTitle}>Mood Session</Text>
-            <Text style={styles.timerPopupTime}>
+            <Text style={[styles.timerPopupTitle, { color: themeColors.text }]}>Mood Session</Text>
+            <Text style={[styles.timerPopupTime, { color: themeColors.text }]}>
               {formatFullTime(timeRemaining)}
             </Text>
-            <Text style={styles.timerPopupDescription}>
+            <Text style={[styles.timerPopupDescription, { color: themeColors.textSecondary }]}>
               Your mood preferences are temporary and will expire after 24 hours.
               This lets you discover books based on how you feel right now, not forever.
             </Text>
             <TouchableOpacity
               onPress={() => setShowTimerPopup(false)}
-              style={styles.timerPopupButton}
+              style={[styles.timerPopupButton, { backgroundColor: themeColors.text }]}
             >
-              <Text style={styles.timerPopupButtonText}>Got it</Text>
+              <Text style={[styles.timerPopupButtonText, { color: themeColors.background }]}>Got it</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -346,13 +335,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: radius.full,
   },
   timerText: {
     fontSize: scale(12),
-    color: colors.textSecondary,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
   headerActions: {
     flexDirection: 'row',
@@ -362,7 +350,6 @@ const styles = StyleSheet.create({
   browseByButton: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: radius.full,
   },
   editButton: {
@@ -374,8 +361,8 @@ const styles = StyleSheet.create({
   },
   editText: {
     fontSize: scale(13),
-    color: colors.accent,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
   clearButton: {
     paddingVertical: spacing.xs,
@@ -392,19 +379,18 @@ const styles = StyleSheet.create({
     paddingVertical: scale(10),
     paddingHorizontal: scale(16),
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
     gap: spacing.sm,
   },
   filterChipActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#E53935',
+    borderColor: '#E53935',
   },
   filterChipText: {
     fontSize: scale(14),
-    color: colors.textSecondary,
     fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: '#000',
   },
   // Modal styles
   modalOverlay: {
@@ -415,7 +401,6 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   timerPopup: {
-    backgroundColor: colors.backgroundSecondary,
     borderRadius: radius.lg,
     padding: spacing.xl,
     alignItems: 'center',
@@ -426,7 +411,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.accentSubtle,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.md,
@@ -434,24 +418,20 @@ const styles = StyleSheet.create({
   timerPopupTitle: {
     fontSize: scale(18),
     fontWeight: '700',
-    color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
   timerPopupTime: {
     fontSize: scale(24),
     fontWeight: '700',
-    color: colors.accent,
     marginBottom: spacing.md,
   },
   timerPopupDescription: {
     fontSize: scale(14),
-    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: scale(20),
     marginBottom: spacing.lg,
   },
   timerPopupButton: {
-    backgroundColor: colors.accent,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.md,
@@ -459,6 +439,5 @@ const styles = StyleSheet.create({
   timerPopupButtonText: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: '#000',
   },
 });

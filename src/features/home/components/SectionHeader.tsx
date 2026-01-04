@@ -8,10 +8,9 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { colors, scale } from '@/shared/theme';
+import { scale } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import { SectionHeaderProps } from '../types';
-
-const COLORS = { textPrimary: colors.textPrimary, textSecondary: colors.textSecondary };
 
 // NN/g: Larger section headers for clear content hierarchy
 const SECTION_PADDING = scale(20);
@@ -21,16 +20,18 @@ export function SectionHeader({
   onViewAll,
   showViewAll = true,
 }: SectionHeaderProps) {
+  const themeColors = useThemeColors();
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
       {showViewAll && onViewAll && (
         <TouchableOpacity
           onPress={onViewAll}
           style={styles.viewAllButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={styles.viewAll}>View All</Text>
+          <Text style={[styles.viewAll, { color: themeColors.textSecondary }]}>View All</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -49,7 +50,6 @@ const styles = StyleSheet.create({
     // NN/g: Larger, bolder section titles for visual hierarchy
     fontSize: scale(18),
     fontWeight: '700',
-    color: COLORS.textPrimary,
     letterSpacing: -0.3,
   },
   viewAllButton: {
@@ -62,6 +62,5 @@ const styles = StyleSheet.create({
   viewAll: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.textSecondary,
   },
 });

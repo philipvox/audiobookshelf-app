@@ -20,12 +20,12 @@ import {
   WORLD_GENRE_MAP,
   PACE_INDICATORS,
   WEIGHT_INDICATORS,
-  THEME_MOOD_MAP,
-  TROPE_MOOD_MAP,
   LENGTH_OPTIONS,
 } from '../types';
+import { calculateTagMoodScore, tagScoreToPercentage, getItemTags } from '../utils/tagScoring';
 import { useActiveSession } from '../stores/moodSessionStore';
 import { useReadingHistory } from '@/features/reading-history-wizard';
+import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 
 // ============================================================================
 // SCORING CONSTANTS
@@ -69,35 +69,9 @@ function getDurationHours(item: LibraryItem): number {
   return duration / 3600;
 }
 
-/**
- * Parse themes from book description.
- */
-function parseThemesFromDescription(description?: string): string[] {
-  if (!description) return [];
-
-  const themesMatch = description.match(/Themes?:\s*([^\n]+)/i);
-  if (!themesMatch) return [];
-
-  return themesMatch[1]
-    .split(/[·,|]/)
-    .map((t) => t.trim().toLowerCase())
-    .filter((t) => t.length > 0 && t.length < 50);
-}
-
-/**
- * Parse tropes from book description.
- */
-function parseTropesFromDescription(description?: string): string[] {
-  if (!description) return [];
-
-  const tropesMatch = description.match(/Tropes?:\s*([^\n]+)/i);
-  if (!tropesMatch) return [];
-
-  return tropesMatch[1]
-    .split(/[·,|]/)
-    .map((t) => t.trim().toLowerCase())
-    .filter((t) => t.length > 0 && t.length < 50);
-}
+// NOTE: Old parseThemesFromDescription and parseTropesFromDescription functions
+// have been replaced with tag-based scoring via calculateTagMoodScore().
+// Tags come from item.media.tags instead of parsing description text.
 
 /**
  * Check if genres contain any keywords
@@ -195,74 +169,12 @@ function matchesLength(
   return { matches: false, score: 0 };
 }
 
-/**
- * Score themes against selected mood
- */
-function scoreThemes(themes: string[], selectedMood: Mood): { score: number; isPrimaryMatch: boolean } {
-  let score = 0;
-  let isPrimaryMatch = false;
-
-  for (const theme of themes) {
-    let moodsForTheme = THEME_MOOD_MAP[theme];
-
-    if (!moodsForTheme) {
-      for (const [key, moods] of Object.entries(THEME_MOOD_MAP)) {
-        if (theme.includes(key) || key.includes(theme)) {
-          moodsForTheme = moods;
-          break;
-        }
-      }
-    }
-
-    if (moodsForTheme) {
-      if (moodsForTheme[0] === selectedMood) {
-        // Primary mood match from theme
-        score += SCORE_WEIGHTS.themeMatch;
-        isPrimaryMatch = true;
-      } else if (moodsForTheme.includes(selectedMood)) {
-        // Secondary mood match from theme
-        score += SCORE_WEIGHTS.themeMatch / 2;
-      }
-    }
-  }
-
-  return { score, isPrimaryMatch };
-}
+// NOTE: Old scoreThemes and scoreTropes functions have been replaced
+// with calculateTagMoodScore() from ../utils/tagScoring.ts
 
 /**
- * Score tropes against selected mood
- */
-function scoreTropes(tropes: string[], selectedMood: Mood): { score: number; isPrimaryMatch: boolean } {
-  let score = 0;
-  let isPrimaryMatch = false;
-
-  for (const trope of tropes) {
-    let moodsForTrope = TROPE_MOOD_MAP[trope];
-
-    if (!moodsForTrope) {
-      for (const [key, moods] of Object.entries(TROPE_MOOD_MAP)) {
-        if (trope.includes(key) || key.includes(trope)) {
-          moodsForTrope = moods;
-          break;
-        }
-      }
-    }
-
-    if (moodsForTrope) {
-      if (moodsForTrope[0] === selectedMood) {
-        score += SCORE_WEIGHTS.tropeMatch;
-        isPrimaryMatch = true;
-      } else if (moodsForTrope.includes(selectedMood)) {
-        score += SCORE_WEIGHTS.tropeMatch / 2;
-      }
-    }
-  }
-
-  return { score, isPrimaryMatch };
-}
-
-/**
- * Calculate mood score for a single book
+ * Calculate mood score for a single book.
+ * Uses tag-based scoring for themes/tropes instead of description parsing.
  */
 function calculateMoodScore(
   item: LibraryItem,
@@ -280,23 +192,23 @@ function calculateMoodScore(
   let worldScore = 0;
   let isPrimaryMoodMatch = false;
 
-  // Score mood match (required dimension)
+  // Score mood match (required dimension) via genres
   if (matchesMood(bookGenres, session.mood)) {
     moodScore = SCORE_WEIGHTS.moodMatch;
     isPrimaryMoodMatch = true;
   }
 
-  // Score pace match (optional dimension)
+  // Score pace match (optional dimension) via genres/description
   if (session.pace !== 'any' && matchesPace(bookGenres, description, session.pace)) {
     paceScore = SCORE_WEIGHTS.paceMatch;
   }
 
-  // Score weight match (optional dimension)
+  // Score weight match (optional dimension) via genres/description
   if (session.weight !== 'any' && matchesWeight(bookGenres, description, session.weight)) {
     weightScore = SCORE_WEIGHTS.weightMatch;
   }
 
-  // Score world match (optional dimension)
+  // Score world match (optional dimension) via genres
   if (session.world !== 'any' && matchesWorld(bookGenres, session.world)) {
     worldScore = SCORE_WEIGHTS.worldMatch;
   }
@@ -305,27 +217,25 @@ function calculateMoodScore(
   const lengthResult = matchesLength(durationHours, session.length);
   const lengthScore = lengthResult.score;
 
-  // Score themes from description
-  const themes = parseThemesFromDescription(description);
-  const themeResult = scoreThemes(themes, session.mood);
-  const themeScore = themeResult.score;
-  if (themeResult.isPrimaryMatch && !isPrimaryMoodMatch) {
-    // Theme match can establish mood match
+  // NEW: Tag-based scoring (replaces old theme/trope regex parsing)
+  // Tags are from item.media.tags, which is explicit metadata from AudiobookShelf
+  const tags = getItemTags(item);
+  const tagResult = calculateTagMoodScore(tags, session);
+
+  // Tag scoring can establish mood match if no genre match
+  if (tagResult.isPrimaryMoodMatch && !isPrimaryMoodMatch) {
     moodScore = SCORE_WEIGHTS.secondaryMoodMatch;
+    isPrimaryMoodMatch = true;
   }
 
-  // Score tropes from description
-  const tropes = parseTropesFromDescription(description);
-  const tropeResult = scoreTropes(tropes, session.mood);
-  const tropeScore = tropeResult.score;
-  if (tropeResult.isPrimaryMatch && !isPrimaryMoodMatch && moodScore === 0) {
-    moodScore = SCORE_WEIGHTS.secondaryMoodMatch;
-  }
+  // Use tag score for theme+trope scoring (combined into single "tag" score)
+  const themeScore = tagResult.breakdown.mood + tagResult.breakdown.tropes;
+  const tropeScore = 0; // Tropes are now part of tag scoring
 
-  // Update isPrimaryMoodMatch based on all signals
-  isPrimaryMoodMatch = isPrimaryMoodMatch || themeResult.isPrimaryMatch || tropeResult.isPrimaryMatch;
+  // Update isPrimaryMoodMatch
+  isPrimaryMoodMatch = isPrimaryMoodMatch || tagResult.isPrimaryMoodMatch;
 
-  const total = moodScore + paceScore + weightScore + worldScore + lengthScore + themeScore + tropeScore;
+  const total = moodScore + paceScore + weightScore + worldScore + lengthScore + tagResult.score;
 
   return {
     total,
@@ -334,8 +244,8 @@ function calculateMoodScore(
     weightScore,
     worldScore,
     lengthScore,
-    themeScore,
-    tropeScore,
+    themeScore, // Now represents tag-based mood+trope score
+    tropeScore, // Kept for interface compatibility (always 0)
     isPrimaryMoodMatch,
   };
 }
@@ -416,7 +326,17 @@ export function useMoodRecommendations(
   const isLoaded = useLibraryCache((s) => s.isLoaded);
 
   // Get reading history for filtering and boosts
-  const { isFinished, getPreferenceBoost, hasHistory } = useReadingHistory();
+  const { isFinished, hasBeenStarted, getPreferenceBoost, hasHistory } = useReadingHistory();
+
+  // Create series filter - only show first book or next book in series
+  const isSeriesAppropriate = useMemo(() => {
+    if (!items.length) return () => true;
+    return createSeriesFilter({
+      allItems: items,
+      isFinished,
+      hasStarted: hasBeenStarted,
+    });
+  }, [items, isFinished, hasBeenStarted]);
 
   // Defer heavy computation
   const deferredMood = useDeferredValue(session?.mood ?? '');
@@ -444,17 +364,21 @@ export function useMoodRecommendations(
         continue;
       }
 
+      // Skip middle-of-series books (only show first book or next book)
+      if (!isSeriesAppropriate(item)) {
+        continue;
+      }
+
       const metadata = getMetadata(item);
       const genres: string[] = metadata.genres || [];
-      const description: string = metadata.description || '';
 
       // Check if book has any scoring data
+      // NEW: Use tags from item.media.tags instead of parsing description
       const hasGenres = genres.length > 0;
-      const themes = parseThemesFromDescription(description);
-      const tropes = parseTropesFromDescription(description);
-      const hasThemesOrTropes = themes.length > 0 || tropes.length > 0;
+      const tags = getItemTags(item);
+      const hasTags = tags.length > 0;
 
-      if (!hasGenres && !hasThemesOrTropes) {
+      if (!hasGenres && !hasTags) {
         if (includeUntagged) {
           unscored.push(item);
         }
@@ -515,6 +439,7 @@ export function useMoodRecommendations(
     excludeFinished,
     applyPreferenceBoosts,
     isFinished,
+    isSeriesAppropriate,
     getPreferenceBoost,
     hasHistory,
   ]);

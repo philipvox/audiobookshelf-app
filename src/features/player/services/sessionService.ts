@@ -34,6 +34,7 @@ export interface PlaybackSession {
   mediaType: string;
   duration: number;
   currentTime: number;
+  updatedAt?: number; // Server timestamp for position resolution
   audioTracks: AudioTrack[];
   chapters: SessionChapter[];
   coverPath?: string;
@@ -107,6 +108,9 @@ class SessionService {
       log('  Current Time:', formatDuration(session.currentTime), `(${session.currentTime.toFixed(1)}s)`);
       log('  Audio Tracks:', session.audioTracks?.length || 0);
       log('  Chapters:', session.chapters?.length || 0);
+      // FIX 3 verification: Log timestamp fields to verify server returns them
+      log('  Updated At:', session.updatedAt ? new Date(session.updatedAt).toISOString() : 'NOT PRESENT');
+      log('  Started At:', (session as any).startedAt ? new Date((session as any).startedAt).toISOString() : 'NOT PRESENT');
 
       if (session.audioTracks?.length) {
         log('  First track content URL:', session.audioTracks[0].contentUrl);

@@ -17,7 +17,8 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '@/shared/components/Icon';
 import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators, getAllGenres } from '@/core/cache';
-import { colors, scale, layout, radius, spacing } from '@/shared/theme';
+import { scale, layout, radius, spacing } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 interface BrowseCategory {
   id: string;
@@ -30,9 +31,20 @@ interface BrowseCategory {
 interface PillProps {
   category: BrowseCategory;
   onPress: () => void;
+  textColor: string;
+  textSecondaryColor: string;
+  bgColor: string;
+  borderColor: string;
 }
 
-const BrowsePill = React.memo(function BrowsePill({ category, onPress }: PillProps) {
+const BrowsePill = React.memo(function BrowsePill({
+  category,
+  onPress,
+  textColor,
+  textSecondaryColor,
+  bgColor,
+  borderColor
+}: PillProps) {
   const handlePress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
@@ -40,15 +52,15 @@ const BrowsePill = React.memo(function BrowsePill({ category, onPress }: PillPro
 
   return (
     <TouchableOpacity
-      style={styles.pill}
+      style={[styles.pill, { backgroundColor: bgColor, borderColor }]}
       onPress={handlePress}
       activeOpacity={0.7}
     >
-      <Icon name={category.icon as any} size={scale(16)} color={colors.accent} />
-      <Text style={styles.pillText}>{category.name}</Text>
+      <Icon name={category.icon as any} size={scale(16)} color={textColor} />
+      <Text style={[styles.pillText, { color: textColor }]}>{category.name}</Text>
       {category.count > 0 && (
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{category.count}</Text>
+        <View style={[styles.countBadge, { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+          <Text style={[styles.countText, { color: textSecondaryColor }]}>{category.count}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -58,6 +70,7 @@ const BrowsePill = React.memo(function BrowsePill({ category, onPress }: PillPro
 export function BrowsePills() {
   const navigation = useNavigation<any>();
   const { isLoaded } = useLibraryCache();
+  const themeColors = useThemeColors();
 
   // Build categories with counts from cache
   const categories = useMemo((): BrowseCategory[] => {
@@ -99,6 +112,10 @@ export function BrowsePills() {
           key={category.id}
           category={category}
           onPress={() => handleCategoryPress(category)}
+          textColor={themeColors.text}
+          textSecondaryColor={themeColors.textSecondary}
+          bgColor={themeColors.backgroundSecondary}
+          borderColor={themeColors.border}
         />
       ))}
     </ScrollView>
@@ -122,17 +139,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(14),
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: colors.backgroundTertiary,
     borderWidth: 1,
-    borderColor: colors.borderLight,
   },
   pillText: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   countBadge: {
-    backgroundColor: colors.backgroundElevated,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xxs,
     borderRadius: radius.sm,
@@ -141,6 +154,5 @@ const styles = StyleSheet.create({
   countText: {
     fontSize: scale(11),
     fontWeight: '500',
-    color: colors.textSecondary,
   },
 });

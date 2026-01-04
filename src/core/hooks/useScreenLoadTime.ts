@@ -48,7 +48,7 @@ export function useScreenLoadTime(
     const errorThreshold = options?.errorThreshold ?? PERFORMANCE_BUDGETS.screenLoad.error;
 
     if (duration >= errorThreshold) {
-      console.error(
+      console.warn(
         `[PERF] ${screenName} mounted in ${duration.toFixed(0)}ms (exceeds ${errorThreshold}ms budget)`
       );
     } else if (duration >= warnThreshold) {

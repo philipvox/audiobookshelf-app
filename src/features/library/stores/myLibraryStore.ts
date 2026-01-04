@@ -19,6 +19,9 @@ interface MyLibraryState {
   isSelecting: boolean;
   selectedIds: string[];
 
+  // Preferences
+  hideSingleBookSeries: boolean;
+
   // Actions
   addToLibrary: (bookId: string) => void;
   removeFromLibrary: (bookId: string) => void;
@@ -29,6 +32,9 @@ interface MyLibraryState {
   addSeriesToFavorites: (seriesName: string) => void;
   removeSeriesFromFavorites: (seriesName: string) => void;
   isSeriesFavorite: (seriesName: string) => boolean;
+
+  // Preferences
+  setHideSingleBookSeries: (hide: boolean) => void;
 
   // Selection actions
   startSelecting: () => void;
@@ -45,6 +51,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
       favoriteSeriesNames: [],
       isSelecting: false,
       selectedIds: [],
+      hideSingleBookSeries: false,
 
       addToLibrary: (bookId: string) => {
         const { libraryIds } = get();
@@ -91,6 +98,11 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         return get().favoriteSeriesNames.includes(seriesName);
       },
 
+      // Preferences
+      setHideSingleBookSeries: (hide: boolean) => {
+        set({ hideSingleBookSeries: hide });
+      },
+
       startSelecting: () => {
         set({ isSelecting: true, selectedIds: [] });
       },
@@ -122,6 +134,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
       partialize: (state) => ({
         libraryIds: state.libraryIds,
         favoriteSeriesNames: state.favoriteSeriesNames,
+        hideSingleBookSeries: state.hideSingleBookSeries,
       }),
     }
   )

@@ -41,17 +41,18 @@ import {
   PopularGenresSection,
 } from '../components/GenreSections';
 import { GenreListItem } from '../components/GenreCards';
-import { colors, spacing, radius } from '@/shared/theme';
+import { accentColors, spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
-const BG_COLOR = colors.backgroundPrimary;
-const CARD_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
+const ACCENT = accentColors.red;
 
 type ViewMode = 'grouped' | 'flat';
 
 export function GenresListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
@@ -230,10 +231,10 @@ export function GenresListScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
@@ -272,7 +273,7 @@ export function GenresListScreen() {
       {/* Browse by Category Header */}
       {!isSearching && (
         <View style={styles.browseHeader}>
-          <Text style={styles.browseTitle}>Browse by Category</Text>
+          <Text style={[styles.browseTitle, { color: themeColors.textSecondary }]}>Browse by Category</Text>
         </View>
       )}
 
@@ -297,9 +298,9 @@ export function GenresListScreen() {
       {/* Empty State */}
       {filteredGenres.length === 0 && (
         <View style={styles.emptyState}>
-          <Icon name="Search" size={48} color="rgba(255,255,255,0.3)" />
-          <Text style={styles.emptyText}>No genres found</Text>
-          <Text style={styles.emptySubtext}>Try a different search term</Text>
+          <Icon name="Search" size={48} color={themeColors.textTertiary} />
+          <Text style={[styles.emptyText, { color: themeColors.text }]}>No genres found</Text>
+          <Text style={[styles.emptySubtext, { color: themeColors.textSecondary }]}>Try a different search term</Text>
         </View>
       )}
     </ScrollView>
@@ -316,7 +317,7 @@ export function GenresListScreen() {
         contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: 28 }}
         showsVerticalScrollIndicator={false}
         renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
+          <View style={[styles.sectionHeader, { backgroundColor: themeColors.background }]}>
             <Text style={styles.sectionHeaderText}>{section.title}</Text>
           </View>
         )}
@@ -352,20 +353,25 @@ export function GenresListScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
+          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <View style={styles.searchContainer}>
-          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
+        <View style={[
+          styles.searchContainer,
+          {
+            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5',
+          }
+        ]}>
+          <Icon name="Search" size={18} color={themeColors.textTertiary} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: themeColors.text }]}
             placeholder="Search genres..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={themeColors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
@@ -374,7 +380,7 @@ export function GenresListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
+              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
             </TouchableOpacity>
           )}
         </View>
@@ -382,28 +388,33 @@ export function GenresListScreen() {
 
       {/* View Mode Toggle & Count */}
       <View style={styles.controlBar}>
-        <Text style={styles.resultCount}>{filteredGenres.length} genres</Text>
-        <View style={styles.viewToggle}>
+        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{filteredGenres.length} genres</Text>
+        <View style={[
+          styles.viewToggle,
+          {
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            borderColor: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
+          }
+        ]}>
           <TouchableOpacity
-            style={[styles.toggleButton, viewMode === 'grouped' && styles.toggleButtonActive]}
+            style={[styles.toggleButton, viewMode === 'grouped' && [styles.toggleButtonActive, { backgroundColor: ACCENT }]]}
             onPress={() => setViewMode('grouped')}
           >
             <Icon
               name="LayoutGrid"
               size={16}
-              color={viewMode === 'grouped' ? '#000' : 'rgba(255,255,255,0.6)'}
-             
+              color={viewMode === 'grouped' ? '#000' : themeColors.textTertiary}
             />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, viewMode === 'flat' && styles.toggleButtonActive]}
+            style={[styles.toggleButton, viewMode === 'flat' && [styles.toggleButtonActive, { backgroundColor: ACCENT }]]}
             onPress={() => setViewMode('flat')}
           >
             <Icon
               name="List"
               size={16}
-              color={viewMode === 'flat' ? '#000' : 'rgba(255,255,255,0.6)'}
-             
+              color={viewMode === 'flat' ? '#000' : themeColors.textTertiary}
             />
           </TouchableOpacity>
         </View>
@@ -418,7 +429,7 @@ export function GenresListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -437,14 +448,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     fontSize: 15,
     marginLeft: 8,
     paddingVertical: 0,
@@ -458,7 +469,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 16,
   },
   controlBar: {
@@ -469,12 +480,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   resultCount: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 14,
   },
   viewToggle: {
     flexDirection: 'row',
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: 8,
     padding: 2,
   },
@@ -484,7 +495,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   toggleButtonActive: {
-    backgroundColor: ACCENT,
+    // backgroundColor applied inline with themeColors.background
   },
   content: {
     flex: 1,
@@ -516,7 +527,7 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   sectionHeader: {
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
     paddingVertical: 6,
     paddingHorizontal: 16,
   },
@@ -533,7 +544,7 @@ const styles = StyleSheet.create({
   browseTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     letterSpacing: 0.5,
   },
   emptyState: {
@@ -545,12 +556,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     marginTop: 4,
   },
 });
