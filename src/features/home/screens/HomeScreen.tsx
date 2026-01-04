@@ -1,17 +1,13 @@
 /**
  * src/features/home/screens/HomeScreen.tsx
  *
- * Redesigned Home Screen with CD disc-centric design
+ * Minimal text-focused Home Screen
  *
  * Layout:
- * 1. HomeHeader (Title + Time / Author)
- * 2. CD Disc Hero Section (70%w disc)
- * 3. Pills Row (Sleep timer / Speed)
- * 4. Continue Listening (24%w compact cards)
- * 5. Recently Added (list rows in card container)
- * 6. Your Series (series from downloads/in-progress)
+ * 1. Books (Continue Listening) - text list with play buttons
+ * 2. Series - text list with progress counts
  *
- * Note: Mini player is now global (rendered in AppNavigator)
+ * Clean white background with typography-focused design
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -22,37 +18,27 @@ import {
   StatusBar,
   RefreshControl,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import Animated, {
-  useSharedValue,
-  useAnimatedScrollHandler,
-} from 'react-native-reanimated';
 
 import { Headphones, BookOpen } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
-import { usePlayerStore, SleepTimerSheet, SpeedSheet } from '@/features/player';
-import { useCoverUrl } from '@/core/cache';
-import { colors, wp, hp } from '@/shared/theme';
-import { useImageColors } from '@/shared/hooks/useImageColors';
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING, BOTTOM_NAV_HEIGHT, MINI_PLAYER_HEIGHT } from '@/constants/layout';
+import { usePlayerStore } from '@/features/player';
+import { useDownloads } from '@/core/hooks/useDownloads';
+import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useFinishedBookIds } from '@/core/hooks/useUserBooks';
+import { useLibraryCache } from '@/core/cache';
+import { haptics } from '@/core/native/haptics';
+import { wp, hp } from '@/shared/theme';
+import { useThemeStore, useThemeColors } from '@/shared/theme/themeStore';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 
 // Components
-import { HomeHeader } from '../components/HomeHeader';
-import { HomeDiscSection } from '../components/HomeDiscSection';
-import { HomePillsRow } from '../components/HomePillsRow';
-import { ContinueListeningSection } from '../components/ContinueListeningSection';
-import { RecentlyAddedSection } from '../components/RecentlyAddedSection';
-import { YourSeriesSection } from '../components/YourSeriesSection';
-import { SectionHeader } from '../components/SectionHeader';
-import { EmptySection } from '../components/EmptySection';
-import { QueuePanel } from '@/features/queue/components/QueuePanel';
+import { TabbedHomeContent } from '../components/TextListSection';
 
 // Types
 import { SeriesWithBooks } from '../types';
@@ -60,342 +46,189 @@ import { SeriesWithBooks } from '../types';
 // Hooks
 import { useHomeData } from '../hooks/useHomeData';
 
-const ACCENT = colors.accent;
-
 export function HomeScreen() {
   useScreenLoadTime('HomeScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const scrollY = useSharedValue(0);
+  const themeColors = useThemeColors();
 
   // Home data
   const {
-    currentBook,
-    currentProgress,
     recentlyListened,
-    recentBooks,
     userSeries,
     isRefreshing,
     refresh,
   } = useHomeData();
 
   // Player state
-  const {
-    currentBook: playerCurrentBook,
-    isPlaying,
-    isLoading: isPlayerLoading,
-    position,
-    duration,
-    playbackRate,
-    sleepTimer,
-    loadBook,
-    play,
-    pause,
-    togglePlayer,
-    setPlaybackRate,
-    setSleepTimer,
-    clearSleepTimer,
-    seekTo,
-  } = usePlayerStore();
+  const { loadBook } = usePlayerStore();
 
-  // Cover URL for current book
-  const coverUrl = useCoverUrl(currentBook?.id || '');
+  // Downloaded books
+  const { downloads } = useDownloads();
+  const downloadedBooks = useMemo(() => {
+    return downloads
+      .filter(d => d.status === 'complete' && d.libraryItem)
+      .map(d => d.libraryItem as LibraryItem);
+  }, [downloads]);
 
-  // Extract colors from cover image
-  const imageColors = useImageColors(coverUrl);
-  const accentColor = imageColors?.dominant || colors.accent;
-  const backgroundTint = imageColors?.darkMuted || colors.backgroundTertiary;
+  const downloadedBookIds = useMemo(() => {
+    return new Set(downloadedBooks.map(b => b.id));
+  }, [downloadedBooks]);
 
-  // Local state for sheet visibility
-  type SheetType = 'none' | 'sleep' | 'speed' | 'queue';
-  const [activeSheet, setActiveSheet] = useState<SheetType>('none');
+  // Favorite books (filter from all available books)
+  const favoriteIds = useMyLibraryStore((state) => state.libraryIds);
+  const favoriteBooks = useMemo(() => {
+    const favoriteSet = new Set(favoriteIds);
+    // Combine all available books and filter for favorites
+    const allBooks = [...recentlyListened, ...downloadedBooks];
+    const seen = new Set<string>();
+    return allBooks.filter(book => {
+      if (seen.has(book.id)) return false;
+      seen.add(book.id);
+      return favoriteSet.has(book.id);
+    });
+  }, [favoriteIds, recentlyListened, downloadedBooks]);
 
-  // Get book metadata
-  const getMetadata = (book: LibraryItem | null) => {
-    if (!book) return { title: null, author: null };
-    const metadata = book.media?.metadata as any;
-    const title = metadata?.title || null;
-    const author = metadata?.authorName || metadata?.authors?.[0]?.name || null;
-    return { title, author };
-  };
+  // Finished books (marked as finished in SQLite or 100% server progress)
+  const finishedBookIds = useFinishedBookIds();
+  const getLibraryItem = useLibraryCache((s) => s.getItem);
+  const finishedBooks = useMemo(() => {
+    const result: LibraryItem[] = [];
+    const seen = new Set<string>();
 
-  const { title, author } = getMetadata(currentBook);
+    // First, add books from available sources that are finished
+    const allBooks = [...recentlyListened, ...downloadedBooks];
+    for (const book of allBooks) {
+      if (seen.has(book.id)) continue;
+      seen.add(book.id);
 
-  // ==========================================================================
-  // HANDLERS
-  // ==========================================================================
+      // Check if marked as finished in SQLite
+      if (finishedBookIds.has(book.id)) {
+        result.push(book);
+        continue;
+      }
+      // Check if server progress is 100%
+      const progress = (book as any).userMediaProgress?.progress;
+      if (progress !== undefined && progress >= 1) {
+        result.push(book);
+      }
+    }
 
-  // Scroll handler for mini player visibility
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
+    // Then, for finished book IDs not yet seen, try to get from library cache
+    for (const bookId of finishedBookIds) {
+      if (seen.has(bookId)) continue;
+      seen.add(bookId);
+
+      const cachedBook = getLibraryItem(bookId);
+      if (cachedBook) {
+        result.push(cachedBook);
+      }
+    }
+
+    return result;
+  }, [finishedBookIds, recentlyListened, downloadedBooks, getLibraryItem]);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter series to only show those with at least one downloaded book
+  const seriesWithDownloads = useMemo(() => {
+    return userSeries.filter(series =>
+      series.books.some(book => downloadedBookIds.has(book.id))
+    );
+  }, [userSeries, downloadedBookIds]);
+
+  // Books in progress for Last Played
+  const booksInProgress = useMemo(() => {
+    return recentlyListened.slice(0, 10);
+  }, [recentlyListened]);
 
   // Navigation handlers
   const handleLibraryPress = () => navigation.navigate('Main', { screen: 'LibraryTab' });
 
-  // Open full player for current book
-  const handleDiscPress = useCallback(async () => {
-    if (!currentBook) return;
-
-    // If the book is already loaded in the player, just open it
-    if (playerCurrentBook?.id === currentBook.id) {
-      togglePlayer();
-    } else {
-      // Load the book and open the player
-      try {
-        const fullBook = await apiClient.getItem(currentBook.id);
-        await loadBook(fullBook, { autoPlay: false, showPlayer: true });
-      } catch {
-        await loadBook(currentBook, { autoPlay: false, showPlayer: true });
-      }
-    }
-  }, [currentBook, playerCurrentBook, togglePlayer, loadBook]);
-
-  // Play/Pause
-  const handlePlayPause = useCallback(async () => {
-    if (isPlaying) {
-      await pause();
-    } else if (currentBook) {
-      if (playerCurrentBook?.id === currentBook.id) {
-        await play();
-      } else {
-        try {
-          const fullBook = await apiClient.getItem(currentBook.id);
-          await loadBook(fullBook, { autoPlay: true, showPlayer: false });
-        } catch {
-          await loadBook(currentBook, { autoPlay: true, showPlayer: false });
-        }
-      }
-    }
-  }, [isPlaying, pause, play, currentBook, playerCurrentBook, loadBook]);
-
-  // Skip back 30 seconds
-  const handleSkipBack = useCallback(() => {
-    const newPosition = Math.max(0, position - 30);
-    seekTo?.(newPosition);
-  }, [position, seekTo]);
-
-  // Resume a book from Continue Listening
-  const handleResumeBook = useCallback(async (book: LibraryItem) => {
+  // Cover tap: load book and start playing
+  const handleCoverPress = useCallback(async (book: LibraryItem) => {
     try {
       const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
+      await loadBook(fullBook, { autoPlay: true, showPlayer: true });
     } catch {
-      await loadBook(book, { autoPlay: true, showPlayer: false });
+      await loadBook(book, { autoPlay: true, showPlayer: true });
     }
   }, [loadBook]);
 
-  // View book details
-  const handleBookPress = useCallback((bookId: string) => {
-    navigation.navigate('BookDetail', { id: bookId });
+  // Title tap or cover long press: navigate to book details
+  const handleDetailsPress = useCallback((book: LibraryItem) => {
+    haptics.selection();
+    navigation.navigate('BookDetail', { id: book.id });
   }, [navigation]);
-
-  // Play a recently added book
-  const handlePlayBook = useCallback(async (book: LibraryItem) => {
-    try {
-      const fullBook = await apiClient.getItem(book.id);
-      await loadBook(fullBook, { autoPlay: true, showPlayer: false });
-    } catch {
-      await loadBook(book, { autoPlay: true, showPlayer: false });
-    }
-  }, [loadBook]);
 
   // Navigate to series detail
   const handleSeriesPress = useCallback((series: SeriesWithBooks) => {
     navigation.navigate('SeriesDetail', { seriesName: series.name });
   }, [navigation]);
 
-  // Pills handlers
-  const handleSleepPress = () => setActiveSheet('sleep');
-  const handleSpeedPress = () => setActiveSheet('speed');
-  const handleQueuePress = () => setActiveSheet('queue');
-
-  // Continue Listening - exclude current book
-  const continueListeningBooks = useMemo(() => {
-    if (!currentBook) return recentlyListened.slice(0, 15);
-    return recentlyListened.filter(book => book.id !== currentBook.id).slice(0, 15);
-  }, [recentlyListened, currentBook]);
-
-  // Progress value
-  const progressValue = duration > 0 ? position / duration : 0;
-
   // Check if home screen is completely empty (new user)
-  const isCompletelyEmpty = !currentBook && continueListeningBooks.length === 0 && recentBooks.length === 0;
-
-  // ==========================================================================
-  // RENDER
-  // ==========================================================================
+  const isCompletelyEmpty = booksInProgress.length === 0 && downloadedBooks.length === 0 && userSeries.length === 0;
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} />
 
-      {/* Scrollable content with background */}
-      <Animated.ScrollView
+      <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+          {
+            paddingTop: insets.top + hp(2),
+            paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom,
+          },
         ]}
         showsVerticalScrollIndicator={false}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={ACCENT} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={refresh}
+            tintColor={themeColors.text}
+          />
         }
       >
-        {/* Background: Blurred cover + gradient overlay - scrolls with content */}
-        <View style={styles.backgroundContainer}>
-          {coverUrl && (
-            <Image
-              source={coverUrl}
-              style={StyleSheet.absoluteFill}
-              blurRadius={50}
-              contentFit="cover"
-            />
-          )}
-          {/* BlurView overlay for Android (blurRadius only works on iOS) */}
-          <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-          {/* Gradient: smooth fade to black */}
-          <LinearGradient
-            colors={[
-              'rgba(0,0,0,0)',      // Transparent at top
-              'rgba(0,0,0,0)',      // Stay transparent longer
-              'rgba(0,0,0,0.2)',    // Very gentle fade start
-              'rgba(0,0,0,0.5)',    // Gradual
-              'rgba(0,0,0,0.8)',    // Getting darker
-              'rgba(0,0,0,1)',      // Solid black
-            ]}
-            locations={[0, 0.25, 0.4, 0.55, 0.7, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
-
-        {/* Content overlaid on background - pulled up with negative margin */}
-        <View style={[styles.contentOverlay, { paddingTop: insets.top + 8 }]}>
-          {/* Empty state for new users */}
-          {isCompletelyEmpty ? (
-            <View style={styles.emptyHomeContainer}>
-              <View style={styles.emptyHomeIcon}>
-                <Headphones size={48} color={colors.accent} strokeWidth={1.5} />
-              </View>
-              <Text style={styles.emptyHomeTitle}>Welcome to Secret Library</Text>
-              <Text style={styles.emptyHomeDescription}>
-                Your audiobook collection is waiting. Browse your library to start listening.
-              </Text>
-              <TouchableOpacity
-                style={styles.emptyHomeCTA}
-                onPress={handleLibraryPress}
-                activeOpacity={0.8}
-              >
-                <BookOpen size={18} color="#000" strokeWidth={2} />
-                <Text style={styles.emptyHomeCTAText}>Browse Library</Text>
-              </TouchableOpacity>
+        {/* Empty state for new users */}
+        {isCompletelyEmpty ? (
+          <View style={styles.emptyHomeContainer}>
+            <View style={[styles.emptyHomeIcon, { backgroundColor: themeColors.border }]}>
+              <Headphones size={48} color={themeColors.text} strokeWidth={1.5} />
             </View>
-          ) : (
-            <>
-          {/* Header: Title + Time / Author */}
-          <HomeHeader
-          title={title}
-          author={author}
-          currentTime={position}
-          isPlaying={isPlaying}
-        />
-
-        {/* CD Disc Hero Section */}
-        <HomeDiscSection
-          coverUrl={coverUrl}
-          isPlaying={isPlaying}
-          playbackRate={playbackRate}
-          onPress={handleDiscPress}
-          bookTitle={title || undefined}
-          authorName={author || undefined}
-        />
-
-        {/* Pills Row: Sleep / Queue / Speed */}
-        <HomePillsRow
-          sleepTimer={sleepTimer}
-          playbackSpeed={playbackRate}
-          onSleepPress={handleSleepPress}
-          onSpeedPress={handleSpeedPress}
-          onQueuePress={handleQueuePress}
-          visible={!!currentBook}
-        />
-
-        {/* Continue Listening Section */}
-        {continueListeningBooks.length > 0 ? (
-          <ContinueListeningSection
-            books={continueListeningBooks}
-            onBookPress={handleResumeBook}
-            onBookLongPress={(book) => handleBookPress(book.id)}
-            onViewAll={handleLibraryPress}
-          />
+            <Text style={[styles.emptyHomeTitle, { color: themeColors.text }]}>Welcome</Text>
+            <Text style={[styles.emptyHomeDescription, { color: themeColors.textSecondary }]}>
+              Your audiobook collection is waiting. Browse your library to start listening.
+            </Text>
+            <TouchableOpacity
+              style={[styles.emptyHomeCTA, { backgroundColor: themeColors.text }]}
+              onPress={handleLibraryPress}
+              activeOpacity={0.8}
+            >
+              <BookOpen size={18} color={themeColors.background} strokeWidth={2} />
+              <Text style={[styles.emptyHomeCTAText, { color: themeColors.background }]}>Browse Library</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <View style={styles.section}>
-            <SectionHeader
-              title="Continue Listening"
-              onViewAll={handleLibraryPress}
-              showViewAll={false}
-            />
-            <EmptySection
-              title="Start listening"
-              description="Your in-progress books will appear here"
-              ctaLabel="Browse Library"
-              onCTAPress={handleLibraryPress}
-            />
-          </View>
-        )}
-
-        {/* Recently Added Section */}
-        {recentBooks.length > 0 && (
-          <RecentlyAddedSection
-            books={recentBooks}
-            onBookPress={(book) => handleBookPress(book.id)}
-            onPlayPress={handlePlayBook}
-            maxItems={5}
-          />
-        )}
-
-        {/* Your Series Section - No Play button per NNGroup research */}
-        {userSeries.length > 0 && (
-          <YourSeriesSection
-            series={userSeries}
+          <TabbedHomeContent
+            lastPlayedBooks={booksInProgress}
+            downloadedBooks={downloadedBooks}
+            favoriteBooks={favoriteBooks}
+            finishedBooks={finishedBooks}
+            lastPlayedSeries={userSeries}
+            downloadedSeries={seriesWithDownloads}
+            downloadedBookIds={downloadedBookIds}
+            onCoverPress={handleCoverPress}
+            onDetailsPress={handleDetailsPress}
             onSeriesPress={handleSeriesPress}
-            maxItems={5}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            maxBooks={5}
+            maxSeries={3}
           />
         )}
-            </>
-          )}
-        </View>
-      </Animated.ScrollView>
-
-      {/* Inline Bottom Sheets (sleep, speed, queue) */}
-      {activeSheet !== 'none' && (
-        <View style={styles.queueOverlay}>
-          <TouchableOpacity
-            style={styles.queueBackdrop}
-            activeOpacity={1}
-            onPress={() => setActiveSheet('none')}
-            accessibilityLabel="Close sheet"
-            accessibilityRole="button"
-          />
-          <View style={styles.queueContainer}>
-            {activeSheet === 'sleep' && (
-              <SleepTimerSheet onClose={() => setActiveSheet('none')} />
-            )}
-            {activeSheet === 'speed' && (
-              <SpeedSheet onClose={() => setActiveSheet('none')} />
-            )}
-            {activeSheet === 'queue' && (
-              <QueuePanel
-                onClose={() => setActiveSheet('none')}
-                maxHeight={hp(60)}
-              />
-            )}
-          </View>
-        </View>
-      )}
+      </ScrollView>
     </View>
   );
 }
@@ -403,35 +236,10 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors.background in JSX
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  backgroundContainer: {
-    height: hp(65), // Background takes up top portion
-    overflow: 'hidden',
-  },
-  contentOverlay: {
-    marginTop: -hp(65), // Pull content up to overlay on background
-  },
-  section: {
-    marginTop: wp(4),
-  },
-  queueOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-  },
-  queueBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  queueContainer: {
-    backgroundColor: colors.backgroundSecondary,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-    marginBottom: BOTTOM_NAV_HEIGHT + MINI_PLAYER_HEIGHT + 36,
   },
   // Empty home state for new users
   emptyHomeContainer: {
@@ -446,21 +254,21 @@ const styles = StyleSheet.create({
     width: wp(24),
     height: wp(24),
     borderRadius: wp(12),
-    backgroundColor: 'rgba(244,182,12,0.1)',
+    // backgroundColor set via themeColors.border in JSX
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: hp(3),
   },
   emptyHomeTitle: {
-    fontSize: wp(5.5),
+    fontSize: wp(7),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     textAlign: 'center',
     marginBottom: hp(1.5),
   },
   emptyHomeDescription: {
     fontSize: wp(3.8),
-    color: colors.textSecondary,
+    // color set via themeColors.textSecondary in JSX
     textAlign: 'center',
     lineHeight: wp(5.5),
     maxWidth: wp(70),
@@ -470,7 +278,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: wp(2),
-    backgroundColor: colors.accent,
+    // backgroundColor set via themeColors.text in JSX
     paddingHorizontal: wp(6),
     paddingVertical: hp(1.5),
     borderRadius: wp(10),
@@ -478,7 +286,7 @@ const styles = StyleSheet.create({
   emptyHomeCTAText: {
     fontSize: wp(4),
     fontWeight: '600',
-    color: '#000',
+    // color set via themeColors.background in JSX
   },
 });
 

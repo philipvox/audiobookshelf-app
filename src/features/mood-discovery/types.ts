@@ -36,45 +36,45 @@ export interface MoodConfig {
 export const MOODS: MoodConfig[] = [
   {
     id: 'comfort',
-    label: 'Comfort',
-    icon: 'Cloud',
+    label: 'Curled up at home',
+    icon: 'Sofa',
     iconSet: 'ionicons',
-    description: 'Warm and reassuring',
+    description: 'Cozy, warm, familiar',
   },
   {
     id: 'thrills',
-    label: 'Thrills',
+    label: 'Edge of your seat',
     icon: 'Zap',
     iconSet: 'ionicons',
-    description: 'Edge-of-your-seat tension',
+    description: "Heart racing, can't stop",
   },
   {
     id: 'escape',
-    label: 'Escape',
-    icon: 'Globe',
+    label: 'Lost in another world',
+    icon: 'Sparkles',
     iconSet: 'ionicons',
-    description: 'Transported to another world',
+    description: 'Far from reality',
   },
   {
     id: 'laughs',
-    label: 'Laughs',
+    label: 'Laughing out loud',
     icon: 'Smile',
     iconSet: 'ionicons',
-    description: 'Funny and entertaining',
+    description: 'Light, not serious',
   },
   {
     id: 'feels',
-    label: 'Feels',
+    label: 'Feeling all the feels',
     icon: 'Heart',
     iconSet: 'ionicons',
-    description: 'Emotionally powerful',
+    description: 'Emotional, moving',
   },
   {
     id: 'thinking',
-    label: 'Thinking',
+    label: 'Mind blown',
     icon: 'Lightbulb',
     iconSet: 'ionicons',
-    description: 'Makes you reflect',
+    description: 'Learning, questioning',
   },
 ];
 
@@ -100,31 +100,31 @@ export interface PaceConfig {
 export const PACES: PaceConfig[] = [
   {
     id: 'slow',
-    label: 'Slow Burn',
-    icon: 'Leaf',
+    label: 'Slow & savory',
+    icon: 'Moon',
     iconSet: 'ionicons',
-    description: 'Takes its time, savors details',
+    description: 'Take your time, soak it in',
   },
   {
     id: 'steady',
-    label: 'Steady',
-    icon: 'ArrowRight',
+    label: 'Steady rhythm',
+    icon: 'Music',
     iconSet: 'ionicons',
-    description: 'Balanced, natural rhythm',
+    description: 'Balanced, keeps you moving',
   },
   {
     id: 'fast',
-    label: 'Fast',
-    icon: 'Rocket',
+    label: "Can't put it down",
+    icon: 'Flame',
     iconSet: 'ionicons',
-    description: "Quick chapters, can't stop",
+    description: 'Rapid-fire, zero downtime',
   },
   {
     id: 'any',
-    label: 'Any Pace',
+    label: 'Surprise me',
     icon: 'Shuffle',
     iconSet: 'ionicons',
-    description: "Doesn't matter to me",
+    description: "I'm flexible",
     isDefault: true,
   },
 ];
@@ -151,31 +151,31 @@ export interface WeightConfig {
 export const WEIGHTS: WeightConfig[] = [
   {
     id: 'light',
-    label: 'Light',
+    label: 'Light & bright',
     icon: 'Sun',
     iconSet: 'ionicons',
-    description: 'Easy listening, no heavy themes',
+    description: 'Feel-good, uplifting, easy',
   },
   {
     id: 'balanced',
-    label: 'Balanced',
-    icon: 'Scale',
+    label: 'Shade & light',
+    icon: 'CloudSun',
     iconSet: 'ionicons',
-    description: 'Some depth, but not overwhelming',
+    description: 'Some clouds, some sunshine',
   },
   {
     id: 'heavy',
-    label: 'Heavy',
-    icon: 'Moon',
+    label: 'Deep & intense',
+    icon: 'CircleDot',
     iconSet: 'ionicons',
-    description: 'Intense themes, pulls no punches',
+    description: 'Dark themes, emotional weight',
   },
   {
     id: 'any',
-    label: 'Any Weight',
+    label: "I'll take anything",
     icon: 'Shuffle',
     iconSet: 'ionicons',
-    description: 'I can handle anything',
+    description: "Mood isn't picky today",
     isDefault: true,
   },
 ];
@@ -201,44 +201,44 @@ export interface WorldConfig {
 export const WORLDS: WorldConfig[] = [
   {
     id: 'contemporary',
-    label: 'Our World',
+    label: 'Right here, right now',
     icon: 'Building2',
     iconSet: 'ionicons',
     description: 'Modern day, realistic',
   },
   {
     id: 'historical',
-    label: 'The Past',
-    icon: 'Hourglass',
+    label: 'Back in time',
+    icon: 'Castle',
     iconSet: 'ionicons',
-    description: 'Historical settings',
+    description: 'Past eras, different worlds',
   },
   {
     id: 'fantasy',
-    label: 'Fantasy',
-    icon: 'Sparkles',
+    label: 'Realms of magic',
+    icon: 'Wand2',
     iconSet: 'ionicons',
-    description: 'Magic and mythical',
+    description: 'Impossible things, mythical',
   },
   {
     id: 'scifi',
-    label: 'Sci-Fi',
+    label: 'Among the stars',
     icon: 'Rocket',
     iconSet: 'ionicons',
-    description: 'Future, space, tech',
+    description: 'Future tech, space, what-ifs',
   },
   {
     id: 'any',
-    label: 'Any World',
-    icon: 'Shuffle',
+    label: 'Anywhere is fine',
+    icon: 'Globe',
     iconSet: 'ionicons',
-    description: 'Surprise me',
+    description: "Setting doesn't matter",
     isDefault: true,
   },
 ];
 
 // ============================================================================
-// LENGTH PREFERENCE (Applied to results, not a quiz step)
+// STEP 5: LENGTH PREFERENCE (Optional)
 // ============================================================================
 
 export type LengthPreference = 'short' | 'medium' | 'long' | 'any';
@@ -246,37 +246,52 @@ export type LengthPreference = 'short' | 'medium' | 'long' | 'any';
 export interface LengthConfig {
   id: LengthPreference;
   label: string;
+  icon: string;
+  iconSet: 'ionicons' | 'feather' | 'material';
   description: string;
   minHours?: number;
   maxHours?: number;
+  isDefault?: boolean;
 }
 
-export const LENGTH_OPTIONS: LengthConfig[] = [
+export const LENGTHS: LengthConfig[] = [
   {
     id: 'short',
-    label: 'Short',
-    description: 'Under 8 hours',
-    maxHours: 8,
+    label: 'Quick listen',
+    icon: 'Timer',
+    iconSet: 'ionicons',
+    description: 'Finish in a day or two',
+    maxHours: 6,
   },
   {
     id: 'medium',
-    label: 'Medium',
-    description: '8-20 hours',
-    minHours: 8,
-    maxHours: 20,
+    label: 'Weekend companion',
+    icon: 'Calendar',
+    iconSet: 'ionicons',
+    description: 'A few days of listening',
+    minHours: 6,
+    maxHours: 12,
   },
   {
     id: 'long',
-    label: 'Long',
-    description: '20+ hours',
-    minHours: 20,
+    label: 'Epic journey',
+    icon: 'Map',
+    iconSet: 'ionicons',
+    description: 'Settle in for the long haul',
+    minHours: 12,
   },
   {
     id: 'any',
-    label: 'Any',
-    description: 'No preference',
+    label: "Doesn't matter",
+    icon: 'Infinity',
+    iconSet: 'ionicons',
+    description: "Length isn't a factor",
+    isDefault: true,
   },
 ];
+
+// Legacy export for backwards compatibility
+export const LENGTH_OPTIONS = LENGTHS;
 
 // ============================================================================
 // MOOD SESSION
@@ -667,9 +682,14 @@ export interface ScoredBook {
 // ============================================================================
 
 /**
- * Current step in the discovery quiz
+ * Current step in the discovery quiz (now 5 steps)
  */
-export type QuizStep = 1 | 2 | 3 | 4;
+export type QuizStep = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * Total number of steps in the quiz
+ */
+export const TOTAL_QUIZ_STEPS = 5;
 
 /**
  * Draft state while user is going through the quiz
@@ -679,6 +699,7 @@ export interface QuizDraft {
   pace: Pace;
   weight: Weight;
   world: World;
+  length: LengthPreference;
   currentStep: QuizStep;
 }
 
@@ -690,6 +711,7 @@ export const INITIAL_QUIZ_DRAFT: QuizDraft = {
   pace: 'any',
   weight: 'any',
   world: 'any',
+  length: 'any',
   currentStep: 1,
 };
 

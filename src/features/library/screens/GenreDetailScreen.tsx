@@ -41,11 +41,10 @@ import { useLibraryCache, getCoverUrl } from '@/core/cache';
 import { BookCard } from '@/shared/components/BookCard';
 import { Image } from 'expo-image';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { accentColors, scale, spacing, radius } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const BG_COLOR = colors.backgroundSecondary;
-const CARD_COLOR = colors.cardBackground;
-const ACCENT = colors.accent;
+const ACCENT = accentColors.red;
 const PADDING = 16;
 
 type SortOption =
@@ -154,6 +153,7 @@ export function GenreDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ GenreDetail: GenreDetailParams }, 'GenreDetail'>>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const inputRef = useRef<TextInput>(null);
 
   const genreName = route.params?.genreName || '';
@@ -290,31 +290,31 @@ export function GenreDetailScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={themeColors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <View style={styles.searchContainer}>
-          <Search size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
+          <Search size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
           <TextInput
             ref={inputRef}
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: themeColors.text }]}
             placeholder={`Search in ${genreName}...`}
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={themeColors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
@@ -323,7 +323,7 @@ export function GenreDetailScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <XCircle size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+              <XCircle size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
             </TouchableOpacity>
           )}
         </View>
@@ -333,8 +333,8 @@ export function GenreDetailScreen() {
       <View style={styles.titleSection}>
         <StackedCovers bookIds={coverBookIds} size={scale(44)} />
         <View style={styles.titleInfo}>
-          <Text style={styles.genreTitle}>{genreName}</Text>
-          <Text style={styles.genreStats}>
+          <Text style={[styles.genreTitle, { color: themeColors.text }]}>{genreName}</Text>
+          <Text style={[styles.genreStats, { color: themeColors.textSecondary }]}>
             {sortedBooks.length} book{sortedBooks.length !== 1 ? 's' : ''} • {formatDuration(totalDuration)}
           </Text>
         </View>
@@ -342,10 +342,10 @@ export function GenreDetailScreen() {
 
       {/* Sort Dropdown Button */}
       <View style={styles.sortBar}>
-        <TouchableOpacity style={styles.sortDropdown} onPress={handleOpenSortModal}>
+        <TouchableOpacity style={[styles.sortDropdown, { backgroundColor: themeColors.border }]} onPress={handleOpenSortModal}>
           <currentSortConfig.Icon size={scale(16)} color={ACCENT} strokeWidth={2} />
-          <Text style={styles.sortDropdownText}>{currentSortConfig.label}</Text>
-          <ChevronDown size={scale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+          <Text style={[styles.sortDropdownText, { color: themeColors.text }]}>{currentSortConfig.label}</Text>
+          <ChevronDown size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -357,28 +357,29 @@ export function GenreDetailScreen() {
         onRequestClose={() => setShowSortModal(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowSortModal(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Sort By</Text>
+          <Pressable style={[styles.modalContent, { backgroundColor: themeColors.backgroundSecondary }]} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Sort By</Text>
               <TouchableOpacity onPress={() => setShowSortModal(false)}>
-                <X size={scale(24)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                <X size={scale(24)} color={themeColors.textSecondary} strokeWidth={2} />
               </TouchableOpacity>
             </View>
             {SORT_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.id}
-                style={[styles.sortOption, sortOption === option.id && styles.sortOptionActive]}
+                style={[styles.sortOption, { borderBottomColor: themeColors.border }, sortOption === option.id && styles.sortOptionActive]}
                 onPress={() => handleSelectSort(option.id)}
               >
                 <View style={styles.sortOptionLeft}>
                   <option.Icon
                     size={scale(18)}
-                    color={sortOption === option.id ? ACCENT : 'rgba(255,255,255,0.6)'}
+                    color={sortOption === option.id ? ACCENT : themeColors.textSecondary}
                     strokeWidth={2}
                   />
                   <Text
                     style={[
                       styles.sortOptionText,
+                      { color: themeColors.textSecondary },
                       sortOption === option.id && styles.sortOptionTextActive,
                     ]}
                   >
@@ -418,9 +419,9 @@ export function GenreDetailScreen() {
 
         {sortedBooks.length === 0 && (
           <View style={styles.emptyState}>
-            <BookOpen size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-            <Text style={styles.emptyTitle}>No books found</Text>
-            <Text style={styles.emptySubtitle}>
+            <BookOpen size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
+            <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No books found</Text>
+            <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
               {searchQuery ? 'Try a different search term' : 'No books in this genre'}
             </Text>
           </View>
@@ -433,7 +434,7 @@ export function GenreDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -452,14 +453,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: scale(10),
     paddingHorizontal: scale(12),
     height: scale(40),
   },
   searchInput: {
     flex: 1,
-    color: '#fff',
+    // color set via themeColors.text in JSX
     fontSize: scale(15),
     marginLeft: scale(8),
     paddingVertical: 0,
@@ -481,10 +482,10 @@ const styles = StyleSheet.create({
   genreTitle: {
     fontSize: scale(22),
     fontWeight: '700',
-    color: '#fff',
+    // color set via themeColors.text in JSX
   },
   genreStats: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: scale(13),
     marginTop: scale(2),
   },
@@ -494,7 +495,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: scale(16),
   },
   // Sort Bar
@@ -510,11 +511,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: scale(8),
     borderRadius: scale(8),
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
   },
   sortDropdownText: {
     fontSize: scale(13),
-    color: '#fff',
+    // color set via themeColors.text in JSX
     fontWeight: '500',
   },
   // Modal
@@ -524,7 +525,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#262626',
+    // backgroundColor set via themeColors.backgroundSecondary in JSX
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
     paddingBottom: scale(40),
@@ -535,12 +536,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    // borderBottomColor set via themeColors.border in JSX
   },
   modalTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors.text in JSX
   },
   sortOption: {
     flexDirection: 'row',
@@ -549,7 +550,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via themeColors.border in JSX
   },
   sortOptionActive: {
     backgroundColor: 'rgba(193,244,12,0.1)',
@@ -561,7 +562,7 @@ const styles = StyleSheet.create({
   },
   sortOptionText: {
     fontSize: scale(15),
-    color: 'rgba(255,255,255,0.8)',
+    // color set via themeColors.textSecondary in JSX
   },
   sortOptionTextActive: {
     color: ACCENT,
@@ -581,13 +582,13 @@ const styles = StyleSheet.create({
     paddingTop: scale(60),
   },
   emptyTitle: {
-    color: '#fff',
+    // color set via themeColors.text in JSX
     fontSize: scale(18),
     fontWeight: '600',
     marginTop: scale(16),
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: scale(14),
     marginTop: scale(4),
     textAlign: 'center',

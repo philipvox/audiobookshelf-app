@@ -14,7 +14,7 @@
  * 2. automotive_app_desc.xml configuration
  */
 
-import { Platform } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter, EmitterSubscription } from 'react-native';
 import {
   AutomotiveConnectionState,
   AutomotivePlatform,
@@ -50,6 +50,9 @@ class AutomotiveService {
   private lastPlayedItemId: string | null = null;
   private lastPlayedTime: number = 0;
   private static PLAY_DEBOUNCE_MS = 2000; // Ignore duplicate play requests within 2 seconds
+
+  // Android Auto event subscription
+  private androidAutoSubscription: EmitterSubscription | null = null;
 
   /**
    * Initialize the automotive service
@@ -171,58 +174,81 @@ class AutomotiveService {
   private async initAndroidAuto(): Promise<void> {
     log('Initializing Android Auto support...');
 
-    // Set up library cache listener for Android
-    this.setupLibraryCacheListener();
+    const { AndroidAutoModule } = NativeModules;
 
-    // Set up listener for play events from native Android Auto
-    this.setupAndroidAutoEventListener();
+    if (!AndroidAutoModule) {
+      log('AndroidAutoModule not available - native module not linked');
+      // Still set up library cache listener so JSON file gets written
+      this.setupLibraryCacheListener();
+      await this.syncAndroidAutoBrowseData();
+      return;
+    }
 
-    // Initial sync of browse data
-    await this.syncAndroidAutoBrowseData();
+    try {
+      // Start listening for commands from native MediaPlaybackService
+      await AndroidAutoModule.startListening();
+      log('Started listening for Android Auto commands');
 
-    log('Android Auto initialized - browse data synced');
+      // Set up event listener for commands from native
+      const eventEmitter = new NativeEventEmitter(AndroidAutoModule);
+      this.androidAutoSubscription = eventEmitter.addListener(
+        'onAndroidAutoCommand',
+        this.handleAndroidAutoCommand.bind(this)
+      );
+      log('Android Auto event listener set up');
+
+      // Set up library cache listener for browse data updates
+      this.setupLibraryCacheListener();
+
+      // Initial sync of browse data to JSON file
+      await this.syncAndroidAutoBrowseData();
+
+      log('Android Auto initialized successfully');
+
+    } catch (error) {
+      log('Error initializing Android Auto:', error);
+      // Still try to sync browse data even if event listener fails
+      this.setupLibraryCacheListener();
+      await this.syncAndroidAutoBrowseData();
+    }
   }
 
   /**
-   * Set up listener for events from native Android Auto module
+   * Handle commands received from native Android Auto
    */
-  private setupAndroidAutoEventListener(): void {
-    if (Platform.OS !== 'android') return;
+  private async handleAndroidAutoCommand(event: { command: string; param?: string }): Promise<void> {
+    log('Received Android Auto command:', event);
 
-    try {
-      const { NativeEventEmitter, NativeModules } = require('react-native');
-      const { AndroidAutoModule } = NativeModules;
-
-      if (!AndroidAutoModule) {
-        log('AndroidAutoModule not available');
-        return;
-      }
-
-      const eventEmitter = new NativeEventEmitter(AndroidAutoModule);
-
-      // Listen for play item events from Android Auto
-      eventEmitter.addListener('androidAutoPlayItem', async (event: { itemId: string }) => {
-        log('Received play item event from Android Auto:', event.itemId);
-        await this.playItem(event.itemId);
-      });
-
-      // Listen for connection state changes
-      eventEmitter.addListener('androidAutoConnectionChanged', (event: { isConnected: boolean }) => {
-        log('Android Auto connection changed:', event.isConnected);
-        if (event.isConnected) {
-          this.connectionState = 'connected';
-          this.connectedPlatform = 'android-auto';
-          this.callbacks?.onConnect('android-auto');
-        } else {
-          this.connectionState = 'disconnected';
-          this.connectedPlatform = 'none';
-          this.callbacks?.onDisconnect();
+    switch (event.command) {
+      case 'playFromMediaId':
+        if (event.param) {
+          await this.playItem(event.param);
         }
-      });
+        break;
 
-      log('Android Auto event listeners set up');
-    } catch (error) {
-      log('Failed to set up Android Auto event listeners:', error);
+      case 'play':
+      case 'pause':
+      case 'skipNext':
+      case 'skipPrevious':
+      case 'fastForward':
+      case 'rewind':
+        // These are handled by expo-media-control's MediaSession
+        // No need to handle here - the native module just logs them
+        log('Transport command handled by expo-media-control:', event.command);
+        break;
+
+      case 'seekTo':
+        if (event.param) {
+          const position = parseInt(event.param, 10);
+          if (!isNaN(position)) {
+            const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+            await usePlayerStore.getState().seekTo(position / 1000); // Convert ms to seconds
+          }
+        }
+        break;
+
+      default:
+        log('Unknown Android Auto command:', event.command);
     }
   }
 
@@ -556,6 +582,24 @@ class AutomotiveService {
     if (this.libraryCacheUnsubscribe) {
       this.libraryCacheUnsubscribe();
       this.libraryCacheUnsubscribe = null;
+    }
+
+    // Remove Android Auto event subscription
+    if (this.androidAutoSubscription) {
+      this.androidAutoSubscription.remove();
+      this.androidAutoSubscription = null;
+    }
+
+    // Stop listening on native module
+    if (Platform.OS === 'android') {
+      try {
+        const { AndroidAutoModule } = NativeModules;
+        if (AndroidAutoModule) {
+          await AndroidAutoModule.stopListening();
+        }
+      } catch (error) {
+        log('Error stopping Android Auto listener:', error);
+      }
     }
 
     // Clear template references

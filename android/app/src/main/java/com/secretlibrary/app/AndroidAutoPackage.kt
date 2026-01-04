@@ -7,6 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 /**
  * React Native package for Android Auto integration.
+ * Registers the AndroidAutoModule native module.
  */
 class AndroidAutoPackage : ReactPackage {
 

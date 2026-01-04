@@ -5,16 +5,16 @@
  */
 
 import React, { useCallback, useRef } from 'react';
-import { TouchableOpacity, StyleSheet, ViewStyle, Animated } from 'react-native';
+import { TouchableOpacity, StyleSheet, ViewStyle, Animated, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 
-const VIBRANT_GREEN = '#F4B60C';
-const GRAY = '#808080';
+const VIBRANT_RED = '#E53935';
+const GRAY = 'rgba(128,128,128,0.6)';
 
 const HeartIcon = ({
   size = 24,
-  color = VIBRANT_GREEN,
+  color = VIBRANT_RED,
   filled = false,
 }: {
   size?: number;
@@ -41,18 +41,20 @@ export interface SeriesHeartButtonProps {
   onToggle?: (isFavorite: boolean) => void;
   disabled?: boolean;
   animated?: boolean;
+  showCircle?: boolean;
 }
 
 export function SeriesHeartButton({
   seriesName,
   size = 24,
-  activeColor = VIBRANT_GREEN,
+  activeColor = VIBRANT_RED,
   inactiveColor = GRAY,
   style,
   hitSlop = 8,
   onToggle,
   disabled = false,
   animated = true,
+  showCircle = false,
 }: SeriesHeartButtonProps) {
   const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
   const isFavorite = isSeriesFavorite(seriesName);
@@ -93,6 +95,20 @@ export function SeriesHeartButton({
   }, [seriesName, isFavorite, addSeriesToFavorites, removeSeriesFromFavorites, onToggle, disabled, animated, scaleAnim]);
 
   const color = isFavorite ? activeColor : inactiveColor;
+  const circleSize = size + 10;
+
+  // For circle mode: white heart on red bg when active, black border no fill when inactive
+  const circleHeartColor = isFavorite ? '#FFFFFF' : inactiveColor;
+  const circleBgColor = isFavorite ? activeColor : 'transparent';
+  const circleBorderColor = isFavorite ? 'transparent' : 'rgba(0,0,0,0.3)';
+
+  const heartContent = animated ? (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <HeartIcon size={size} color={showCircle ? circleHeartColor : color} filled={isFavorite} />
+    </Animated.View>
+  ) : (
+    <HeartIcon size={size} color={showCircle ? circleHeartColor : color} filled={isFavorite} />
+  );
 
   return (
     <TouchableOpacity
@@ -102,12 +118,22 @@ export function SeriesHeartButton({
       hitSlop={{ top: hitSlop, bottom: hitSlop, left: hitSlop, right: hitSlop }}
       disabled={disabled}
     >
-      {animated ? (
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <HeartIcon size={size} color={color} filled={isFavorite} />
-        </Animated.View>
+      {showCircle ? (
+        <View style={[
+          styles.circle,
+          {
+            width: circleSize,
+            height: circleSize,
+            borderRadius: circleSize / 2,
+            backgroundColor: circleBgColor,
+            borderWidth: isFavorite ? 0 : 1,
+            borderColor: circleBorderColor,
+          }
+        ]}>
+          {heartContent}
+        </View>
       ) : (
-        <HeartIcon size={size} color={color} filled={isFavorite} />
+        heartContent
       )}
     </TouchableOpacity>
   );
@@ -115,6 +141,10 @@ export function SeriesHeartButton({
 
 const styles = StyleSheet.create({
   container: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  circle: {
     justifyContent: 'center',
     alignItems: 'center',
   },

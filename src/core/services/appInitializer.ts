@@ -53,6 +53,9 @@ class AppInitializer {
 
       // Hydrate completion store from SQLite
       this.hydrateCompletionStore(),
+
+      // Run user_books migration (merges legacy tables, runs once)
+      this.migrateUserBooks(),
     ]);
 
     const result: InitResult = {
@@ -69,9 +72,21 @@ class AppInitializer {
 
     this.isReady = true;
 
+    // Initialize event listeners and lifecycle handlers
+    // These don't block startup but need to be ready ASAP
+    this.initEventSystem();
+
     // Initialize automotive (CarPlay/Android Auto) in background
     // Don't await - this doesn't need to block app startup
     this.initAutomotive();
+
+    // Connect WebSocket if user is authenticated
+    // Don't await - this runs in background
+    if (result.user) {
+      this.connectWebSocket();
+      // Sync finished books with server
+      this.syncFinishedBooks();
+    }
 
     return result;
   }
@@ -114,6 +129,62 @@ class AppInitializer {
     }
   }
 
+  private async migrateUserBooks(): Promise<void> {
+    try {
+      const { sqliteCache } = await import('@/core/services/sqliteCache');
+      const result = await sqliteCache.migrateToUserBooks();
+      if (result.migrated > 0) {
+        console.log(`[AppInitializer] Migrated ${result.migrated} records to user_books`);
+      }
+
+      // One-time migration from galleryStore.markedBooks to user_books
+      await this.migrateGalleryStoreToUserBooks();
+    } catch (err) {
+      console.warn('[AppInitializer] user_books migration failed:', err);
+    }
+  }
+
+  /**
+   * Migrate galleryStore.markedBooks to user_books (one-time migration)
+   * NOTE: markedBooks was removed from galleryStore in v0.6.23.
+   * This migration only runs if there's legacy data in AsyncStorage.
+   */
+  private async migrateGalleryStoreToUserBooks(): Promise<void> {
+    try {
+      const { sqliteCache } = await import('@/core/services/sqliteCache');
+
+      // Check if migration already completed
+      const migrationKey = 'gallery_to_user_books_v1';
+      const migrationDone = await sqliteCache.getSyncMetadata(migrationKey);
+      if (migrationDone === 'done') {
+        return; // Already migrated
+      }
+
+      // Try to read legacy markedBooks from AsyncStorage directly
+      // (galleryStore no longer has markedBooks property)
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const storedData = await AsyncStorage.getItem('reading-history-gallery-storage');
+
+      if (storedData) {
+        const parsed = JSON.parse(storedData);
+        const legacyMarkedBooks = parsed?.state?.markedBooks;
+
+        if (Array.isArray(legacyMarkedBooks) && legacyMarkedBooks.length > 0) {
+          // Convert array format back to Map for migration
+          const markedBooksMap = new Map(legacyMarkedBooks);
+          console.log(`[AppInitializer] Migrating ${markedBooksMap.size} books from legacy galleryStore...`);
+          const result = await sqliteCache.migrateGalleryStoreToUserBooks(markedBooksMap);
+          console.log(`[AppInitializer] Gallery migration: ${result.migrated} migrated, ${result.skipped} skipped`);
+        }
+      }
+
+      // Mark migration as complete
+      await sqliteCache.setSyncMetadata(migrationKey, 'done');
+    } catch (err) {
+      console.warn('[AppInitializer] galleryStore migration failed:', err);
+    }
+  }
+
   private async initAutomotive(): Promise<void> {
     try {
       const { automotiveService } = await import('@/features/automotive');
@@ -125,6 +196,68 @@ class AppInitializer {
       console.log('[AppInitializer] Automotive service initialized');
     } catch (err) {
       console.warn('[AppInitializer] Automotive initialization failed:', err);
+    }
+  }
+
+  private async initEventSystem(): Promise<void> {
+    try {
+      // Initialize app-wide event listeners (analytics, monitoring)
+      const { initializeEventListeners } = await import('@/core/events');
+      initializeEventListeners();
+
+      // Initialize app state listener (foreground/background detection, refetch)
+      const { initializeAppStateListener } = await import('@/core/lifecycle');
+      initializeAppStateListener();
+
+      console.log('[AppInitializer] Event system initialized');
+    } catch (err) {
+      console.warn('[AppInitializer] Event system initialization failed:', err);
+    }
+  }
+
+  /**
+   * Connect WebSocket for real-time sync.
+   * Call this after user is authenticated.
+   */
+  async connectWebSocket(): Promise<void> {
+    try {
+      const { websocketService } = await import('@/core/services/websocketService');
+      await websocketService.connect();
+      console.log('[AppInitializer] WebSocket connected');
+    } catch (err) {
+      console.warn('[AppInitializer] WebSocket connection failed:', err);
+    }
+  }
+
+  /**
+   * Sync finished books with server.
+   * Imports from server first, then syncs local changes.
+   * Runs in background - doesn't block startup.
+   */
+  async syncFinishedBooks(): Promise<void> {
+    try {
+      const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
+      const result = await finishedBooksSync.fullSync();
+      if (result.imported > 0 || result.synced > 0) {
+        console.log(
+          `[AppInitializer] Finished books sync: ${result.imported} imported, ${result.synced} synced`
+        );
+      }
+    } catch (err) {
+      console.warn('[AppInitializer] Finished books sync failed:', err);
+    }
+  }
+
+  /**
+   * Disconnect WebSocket (e.g., on logout).
+   */
+  async disconnectWebSocket(): Promise<void> {
+    try {
+      const { websocketService } = await import('@/core/services/websocketService');
+      websocketService.disconnect('manual');
+      console.log('[AppInitializer] WebSocket disconnected');
+    } catch (err) {
+      console.warn('[AppInitializer] WebSocket disconnect failed:', err);
     }
   }
 

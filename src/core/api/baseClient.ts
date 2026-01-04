@@ -8,6 +8,7 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 import { ApiClientConfig } from '../types/api';
 import { networkOptimizer, Priority } from './networkOptimizer';
+import { trackEvent } from '../monitoring';
 
 /**
  * Base API client with HTTP methods and configuration
@@ -16,6 +17,10 @@ export class BaseApiClient {
   protected axiosInstance: AxiosInstance;
   protected baseURL: string = '';
   protected authToken: string = '';
+
+  // Auth failure handling
+  private onAuthFailure: (() => void) | null = null;
+  private isVerifyingAuth: boolean = false;
 
   constructor() {
     // Initialize axios instance with default config
@@ -39,13 +44,61 @@ export class BaseApiClient {
       }
     );
 
-    // Response interceptor for error handling
+    // Response interceptor for error handling and auth retry
     this.axiosInstance.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
+      async (error: AxiosError) => {
+        // Handle 401 errors with silent re-auth attempt
+        if (error.response?.status === 401 && !this.isVerifyingAuth) {
+          const originalRequest = error.config;
+
+          // Skip re-auth for login endpoint
+          if (originalRequest?.url?.includes('/login')) {
+            return Promise.reject(this.handleError(error));
+          }
+
+          // Try to verify token with /api/me
+          const isValid = await this.tryVerifyAuth();
+
+          if (!isValid && this.onAuthFailure) {
+            // Token is definitely invalid - trigger logout
+            trackEvent('auth_session_expired', {
+              endpoint: originalRequest?.url,
+              method: originalRequest?.method,
+            }, 'warning');
+            this.onAuthFailure();
+          }
+        }
+
         return Promise.reject(this.handleError(error));
       }
     );
+  }
+
+  /**
+   * Attempt to verify auth by calling /api/me
+   * Returns true if token is still valid, false otherwise
+   */
+  private async tryVerifyAuth(): Promise<boolean> {
+    if (!this.authToken || !this.baseURL) {
+      return false;
+    }
+
+    this.isVerifyingAuth = true;
+
+    try {
+      // Make a direct axios call to avoid our own interceptor
+      await this.axiosInstance.get('/api/me', {
+        headers: { Authorization: `Bearer ${this.authToken}` },
+      });
+      // If we get here, token is valid - the original 401 was transient
+      return true;
+    } catch (verifyError) {
+      // Token is definitely invalid
+      return false;
+    } finally {
+      this.isVerifyingAuth = false;
+    }
   }
 
   /**
@@ -88,6 +141,15 @@ export class BaseApiClient {
   getAuthToken(): string {
     return this.authToken;
   }
+
+  /**
+   * Set callback for auth failures (401 after verification fails)
+   * Used by AuthProvider to trigger logout
+   */
+  setOnAuthFailure(callback: (() => void) | null): void {
+    this.onAuthFailure = callback;
+  }
+
   /**
    * Handle API errors and format them consistently
    */
@@ -99,6 +161,11 @@ export class BaseApiClient {
 
       switch (status) {
         case 401:
+          // Track auth failures for monitoring
+          trackEvent('auth_token_expired', {
+            endpoint: error.config?.url,
+            method: error.config?.method,
+          }, 'warning');
           return new Error('Unauthorized - please login again');
         case 403:
           return new Error('Forbidden - insufficient permissions');

@@ -1,0 +1,195 @@
+# =============================================================================
+# Performance Test Flow
+# =============================================================================
+# Tests FPS monitoring across key interactions
+# =============================================================================
+
+appId: com.secretlibrary.app
+
+---
+- launchApp
+
+# Wait for app to initialize
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 15000
+
+# =============================================================================
+# 1. HOME SCROLL (30s)
+# =============================================================================
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll up and down repeatedly
+- repeat:
+    times: 10
+    commands:
+      - swipe:
+          direction: UP
+          duration: 500
+      - swipe:
+          direction: UP
+          duration: 500
+      - swipe:
+          direction: DOWN
+          duration: 500
+      - swipe:
+          direction: DOWN
+          duration: 500
+
+# =============================================================================
+# 2. BROWSE SCROLL
+# =============================================================================
+- tapOn: "Browse"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+- repeat:
+    times: 5
+    commands:
+      - swipe:
+          direction: UP
+          duration: 500
+      - swipe:
+          direction: DOWN
+          duration: 500
+
+# =============================================================================
+# 3. OPEN BOOK AND PLAY
+# =============================================================================
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# Tap first book in "In Progress" list
+- tapOn:
+    point: "50%, 30%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Tap play button if visible
+- runFlow:
+    when:
+      visible:
+        text: "Play|Resume|Listen"
+    commands:
+      - tapOn:
+          text: "Play|Resume|Listen"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 3000
+
+# Wait a bit for playback
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 10000
+
+# Open full player by tapping top area
+- tapOn:
+    point: "50%, 20%"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Wait 1 minute while playing
+- repeat:
+    times: 12
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 5000
+
+# =============================================================================
+# 4. SCRUB TIMELINE 10x
+# =============================================================================
+- repeat:
+    times: 10
+    commands:
+      - swipe:
+          start: 30%, 85%
+          end: 70%, 85%
+          duration: 800
+      - swipe:
+          start: 70%, 85%
+          end: 30%, 85%
+          duration: 800
+
+# =============================================================================
+# 5. EXPAND/COLLAPSE PLAYER 5x
+# =============================================================================
+- repeat:
+    times: 5
+    commands:
+      - swipe:
+          direction: DOWN
+          duration: 400
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+      - tapOn:
+          point: "50%, 20%"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 1000
+
+# =============================================================================
+# 6. EXPORT PERFORMANCE REPORT
+# =============================================================================
+# Collapse player
+- swipe:
+    direction: DOWN
+    duration: 400
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 2000
+
+# Navigate to Profile
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 3000
+
+# Scroll to Developer section
+- swipe:
+    direction: UP
+    duration: 500
+- swipe:
+    direction: UP
+    duration: 500
+- swipe:
+    direction: UP
+    duration: 500
+
+# Look for Export Performance Report
+- runFlow:
+    when:
+      visible: "Export Performance Report"
+    commands:
+      - tapOn: "Export Performance Report"
+      - extendedWaitUntil:
+          visible:
+            text: ".*"
+          timeout: 2000
+
+# =============================================================================
+# DONE
+# =============================================================================
+- evalScript: |
+    console.log("Performance test complete!");

@@ -118,6 +118,52 @@ export interface ReadHistoryEntry {
   rating?: number;
 }
 
+// ============================================================================
+// UNIFIED USER_BOOKS TABLE (Single source of truth for user-book relationships)
+// ============================================================================
+export interface UserBook {
+  bookId: string;
+
+  // Progress
+  currentTime: number;
+  duration: number;
+  progress: number; // Computed: currentTime / duration
+  currentTrackIndex: number;
+
+  // Status flags
+  isFavorite: boolean;
+  isFinished: boolean;
+  finishSource: 'manual' | 'progress' | 'bulk_author' | 'bulk_series' | null;
+
+  // Timestamps
+  lastPlayedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  addedToLibraryAt: string | null;
+
+  // Sync state
+  progressSynced: boolean;
+  favoriteSynced: boolean;
+  finishedSynced: boolean;
+  localUpdatedAt: string;
+
+  // Cached metadata for offline display
+  title: string | null;
+  author: string | null;
+  narrator: string | null;
+  coverUrl: string | null;
+  seriesName: string | null;
+  seriesSequence: number | null;
+
+  // Analytics (from read_history)
+  timesCompleted: number;
+  userRating: number | null;
+  genres: string | null; // JSON array
+
+  // Per-book settings
+  playbackSpeed: number;
+}
+
 // Listening Stats Types
 export interface ListeningSession {
   id: string;
@@ -155,6 +201,26 @@ class SQLiteCache {
   private db: SQLite.SQLiteDatabase | null = null;
   private isInitialized = false;
   private initPromise: Promise<void> | null = null;
+  private transactionLock: Promise<void> = Promise.resolve();
+
+  /**
+   * Execute a function with a transaction lock to prevent concurrent transactions
+   */
+  private async withTransactionLock<T>(fn: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+    const db = await this.ensureReady();
+
+    // Wait for any pending transaction to complete, then run ours
+    const previousLock = this.transactionLock;
+    let resolve: () => void;
+    this.transactionLock = new Promise<void>((r) => { resolve = r; });
+
+    try {
+      await previousLock;
+      return await fn(db);
+    } finally {
+      resolve!();
+    }
+  }
 
   /**
    * Initialize the database and create tables
@@ -347,6 +413,54 @@ class SQLiteCache {
           synced INTEGER DEFAULT 0
         );
 
+        -- ================================================================
+        -- USER_BOOKS: Unified table for all user-book relationships
+        -- Single source of truth for progress, favorites, finished status
+        -- ================================================================
+        CREATE TABLE IF NOT EXISTS user_books (
+          -- Identity
+          book_id TEXT PRIMARY KEY,
+
+          -- Progress
+          current_time REAL DEFAULT 0,
+          duration REAL DEFAULT 0,
+          progress REAL DEFAULT 0,
+          current_track_index INTEGER DEFAULT 0,
+
+          -- Status flags
+          is_favorite INTEGER DEFAULT 0,
+          is_finished INTEGER DEFAULT 0,
+          finish_source TEXT,
+
+          -- Timestamps
+          last_played_at TEXT,
+          started_at TEXT,
+          finished_at TEXT,
+          added_to_library_at TEXT,
+
+          -- Sync state
+          progress_synced INTEGER DEFAULT 1,
+          favorite_synced INTEGER DEFAULT 1,
+          finished_synced INTEGER DEFAULT 1,
+          local_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+          -- Cached metadata for offline display
+          title TEXT,
+          author TEXT,
+          narrator TEXT,
+          cover_url TEXT,
+          series_name TEXT,
+          series_sequence REAL,
+
+          -- Analytics (from read_history)
+          times_completed INTEGER DEFAULT 0,
+          user_rating REAL,
+          genres TEXT,
+
+          -- Per-book settings
+          playback_speed REAL DEFAULT 1.0
+        );
+
         -- Indexes for faster lookups
         CREATE INDEX IF NOT EXISTS idx_items_library ON library_items(library_id);
         CREATE INDEX IF NOT EXISTS idx_items_updated ON library_items(updated_at);
@@ -367,6 +481,15 @@ class SQLiteCache {
         CREATE INDEX IF NOT EXISTS idx_sessions_start ON listening_sessions(start_timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date DESC);
         CREATE INDEX IF NOT EXISTS idx_marked_complete_synced ON marked_complete(synced);
+
+        -- User books indexes (for efficient filtering and sync)
+        CREATE INDEX IF NOT EXISTS idx_user_books_favorite ON user_books(is_favorite) WHERE is_favorite = 1;
+        CREATE INDEX IF NOT EXISTS idx_user_books_finished ON user_books(is_finished) WHERE is_finished = 1;
+        CREATE INDEX IF NOT EXISTS idx_user_books_progress ON user_books(progress);
+        CREATE INDEX IF NOT EXISTS idx_user_books_last_played ON user_books(last_played_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_user_books_needs_progress_sync ON user_books(progress_synced) WHERE progress_synced = 0;
+        CREATE INDEX IF NOT EXISTS idx_user_books_needs_favorite_sync ON user_books(favorite_synced) WHERE favorite_synced = 0;
+        CREATE INDEX IF NOT EXISTS idx_user_books_needs_finished_sync ON user_books(finished_synced) WHERE finished_synced = 0;
       `);
 
       // Migration: Add last_played_at column if it doesn't exist
@@ -838,6 +961,19 @@ class SQLiteCache {
     favoriteAuthors: { name: string; count: number }[];
     favoriteNarrators: { name: string; count: number }[];
     favoriteGenres: { name: string; count: number }[];
+    // NEW: Most recently finished book for "Because you finished X" titles
+    mostRecentFinished?: {
+      id: string;
+      title: string;
+      author: string;
+      finishedAt: number;
+    };
+    // NEW: Currently listening books for "More like X" titles
+    currentlyListening?: Array<{
+      id: string;
+      title: string;
+      progress: number;
+    }>;
   }> {
     const db = await this.ensureReady();
     try {
@@ -891,10 +1027,126 @@ class SQLiteCache {
         .slice(0, 10)
         .map(([name, count]) => ({ name, count }));
 
-      return { totalBooksRead, favoriteAuthors, favoriteNarrators, favoriteGenres };
+      // NEW: Get most recently finished book for "Because you finished X" titles
+      const recentFinished = await db.getFirstAsync<{
+        item_id: string;
+        title: string;
+        author_name: string;
+        completed_at: number;
+      }>(
+        `SELECT item_id, title, author_name, completed_at
+         FROM read_history
+         ORDER BY completed_at DESC
+         LIMIT 1`
+      );
+      const mostRecentFinished = recentFinished ? {
+        id: recentFinished.item_id,
+        title: recentFinished.title,
+        author: recentFinished.author_name,
+        finishedAt: recentFinished.completed_at,
+      } : undefined;
+
+      // NEW: Get currently listening books for "More like X" titles
+      const listeningRows = await db.getAllAsync<{
+        book_id: string;
+        title: string;
+        progress: number;
+      }>(
+        `SELECT book_id, title, progress
+         FROM user_books
+         WHERE progress > 0.05 AND progress < 0.95 AND is_finished = 0
+         ORDER BY local_updated_at DESC
+         LIMIT 3`
+      );
+      const currentlyListening = listeningRows.map(r => ({
+        id: r.book_id,
+        title: r.title,
+        progress: r.progress,
+      }));
+
+      return {
+        totalBooksRead,
+        favoriteAuthors,
+        favoriteNarrators,
+        favoriteGenres,
+        mostRecentFinished,
+        currentlyListening: currentlyListening.length > 0 ? currentlyListening : undefined,
+      };
     } catch (err) {
       console.warn('[SQLiteCache] getReadHistoryStats error:', err);
       return { totalBooksRead: 0, favoriteAuthors: [], favoriteNarrators: [], favoriteGenres: [] };
+    }
+  }
+
+  /**
+   * Get listening history stats from in-progress books (user_books)
+   * This includes books the user is currently listening to (started but not finished)
+   */
+  async getListeningHistoryStats(): Promise<{
+    totalBooksInProgress: number;
+    listeningAuthors: { name: string; count: number }[];
+    listeningNarrators: { name: string; count: number }[];
+    listeningGenres: { name: string; count: number }[];
+  }> {
+    const db = await this.ensureReady();
+    try {
+      // Total books in progress (started but not finished)
+      const totalResult = await db.getFirstAsync<{ total: number }>(
+        'SELECT COUNT(*) as total FROM user_books WHERE progress > 0 AND progress < 0.95 AND is_finished = 0'
+      );
+      const totalBooksInProgress = totalResult?.total || 0;
+
+      // Authors of in-progress books (weighted by progress - more progress = more relevant)
+      const authorRows = await db.getAllAsync<{ name: string; count: number }>(
+        `SELECT author as name, COUNT(*) as count
+         FROM user_books
+         WHERE author IS NOT NULL AND author != ''
+           AND progress > 0 AND progress < 0.95 AND is_finished = 0
+         GROUP BY author
+         ORDER BY count DESC, MAX(progress) DESC
+         LIMIT 10`
+      );
+      const listeningAuthors = authorRows.map(r => ({ name: r.name, count: r.count }));
+
+      // Narrators of in-progress books
+      const narratorRows = await db.getAllAsync<{ name: string; count: number }>(
+        `SELECT narrator as name, COUNT(*) as count
+         FROM user_books
+         WHERE narrator IS NOT NULL AND narrator != ''
+           AND progress > 0 AND progress < 0.95 AND is_finished = 0
+         GROUP BY narrator
+         ORDER BY count DESC, MAX(progress) DESC
+         LIMIT 10`
+      );
+      const listeningNarrators = narratorRows.map(r => ({ name: r.name, count: r.count }));
+
+      // Genres of in-progress books (JSON parsing needed)
+      const genreRows = await db.getAllAsync<{ genres: string | null }>(
+        `SELECT genres FROM user_books
+         WHERE genres IS NOT NULL AND genres != ''
+           AND progress > 0 AND progress < 0.95 AND is_finished = 0`
+      );
+      const genreCounts = new Map<string, number>();
+      for (const row of genreRows) {
+        if (!row.genres) continue;
+        try {
+          const genres = JSON.parse(row.genres) as string[];
+          for (const genre of genres) {
+            genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+          }
+        } catch {
+          // Skip malformed JSON
+        }
+      }
+      const listeningGenres = Array.from(genreCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([name, count]) => ({ name, count }));
+
+      return { totalBooksInProgress, listeningAuthors, listeningNarrators, listeningGenres };
+    } catch (err) {
+      console.warn('[SQLiteCache] getListeningHistoryStats error:', err);
+      return { totalBooksInProgress: 0, listeningAuthors: [], listeningNarrators: [], listeningGenres: [] };
     }
   }
 
@@ -1730,58 +1982,60 @@ class SQLiteCache {
 
   /**
    * Record a listening session and update daily stats
+   * Uses transaction lock to prevent concurrent transaction errors
    */
   async recordListeningSession(session: Omit<ListeningSession, 'id'>): Promise<string> {
-    const db = await this.ensureReady();
     const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const date = new Date(session.startTimestamp).toISOString().split('T')[0];
 
     try {
-      await db.withTransactionAsync(async () => {
-        // Insert the session
-        await db.runAsync(
-          `INSERT INTO listening_sessions (id, book_id, book_title, start_timestamp, end_timestamp, duration_seconds, start_position, end_position)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            id,
-            session.bookId,
-            session.bookTitle,
-            session.startTimestamp,
-            session.endTimestamp,
-            session.durationSeconds,
-            session.startPosition,
-            session.endPosition,
-          ]
-        );
-
-        // Update daily stats
-        const existing = await db.getFirstAsync<{
-          total_seconds: number;
-          session_count: number;
-          books_touched: string;
-        }>('SELECT * FROM daily_stats WHERE date = ?', [date]);
-
-        if (existing) {
-          const booksTouched: string[] = JSON.parse(existing.books_touched);
-          if (!booksTouched.includes(session.bookId)) {
-            booksTouched.push(session.bookId);
-          }
-
+      await this.withTransactionLock(async (db) => {
+        await db.withTransactionAsync(async () => {
+          // Insert the session
           await db.runAsync(
-            `UPDATE daily_stats SET total_seconds = ?, session_count = ?, books_touched = ? WHERE date = ?`,
+            `INSERT INTO listening_sessions (id, book_id, book_title, start_timestamp, end_timestamp, duration_seconds, start_position, end_position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              existing.total_seconds + session.durationSeconds,
-              existing.session_count + 1,
-              JSON.stringify(booksTouched),
-              date,
+              id,
+              session.bookId,
+              session.bookTitle,
+              session.startTimestamp,
+              session.endTimestamp,
+              session.durationSeconds,
+              session.startPosition,
+              session.endPosition,
             ]
           );
-        } else {
-          await db.runAsync(
-            `INSERT INTO daily_stats (date, total_seconds, session_count, books_touched) VALUES (?, ?, 1, ?)`,
-            [date, session.durationSeconds, JSON.stringify([session.bookId])]
-          );
-        }
+
+          // Update daily stats
+          const existing = await db.getFirstAsync<{
+            total_seconds: number;
+            session_count: number;
+            books_touched: string;
+          }>('SELECT * FROM daily_stats WHERE date = ?', [date]);
+
+          if (existing) {
+            const booksTouched: string[] = JSON.parse(existing.books_touched);
+            if (!booksTouched.includes(session.bookId)) {
+              booksTouched.push(session.bookId);
+            }
+
+            await db.runAsync(
+              `UPDATE daily_stats SET total_seconds = ?, session_count = ?, books_touched = ? WHERE date = ?`,
+              [
+                existing.total_seconds + session.durationSeconds,
+                existing.session_count + 1,
+                JSON.stringify(booksTouched),
+                date,
+              ]
+            );
+          } else {
+            await db.runAsync(
+              `INSERT INTO daily_stats (date, total_seconds, session_count, books_touched) VALUES (?, ?, 1, ?)`,
+              [date, session.durationSeconds, JSON.stringify([session.bookId])]
+            );
+          }
+        });
       });
 
       console.log(`[SQLiteCache] Recorded listening session: ${session.durationSeconds}s for ${session.bookTitle}`);
@@ -2302,6 +2556,752 @@ class SQLiteCache {
       await db.runAsync('DELETE FROM marked_complete WHERE item_id = ?', [itemId]);
     } catch (err) {
       console.warn('[SQLiteCache] removeMarkedComplete error:', err);
+    }
+  }
+
+  // ============================================================================
+  // USER_BOOKS - Unified table for all user-book relationships
+  // Single source of truth for progress, favorites, finished status, settings
+  // ============================================================================
+
+  /**
+   * Get a user book record by ID
+   */
+  async getUserBook(bookId: string): Promise<UserBook | null> {
+    const db = await this.ensureReady();
+    try {
+      const row = await db.getFirstAsync<{
+        book_id: string;
+        current_time: number;
+        duration: number;
+        progress: number;
+        current_track_index: number;
+        is_favorite: number;
+        is_finished: number;
+        finish_source: string | null;
+        last_played_at: string | null;
+        started_at: string | null;
+        finished_at: string | null;
+        added_to_library_at: string | null;
+        progress_synced: number;
+        favorite_synced: number;
+        finished_synced: number;
+        local_updated_at: string;
+        title: string | null;
+        author: string | null;
+        narrator: string | null;
+        cover_url: string | null;
+        series_name: string | null;
+        series_sequence: number | null;
+        times_completed: number;
+        user_rating: number | null;
+        genres: string | null;
+        playback_speed: number;
+      }>('SELECT * FROM user_books WHERE book_id = ?', [bookId]);
+
+      if (!row) return null;
+
+      return {
+        bookId: row.book_id,
+        currentTime: row.current_time,
+        duration: row.duration,
+        progress: row.progress,
+        currentTrackIndex: row.current_track_index,
+        isFavorite: row.is_favorite === 1,
+        isFinished: row.is_finished === 1,
+        finishSource: row.finish_source as 'manual' | 'progress' | 'bulk_author' | 'bulk_series' | null,
+        lastPlayedAt: row.last_played_at,
+        startedAt: row.started_at,
+        finishedAt: row.finished_at,
+        addedToLibraryAt: row.added_to_library_at,
+        progressSynced: row.progress_synced === 1,
+        favoriteSynced: row.favorite_synced === 1,
+        finishedSynced: row.finished_synced === 1,
+        localUpdatedAt: row.local_updated_at,
+        title: row.title,
+        author: row.author,
+        narrator: row.narrator,
+        coverUrl: row.cover_url,
+        seriesName: row.series_name,
+        seriesSequence: row.series_sequence,
+        timesCompleted: row.times_completed,
+        userRating: row.user_rating,
+        genres: row.genres,
+        playbackSpeed: row.playback_speed,
+      };
+    } catch (err) {
+      console.warn('[SQLiteCache] getUserBook error:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Upsert a user book record (insert or update)
+   */
+  async setUserBook(book: Partial<UserBook> & { bookId: string }): Promise<void> {
+    const db = await this.ensureReady();
+    const now = new Date().toISOString();
+
+    try {
+      // Check if exists
+      const existing = await this.getUserBook(book.bookId);
+
+      if (existing) {
+        // Update only provided fields
+        const updates: string[] = ['local_updated_at = ?'];
+        const values: any[] = [now];
+
+        if (book.currentTime !== undefined) {
+          updates.push('current_time = ?');
+          values.push(book.currentTime);
+        }
+        if (book.duration !== undefined) {
+          updates.push('duration = ?');
+          values.push(book.duration);
+        }
+        if (book.progress !== undefined) {
+          updates.push('progress = ?');
+          values.push(book.progress);
+        }
+        if (book.currentTrackIndex !== undefined) {
+          updates.push('current_track_index = ?');
+          values.push(book.currentTrackIndex);
+        }
+        if (book.isFavorite !== undefined) {
+          updates.push('is_favorite = ?');
+          values.push(book.isFavorite ? 1 : 0);
+        }
+        if (book.isFinished !== undefined) {
+          updates.push('is_finished = ?');
+          values.push(book.isFinished ? 1 : 0);
+        }
+        if (book.finishSource !== undefined) {
+          updates.push('finish_source = ?');
+          values.push(book.finishSource);
+        }
+        if (book.lastPlayedAt !== undefined) {
+          updates.push('last_played_at = ?');
+          values.push(book.lastPlayedAt);
+        }
+        if (book.startedAt !== undefined) {
+          updates.push('started_at = ?');
+          values.push(book.startedAt);
+        }
+        if (book.finishedAt !== undefined) {
+          updates.push('finished_at = ?');
+          values.push(book.finishedAt);
+        }
+        if (book.addedToLibraryAt !== undefined) {
+          updates.push('added_to_library_at = ?');
+          values.push(book.addedToLibraryAt);
+        }
+        if (book.progressSynced !== undefined) {
+          updates.push('progress_synced = ?');
+          values.push(book.progressSynced ? 1 : 0);
+        }
+        if (book.favoriteSynced !== undefined) {
+          updates.push('favorite_synced = ?');
+          values.push(book.favoriteSynced ? 1 : 0);
+        }
+        if (book.finishedSynced !== undefined) {
+          updates.push('finished_synced = ?');
+          values.push(book.finishedSynced ? 1 : 0);
+        }
+        if (book.title !== undefined) {
+          updates.push('title = ?');
+          values.push(book.title);
+        }
+        if (book.author !== undefined) {
+          updates.push('author = ?');
+          values.push(book.author);
+        }
+        if (book.narrator !== undefined) {
+          updates.push('narrator = ?');
+          values.push(book.narrator);
+        }
+        if (book.coverUrl !== undefined) {
+          updates.push('cover_url = ?');
+          values.push(book.coverUrl);
+        }
+        if (book.seriesName !== undefined) {
+          updates.push('series_name = ?');
+          values.push(book.seriesName);
+        }
+        if (book.seriesSequence !== undefined) {
+          updates.push('series_sequence = ?');
+          values.push(book.seriesSequence);
+        }
+        if (book.timesCompleted !== undefined) {
+          updates.push('times_completed = ?');
+          values.push(book.timesCompleted);
+        }
+        if (book.userRating !== undefined) {
+          updates.push('user_rating = ?');
+          values.push(book.userRating);
+        }
+        if (book.genres !== undefined) {
+          updates.push('genres = ?');
+          values.push(book.genres);
+        }
+        if (book.playbackSpeed !== undefined) {
+          updates.push('playback_speed = ?');
+          values.push(book.playbackSpeed);
+        }
+
+        values.push(book.bookId);
+
+        await db.runAsync(
+          `UPDATE user_books SET ${updates.join(', ')} WHERE book_id = ?`,
+          values
+        );
+      } else {
+        // Insert new record
+        await db.runAsync(
+          `INSERT INTO user_books (
+            book_id, current_time, duration, progress, current_track_index,
+            is_favorite, is_finished, finish_source,
+            last_played_at, started_at, finished_at, added_to_library_at,
+            progress_synced, favorite_synced, finished_synced, local_updated_at,
+            title, author, narrator, cover_url, series_name, series_sequence,
+            times_completed, user_rating, genres, playback_speed
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            book.bookId,
+            book.currentTime ?? 0,
+            book.duration ?? 0,
+            book.progress ?? 0,
+            book.currentTrackIndex ?? 0,
+            book.isFavorite ? 1 : 0,
+            book.isFinished ? 1 : 0,
+            book.finishSource ?? null,
+            book.lastPlayedAt ?? null,
+            book.startedAt ?? null,
+            book.finishedAt ?? null,
+            book.addedToLibraryAt ?? null,
+            book.progressSynced ? 1 : 0,
+            book.favoriteSynced ? 1 : 0,
+            book.finishedSynced ? 1 : 0,
+            now,
+            book.title ?? null,
+            book.author ?? null,
+            book.narrator ?? null,
+            book.coverUrl ?? null,
+            book.seriesName ?? null,
+            book.seriesSequence ?? null,
+            book.timesCompleted ?? 0,
+            book.userRating ?? null,
+            book.genres ?? null,
+            book.playbackSpeed ?? 1.0,
+          ]
+        );
+      }
+    } catch (err) {
+      console.warn('[SQLiteCache] setUserBook error:', err);
+    }
+  }
+
+  /**
+   * Update progress for a book (convenience method)
+   * Auto-marks as finished when reaching 99% progress
+   */
+  async updateUserBookProgress(
+    bookId: string,
+    currentTime: number,
+    duration: number,
+    currentTrackIndex: number = 0
+  ): Promise<void> {
+    const progress = duration > 0 ? currentTime / duration : 0;
+    const now = new Date().toISOString();
+    const existing = await this.getUserBook(bookId);
+
+    // Auto-finish at 95% progress (if not already finished)
+    // Matches FINISHED_THRESHOLD from useReadingHistory for consistency
+    const shouldAutoFinish = progress >= 0.95 && !existing?.isFinished;
+
+    await this.setUserBook({
+      bookId,
+      currentTime,
+      duration,
+      progress,
+      currentTrackIndex,
+      lastPlayedAt: now,
+      startedAt: currentTime > 0 ? now : undefined, // Set startedAt on first progress
+      progressSynced: false,
+      // Auto-finish logic
+      ...(shouldAutoFinish && {
+        isFinished: true,
+        finishSource: 'progress' as const,
+        finishedAt: now,
+        finishedSynced: false,
+        timesCompleted: (existing?.timesCompleted ?? 0) + 1,
+      }),
+    });
+  }
+
+  /**
+   * Toggle favorite status for a book
+   */
+  async toggleUserBookFavorite(bookId: string, isFavorite: boolean): Promise<void> {
+    const existing = await this.getUserBook(bookId);
+    const now = new Date().toISOString();
+
+    await this.setUserBook({
+      bookId,
+      isFavorite,
+      favoriteSynced: false,
+      addedToLibraryAt: isFavorite && !existing?.addedToLibraryAt ? now : existing?.addedToLibraryAt,
+    });
+  }
+
+  /**
+   * Mark a book as finished
+   */
+  async markUserBookFinished(
+    bookId: string,
+    isFinished: boolean,
+    source: 'manual' | 'progress' = 'manual'
+  ): Promise<void> {
+    const existing = await this.getUserBook(bookId);
+    const now = new Date().toISOString();
+
+    await this.setUserBook({
+      bookId,
+      isFinished,
+      finishSource: isFinished ? source : null,
+      finishedAt: isFinished ? now : null,
+      finishedSynced: false,
+      timesCompleted: isFinished ? (existing?.timesCompleted ?? 0) + 1 : existing?.timesCompleted,
+    });
+  }
+
+  /**
+   * Bulk mark multiple books as finished
+   * Used for "mark all by author" or "mark all in series" operations
+   */
+  async markUserBooksFinished(
+    bookIds: string[],
+    isFinished: boolean,
+    source: 'manual' | 'progress' | 'bulk_author' | 'bulk_series' = 'manual'
+  ): Promise<void> {
+    if (bookIds.length === 0) return;
+
+    const db = await this.ensureReady();
+    const now = new Date().toISOString();
+
+    try {
+      // Use transaction for atomicity
+      await db.withTransactionAsync(async () => {
+        for (const bookId of bookIds) {
+          const existing = await this.getUserBook(bookId);
+
+          // Skip if already in desired state
+          if (existing?.isFinished === isFinished) continue;
+
+          await this.setUserBook({
+            bookId,
+            isFinished,
+            finishSource: isFinished ? source : null,
+            finishedAt: isFinished ? now : null,
+            finishedSynced: false,
+            timesCompleted: isFinished ? (existing?.timesCompleted ?? 0) + 1 : existing?.timesCompleted,
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[SQLiteCache] markUserBooksFinished error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Migrate data from galleryStore.markedBooks to user_books table
+   * This is a one-time migration for users upgrading from galleryStore
+   */
+  async migrateGalleryStoreToUserBooks(
+    markedBooks: Map<string, { bookId: string; markedAt: number; source: string; synced: boolean }>
+  ): Promise<{ migrated: number; skipped: number }> {
+    let migrated = 0;
+    let skipped = 0;
+
+    try {
+      for (const [bookId, entry] of markedBooks) {
+        const existing = await this.getUserBook(bookId);
+
+        // Skip if already finished in user_books
+        if (existing?.isFinished) {
+          skipped++;
+          continue;
+        }
+
+        // Migrate the entry
+        await this.setUserBook({
+          bookId,
+          isFinished: true,
+          finishSource: 'manual', // All galleryStore entries are manual marks
+          finishedAt: new Date(entry.markedAt).toISOString(),
+          finishedSynced: entry.synced,
+          timesCompleted: (existing?.timesCompleted ?? 0) + 1,
+        });
+        migrated++;
+      }
+
+      console.log(`[SQLiteCache] Migration complete: ${migrated} migrated, ${skipped} skipped`);
+      return { migrated, skipped };
+    } catch (err) {
+      console.error('[SQLiteCache] migrateGalleryStoreToUserBooks error:', err);
+      return { migrated, skipped };
+    }
+  }
+
+  /**
+   * Set playback speed for a book
+   */
+  async setUserBookPlaybackSpeed(bookId: string, speed: number): Promise<void> {
+    await this.setUserBook({ bookId, playbackSpeed: speed });
+  }
+
+  /**
+   * Get playback speed for a book (defaults to 1.0)
+   */
+  async getUserBookPlaybackSpeed(bookId: string): Promise<number> {
+    const book = await this.getUserBook(bookId);
+    return book?.playbackSpeed ?? 1.0;
+  }
+
+  /**
+   * Get all favorite books
+   */
+  async getFavoriteUserBooks(): Promise<UserBook[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<any>(
+        'SELECT * FROM user_books WHERE is_favorite = 1 ORDER BY added_to_library_at DESC'
+      );
+      return rows.map(this.mapUserBookRow);
+    } catch (err) {
+      console.warn('[SQLiteCache] getFavoriteUserBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get all finished books
+   */
+  async getFinishedUserBooks(): Promise<UserBook[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<any>(
+        'SELECT * FROM user_books WHERE is_finished = 1 ORDER BY finished_at DESC'
+      );
+      return rows.map(this.mapUserBookRow);
+    } catch (err) {
+      console.warn('[SQLiteCache] getFinishedUserBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get books in progress (started but not finished)
+   */
+  async getInProgressUserBooks(): Promise<UserBook[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<any>(
+        'SELECT * FROM user_books WHERE progress > 0 AND progress < 0.95 AND is_finished = 0 ORDER BY last_played_at DESC'
+      );
+      return rows.map(this.mapUserBookRow);
+    } catch (err) {
+      console.warn('[SQLiteCache] getInProgressUserBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Get books needing sync (any sync flag is false)
+   */
+  async getUnsyncedUserBooks(): Promise<UserBook[]> {
+    const db = await this.ensureReady();
+    try {
+      const rows = await db.getAllAsync<any>(
+        'SELECT * FROM user_books WHERE progress_synced = 0 OR favorite_synced = 0 OR finished_synced = 0'
+      );
+      return rows.map(this.mapUserBookRow);
+    } catch (err) {
+      console.warn('[SQLiteCache] getUnsyncedUserBooks error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Mark user book fields as synced
+   */
+  async markUserBookSynced(
+    bookId: string,
+    fields: { progress?: boolean; favorite?: boolean; finished?: boolean }
+  ): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if (fields.progress) {
+        updates.push('progress_synced = 1');
+      }
+      if (fields.favorite) {
+        updates.push('favorite_synced = 1');
+      }
+      if (fields.finished) {
+        updates.push('finished_synced = 1');
+      }
+
+      if (updates.length === 0) return;
+
+      values.push(bookId);
+      await db.runAsync(
+        `UPDATE user_books SET ${updates.join(', ')} WHERE book_id = ?`,
+        values
+      );
+    } catch (err) {
+      console.warn('[SQLiteCache] markUserBookSynced error:', err);
+    }
+  }
+
+  /**
+   * Helper to map database row to UserBook
+   */
+  private mapUserBookRow(row: any): UserBook {
+    return {
+      bookId: row.book_id,
+      currentTime: row.current_time,
+      duration: row.duration,
+      progress: row.progress,
+      currentTrackIndex: row.current_track_index,
+      isFavorite: row.is_favorite === 1,
+      isFinished: row.is_finished === 1,
+      finishSource: row.finish_source as 'manual' | 'progress' | 'bulk_author' | 'bulk_series' | null,
+      lastPlayedAt: row.last_played_at,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      addedToLibraryAt: row.added_to_library_at,
+      progressSynced: row.progress_synced === 1,
+      favoriteSynced: row.favorite_synced === 1,
+      finishedSynced: row.finished_synced === 1,
+      localUpdatedAt: row.local_updated_at,
+      title: row.title,
+      author: row.author,
+      narrator: row.narrator,
+      coverUrl: row.cover_url,
+      seriesName: row.series_name,
+      seriesSequence: row.series_sequence,
+      timesCompleted: row.times_completed,
+      userRating: row.user_rating,
+      genres: row.genres,
+      playbackSpeed: row.playback_speed,
+    };
+  }
+
+  // ============================================================================
+  // MIGRATION: Populate user_books from legacy tables
+  // ============================================================================
+
+  /**
+   * Migrate data from legacy tables to user_books (one-time migration)
+   * Call this during app initialization after ensuring tables exist
+   */
+  async migrateToUserBooks(): Promise<{ migrated: number; skipped: number }> {
+    const db = await this.ensureReady();
+
+    // Check if migration already done
+    const migrationKey = 'user_books_migration_v1';
+    const migrationDone = await this.getSyncMetadata(migrationKey);
+    if (migrationDone === 'done') {
+      console.log('[SQLiteCache] user_books migration already completed');
+      return { migrated: 0, skipped: 0 };
+    }
+
+    console.log('[SQLiteCache] Starting user_books migration...');
+    let migrated = 0;
+    let skipped = 0;
+
+    try {
+      await db.withTransactionAsync(async () => {
+        // Step 1: Migrate playback_progress
+        const progressRows = await db.getAllAsync<{
+          item_id: string;
+          position: number;
+          duration: number;
+          updated_at: number;
+          synced: number;
+        }>('SELECT * FROM playback_progress');
+
+        for (const row of progressRows) {
+          const progress = row.duration > 0 ? row.position / row.duration : 0;
+          await db.runAsync(
+            `INSERT OR IGNORE INTO user_books (
+              book_id, current_time, duration, progress, progress_synced, local_updated_at
+            ) VALUES (?, ?, ?, ?, ?, datetime(? / 1000, 'unixepoch'))`,
+            [row.item_id, row.position, row.duration, progress, row.synced, row.updated_at]
+          );
+
+          // If exists, update progress fields only if newer
+          await db.runAsync(
+            `UPDATE user_books SET
+              current_time = CASE WHEN datetime(? / 1000, 'unixepoch') > local_updated_at THEN ? ELSE current_time END,
+              duration = CASE WHEN datetime(? / 1000, 'unixepoch') > local_updated_at THEN ? ELSE duration END,
+              progress = CASE WHEN datetime(? / 1000, 'unixepoch') > local_updated_at THEN ? ELSE progress END,
+              progress_synced = CASE WHEN datetime(? / 1000, 'unixepoch') > local_updated_at THEN ? ELSE progress_synced END
+            WHERE book_id = ?`,
+            [
+              row.updated_at, row.position,
+              row.updated_at, row.duration,
+              row.updated_at, progress,
+              row.updated_at, row.synced,
+              row.item_id,
+            ]
+          );
+          migrated++;
+        }
+        console.log(`[SQLiteCache] Migrated ${progressRows.length} playback_progress records`);
+
+        // Step 2: Migrate favorites
+        const favoriteRows = await db.getAllAsync<{
+          item_id: string;
+          added_at: string;
+          synced: number;
+        }>('SELECT * FROM favorites');
+
+        for (const row of favoriteRows) {
+          await db.runAsync(
+            `INSERT OR IGNORE INTO user_books (book_id, is_favorite, favorite_synced, added_to_library_at, local_updated_at)
+             VALUES (?, 1, ?, ?, ?)`,
+            [row.item_id, row.synced, row.added_at, row.added_at]
+          );
+
+          // Update if exists
+          await db.runAsync(
+            `UPDATE user_books SET
+              is_favorite = 1,
+              favorite_synced = ?,
+              added_to_library_at = COALESCE(added_to_library_at, ?)
+            WHERE book_id = ?`,
+            [row.synced, row.added_at, row.item_id]
+          );
+          migrated++;
+        }
+        console.log(`[SQLiteCache] Migrated ${favoriteRows.length} favorites records`);
+
+        // Step 3: Migrate marked_complete
+        const completeRows = await db.getAllAsync<{
+          item_id: string;
+          is_complete: number;
+          marked_at: number;
+          synced: number;
+        }>('SELECT * FROM marked_complete');
+
+        for (const row of completeRows) {
+          const finishedAt = new Date(row.marked_at).toISOString();
+          await db.runAsync(
+            `INSERT OR IGNORE INTO user_books (book_id, is_finished, finish_source, finished_at, finished_synced, local_updated_at)
+             VALUES (?, ?, 'manual', ?, ?, ?)`,
+            [row.item_id, row.is_complete, finishedAt, row.synced, finishedAt]
+          );
+
+          // Update if exists
+          await db.runAsync(
+            `UPDATE user_books SET
+              is_finished = ?,
+              finish_source = COALESCE(finish_source, 'manual'),
+              finished_at = COALESCE(finished_at, ?),
+              finished_synced = ?
+            WHERE book_id = ?`,
+            [row.is_complete, finishedAt, row.synced, row.item_id]
+          );
+          migrated++;
+        }
+        console.log(`[SQLiteCache] Migrated ${completeRows.length} marked_complete records`);
+
+        // Step 4: Migrate read_history (for analytics & metadata)
+        const historyRows = await db.getAllAsync<{
+          item_id: string;
+          title: string;
+          author_name: string;
+          narrator_name: string | null;
+          genres: string;
+          completed_at: number;
+          times_read: number;
+          rating: number | null;
+        }>('SELECT * FROM read_history');
+
+        for (const row of historyRows) {
+          const completedAt = new Date(row.completed_at).toISOString();
+          await db.runAsync(
+            `INSERT OR IGNORE INTO user_books (book_id, title, author, narrator, genres, times_completed, user_rating, finished_at, is_finished, local_updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+            [
+              row.item_id, row.title, row.author_name, row.narrator_name,
+              row.genres, row.times_read, row.rating, completedAt, completedAt,
+            ]
+          );
+
+          // Update if exists (merge data)
+          await db.runAsync(
+            `UPDATE user_books SET
+              title = COALESCE(title, ?),
+              author = COALESCE(author, ?),
+              narrator = COALESCE(narrator, ?),
+              genres = COALESCE(genres, ?),
+              times_completed = MAX(times_completed, ?),
+              user_rating = COALESCE(user_rating, ?),
+              is_finished = 1,
+              finished_at = COALESCE(finished_at, ?)
+            WHERE book_id = ?`,
+            [
+              row.title, row.author_name, row.narrator_name, row.genres,
+              row.times_read, row.rating, completedAt, row.item_id,
+            ]
+          );
+          migrated++;
+        }
+        console.log(`[SQLiteCache] Migrated ${historyRows.length} read_history records`);
+      });
+
+      // Mark migration as complete
+      await this.setSyncMetadata(migrationKey, 'done');
+      console.log(`[SQLiteCache] user_books migration complete. Migrated: ${migrated}, Skipped: ${skipped}`);
+
+      return { migrated, skipped };
+    } catch (err) {
+      console.error('[SQLiteCache] migrateToUserBooks error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Get count of user_books records
+   */
+  async getUserBooksCount(): Promise<number> {
+    const db = await this.ensureReady();
+    try {
+      const result = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM user_books'
+      );
+      return result?.count || 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  /**
+   * Clear all user_books data (for testing or reset)
+   */
+  async clearUserBooks(): Promise<void> {
+    const db = await this.ensureReady();
+    try {
+      await db.runAsync('DELETE FROM user_books');
+      await db.runAsync('DELETE FROM sync_metadata WHERE key = ?', ['user_books_migration_v1']);
+      console.log('[SQLiteCache] Cleared all user_books data');
+    } catch (err) {
+      console.warn('[SQLiteCache] clearUserBooks error:', err);
     }
   }
 }

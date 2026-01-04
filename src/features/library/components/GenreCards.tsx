@@ -18,7 +18,10 @@ import { Image } from 'expo-image';
 import { Library, BookOpen } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
 import { GenreWithData, getMetaCategoryForGenre } from '../constants/genreCategories';
-import { colors, wp, spacing, radius } from '@/shared/theme';
+import { colors, wp, spacing, radius, accentColors } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+
+const ACCENT = accentColors.red;
 
 const SCREEN_WIDTH = wp(100);
 
@@ -32,51 +35,64 @@ interface GenreCardLargeProps {
 }
 
 export function GenreCardLarge({ genre, onPress }: GenreCardLargeProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const metaCategory = getMetaCategoryForGenre(genre.name);
-  const accentColor = metaCategory?.color || colors.accent;
+  const accentColor = metaCategory?.color || ACCENT;
 
   // Get up to 3 covers for the fan effect
   const covers = useMemo(() => {
     return genre.coverIds.slice(0, 3).map(id => apiClient.getItemCoverUrl(id));
   }, [genre.coverIds]);
 
+  // Calculate card width for 2-column grid (screen width - padding - gap) / 2
+  const cardWidth = (SCREEN_WIDTH - 32 - 12) / 2;
+
   return (
     <TouchableOpacity
-      style={styles.largeCard}
+      style={[
+        styles.largeCard,
+        {
+          width: cardWidth,
+          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+        }
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Cover Fan */}
+      {/* Cover Fan - centered */}
       <View style={styles.coverFan}>
         {covers.length > 0 ? (
-          covers.map((url, index) => (
-            <Image
-              key={index}
-              source={url}
-              style={[
-                styles.fanCover,
-                {
-                  left: index * 20,
-                  zIndex: covers.length - index,
-                  transform: [{ rotate: `${(index - 1) * 5}deg` }],
-                },
-              ]}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-          ))
+          <View style={styles.fanContainer}>
+            {covers.map((url, index) => (
+              <Image
+                key={index}
+                source={url}
+                style={[
+                  styles.fanCover,
+                  {
+                    left: index * 28,
+                    zIndex: covers.length - index,
+                    transform: [{ rotate: `${(index - 1) * 8}deg` }],
+                  },
+                ]}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ))}
+          </View>
         ) : (
           <View style={[styles.fanPlaceholder, { backgroundColor: accentColor + '30' }]}>
-            <Library size={32} color={accentColor} strokeWidth={1.5} />
+            <Library size={40} color={accentColor} strokeWidth={1.5} />
           </View>
         )}
       </View>
 
       {/* Genre Info */}
-      <Text style={styles.largeName} numberOfLines={1}>
+      <Text style={[styles.largeName, { color: themeColors.text }]} numberOfLines={1}>
         {genre.name}
       </Text>
-      <Text style={styles.largeCount}>{genre.bookCount} books</Text>
+      <Text style={[styles.largeCount, { color: themeColors.textTertiary }]}>{genre.bookCount} books</Text>
     </TouchableOpacity>
   );
 }
@@ -91,13 +107,18 @@ interface GenreCardCompactProps {
 }
 
 export function GenreCardCompact({ genre, onPress }: GenreCardCompactProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const coverUrl = genre.coverIds[0]
     ? apiClient.getItemCoverUrl(genre.coverIds[0])
     : null;
 
   return (
     <TouchableOpacity
-      style={styles.compactCard}
+      style={[
+        styles.compactCard,
+        { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -111,21 +132,21 @@ export function GenreCardCompact({ genre, onPress }: GenreCardCompactProps) {
             cachePolicy="memory-disk"
           />
         ) : (
-          <View style={styles.compactPlaceholder}>
-            <BookOpen size={20} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <View style={[styles.compactPlaceholder, { backgroundColor: themeColors.surfaceElevated }]}>
+            <BookOpen size={20} color={themeColors.textTertiary} strokeWidth={1.5} />
           </View>
         )}
       </View>
 
       {/* Genre Info */}
       <View style={styles.compactInfo}>
-        <Text style={styles.compactName} numberOfLines={1}>
+        <Text style={[styles.compactName, { color: themeColors.text }]} numberOfLines={1}>
           {genre.name}
         </Text>
       </View>
 
       {/* Book Count */}
-      <Text style={styles.compactCount}>{genre.bookCount}</Text>
+      <Text style={[styles.compactCount, { color: themeColors.textTertiary }]}>{genre.bookCount}</Text>
     </TouchableOpacity>
   );
 }
@@ -140,13 +161,14 @@ interface GenreListItemProps {
 }
 
 export function GenreListItem({ genre, onPress }: GenreListItemProps) {
+  const themeColors = useThemeColors();
   const coverUrl = genre.coverIds[0]
     ? apiClient.getItemCoverUrl(genre.coverIds[0])
     : null;
 
   return (
     <TouchableOpacity
-      style={styles.listItem}
+      style={[styles.listItem, { borderBottomColor: themeColors.border }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -160,15 +182,15 @@ export function GenreListItem({ genre, onPress }: GenreListItemProps) {
             cachePolicy="memory-disk"
           />
         ) : (
-          <View style={styles.listCoverPlaceholder}>
-            <BookOpen size={16} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <View style={[styles.listCoverPlaceholder, { backgroundColor: themeColors.surfaceElevated }]}>
+            <BookOpen size={16} color={themeColors.textTertiary} strokeWidth={1.5} />
           </View>
         )}
       </View>
-      <Text style={styles.listName} numberOfLines={2}>
+      <Text style={[styles.listName, { color: themeColors.text }]} numberOfLines={2}>
         {genre.name}
       </Text>
-      <Text style={styles.listCount}>{genre.bookCount}</Text>
+      <Text style={[styles.listCount, { color: themeColors.textTertiary }]}>{genre.bookCount}</Text>
     </TouchableOpacity>
   );
 }
@@ -183,8 +205,10 @@ interface PopularGenreCardProps {
 }
 
 export function PopularGenreCard({ genre, onPress }: PopularGenreCardProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const metaCategory = getMetaCategoryForGenre(genre.name);
-  const accentColor = metaCategory?.color || colors.accent;
+  const accentColor = metaCategory?.color || ACCENT;
 
   // Get up to 2 covers
   const covers = useMemo(() => {
@@ -193,7 +217,13 @@ export function PopularGenreCard({ genre, onPress }: PopularGenreCardProps) {
 
   return (
     <TouchableOpacity
-      style={[styles.popularCard, { borderColor: accentColor + '40' }]}
+      style={[
+        styles.popularCard,
+        {
+          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+          borderColor: accentColor + '40'
+        }
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -221,10 +251,10 @@ export function PopularGenreCard({ genre, onPress }: PopularGenreCardProps) {
 
       {/* Info */}
       <View style={styles.popularInfo}>
-        <Text style={styles.popularName} numberOfLines={1}>
+        <Text style={[styles.popularName, { color: themeColors.text }]} numberOfLines={1}>
           {genre.name}
         </Text>
-        <Text style={styles.popularCount}>{genre.bookCount} books</Text>
+        <Text style={[styles.popularCount, { color: themeColors.textTertiary }]}>{genre.bookCount} books</Text>
       </View>
     </TouchableOpacity>
   );
@@ -235,45 +265,53 @@ export function PopularGenreCard({ genre, onPress }: PopularGenreCardProps) {
 // =============================================================================
 
 const styles = StyleSheet.create({
-  // Large Card Styles (Your Genres)
+  // Large Card Styles (Your Genres) - 2-column grid
   largeCard: {
-    width: 150,
-    marginRight: spacing.md,
+    // width calculated dynamically in component
     padding: spacing.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.lg,
   },
   coverFan: {
-    height: 70,
-    marginBottom: 12,
+    height: 95,
+    marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanContainer: {
     position: 'relative',
+    width: 120,
+    height: 95,
   },
   fanCover: {
     position: 'absolute',
-    width: 50,
-    height: 70,
-    borderRadius: 4,
+    width: 65,
+    height: 95,
+    borderRadius: 6,
     shadowColor: '#000',
     shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 4,
   },
   fanPlaceholder: {
-    width: 50,
-    height: 70,
-    borderRadius: 4,
+    width: 65,
+    height: 95,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   largeName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xxs,
+    textAlign: 'center',
   },
   largeCount: {
-    fontSize: 12,
-    color: colors.textTertiary,
+    fontSize: 13,
+    // color set via themeColors in JSX
+    textAlign: 'center',
   },
 
   // Compact Card Styles (Within Meta-categories)
@@ -282,7 +320,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.sm,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.md,
     marginBottom: spacing.sm,
   },
@@ -300,7 +338,7 @@ const styles = StyleSheet.create({
   compactPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -311,11 +349,11 @@ const styles = StyleSheet.create({
   compactName: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   compactCount: {
     fontSize: 12,
-    color: colors.textMuted,
+    // color set via themeColors in JSX
     minWidth: 30,
     textAlign: 'right',
   },
@@ -328,7 +366,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg,
     paddingRight: 36, // Extra space for alphabet index
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    // borderBottomColor set via themeColors in JSX
     minHeight: 56,
   },
   listCoverContainer: {
@@ -345,27 +383,27 @@ const styles = StyleSheet.create({
   listCoverPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
   listName: {
     flex: 1,
     fontSize: 15,
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginRight: spacing.sm,
     lineHeight: 20,
   },
   listCount: {
     fontSize: 14,
-    color: colors.textMuted,
+    // color set via themeColors in JSX
   },
 
   // Popular Card Styles
   popularCard: {
     width: (SCREEN_WIDTH - 48) / 2,
     padding: spacing.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.lg,
     borderWidth: 1,
   },
@@ -393,10 +431,10 @@ const styles = StyleSheet.create({
   popularName: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   popularCount: {
     fontSize: 12,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
 });

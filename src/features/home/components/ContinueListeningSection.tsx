@@ -4,12 +4,11 @@
  * Continue Listening section with card container styling
  * Matches the same styling as YourSeriesSection and RecentlyAddedSection
  *
- * Specs:
- * - Container: 93.5%w (3.25%w margin each side)
- * - Border radius: 2.5%w
- * - Background: subtle glass effect (rgba(255,255,255,0.05))
- * - Border: 1px rgba(102,102,102,0.5)
- * - Horizontal scroll for book cards inside
+ * Features:
+ * - Cover tap: loads book to player (paused)
+ * - Cover long press: opens book details
+ * - Title tap: opens book details
+ * - Shows "time since last played" (e.g., "2h ago", "3d ago")
  */
 
 import React, { useCallback } from 'react';
@@ -25,6 +24,27 @@ import Svg, { Path } from 'react-native-svg';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { colors, wp, hp, moderateScale } from '@/shared/theme';
+
+// Format time ago (e.g., "30 sec ago", "5 min ago", "2 hours ago")
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+
+  if (months > 0) return months === 1 ? '1 month ago' : `${months} months ago`;
+  if (weeks > 0) return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+  if (days > 0) return days === 1 ? '1 day ago' : `${days} days ago`;
+  if (hours > 0) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  if (minutes > 0) return minutes === 1 ? '1 min ago' : `${minutes} min ago`;
+  if (seconds > 10) return `${seconds} sec ago`;
+  return 'just now';
+}
 
 // Layout constants matching other card sections
 const MARGIN_H = wp(3.25);       // 3.25%w horizontal margin
@@ -60,86 +80,120 @@ const PlayIcon = ({ size, color }: { size: number; color: string }) => (
 interface ContinueListeningSectionProps {
   /** List of books to display */
   books: LibraryItem[];
-  /** Callback when a book card is pressed (to resume) */
-  onBookPress: (book: LibraryItem) => void;
-  /** Callback when a book card is long-pressed (to view details) */
-  onBookLongPress?: (book: LibraryItem) => void;
+  /** Callback when cover is pressed (loads book paused) */
+  onCoverPress: (book: LibraryItem) => void;
+  /** Callback when title is pressed or cover is long-pressed (opens details) */
+  onDetailsPress: (book: LibraryItem) => void;
   /** Callback when "View All" is pressed */
   onViewAll: () => void;
 }
 
 /**
  * Individual book card with cover and title
+ * - Cover tap: plays book (paused)
+ * - Cover long press: opens details
+ * - Title tap: opens details
  */
 const ContinueListeningCard = ({
   book,
-  onPress,
-  onLongPress,
+  onCoverPress,
+  onDetailsPress,
 }: {
   book: LibraryItem;
-  onPress: () => void;
-  onLongPress?: () => void;
+  onCoverPress: () => void;
+  onDetailsPress: () => void;
 }) => {
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Unknown';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || '';
   const progress = (book as any).userMediaProgress?.progress || 0;
+
+  // Get lastUpdate from various possible locations in the API response
+  const bookAny = book as any;
+  const rawLastUpdate =
+    bookAny.progressLastUpdate ||
+    bookAny.userMediaProgress?.lastUpdate ||
+    bookAny.mediaProgress?.lastUpdate ||
+    bookAny.recentEpisode?.progress?.lastUpdate;
+
+  // Convert to milliseconds if needed
+  // AudiobookShelf API typically returns timestamps in seconds (Unix timestamp)
+  let lastUpdateMs: number | undefined;
+  if (rawLastUpdate && rawLastUpdate > 0) {
+    // If less than 10 billion, it's definitely in seconds and needs conversion
+    if (rawLastUpdate < 10000000000) {
+      lastUpdateMs = rawLastUpdate * 1000;
+    } else {
+      // Already in milliseconds
+      lastUpdateMs = rawLastUpdate;
+    }
+  }
+
   const hasProgress = progress > 0 && progress < 1;
+  const timeAgo = lastUpdateMs ? formatTimeAgo(lastUpdateMs) : '';
 
   return (
-    <TouchableOpacity
-      style={styles.cardContainer}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      activeOpacity={0.9}
-      accessibilityLabel={author ? `${title} by ${author}, ${Math.round(progress * 100)}% complete` : `${title}, ${Math.round(progress * 100)}% complete`}
-      accessibilityRole="button"
-      accessibilityHint="Double tap to resume. Long press for details."
-    >
-      {/* Cover with play overlay */}
-      <View style={styles.coverWrapper}>
-        <Image
-          source={coverUrl}
-          style={styles.cover}
-          contentFit="cover"
-          transition={200}
-        />
-        {/* Play overlay */}
-        <View style={styles.playOverlay}>
-          <PlayIcon size={wp(7)} color="white" />
-        </View>
-        {/* Progress bar at bottom of cover */}
-        {hasProgress && (
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+    <View style={styles.cardContainer}>
+      {/* Cover - tap to play, long press for details */}
+      <TouchableOpacity
+        onPress={onCoverPress}
+        onLongPress={onDetailsPress}
+        activeOpacity={0.9}
+        accessibilityLabel={author ? `${title} by ${author}, ${Math.round(progress * 100)}% complete` : `${title}, ${Math.round(progress * 100)}% complete`}
+        accessibilityRole="button"
+        accessibilityHint="Tap to play. Long press for details."
+      >
+        <View style={styles.coverWrapper}>
+          <Image
+            source={coverUrl}
+            style={styles.cover}
+            contentFit="cover"
+            transition={200}
+          />
+          {/* Play overlay */}
+          <View style={styles.playOverlay}>
+            <PlayIcon size={wp(7)} color="white" />
           </View>
-        )}
-      </View>
+          {/* Progress bar at bottom of cover */}
+          {hasProgress && (
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
 
-      {/* Title - left aligned */}
-      <Text style={styles.cardTitle} numberOfLines={2}>
-        {title}
-      </Text>
-    </TouchableOpacity>
+      {/* Title - tap for details */}
+      <TouchableOpacity onPress={onDetailsPress} activeOpacity={0.7}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {title}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Time since last played */}
+      {timeAgo ? (
+        <Text style={styles.timeAgo}>{timeAgo}</Text>
+      ) : null}
+    </View>
   );
 };
 
 export function ContinueListeningSection({
   books,
-  onBookPress,
-  onBookLongPress,
+  onCoverPress,
+  onDetailsPress,
   onViewAll,
 }: ContinueListeningSectionProps) {
   const renderCard = useCallback(
     ({ item }: { item: LibraryItem }) => (
       <ContinueListeningCard
         book={item}
-        onPress={() => onBookPress(item)}
-        onLongPress={onBookLongPress ? () => onBookLongPress(item) : undefined}
+        onCoverPress={() => onCoverPress(item)}
+        onDetailsPress={() => onDetailsPress(item)}
       />
     ),
-    [onBookPress, onBookLongPress]
+    [onCoverPress, onDetailsPress]
   );
 
   if (books.length === 0) return null;
@@ -217,6 +271,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: moderateScale(11),
     marginTop: hp(0.6),
+  },
+  timeAgo: {
+    width: CARD.titleWidth,
+    textAlign: 'left',
+    color: colors.textSecondary,
+    fontSize: moderateScale(10),
+    marginTop: hp(0.3),
   },
 });
 

@@ -287,8 +287,8 @@ function matchFrontBackMatter(title: string): ParsedChapter | null {
  * Most common pattern - ~50,000 occurrences in real libraries
  */
 function matchTrackBased(title: string, bookTitle?: string): ParsedChapter | null {
-  // Match: N - Content or N – Content or N — Content
-  const trackMatch = title.match(/^(\d{1,3})\s*[-–—]\s*(.+)$/);
+  // Match: N - Content or N – Content or N — Content or N_ Content
+  const trackMatch = title.match(/^(\d{1,3})\s*[-–—_]\s*(.+)$/);
   if (!trackMatch) return null;
 
   const trackNum = parseInt(trackMatch[1], 10);
@@ -391,6 +391,70 @@ function matchTrackBased(title: string, bookTitle?: string): ParsedChapter | nul
         ? `Chapter ${chapterNum}: ${chapterTitle}`
         : `Chapter ${chapterNum}`,
       confidence: 0.9,
+    };
+  }
+
+  // Check if content is a Part reference with possible nested chapter
+  const directPart = content.match(
+    /^(?:PART|Part|part)\s+(\d+|[IVXLCDM]+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)(?:\s*[-–—:.\s]\s*(.+))?$/i
+  );
+  if (directPart) {
+    const partNum = parseChapterNumber(directPart[1]);
+    const partTitle = directPart[2]?.trim() || null;
+
+    // Check if there's a chapter buried inside the part title (e.g., "Part I - Section - Chapter 5: Title")
+    if (partTitle) {
+      const nestedChapter = partTitle.match(
+        /[-–—]\s*(?:CHAPTER|Chapter|chapter|Ch\.?)\s*(\d+)(?:\s*[-–—:.\s]\s*(.+))?$/i
+      );
+      if (nestedChapter) {
+        const chapterNum = parseInt(nestedChapter[1], 10);
+        const chapterTitle = nestedChapter[2]?.trim() || null;
+        return {
+          original: title,
+          trackNumber: trackNum,
+          bookTitle: null,
+          chapterType: 'chapter',
+          chapterNumber: chapterNum,
+          chapterTitle,
+          displayName: chapterTitle
+            ? `Chapter ${chapterNum}: ${chapterTitle}`
+            : `Chapter ${chapterNum}`,
+          confidence: 0.85,
+        };
+      }
+    }
+
+    return {
+      original: title,
+      trackNumber: trackNum,
+      bookTitle: null,
+      chapterType: 'part',
+      chapterNumber: partNum,
+      chapterTitle: partTitle,
+      displayName: partTitle ? `Part ${partNum}: ${partTitle}` : `Part ${partNum}`,
+      confidence: 0.9,
+    };
+  }
+
+  // Check for chapter reference anywhere in content (e.g., "BookTitle - Chapter 5: Name")
+  const buriedChapter = content.match(
+    /[-–—]\s*(?:CHAPTER|Chapter|chapter|Ch\.?)\s*(\d+)(?:\s*[-–—:.\s]\s*(.+))?$/i
+  );
+  if (buriedChapter) {
+    const chapterNum = parseInt(buriedChapter[1], 10);
+    const chapterTitle = buriedChapter[2]?.trim() || null;
+    return {
+      original: title,
+      trackNumber: trackNum,
+      bookTitle: null,
+      chapterType: 'chapter',
+      chapterNumber: chapterNum,
+      chapterTitle,
+      displayName: chapterTitle
+        ? `Chapter ${chapterNum}: ${chapterTitle}`
+        : `Chapter ${chapterNum}`,
+      confidence: 0.8,
     };
   }
 

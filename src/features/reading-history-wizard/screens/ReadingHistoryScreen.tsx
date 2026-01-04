@@ -41,34 +41,32 @@ import { Image } from 'expo-image';
 import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useGalleryStore, FilterState, DurationFilter } from '../stores/galleryStore';
+import { useFinishedBooks, useBulkMarkFinished } from '@/core/hooks/useUserBooks';
+import { finishedBooksSync } from '@/core/services/finishedBooksSync';
 import { FilterSheet } from '../components/FilterSheet';
 import { SortSheet, SortOption } from '../components/SortSheet';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { wp, hp, moderateScale, spacing } from '@/shared/theme';
+import { useTheme, accentColors, wp, hp, moderateScale, spacing } from '@/shared/theme';
 
 // =============================================================================
-// COLORS (matching MarkBooksScreen)
+// THEME COLORS INTERFACE (for createStyles)
 // =============================================================================
 
-const COLORS = {
-  accent: '#F3B60C',
-  accentDim: 'rgba(243, 182, 12, 0.15)',
-
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-  textHint: 'rgba(255, 255, 255, 0.35)',
-
-  surface: 'rgba(255, 255, 255, 0.05)',
-  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
-
-  success: '#22C55E',
-  danger: '#EF4444',
-
-  background: '#0A0A0A',
-};
+interface ThemeColorsConfig {
+  accent: string;
+  accentDim: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  textHint: string;
+  surface: string;
+  surfaceBorder: string;
+  success: string;
+  danger: string;
+  background: string;
+}
 
 // =============================================================================
 // LAYOUT CONSTANTS
@@ -609,15 +607,47 @@ export function ReadingHistoryScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
 
-  // Store
-  const markedBooks = useGalleryStore((s) => s.markedBooks);
-  const unmarkBook = useGalleryStore((s) => s.unmarkBook);
-  const syncToServer = useGalleryStore((s) => s.syncToServer);
+  // Theme-aware colors
+  const { colors: themeColors } = useTheme();
+  const COLORS: ThemeColorsConfig = useMemo(() => ({
+    accent: accentColors.gold,
+    accentDim: 'rgba(243, 182, 12, 0.15)',
+    textPrimary: themeColors.text.primary,
+    textSecondary: themeColors.text.secondary,
+    textTertiary: themeColors.text.tertiary,
+    textHint: 'rgba(255, 255, 255, 0.35)',
+    surface: themeColors.surface.default,
+    surfaceBorder: themeColors.border.default,
+    success: themeColors.semantic.success,
+    danger: themeColors.semantic.error,
+    background: themeColors.background.primary,
+  }), [themeColors]);
+
+  // Theme-aware styles
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+
+  // Finished books from SQLite (single source of truth)
+  const { data: finishedBooksData = [], refetch: refetchFinishedBooks } = useFinishedBooks();
+  const bulkMarkFinished = useBulkMarkFinished();
+
+  // Gallery store for UI filters only
   const filters = useGalleryStore((s) => s.filters);
   const setFilters = useGalleryStore((s) => s.setFilters);
   const clearFilters = useGalleryStore((s) => s.clearFilters);
   const getActiveFilterCount = useGalleryStore((s) => s.getActiveFilterCount);
   const items = useLibraryCache((s) => s.items);
+
+  // Build a map of finished books for quick lookup
+  const finishedBooksMap = useMemo(() => {
+    const map = new Map<string, { finishedAt: number; synced: boolean }>();
+    for (const book of finishedBooksData) {
+      map.set(book.bookId, {
+        finishedAt: book.finishedAt || Date.now(),
+        synced: book.finishedSynced ?? false,
+      });
+    }
+    return map;
+  }, [finishedBooksData]);
 
   // UI State
   const [sortBy, setSortBy] = useState<SortOption>('recent');
@@ -633,7 +663,7 @@ export function ReadingHistoryScreen() {
   const historyBooks = useMemo((): HistoryBook[] => {
     let books: HistoryBook[] = [];
 
-    markedBooks.forEach((marked, bookId) => {
+    finishedBooksMap.forEach((marked, bookId) => {
       const item = items.find((i) => i.id === bookId);
       if (item) {
         books.push({
@@ -644,7 +674,7 @@ export function ReadingHistoryScreen() {
           genres: getGenres(item),
           duration: getDuration(item),
           coverUrl: getCoverUrl(bookId),
-          markedAt: marked.markedAt,
+          markedAt: marked.finishedAt,
           synced: marked.synced,
         });
       }
@@ -711,14 +741,14 @@ export function ReadingHistoryScreen() {
     }
 
     return books;
-  }, [markedBooks, items, sortBy, filters, searchQuery]);
+  }, [finishedBooksMap, items, sortBy, filters, searchQuery]);
 
   // Stats
   const stats = useMemo(() => {
     let totalDuration = 0;
     let syncedCount = 0;
 
-    markedBooks.forEach((marked, bookId) => {
+    finishedBooksMap.forEach((marked, bookId) => {
       const item = items.find((i) => i.id === bookId);
       if (item) {
         totalDuration += getDuration(item);
@@ -726,7 +756,7 @@ export function ReadingHistoryScreen() {
       }
     });
 
-    const totalBooks = markedBooks.size;
+    const totalBooks = finishedBooksMap.size;
     const syncPercentage = totalBooks > 0 ? Math.round((syncedCount / totalBooks) * 100) : 100;
 
     return {
@@ -735,7 +765,7 @@ export function ReadingHistoryScreen() {
       syncedCount,
       syncPercentage,
     };
-  }, [markedBooks, items]);
+  }, [finishedBooksMap, items]);
 
   // Available filters computed from all books (before filtering)
   const availableFilters = useMemo(() => {
@@ -743,7 +773,7 @@ export function ReadingHistoryScreen() {
     const authorMap = new Map<string, number>();
     const seriesMap = new Map<string, number>();
 
-    markedBooks.forEach((_, bookId) => {
+    finishedBooksMap.forEach((_, bookId) => {
       const item = items.find((i) => i.id === bookId);
       if (!item) return;
 
@@ -784,7 +814,7 @@ export function ReadingHistoryScreen() {
         })
         .sort((a, b) => b.count - a.count),
     };
-  }, [markedBooks, items]);
+  }, [finishedBooksMap, items]);
 
   // Active filters for display
   const activeFilters = useMemo((): ActiveFilter[] => {
@@ -864,7 +894,8 @@ export function ReadingHistoryScreen() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      await syncToServer();
+      await finishedBooksSync.syncToServer();
+      await refetchFinishedBooks();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.warn('[ReadingHistory] Sync failed:', error);
@@ -872,7 +903,7 @@ export function ReadingHistoryScreen() {
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, syncToServer]);
+  }, [isSyncing, refetchFinishedBooks]);
 
   // Handle removing a single filter
   const handleRemoveFilter = useCallback((filterId: string) => {
@@ -911,7 +942,7 @@ export function ReadingHistoryScreen() {
     if (selectedIds.size === 0) return;
 
     const unsyncedIds = Array.from(selectedIds).filter((id) => {
-      const marked = markedBooks.get(id);
+      const marked = finishedBooksMap.get(id);
       return marked && !marked.synced;
     });
 
@@ -919,7 +950,8 @@ export function ReadingHistoryScreen() {
 
     setIsSyncing(true);
     try {
-      await syncToServer();
+      await finishedBooksSync.syncToServer();
+      await refetchFinishedBooks();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.warn('[ReadingHistory] Sync selected failed:', error);
@@ -929,15 +961,15 @@ export function ReadingHistoryScreen() {
       setSelectedIds(new Set());
       setIsSelecting(false);
     }
-  }, [selectedIds, markedBooks, syncToServer]);
+  }, [selectedIds, finishedBooksMap, refetchFinishedBooks]);
 
   // Count unsynced in selection
   const unsyncedSelectedCount = useMemo(() => {
     return Array.from(selectedIds).filter((id) => {
-      const marked = markedBooks.get(id);
+      const marked = finishedBooksMap.get(id);
       return marked && !marked.synced;
     }).length;
-  }, [selectedIds, markedBooks]);
+  }, [selectedIds, finishedBooksMap]);
 
   // Handlers
   const handleClose = useCallback(() => {
@@ -987,16 +1019,19 @@ export function ReadingHistoryScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            selectedIds.forEach((id) => unmarkBook(id));
+            await bulkMarkFinished.mutateAsync({
+              bookIds: Array.from(selectedIds),
+              isFinished: false,
+            });
             setSelectedIds(new Set());
             setIsSelecting(false);
           },
         },
       ]
     );
-  }, [selectedIds, unmarkBook]);
+  }, [selectedIds, bulkMarkFinished]);
 
   const handleItemPress = useCallback((bookId: string) => {
     if (isSelecting) {
@@ -1142,10 +1177,10 @@ export function ReadingHistoryScreen() {
 }
 
 // =============================================================================
-// STYLES
+// STYLES (factory function for theme support)
 // =============================================================================
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

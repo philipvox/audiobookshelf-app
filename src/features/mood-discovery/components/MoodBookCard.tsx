@@ -2,6 +2,7 @@
  * src/features/mood-discovery/components/MoodBookCard.tsx
  *
  * Book card with match percentage badge for mood discovery results.
+ * Now shows match attribution tags for why the book matched.
  */
 
 import React from 'react';
@@ -21,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
 import type { LibraryItem } from '@/core/types';
 import { ScoredBook } from '../types';
+import { Icon } from '@/shared/components/Icon';
 import { colors, spacing, radius, formatDuration } from '@/shared/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -44,6 +46,32 @@ function getMatchQuality(percent: number): { label: string; color: string } {
   if (percent >= 60) return { label: 'Good Match', color: colors.accent };
   if (percent >= 40) return { label: 'Partial', color: colors.warning };
   return { label: '', color: colors.textTertiary };
+}
+
+/**
+ * Get matched dimensions from score breakdown
+ */
+function getMatchedDimensions(scoreData: ScoredBook): { icon: string; label: string }[] {
+  const matches: { icon: string; label: string }[] = [];
+  const score = scoreData.score;
+
+  if (score.moodScore > 0) {
+    matches.push({ icon: 'Heart', label: 'Mood' });
+  }
+  if (score.paceScore > 0) {
+    matches.push({ icon: 'Flame', label: 'Energy' });
+  }
+  if (score.weightScore > 0) {
+    matches.push({ icon: 'Sun', label: 'Tone' });
+  }
+  if (score.worldScore > 0) {
+    matches.push({ icon: 'Globe', label: 'World' });
+  }
+  if (score.lengthScore > 0) {
+    matches.push({ icon: 'Timer', label: 'Length' });
+  }
+
+  return matches;
 }
 
 export function MoodBookCard({
@@ -79,6 +107,8 @@ export function MoodBookCard({
   const matchQuality = scoreData
     ? getMatchQuality(scoreData.matchPercent)
     : null;
+
+  const matchedDimensions = scoreData ? getMatchedDimensions(scoreData) : [];
 
   return (
     <AnimatedPressable
@@ -119,6 +149,25 @@ export function MoodBookCard({
         <Text style={styles.duration}>
           {formatDuration.short(duration)}
         </Text>
+        {/* Match attribution icons */}
+        {matchedDimensions.length > 0 && (
+          <View style={styles.matchTags}>
+            {matchedDimensions.slice(0, 3).map((dim, i) => (
+              <View key={dim.label} style={styles.matchTag}>
+                <Icon
+                  name={dim.icon}
+                  size={10}
+                  color={colors.textTertiary}
+                />
+              </View>
+            ))}
+            {matchedDimensions.length > 3 && (
+              <Text style={styles.moreMatches}>
+                +{matchedDimensions.length - 3}
+              </Text>
+            )}
+          </View>
+        )}
       </View>
     </AnimatedPressable>
   );
@@ -169,5 +218,24 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 11,
     color: colors.textTertiary,
+  },
+  matchTags: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xxs,
+    gap: 4,
+  },
+  matchTag: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.backgroundTertiary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreMatches: {
+    fontSize: 9,
+    color: colors.textTertiary,
+    fontWeight: '500',
   },
 });

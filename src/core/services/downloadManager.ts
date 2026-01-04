@@ -12,6 +12,10 @@ import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { formatBytes } from '@/shared/utils/format';
 import { haptics } from '@/core/native/haptics';
+import { trackEvent } from '@/core/monitoring';
+import { eventBus } from '@/core/events';
+import { generateAndCacheTicks } from '@/features/player/services/tickCache';
+import { ChapterInput } from '@/features/player/utils/tickGenerator';
 
 // =============================================================================
 // LOGGING
@@ -50,6 +54,7 @@ export interface DownloadTask {
   totalBytes: number;
   error?: string;
   completedAt?: number;
+  libraryItem?: LibraryItem; // Included for complete downloads
 }
 
 type DownloadListener = (tasks: DownloadTask[]) => void;
@@ -79,6 +84,11 @@ class DownloadManager {
   // Throttle notifications to avoid excessive UI updates
   private lastNotifyTime = 0;
   private readonly NOTIFY_THROTTLE_MS = 500; // Notify UI every 500ms max
+
+  // Cache for failed API fetches to avoid repeated requests for deleted books
+  // Maps itemId -> timestamp of last failed fetch
+  private failedFetchCache: Map<string, number> = new Map();
+  private readonly FAILED_FETCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
   // Directory for downloaded files
   private readonly DOWNLOAD_DIR = `${FileSystem.documentDirectory}audiobooks/`;
@@ -112,6 +122,10 @@ class DownloadManager {
     const downloading = await sqliteCache.getDownloadsByStatus('downloading');
     if (downloading.length > 0) {
       log(`Found ${downloading.length} stuck downloads from previous session, resetting to pending...`);
+      trackEvent('download_stuck_on_init', {
+        stuck_count: downloading.length,
+        item_ids: downloading.map(d => d.itemId).slice(0, 5), // First 5 for debugging
+      }, 'warning');
       for (const item of downloading) {
         // Reset to pending so they can be retried
         await sqliteCache.addToDownloadQueue(item.itemId, 0);
@@ -411,7 +425,7 @@ class DownloadManager {
     if (!record) return null;
 
     const progressInfo = this.progressInfo.get(itemId);
-    return {
+    const task: DownloadTask = {
       itemId: record.itemId,
       status: record.status,
       progress: record.progress,
@@ -419,6 +433,37 @@ class DownloadManager {
       totalBytes: progressInfo?.totalBytes || record.fileSize || 0,
       error: record.error || undefined,
     };
+
+    // Include library item for completed downloads
+    if (record.status === 'complete') {
+      let libraryItem = await sqliteCache.getLibraryItem(itemId);
+
+      // If not in cache, try to fetch from API (with cooldown for failed fetches)
+      if (!libraryItem) {
+        const lastFailedFetch = this.failedFetchCache.get(itemId);
+        const shouldTryFetch = !lastFailedFetch ||
+          (Date.now() - lastFailedFetch) > this.FAILED_FETCH_COOLDOWN_MS;
+
+        if (shouldTryFetch) {
+          try {
+            libraryItem = await apiClient.getItem(itemId);
+            logVerbose(`Fetched missing library item from API: ${itemId}`);
+            // Clear from failed cache on success
+            this.failedFetchCache.delete(itemId);
+          } catch (err) {
+            // Add to failed cache to prevent repeated attempts
+            this.failedFetchCache.set(itemId, Date.now());
+            logWarn(`Failed to fetch library item ${itemId} from API (cached for 5 min):`, err);
+          }
+        }
+      }
+
+      if (libraryItem) {
+        task.libraryItem = libraryItem;
+      }
+    }
+
+    return task;
   }
 
   /**
@@ -426,17 +471,54 @@ class DownloadManager {
    */
   async getAllDownloads(): Promise<DownloadTask[]> {
     const records = await sqliteCache.getAllDownloads();
-    return records.map((r) => {
-      const progressInfo = this.progressInfo.get(r.itemId);
-      return {
-        itemId: r.itemId,
-        status: r.status,
-        progress: r.progress,
-        bytesDownloaded: progressInfo?.bytesDownloaded || 0,
-        totalBytes: progressInfo?.totalBytes || r.fileSize || 0,
-        error: r.error || undefined,
-      };
-    });
+
+    // Fetch library items for completed downloads
+    const tasks = await Promise.all(
+      records.map(async (r) => {
+        const progressInfo = this.progressInfo.get(r.itemId);
+        const task: DownloadTask = {
+          itemId: r.itemId,
+          status: r.status,
+          progress: r.progress,
+          bytesDownloaded: progressInfo?.bytesDownloaded || 0,
+          totalBytes: progressInfo?.totalBytes || r.fileSize || 0,
+          error: r.error || undefined,
+        };
+
+        // Include library item for completed downloads
+        if (r.status === 'complete') {
+          let libraryItem = await sqliteCache.getLibraryItem(r.itemId);
+
+          // If not in cache, try to fetch from API (with cooldown for failed fetches)
+          if (!libraryItem) {
+            const lastFailedFetch = this.failedFetchCache.get(r.itemId);
+            const shouldTryFetch = !lastFailedFetch ||
+              (Date.now() - lastFailedFetch) > this.FAILED_FETCH_COOLDOWN_MS;
+
+            if (shouldTryFetch) {
+              try {
+                libraryItem = await apiClient.getItem(r.itemId);
+                logVerbose(`Fetched missing library item from API: ${r.itemId}`);
+                // Clear from failed cache on success
+                this.failedFetchCache.delete(r.itemId);
+              } catch (err) {
+                // Add to failed cache to prevent repeated attempts
+                this.failedFetchCache.set(r.itemId, Date.now());
+                logWarn(`Failed to fetch library item ${r.itemId} from API (cached for 5 min):`, err);
+              }
+            }
+          }
+
+          if (libraryItem) {
+            task.libraryItem = libraryItem;
+          }
+        }
+
+        return task;
+      })
+    );
+
+    return tasks;
   }
 
   /**
@@ -451,6 +533,70 @@ class DownloadManager {
    */
   getLocalPath(itemId: string): string {
     return `${this.DOWNLOAD_DIR}${itemId}/`;
+  }
+
+  /**
+   * Get list of downloaded audio files for an item.
+   * Returns array of file paths in order, or empty array if none downloaded.
+   * Used for partial download playback.
+   */
+  async getDownloadedFiles(itemId: string): Promise<string[]> {
+    const localPath = this.getLocalPath(itemId);
+    try {
+      const info = await FileSystem.getInfoAsync(localPath);
+      if (!info.exists || !info.isDirectory) {
+        return [];
+      }
+
+      const contents = await FileSystem.readDirectoryAsync(localPath);
+      const audioExtensions = ['.m4b', '.m4a', '.mp3', '.mp4', '.opus', '.ogg', '.flac', '.aac'];
+      const audioFiles = contents
+        .filter(name => audioExtensions.some(ext => name.toLowerCase().endsWith(ext)))
+        .sort() // Files are named 000_, 001_, etc. so sorting works
+        .map(name => `${localPath}${name}`);
+
+      return audioFiles;
+    } catch (error) {
+      logWarn(`Error getting downloaded files for ${itemId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if an item has any files ready for playback.
+   * Returns true if at least the first audio file is downloaded.
+   * Used to enable "Play while downloading" functionality.
+   */
+  async canPlayPartially(itemId: string): Promise<boolean> {
+    const files = await this.getDownloadedFiles(itemId);
+    return files.length > 0;
+  }
+
+  /**
+   * Get the download progress including file-level details.
+   * Used for partial download playback to know which chapters/files are available.
+   */
+  async getDetailedProgress(itemId: string): Promise<{
+    status: string;
+    progress: number;
+    downloadedFiles: number;
+    totalFiles: number;
+    filesReady: string[];
+  } | null> {
+    const record = await sqliteCache.getDownload(itemId);
+    if (!record) return null;
+
+    const downloadedFiles = await this.getDownloadedFiles(itemId);
+
+    // Get total files from the in-progress download if available
+    // Otherwise use the count of downloaded files
+    return {
+      status: record.status,
+      progress: record.progress,
+      downloadedFiles: downloadedFiles.length,
+      totalFiles: downloadedFiles.length, // This gets updated as download progresses
+      filesReady: downloadedFiles,
+    };
   }
 
   /**
@@ -524,6 +670,10 @@ class DownloadManager {
     // If we have active downloads but no progress for 2 minutes, consider it stuck
     if (this.activeDownloads.size > 0) {
       log(`Resetting ${this.activeDownloads.size} stuck active downloads`);
+      trackEvent('download_stuck_reset', {
+        stuck_count: this.activeDownloads.size,
+        active_ids: Array.from(this.activeDownloads.keys()).slice(0, 5),
+      }, 'warning');
       await this.cancelAllDownloads();
       return true;
     }
@@ -531,6 +681,7 @@ class DownloadManager {
     // Also check if isProcessingQueue is stuck
     if (this.isProcessingQueue) {
       log('Resetting stuck processing queue flag');
+      trackEvent('download_queue_stuck_reset', {}, 'warning');
       this.isProcessingQueue = false;
       return true;
     }
@@ -810,6 +961,14 @@ class DownloadManager {
 
         downloadedSize += fileSize;
         log(`File ${i + 1} complete. Downloaded so far: ${formatBytes(downloadedSize)}`);
+
+        // Emit file complete event for partial download playback
+        eventBus.emit('download:file_complete', {
+          bookId: itemId,
+          fileIndex: i,
+          totalFiles: audioFiles.length,
+          filePath: destPath,
+        });
       }
 
       // Download cover image
@@ -832,6 +991,34 @@ class DownloadManager {
       // Haptic feedback for download complete
       haptics.downloadComplete();
 
+      // Pre-generate and cache timeline ticks for downloaded book
+      try {
+        const bookChapters = fullItem.media?.chapters || [];
+        const bookDuration = fullItem.media?.duration || 0;
+
+        if (bookDuration > 0 && bookChapters.length > 0) {
+          const chapterInputs: ChapterInput[] = bookChapters.map((ch: any, i: number) => ({
+            start: ch.start || 0,
+            end: ch.end || bookChapters[i + 1]?.start || bookDuration,
+            displayTitle: ch.title,
+          }));
+
+          log(`Pre-generating timeline ticks for "${title}"...`);
+          await generateAndCacheTicks(itemId, bookDuration, chapterInputs, true);
+          log(`Timeline ticks cached for "${title}"`);
+        }
+      } catch (tickError) {
+        logWarn(`Failed to pre-generate ticks for "${title}":`, tickError);
+        // Non-fatal - ticks will be generated on first play
+      }
+
+      // Emit download complete event
+      eventBus.emit('download:complete', {
+        bookId: itemId,
+        totalSize,
+        filePath: destDir,
+      });
+
       // Process next item in queue
       this.processQueue();
     } catch (error) {
@@ -853,6 +1040,12 @@ class DownloadManager {
 
       // Haptic feedback for download failed
       haptics.downloadFailed();
+
+      // Emit download failed event
+      eventBus.emit('download:failed', {
+        bookId: itemId,
+        error: message,
+      });
 
       // Process next item in queue
       this.processQueue();

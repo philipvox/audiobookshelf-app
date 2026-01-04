@@ -29,11 +29,10 @@ import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, spacing, radius } from '@/shared/theme';
+import { accentColors, spacing, radius } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const BG_COLOR = colors.backgroundPrimary;
-const CARD_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
+const ACCENT = accentColors.red;
 
 type SortType = 'name' | 'bookCount' | 'recent';
 
@@ -65,6 +64,7 @@ function getInitials(name: string): string {
 export function AuthorsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortType>('name');
@@ -230,10 +230,10 @@ export function AuthorsListScreen() {
 
       {/* Info */}
       <View style={styles.authorInfo}>
-        <Text style={styles.authorName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.bookCount}>{item.bookCount} books in library</Text>
+        <Text style={[styles.authorName, { color: themeColors.text }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>{item.bookCount} books in library</Text>
         {item.topGenres.length > 0 && (
-          <Text style={styles.genres} numberOfLines={1}>
+          <Text style={[styles.genres, { color: themeColors.textTertiary }]} numberOfLines={1}>
             {item.topGenres.join(', ')}
           </Text>
         )}
@@ -261,37 +261,37 @@ export function AuthorsListScreen() {
           <Text style={styles.yourAuthorAvatarText}>{getInitials(author.name)}</Text>
         )}
       </View>
-      <Text style={styles.yourAuthorName} numberOfLines={2}>{author.name}</Text>
-      <Text style={styles.yourAuthorBooks}>{author.bookCount} books</Text>
+      <Text style={[styles.yourAuthorName, { color: themeColors.text }]} numberOfLines={2}>{author.name}</Text>
+      <Text style={[styles.yourAuthorBooks, { color: themeColors.textSecondary }]}>{author.bookCount} books</Text>
     </TouchableOpacity>
   );
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
+          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <View style={styles.searchContainer}>
-          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
+        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
+          <Icon name="Search" size={18} color={themeColors.textTertiary} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: themeColors.text }]}
             placeholder="Search authors..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={themeColors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
@@ -300,7 +300,7 @@ export function AuthorsListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
+              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
             </TouchableOpacity>
           )}
         </View>
@@ -308,15 +308,15 @@ export function AuthorsListScreen() {
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={styles.resultCount}>{filteredAuthors.length} authors</Text>
+        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{filteredAuthors.length} authors</Text>
         <View style={styles.sortButtons}>
           {(['name', 'bookCount', 'recent'] as SortType[]).map(type => (
             <TouchableOpacity
               key={type}
-              style={[styles.sortButton, sortBy === type && styles.sortButtonActive]}
+              style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === type && styles.sortButtonActive]}
               onPress={() => setSortBy(type)}
             >
-              <Text style={[styles.sortButtonText, sortBy === type && styles.sortButtonTextActive]}>
+              <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === type && styles.sortButtonTextActive]}>
                 {type === 'name' ? 'A-Z' : type === 'bookCount' ? 'Books' : 'Recent'}
               </Text>
             </TouchableOpacity>
@@ -343,7 +343,7 @@ export function AuthorsListScreen() {
           ListHeaderComponent={
             !isSearching && yourAuthors.length > 0 ? (
               <View style={styles.yourAuthorsSection}>
-                <Text style={styles.sectionTitle}>Your Authors</Text>
+                <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Your Authors</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -356,7 +356,7 @@ export function AuthorsListScreen() {
           }
           renderSectionHeader={({ section }) =>
             section.title ? (
-              <View style={styles.letterHeader}>
+              <View style={[styles.letterHeader, { backgroundColor: themeColors.background }]}>
                 <Text style={styles.letterText}>{section.title}</Text>
               </View>
             ) : null
@@ -385,7 +385,7 @@ export function AuthorsListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -404,14 +404,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     fontSize: 15,
     marginLeft: 8,
     paddingVertical: 0,
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 16,
   },
   sortBar: {
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   resultCount: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 14,
   },
   sortButtons: {
@@ -447,18 +447,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
   },
   sortButtonActive: {
     backgroundColor: ACCENT,
   },
   sortButtonText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors.textSecondary in JSX
     fontWeight: '500',
   },
   sortButtonTextActive: {
-    color: '#000',
+    color: '#000', // Black on gold accent (intentional)
   },
   content: {
     flex: 1,
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     letterSpacing: 0.5,
     paddingHorizontal: 16,
     marginBottom: 12,
@@ -499,22 +499,22 @@ const styles = StyleSheet.create({
   yourAuthorAvatarText: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#000',
+    color: '#000', // Black on colored avatar (intentional)
   },
   yourAuthorName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     textAlign: 'center',
     marginBottom: 2,
   },
   yourAuthorBooks: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
   },
   // Letter header
   letterHeader: {
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
     paddingVertical: 6,
     paddingHorizontal: 16,
   },
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: '#000', // Black on colored avatar (intentional)
   },
   authorInfo: {
     flex: 1,
@@ -555,16 +555,16 @@ const styles = StyleSheet.create({
   authorName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     marginBottom: 2,
   },
   bookCount: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors.textSecondary in JSX
     marginBottom: 2,
   },
   genres: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
+    // color set via themeColors.textTertiary in JSX
   },
-  });
+});

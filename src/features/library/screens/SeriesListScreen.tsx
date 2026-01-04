@@ -17,7 +17,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllSeries } from '@/core/cache';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
@@ -25,19 +25,23 @@ import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { SeriesHeartButton } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, wp, spacing, radius } from '@/shared/theme';
+import { accentColors, wp, spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
 const SCREEN_WIDTH = wp(100);
-const BG_COLOR = colors.backgroundPrimary;
-const CARD_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
-const ACCENT_DIM = 'rgba(243,182,12,0.5)';
+const ACCENT = accentColors.red;
+const ACCENT_DIM = 'rgba(229,57,53,0.5)';
 const PADDING = 16;
 const GAP = 12;
 const COLUMNS = 2;
 const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / COLUMNS;
-const COVER_SIZE = CARD_WIDTH * 0.55;
-const MAX_VISIBLE_BOOKS = 10;
+
+// Fanned cover dimensions
+const COVER_SIZE = 60;
+const FAN_OFFSET = 18;
+const FAN_ROTATION = 8;
+const FAN_VERTICAL_OFFSET = 6; // Center is higher, sides lower
+const MAX_VISIBLE_BOOKS = 5;
 const MAX_PROGRESS_DOTS = 8;
 
 // Progress dot component
@@ -106,6 +110,8 @@ type SortDirection = 'asc' | 'desc';
 export function SeriesListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const inputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortType>('name');
@@ -114,15 +120,37 @@ export function SeriesListScreen() {
 
   const { refreshCache, isLoaded } = useLibraryCache();
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
+  const hideSingleBookSeries = useMyLibraryStore((state) => state.hideSingleBookSeries);
+
+  // Cache favorites for sorting - only update when screen is focused
+  const [cachedFavorites, setCachedFavorites] = useState<string[]>(favoriteSeriesNames);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Update cached favorites when screen comes into focus
+      setCachedFavorites(favoriteSeriesNames);
+    }, [favoriteSeriesNames])
+  );
 
   const allSeries = useMemo(() => getAllSeries(), [isLoaded]);
 
-  // Filter series by search query
+  // Filter series by search query and preferences
   const filteredSeries = useMemo(() => {
-    if (!searchQuery.trim()) return allSeries;
-    const lowerQuery = searchQuery.toLowerCase();
-    return allSeries.filter(s => s.name.toLowerCase().includes(lowerQuery));
-  }, [allSeries, searchQuery]);
+    let result = allSeries;
+
+    // Filter out single-book series if setting is enabled
+    if (hideSingleBookSeries) {
+      result = result.filter(s => s.bookCount > 1);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter(s => s.name.toLowerCase().includes(lowerQuery));
+    }
+
+    return result;
+  }, [allSeries, searchQuery, hideSingleBookSeries]);
 
   const sortedSeries = useMemo(() => {
     const sorted = [...filteredSeries];
@@ -138,17 +166,17 @@ export function SeriesListScreen() {
         break;
     }
 
-    // Move favorites to top
+    // Move favorites to top (using cached list so order doesn't change until page revisit)
     sorted.sort((a, b) => {
-      const aFav = favoriteSeriesNames.includes(a.name);
-      const bFav = favoriteSeriesNames.includes(b.name);
+      const aFav = cachedFavorites.includes(a.name);
+      const bFav = cachedFavorites.includes(b.name);
       if (aFav && !bFav) return -1;
       if (!aFav && bFav) return 1;
       return 0;
     });
 
     return sorted;
-  }, [filteredSeries, sortBy, sortDirection, favoriteSeriesNames]);
+  }, [filteredSeries, sortBy, sortDirection, cachedFavorites]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -182,31 +210,31 @@ export function SeriesListScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
+          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <View style={styles.searchContainer}>
-          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
+        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
+          <Icon name="Search" size={18} color={themeColors.textTertiary} />
           <TextInput
             ref={inputRef}
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: themeColors.text }]}
             placeholder="Search series..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={themeColors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
@@ -215,7 +243,7 @@ export function SeriesListScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
+              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
             </TouchableOpacity>
           )}
         </View>
@@ -223,32 +251,32 @@ export function SeriesListScreen() {
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={styles.resultCount}>{sortedSeries.length} series</Text>
+        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{sortedSeries.length} series</Text>
         <View style={styles.sortButtons}>
           <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
+            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'name' && styles.sortButtonActive]}
             onPress={() => handleSortPress('name')}
           >
             <Icon
               name={sortBy === 'name' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'ArrowUpDown'}
               size={14}
-              color={sortBy === 'name' ? '#000' : 'rgba(255,255,255,0.6)'}
-             
+              color={sortBy === 'name' ? '#000' : themeColors.textSecondary}
+
             />
-            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
+            <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === 'name' && styles.sortButtonTextActive]}>
               {sortBy === 'name' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Name'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'bookCount' && styles.sortButtonActive]}
+            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'bookCount' && styles.sortButtonActive]}
             onPress={() => handleSortPress('bookCount')}
           >
             <Icon
               name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'Library'}
               size={14}
-              color={sortBy === 'bookCount' ? '#000' : 'rgba(255,255,255,0.6)'}
+              color={sortBy === 'bookCount' ? '#000' : themeColors.textSecondary}
             />
-            <Text style={[styles.sortButtonText, sortBy === 'bookCount' && styles.sortButtonTextActive]}>Books</Text>
+            <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === 'bookCount' && styles.sortButtonTextActive]}>Books</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -274,9 +302,6 @@ export function SeriesListScreen() {
           const isFavorite = favoriteSeriesNames.includes(series.name);
           const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
           const numCovers = bookCovers.length;
-          const stackOffset = numCovers > 1
-            ? (CARD_WIDTH - COVER_SIZE) / (numCovers - 1)
-            : 0;
 
           // Calculate progress
           const progress = getSeriesProgress(series.books);
@@ -288,31 +313,72 @@ export function SeriesListScreen() {
 
           return (
             <TouchableOpacity
-              style={styles.seriesCard}
+              style={[
+                styles.seriesCard,
+                { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+              ]}
               onPress={() => handleSeriesPress(series.name)}
               activeOpacity={0.7}
             >
-              {/* Stacked covers - horizontal spread */}
-              <View style={styles.stackContainer}>
-                {bookCovers.map((coverUrl, idx) => (
-                  <View
-                    key={idx}
-                    style={[
-                      styles.stackCover,
-                      {
-                        left: idx * stackOffset,
-                        zIndex: numCovers - idx,
-                      },
-                    ]}
-                  >
-                    <Image
-                      source={coverUrl}
-                      style={styles.coverImage}
-                      contentFit="cover"
-                      transition={150}
-                    />
+              {/* Heart button - top right */}
+              <SeriesHeartButton
+                seriesName={series.name}
+                size={10}
+                showCircle
+                style={styles.heartButton}
+              />
+
+              {/* Fanned covers - rotated stack */}
+              <View style={styles.coverFan}>
+                {numCovers > 0 ? (
+                  <View style={[
+                    styles.fanContainer,
+                    // Dynamic width based on number of covers for centering
+                    { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }
+                  ]}>
+                    {bookCovers.map((coverUrl, idx) => {
+                      // Fan rotation: left books tilt left, right books tilt right
+                      const middleIndex = (numCovers - 1) / 2;
+                      const rotation = (idx - middleIndex) * FAN_ROTATION;
+                      // Z-index: center is highest, sides go down
+                      const distanceFromCenter = Math.abs(idx - middleIndex);
+                      const zIndex = numCovers - Math.floor(distanceFromCenter);
+                      // Scale: center is biggest, sides get smaller
+                      const scaleValue = 1 - (distanceFromCenter * 0.12);
+                      const coverSize = COVER_SIZE * scaleValue;
+                      // Vertical offset: center the smaller covers, then push sides down
+                      const sizeOffset = (COVER_SIZE - coverSize) / 2;
+                      const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
+
+                      // Horizontal offset: account for size difference to center smaller covers
+                      const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
+
+                      return (
+                        <Image
+                          key={idx}
+                          source={coverUrl}
+                          style={[
+                            styles.fanCover,
+                            {
+                              width: coverSize,
+                              height: coverSize,
+                              left: horizontalOffset,
+                              top: verticalOffset,
+                              zIndex,
+                              transform: [{ rotate: `${rotation}deg` }],
+                            },
+                          ]}
+                          contentFit="cover"
+                          transition={150}
+                        />
+                      );
+                    })}
                   </View>
-                ))}
+                ) : (
+                  <View style={styles.fanPlaceholder}>
+                    <Icon name="Library" size={40} color={ACCENT} />
+                  </View>
+                )}
                 {/* Complete badge */}
                 {isComplete && (
                   <View style={styles.completeBadge}>
@@ -321,14 +387,7 @@ export function SeriesListScreen() {
                 )}
               </View>
 
-              <View style={styles.titleRow}>
-                <Text style={styles.seriesName} numberOfLines={2}>{series.name}</Text>
-                <SeriesHeartButton
-                  seriesName={series.name}
-                  size={12}
-                  style={styles.heartButton}
-                />
-              </View>
+              <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>{series.name}</Text>
 
               {/* Progress dots - only show if there's progress */}
               {hasProgress && (
@@ -346,7 +405,7 @@ export function SeriesListScreen() {
                       return <ProgressDot key={i} status={status} />;
                     })}
                     {showMoreIndicator && (
-                      <Text style={styles.moreText}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
+                      <Text style={[styles.moreText, { color: themeColors.textTertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
                     )}
                   </View>
                   <Text style={styles.progressCount}>
@@ -356,14 +415,13 @@ export function SeriesListScreen() {
               )}
 
               {/* Book count or remaining time */}
-              <Text style={styles.bookCountText} numberOfLines={1}>
+              <Text style={[styles.bookCountText, { color: themeColors.textSecondary }]} numberOfLines={1}>
                 {hasProgress && remainingDuration > 0
                   ? `~${formatDurationShort(remainingDuration)} left`
                   : `${series.bookCount} ${series.bookCount === 1 ? 'book' : 'books'}`
                 }
               </Text>
 
-              {isFavorite && <View style={styles.favoriteBadge} />}
             </TouchableOpacity>
           );
         }}
@@ -375,7 +433,7 @@ export function SeriesListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -394,14 +452,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    // color set via themeColors.text in JSX
     fontSize: 15,
     marginLeft: 8,
     paddingVertical: 0,
@@ -415,7 +473,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 16,
   },
   sortBar: {
@@ -426,7 +484,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   resultCount: {
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     fontSize: 14,
   },
   sortButtons: {
@@ -440,18 +498,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: CARD_COLOR,
+    // backgroundColor set via themeColors.border in JSX
   },
   sortButtonActive: {
     backgroundColor: ACCENT,
   },
   sortButtonText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors.textSecondary in JSX
     fontWeight: '500',
   },
   sortButtonTextActive: {
-    color: '#000',
+    color: '#000', // Intentional: black on gold
   },
   grid: {
     paddingHorizontal: PADDING,
@@ -462,52 +520,60 @@ const styles = StyleSheet.create({
   },
   seriesCard: {
     width: CARD_WIDTH,
+    padding: spacing.md,
+    borderRadius: radius.lg,
   },
-  stackContainer: {
-    width: CARD_WIDTH,
+  coverFan: {
+    height: COVER_SIZE + 10, // Extra space for rotation
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanContainer: {
+    position: 'relative',
     height: COVER_SIZE,
-    marginBottom: 8,
+    // width set dynamically based on number of covers
   },
-  stackCover: {
+  fanCover: {
     position: 'absolute',
     width: COVER_SIZE,
     height: COVER_SIZE,
     borderRadius: 5,
-    overflow: 'hidden',
-    backgroundColor: CARD_COLOR,
+    backgroundColor: 'rgba(128,128,128,0.3)',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  coverImage: {
-    width: '100%',
-    height: '100%',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  fanPlaceholder: {
+    width: COVER_SIZE,
+    height: COVER_SIZE,
+    borderRadius: 5,
+    backgroundColor: ACCENT + '30',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   seriesName: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    lineHeight: 14,
-    paddingRight: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    // color set via themeColors.text in JSX
+    lineHeight: 20,
+    textAlign: 'center',
   },
   heartButton: {
-    height: 26,
-    justifyContent: 'flex-start',
-    paddingTop: 1,
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
   },
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 4,
     marginBottom: 2,
+    gap: 8,
   },
   progressDots: {
     flexDirection: 'row',
@@ -516,7 +582,7 @@ const styles = StyleSheet.create({
   },
   moreText: {
     fontSize: 9,
-    color: 'rgba(255,255,255,0.4)',
+    // color set via themeColors.textTertiary in JSX
     marginLeft: 2,
   },
   progressCount: {
@@ -525,9 +591,10 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   bookCountText: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    // color set via themeColors.textSecondary in JSX
     marginTop: 2,
+    textAlign: 'center',
   },
   completeBadge: {
     position: 'absolute',
@@ -545,14 +612,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 2,
     elevation: 3,
-  },
-  favoriteBadge: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: ACCENT,
   },
 });

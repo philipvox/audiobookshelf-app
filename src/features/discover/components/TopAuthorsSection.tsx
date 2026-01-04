@@ -1,10 +1,11 @@
 /**
  * src/features/discover/components/TopAuthorsSection.tsx
  *
- * Horizontal carousel of top authors with avatars/initials and book counts
+ * Top authors section sorted by user reading history
+ * Authors you've read more books from appear first
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,21 +17,17 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { getAllAuthors, useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
-import { Icon } from '@/shared/components/Icon';
-import { colors, scale, spacing, radius, layout } from '@/shared/theme';
+import { sqliteCache } from '@/core/services/sqliteCache';
+import { scale, spacing, layout } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const COLORS = { playButton: colors.accent, textPrimary: colors.textPrimary, textTertiary: colors.textTertiary };
-const DIMENSIONS = { sectionGap: layout.sectionGap };
-const TYPOGRAPHY = { sectionTitle: { fontSize: scale(13), fontWeight: '600' as const }, cardTitle: { fontSize: scale(14), fontWeight: '500' as const } };
-const LAYOUT = { carouselPaddingHorizontal: layout.screenPaddingH, sectionHeaderMarginBottom: spacing.md };
+// Compact circular avatar
+const AVATAR_SIZE = scale(56);
+const CARD_WIDTH = scale(72);
+const CARD_GAP = scale(12);
 
-const AVATAR_SIZE = scale(80);
-const CARD_WIDTH = AVATAR_SIZE + scale(20);
-const CARD_GAP = scale(16);
-
-// getItemLayout for horizontal scroll optimization
 const getItemLayout = (_data: any, index: number) => ({
-  length: CARD_WIDTH,
+  length: CARD_WIDTH + CARD_GAP,
   offset: (CARD_WIDTH + CARD_GAP) * index,
   index,
 });
@@ -48,7 +45,6 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// Get initials from name
 function getInitials(name: string): string {
   const parts = name.split(' ').filter(Boolean);
   if (parts.length >= 2) {
@@ -65,9 +61,11 @@ interface AuthorCardProps {
     imagePath?: string;
   };
   onPress: () => void;
+  textColor: string;
+  textTertiaryColor: string;
 }
 
-const AuthorCard = React.memo(function AuthorCard({ author, onPress }: AuthorCardProps) {
+const AuthorCard = React.memo(function AuthorCard({ author, onPress, textColor, textTertiaryColor }: AuthorCardProps) {
   const hasImage = author.id && author.imagePath;
   const avatarUrl = hasImage ? apiClient.getAuthorImageUrl(author.id!) : null;
 
@@ -77,7 +75,6 @@ const AuthorCard = React.memo(function AuthorCard({ author, onPress }: AuthorCar
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Avatar */}
       <View style={styles.avatarContainer}>
         {avatarUrl ? (
           <Image
@@ -92,13 +89,11 @@ const AuthorCard = React.memo(function AuthorCard({ author, onPress }: AuthorCar
           </View>
         )}
       </View>
-
-      {/* Author info */}
-      <Text style={styles.authorName} numberOfLines={2}>
-        {author.name}
+      <Text style={[styles.authorName, { color: textColor }]} numberOfLines={1}>
+        {author.name.split(' ').pop()}
       </Text>
-      <Text style={styles.bookCount}>
-        {author.bookCount} {author.bookCount === 1 ? 'book' : 'books'}
+      <Text style={[styles.bookCount, { color: textTertiaryColor }]}>
+        {author.bookCount}
       </Text>
     </TouchableOpacity>
   );
@@ -110,17 +105,51 @@ interface TopAuthorsSectionProps {
 
 export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
   const { isLoaded } = useLibraryCache();
 
-  // Get top authors (sorted by book count)
+  // Load user's reading history to boost authors they've read
+  const [favoriteAuthorMap, setFavoriteAuthorMap] = useState<Map<string, number>>(new Map());
+  const [hasHistory, setHasHistory] = useState(false);
+
+  useEffect(() => {
+    sqliteCache.getReadHistoryStats().then(stats => {
+      if (stats.favoriteAuthors.length > 0) {
+        const map = new Map<string, number>();
+        stats.favoriteAuthors.forEach((a, idx) => {
+          // Higher score for authors read more, with position boost
+          map.set(a.name.toLowerCase(), a.count * 10 + (10 - idx));
+        });
+        setFavoriteAuthorMap(map);
+        setHasHistory(true);
+      }
+    }).catch(() => {});
+  }, []);
+
   const topAuthors = useMemo(() => {
     if (!isLoaded) return [];
     const allAuthors = getAllAuthors();
-    // Filter authors with at least 2 books
+
+    // Sort by reading history first, then by book count
     return allAuthors
       .filter(a => a.bookCount >= 2)
+      .map(a => ({
+        ...a,
+        historyScore: favoriteAuthorMap.get(a.name.toLowerCase()) || 0,
+      }))
+      .sort((a, b) => {
+        // Authors from reading history first
+        if (a.historyScore !== b.historyScore) {
+          return b.historyScore - a.historyScore;
+        }
+        // Then by book count
+        return b.bookCount - a.bookCount;
+      })
       .slice(0, limit);
-  }, [isLoaded, limit]);
+  }, [isLoaded, limit, favoriteAuthorMap]);
+
+  // Title changes based on whether we have history
+  const sectionTitle = hasHistory ? 'Your Authors' : 'Authors';
 
   const handleViewAll = useCallback(() => {
     navigation.navigate('AuthorsList');
@@ -134,8 +163,10 @@ export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
     <AuthorCard
       author={item}
       onPress={() => handleAuthorPress(item.name, item.id)}
+      textColor={themeColors.text}
+      textTertiaryColor={themeColors.textTertiary}
     />
-  ), [handleAuthorPress]);
+  ), [handleAuthorPress, themeColors.text, themeColors.textTertiary]);
 
   const keyExtractor = useCallback((item: typeof topAuthors[0]) => item.name, []);
 
@@ -145,20 +176,17 @@ export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Top Authors</Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>{sectionTitle}</Text>
         <TouchableOpacity
           style={styles.viewAllButton}
           onPress={handleViewAll}
           activeOpacity={0.7}
         >
-          <Text style={styles.viewAllText}>View All</Text>
-          <Icon name="ChevronRight" size={scale(14)} color={COLORS.playButton} />
+          <Text style={[styles.viewAllText, { color: themeColors.textSecondary }]}>View All</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Horizontal carousel */}
       <FlatList
         data={topAuthors}
         renderItem={renderItem}
@@ -174,32 +202,32 @@ export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: scale(8),
-    marginBottom: DIMENSIONS.sectionGap,
+    marginBottom: spacing.xl,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: LAYOUT.carouselPaddingHorizontal,
-    marginBottom: LAYOUT.sectionHeaderMarginBottom,
+    paddingHorizontal: layout.screenPaddingH,
+    marginBottom: spacing.md,
   },
   title: {
-    ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.textPrimary,
+    fontSize: scale(18),
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(4),
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
   viewAllText: {
-    fontSize: scale(13),
+    fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.playButton,
   },
   listContent: {
-    paddingHorizontal: LAYOUT.carouselPaddingHorizontal,
+    paddingHorizontal: layout.screenPaddingH,
     gap: CARD_GAP,
   },
   card: {
@@ -210,7 +238,6 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    marginBottom: scale(8),
     overflow: 'hidden',
   },
   avatar: {
@@ -224,19 +251,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   initialsText: {
-    fontSize: scale(24),
+    fontSize: scale(18),
     fontWeight: '700',
     color: '#fff',
   },
   authorName: {
-    ...TYPOGRAPHY.cardTitle,
-    color: COLORS.textPrimary,
+    fontSize: scale(11),
+    fontWeight: '500',
     textAlign: 'center',
-    marginBottom: scale(2),
+    marginTop: scale(6),
   },
   bookCount: {
-    fontSize: scale(11),
-    color: COLORS.textTertiary,
+    fontSize: scale(10),
     textAlign: 'center',
+    marginTop: scale(1),
   },
 });

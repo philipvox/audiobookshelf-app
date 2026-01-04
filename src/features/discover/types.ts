@@ -21,6 +21,30 @@ export type RowType =
   | 'browse_category'
   | 'recommended';
 
+// Filter types for "View More" navigation
+export type FilterType =
+  | 'new_this_week'
+  | 'short_books'
+  | 'long_listens'
+  | 'not_started'
+  | 'recommended'
+  | 'mood_matched'
+  | 'continue_series';
+
+// Source attribution for personalized row titles
+export interface SourceAttribution {
+  itemId: string;              // The book that triggered this recommendation
+  itemTitle: string;           // Book title (for display)
+  type: 'finished' | 'listening' | 'author' | 'narrator' | 'genre' | 'serendipity';
+}
+
+// Display modes for content rows - varies importance visually
+export type RowDisplayMode =
+  | 'featured'      // 2x2 large grid (high importance - recommendations)
+  | 'carousel'      // Horizontal scroll (medium - new this week, continue series)
+  | 'compact'       // Smaller horizontal scroll (lower - short/long books)
+  | 'grid';         // Standard 2x2 grid (default)
+
 // Content Row model
 export interface ContentRow {
   id: string;
@@ -30,8 +54,19 @@ export interface ContentRow {
   items: BookSummary[];
   totalCount: number;          // For "See All" badge
   seeAllRoute?: string;        // Navigation target
+  filterType?: FilterType;     // Filter type for "View More" navigation
+  filterParams?: {             // Additional filter params
+    genre?: string;
+    minMatchPercent?: number;
+  };
   priority: number;            // For ordering
   refreshPolicy: 'realtime' | 'hourly' | 'daily';
+  // NEW: Source attribution for "Because you finished X" titles
+  sourceAttribution?: SourceAttribution;
+  // NEW: Flag for serendipity row special styling
+  isSerendipity?: boolean;
+  // NEW: Display mode for visual variation
+  displayMode?: RowDisplayMode;
 }
 
 // Book Summary for cards (lighter than full LibraryItem)
@@ -51,6 +86,9 @@ export interface BookSummary {
   progress?: number;           // 0-1, if in progress
   isDownloaded: boolean;
   queuePosition?: number;
+
+  // Visual flags
+  isSerendipity?: boolean;     // Flag for "Try Something Different" styling
 }
 
 // Category for browse grid

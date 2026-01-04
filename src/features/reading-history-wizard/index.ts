@@ -35,5 +35,6 @@ export {
   useReadingHistory,
   useIsBookFinished,
   useFinishedCount,
+  FINISHED_THRESHOLD,
 } from './hooks/useReadingHistory';
 export type { ReadingPreferences, PreferenceBoost } from './hooks/useReadingHistory';

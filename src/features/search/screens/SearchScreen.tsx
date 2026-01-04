@@ -36,12 +36,10 @@ import { BookCard } from '@/shared/components/BookCard';
 import { LibraryItem } from '@/core/types';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
-import { colors, wp, spacing, radius } from '@/shared/theme';
+import { useTheme, wp, spacing, radius, accentColors } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
 const SCREEN_WIDTH = wp(100);
-const BG_COLOR = colors.backgroundPrimary;
-const CARD_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
 const GAP = spacing.sm;
 const CARD_RADIUS = radius.sm;
 const PADDING = spacing.lg;
@@ -62,10 +60,16 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Series card constants - horizontal stack design
-const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
-const SERIES_COVER_SIZE = SERIES_CARD_WIDTH * 0.55;
-const MAX_VISIBLE_BOOKS = 10;
+// Series card constants - fanned cover design (matches genre cards)
+const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
+const SERIES_COVER_WIDTH = 65;
+const SERIES_COVER_HEIGHT = 95;
+// Fanned cover dimensions matching SeriesListScreen
+const COVER_SIZE = 60;
+const FAN_OFFSET = 18;
+const FAN_ROTATION = 8;
+const FAN_VERTICAL_OFFSET = 6;
+const MAX_VISIBLE_BOOKS = 5;
 
 type SortOption = 'title' | 'author' | 'dateAdded' | 'duration';
 type FilterTab = 'all' | 'genres' | 'authors' | 'series' | 'duration';
@@ -79,64 +83,7 @@ const DURATION_FILTERS = [
   { label: '20h+', min: 20, max: undefined },
 ];
 
-// Stacked series card - horizontal stack with drop shadows spanning full width
-const SeriesCard = React.memo(function SeriesCard({
-  series,
-  onPress,
-}: {
-  series: { name: string; bookCount: number; books: LibraryItem[] };
-  onPress: () => void;
-}) {
-  // Get up to MAX_VISIBLE_BOOKS book covers for the stack
-  const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
-  const title = series.name;
-  const firstBookId = series.books[0]?.id;
-  const numCovers = bookCovers.length;
-
-  // Calculate offset to spread covers across full card width
-  // Last cover should end at card edge, first cover starts at 0
-  const stackOffset = numCovers > 1
-    ? (SERIES_CARD_WIDTH - SERIES_COVER_SIZE) / (numCovers - 1)
-    : 0;
-
-  return (
-    <TouchableOpacity
-      style={styles.seriesCard}
-      onPress={onPress}
-      activeOpacity={0.8}
-      accessibilityLabel={`${title}, ${series.bookCount} books`}
-      accessibilityRole="button"
-      accessibilityHint="Double tap to view series"
-    >
-      <View style={styles.seriesStackContainer}>
-        {/* Render stacked covers - back to front horizontally */}
-        {bookCovers.map((coverUrl, idx) => (
-          <View
-            key={idx}
-            style={[
-              styles.seriesStackCover,
-              {
-                left: idx * stackOffset,
-                zIndex: numCovers - idx,
-              },
-            ]}
-          >
-            <Image
-              source={coverUrl}
-              style={styles.seriesCoverImage}
-              contentFit="cover"
-              transition={150}
-            />
-          </View>
-        ))}
-      </View>
-      <View style={styles.seriesTitleRow}>
-        <Text style={styles.seriesTitle} numberOfLines={2}>{title}</Text>
-        <SeriesHeartButton seriesName={title} size={12} style={styles.heartButton} />
-      </View>
-    </TouchableOpacity>
-  );
-});
+// SeriesCard component is now defined inside SearchScreen to access styles
 
 type SearchScreenParams = {
   genre?: string;
@@ -148,6 +95,108 @@ export function SearchScreen() {
   const route = useRoute<RouteProp<{ Search: SearchScreenParams }, 'Search'>>();
   const inputRef = useRef<TextInput>(null);
   const { loadBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
+
+  // Theme-aware colors
+  const { colors: themeColors } = useTheme();
+  const storeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+  const BG_COLOR = storeColors.background;
+  // In dark mode, use transparent/subtle backgrounds - content floats on black
+  const CARD_COLOR = isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5';
+  const SURFACE_ELEVATED = isDarkMode ? 'rgba(255,255,255,0.08)' : '#FFFFFF';
+  const ACCENT = accentColors.red; // Red accent like Browse screen
+  const TEXT_PRIMARY = storeColors.text;
+  const TEXT_SECONDARY = storeColors.textSecondary;
+  const TEXT_TERTIARY = storeColors.textTertiary;
+  const BORDER_DEFAULT = storeColors.border;
+
+  // Theme-aware styles
+  const styles = useMemo(() => createStyles({
+    BG_COLOR,
+    CARD_COLOR,
+    SURFACE_ELEVATED,
+    ACCENT,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    TEXT_TERTIARY,
+    BORDER_DEFAULT,
+    isDarkMode,
+  }), [BG_COLOR, CARD_COLOR, SURFACE_ELEVATED, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY, BORDER_DEFAULT, isDarkMode]);
+
+  // SeriesCard component - fanned cover design (matches SeriesListScreen)
+  const SeriesCard = useCallback(({
+    series,
+    onPress,
+  }: {
+    series: { name: string; bookCount: number; books: LibraryItem[] };
+    onPress: () => void;
+  }) => {
+    const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
+    const numCovers = bookCovers.length;
+
+    return (
+      <TouchableOpacity
+        style={styles.seriesCard}
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityLabel={`${series.name}, ${series.bookCount} books`}
+        accessibilityRole="button"
+      >
+        {/* Heart button - top right */}
+        <SeriesHeartButton
+          seriesName={series.name}
+          size={10}
+          showCircle
+          style={styles.seriesHeartButton}
+        />
+
+        {/* Fanned cover stack */}
+        <View style={styles.coverFan}>
+          {numCovers > 0 ? (
+            <View style={[styles.fanContainer, { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }]}>
+              {bookCovers.map((coverUrl, idx) => {
+                const middleIndex = (numCovers - 1) / 2;
+                const rotation = (idx - middleIndex) * FAN_ROTATION;
+                const distanceFromCenter = Math.abs(idx - middleIndex);
+                const zIndex = numCovers - Math.floor(distanceFromCenter);
+                const scaleValue = 1 - (distanceFromCenter * 0.12);
+                const coverSize = COVER_SIZE * scaleValue;
+                const sizeOffset = (COVER_SIZE - coverSize) / 2;
+                const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
+                const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
+
+                return (
+                  <Image
+                    key={idx}
+                    source={coverUrl}
+                    style={[
+                      styles.fanCover,
+                      {
+                        width: coverSize,
+                        height: coverSize,
+                        left: horizontalOffset,
+                        top: verticalOffset,
+                        zIndex,
+                        transform: [{ rotate: `${rotation}deg` }],
+                      },
+                    ]}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.fanPlaceholder} />
+          )}
+        </View>
+
+        {/* Series Info */}
+        <Text style={styles.seriesName} numberOfLines={2}>{series.name}</Text>
+        <Text style={styles.seriesCount}>{series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}</Text>
+      </TouchableOpacity>
+    );
+  }, [styles]);
 
   // Search state
   const [query, setQuery] = useState('');
@@ -345,8 +394,9 @@ export function SearchScreen() {
       });
 
     // Authors - max 2 (with image data for thumbnails)
+    // FIX 3: Use fuzzyMatch for consistent matching (accent/space-insensitive)
     const authors = allAuthors
-      .filter(a => a.name.toLowerCase().includes(lowerQuery))
+      .filter(a => fuzzyMatch(query, a.name))
       .slice(0, 2)
       .map(a => ({
         name: a.name,
@@ -356,14 +406,16 @@ export function SearchScreen() {
       }));
 
     // Series - max 1
+    // FIX 3: Use fuzzyMatch for consistent matching
     const series = allSeries
-      .filter(s => s.name.toLowerCase().includes(lowerQuery))
+      .filter(s => fuzzyMatch(query, s.name))
       .slice(0, 1)
       .map(s => ({ name: s.name, bookCount: s.bookCount }));
 
     // Narrators - max 1
+    // FIX 3: Use fuzzyMatch for consistent matching
     const narrators = allNarrators
-      .filter(n => n.name.toLowerCase().includes(lowerQuery))
+      .filter(n => fuzzyMatch(query, n.name))
       .slice(0, 1)
       .map(n => ({ name: n.name, bookCount: n.bookCount }));
 
@@ -551,26 +603,26 @@ export function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+      <StatusBar barStyle={storeColors.statusBar} backgroundColor={BG_COLOR} />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10 }]}>
+      {/* Header - stays above autocomplete overlay */}
+      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10, zIndex: 30, backgroundColor: BG_COLOR }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={handleBack}
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Icon name="ChevronLeft" size={24} color="#FFFFFF" />
+          <Icon name="ChevronLeft" size={24} color={TEXT_PRIMARY} />
         </TouchableOpacity>
 
         <View style={styles.searchContainer}>
-          <Icon name="Search" size={18} color="rgba(255,255,255,0.5)" />
+          <Icon name="Search" size={18} color={TEXT_TERTIARY} />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
             placeholder="Search books, authors, series..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={TEXT_TERTIARY}
             value={query}
             onChangeText={(text) => {
               setQuery(text);
@@ -593,7 +645,7 @@ export function SearchScreen() {
               accessibilityLabel="Clear search"
               accessibilityRole="button"
             >
-              <Icon name="XCircle" size={18} color="rgba(255,255,255,0.5)" />
+              <Icon name="XCircle" size={18} color={TEXT_TERTIARY} />
             </TouchableOpacity>
           )}
         </View>
@@ -605,7 +657,7 @@ export function SearchScreen() {
           accessibilityRole="button"
           accessibilityState={{ expanded: showFilters }}
         >
-          <Icon name="Settings" size={20} color={showFilters ? '#000' : '#FFF'} />
+          <Icon name="Settings" size={20} color={showFilters ? '#000' : TEXT_PRIMARY} />
           {activeFilterCount > 0 && (
             <View style={styles.filterBadge}>
               <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
@@ -755,7 +807,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle} numberOfLines={1}>{book.title}</Text>
                       <Text style={styles.autocompleteMeta}>{book.author} · {book.duration}</Text>
                     </View>
-                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
+                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -791,7 +843,7 @@ export function SearchScreen() {
                         <Text style={styles.autocompleteTitle}>{author.name}</Text>
                         <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
                       </View>
-                      <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
+                      <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
                     </TouchableOpacity>
                   );
                 })}
@@ -815,7 +867,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle}>{series.name}</Text>
                       <Text style={styles.autocompleteMeta}>{series.bookCount} books</Text>
                     </View>
-                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
+                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -838,7 +890,7 @@ export function SearchScreen() {
                       <Text style={styles.autocompleteTitle}>{narrator.name}</Text>
                       <Text style={styles.autocompleteMeta}>{narrator.bookCount} books narrated</Text>
                     </View>
-                    <Icon name="ChevronRight" size={16} color="rgba(255,255,255,0.3)" />
+                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -892,20 +944,20 @@ export function SearchScreen() {
                     style={styles.previousSearchItem}
                     onPress={() => handlePreviousSearchPress(search)}
                   >
-                    <Icon name="Clock" size={18} color="rgba(255,255,255,0.4)" />
+                    <Icon name="Clock" size={18} color={TEXT_TERTIARY} />
                     <Text style={styles.previousSearchText}>{search}</Text>
                     <TouchableOpacity
                       style={styles.removeSearchButton}
                       onPress={() => removeFromHistory(search)}
                     >
-                      <Icon name="X" size={16} color="rgba(255,255,255,0.3)" />
+                      <Icon name="X" size={16} color={TEXT_TERTIARY} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 ))}
               </View>
             ) : (
               <View style={styles.emptyState}>
-                <Icon name="Search" size={48} color="rgba(255,255,255,0.2)" />
+                <Icon name="Search" size={48} color={TEXT_TERTIARY} />
                 <Text style={styles.emptyTitle}>Search your library</Text>
                 <Text style={styles.emptySubtitle}>Find books by title, author, narrator, or series</Text>
               </View>
@@ -942,7 +994,7 @@ export function SearchScreen() {
         {isLoaded && hasActiveSearch && !hasResults && (
           <View style={styles.noResultsContainer}>
             <View style={styles.noResultsHeader}>
-              <Icon name="Search" size={40} color="rgba(255,255,255,0.3)" />
+              <Icon name="Search" size={40} color={TEXT_TERTIARY} />
               <Text style={styles.noResultsTitle}>No results for "{debouncedQuery}"</Text>
             </View>
 
@@ -1016,26 +1068,29 @@ export function SearchScreen() {
                   key={book.id}
                   book={book}
                   onPress={() => handleBookPress(book)}
-                  showListeningProgress={true}
+                  onPlayPress={() => handlePlayBook(book)}
+                  showListeningProgress={false}
+                  layout="search"
+                  showPlayOverlay={true}
                 />
               ))}
             </View>
           </View>
         )}
 
-        {/* Series Section (top 3 with stacked covers) */}
+        {/* Series Section (top 2 with fanned covers) */}
         {hasActiveSearch && seriesResults.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Series</Text>
-              {seriesResults.length > 3 && (
+              {seriesResults.length > 2 && (
                 <TouchableOpacity onPress={() => navigation.navigate('SeriesList')}>
                   <Text style={styles.viewAllText}>View All</Text>
                 </TouchableOpacity>
               )}
             </View>
             <View style={styles.seriesRow}>
-              {seriesResults.slice(0, 3).map(series => (
+              {seriesResults.slice(0, 2).map(series => (
                 <SeriesCard
                   key={series.name}
                   series={series}
@@ -1082,7 +1137,7 @@ export function SearchScreen() {
                       <Text style={styles.entityName}>{author.name}</Text>
                       <Text style={styles.entityMeta}>{author.bookCount} books</Text>
                     </View>
-                    <Icon name="ChevronRight" size={20} color="rgba(255,255,255,0.3)" />
+                    <Icon name="ChevronRight" size={20} color={TEXT_TERTIARY} />
                   </TouchableOpacity>
                 );
               })}
@@ -1118,7 +1173,7 @@ export function SearchScreen() {
                     <Text style={styles.entityName}>{narrator.name}</Text>
                     <Text style={styles.entityMeta}>{narrator.bookCount} books narrated</Text>
                   </View>
-                  <Icon name="ChevronRight" size={20} color="rgba(255,255,255,0.3)" />
+                  <Icon name="ChevronRight" size={20} color={TEXT_TERTIARY} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -1129,10 +1184,24 @@ export function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// Theme colors interface for createStyles
+interface ThemeColors {
+  BG_COLOR: string;
+  CARD_COLOR: string;
+  SURFACE_ELEVATED: string;
+  ACCENT: string;
+  TEXT_PRIMARY: string;
+  TEXT_SECONDARY: string;
+  TEXT_TERTIARY: string;
+  BORDER_DEFAULT: string;
+  isDarkMode: boolean;
+}
+
+// Factory function for theme-aware styles
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    backgroundColor: colors.BG_COLOR,
   },
   header: {
     flexDirection: 'row',
@@ -1151,14 +1220,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5',
     borderRadius: 10,
     paddingHorizontal: 12,
     minHeight: 44,
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 15,
     marginLeft: 8,
     paddingVertical: 8,
@@ -1170,12 +1239,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterButtonActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: colors.ACCENT,
   },
   filterBadge: {
     position: 'absolute',
@@ -1196,9 +1265,9 @@ const styles = StyleSheet.create({
 
   // Filter Panel
   filterPanel: {
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? 'transparent' : colors.CARD_COLOR,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    borderBottomColor: colors.BORDER_DEFAULT,
   },
   filterTabs: {
     paddingHorizontal: 12,
@@ -1209,15 +1278,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginRight: 8,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
   },
   filterTabActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: colors.ACCENT,
+    borderColor: colors.ACCENT,
   },
   filterTabText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.TEXT_PRIMARY,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   filterTabTextActive: {
     color: '#000',
@@ -1236,13 +1308,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
   },
   chipActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: colors.ACCENT,
+    borderColor: colors.ACCENT,
   },
   chipText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_PRIMARY,
     fontSize: 12,
   },
   chipTextActive: {
@@ -1256,7 +1331,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sortLabel: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 13,
   },
   sortChip: {
@@ -1265,15 +1340,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
     marginRight: 6,
     gap: 4,
   },
   sortChipActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: colors.ACCENT,
+    borderColor: colors.ACCENT,
   },
   sortChipText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_PRIMARY,
     fontSize: 12,
   },
   sortChipTextActive: {
@@ -1289,13 +1367,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
   },
   durationChipActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: colors.ACCENT,
+    borderColor: colors.ACCENT,
   },
   durationChipText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_PRIMARY,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -1306,7 +1387,7 @@ const styles = StyleSheet.create({
   // Results
   results: {
     flex: 1,
-    zIndex: 1, // Below autocomplete
+    zIndex: 1,
   },
   resultsContent: {
     paddingTop: 12,
@@ -1322,16 +1403,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 18,
     fontWeight: '700',
   },
   sectionCount: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 13,
   },
   viewAllText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 14,
   },
   emptyStateContainer: {
@@ -1342,13 +1423,13 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   emptyTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 18,
     fontWeight: '600',
     marginTop: 16,
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 14,
     marginTop: 4,
     textAlign: 'center',
@@ -1365,12 +1446,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   previousSearchesTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 16,
     fontWeight: '600',
   },
   clearHistoryText: {
-    color: ACCENT,
+    color: colors.ACCENT,
     fontSize: 14,
   },
   previousSearchItem: {
@@ -1378,11 +1459,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: colors.BORDER_DEFAULT,
   },
   previousSearchText: {
     flex: 1,
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 15,
     marginLeft: 12,
   },
@@ -1395,7 +1476,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   quickBrowseTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
@@ -1408,64 +1489,77 @@ const styles = StyleSheet.create({
   quickBrowseItem: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    backgroundColor: 'transparent',
     borderRadius: CARD_RADIUS,
     paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
   },
   quickBrowseItemText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 13,
     marginTop: 8,
   },
 
-  // Series row with horizontally stacked covers
+  // Series row with fanned covers (matches genre cards)
   seriesRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: PADDING,
     gap: GAP,
   },
   seriesCard: {
     width: SERIES_CARD_WIDTH,
+    padding: spacing.md,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: radius.lg,
   },
-  seriesStackContainer: {
-    width: SERIES_CARD_WIDTH,
-    height: SERIES_COVER_SIZE,
-    marginBottom: 8,
-  },
-  seriesStackCover: {
+  seriesHeartButton: {
     position: 'absolute',
-    width: SERIES_COVER_SIZE,
-    height: SERIES_COVER_SIZE,
-    borderRadius: CARD_RADIUS,
-    overflow: 'hidden',
-    backgroundColor: CARD_COLOR,
-    // Enhanced drop shadow for each cover
+    top: 8,
+    right: 8,
+    zIndex: 10,
+  },
+  coverFan: {
+    height: COVER_SIZE + 10,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanContainer: {
+    position: 'relative',
+    height: COVER_SIZE,
+  },
+  fanCover: {
+    position: 'absolute',
+    width: COVER_SIZE,
+    height: COVER_SIZE,
+    borderRadius: 5,
+    backgroundColor: 'rgba(128,128,128,0.3)',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  seriesCoverImage: {
-    width: '100%',
-    height: '100%',
+  fanPlaceholder: {
+    width: COVER_SIZE,
+    height: COVER_SIZE,
+    borderRadius: 5,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
   },
-  seriesTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  seriesName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.TEXT_PRIMARY,
+    lineHeight: 17,
+    textAlign: 'center',
   },
-  seriesTitle: {
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 14,
-    paddingRight: 4,
-  },
-  heartButton: {
-    height: 26,
-    justifyContent: 'flex-start',
-    paddingTop: 1,
+  seriesCount: {
+    fontSize: 11,
+    color: colors.TEXT_TERTIARY,
+    textAlign: 'center',
+    marginTop: 2,
   },
 
   // Entity list (authors, narrators)
@@ -1475,10 +1569,12 @@ const styles = StyleSheet.create({
   entityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
-    borderRadius: CARD_RADIUS,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
   },
   entityAvatar: {
     width: 44,
@@ -1491,7 +1587,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.BORDER_DEFAULT,
   },
   entityAvatarText: {
     color: '#000',
@@ -1503,48 +1599,46 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   entityName: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 15,
     fontWeight: '600',
   },
   entityMeta: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 13,
     marginTop: 2,
   },
 
-  // ============================================================================
-  // AUTOCOMPLETE STYLES (per NNGroup/Baymard research)
-  // ============================================================================
-
+  // Autocomplete styles
   autocompleteBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)', // Darkened background per research
+    backgroundColor: 'rgba(0,0,0,0.6)',
     zIndex: 10,
   },
   autocompleteContainer: {
     position: 'absolute',
-    // top is set dynamically based on safe area insets
     left: 0,
     right: 0,
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? '#1A1A1A' : colors.CARD_COLOR,
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
     maxHeight: 400,
     zIndex: 20,
     paddingVertical: 8,
-    // Shadow for visual depth
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+    borderWidth: colors.isDarkMode ? 1 : 0,
+    borderTopWidth: 0,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.1)' : 'transparent',
   },
   autocompleteSectionContainer: {
     marginBottom: 4,
   },
   autocompleteSection: {
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -1561,12 +1655,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   autocompleteTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 15,
     fontWeight: '500',
   },
   autocompleteMeta: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 13,
     marginTop: 2,
   },
@@ -1575,12 +1669,12 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.BORDER_DEFAULT,
   },
   autocompleteThumbnailPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: colors.ACCENT,
   },
   autocompleteThumbnailInitials: {
     color: '#000000',
@@ -1593,14 +1687,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   noAutocompleteText: {
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 14,
   },
 
-  // ============================================================================
-  // NO RESULTS RECOVERY STYLES (per NNGroup: never leave at dead end)
-  // ============================================================================
-
+  // No results recovery styles
   noResultsContainer: {
     paddingHorizontal: PADDING,
     paddingTop: 40,
@@ -1610,7 +1701,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   noResultsTitle: {
-    color: '#FFFFFF',
+    color: colors.TEXT_PRIMARY,
     fontSize: 18,
     fontWeight: '600',
     marginTop: 12,
@@ -1619,13 +1710,15 @@ const styles = StyleSheet.create({
 
   // Spelling suggestions
   spellingSuggestions: {
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.04)' : colors.CARD_COLOR,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
+    borderWidth: colors.isDarkMode ? 1 : 0,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.08)' : 'transparent',
   },
   didYouMean: {
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 14,
     marginBottom: 12,
   },
@@ -1635,10 +1728,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: colors.BORDER_DEFAULT,
   },
   suggestionText: {
-    color: ACCENT,
+    color: colors.ACCENT,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1648,7 +1741,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   browseRecoveryTitle: {
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 14,
     marginBottom: 12,
     textAlign: 'center',
@@ -1660,31 +1753,35 @@ const styles = StyleSheet.create({
   browseRecoveryItem: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: CARD_COLOR,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.04)' : colors.CARD_COLOR,
     borderRadius: 12,
     paddingVertical: 16,
     gap: 6,
+    borderWidth: colors.isDarkMode ? 1 : 0,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.08)' : 'transparent',
   },
   browseRecoveryText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 13,
     fontWeight: '500',
   },
 
   // Search tips
   searchTips: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.03)' : colors.BORDER_DEFAULT,
     borderRadius: 12,
     padding: 16,
+    borderWidth: colors.isDarkMode ? 1 : 0,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : 'transparent',
   },
   searchTipsTitle: {
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.TEXT_SECONDARY,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 8,
   },
   searchTip: {
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.TEXT_TERTIARY,
     fontSize: 13,
     lineHeight: 20,
   },

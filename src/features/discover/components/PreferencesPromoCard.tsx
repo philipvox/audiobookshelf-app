@@ -1,0 +1,118 @@
+/**
+ * src/features/discover/components/PreferencesPromoCard.tsx
+ *
+ * Promo card encouraging users to fill out preferences questionnaire
+ * to get personalized recommendations.
+ */
+
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  withSpring,
+  useSharedValue,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { useNavigation } from '@react-navigation/native';
+import { Sparkles, ChevronRight } from 'lucide-react-native';
+import { spacing, radius, scale, layout } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+export function PreferencesPromoCard() {
+  const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
+
+  const scaleValue = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scaleValue.value }],
+  }));
+
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate('PreferencesOnboarding');
+  };
+
+  const handlePressIn = () => {
+    scaleValue.value = withSpring(0.98, { damping: 15, stiffness: 200 });
+  };
+
+  const handlePressOut = () => {
+    scaleValue.value = withSpring(1, { damping: 15, stiffness: 200 });
+  };
+
+  return (
+    <AnimatedPressable
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[styles.container, animatedStyle]}
+    >
+      <View style={[styles.card, { backgroundColor: themeColors.backgroundSecondary }]}>
+        <View style={styles.iconContainer}>
+          <Sparkles size={scale(24)} color={themeColors.accent} />
+        </View>
+
+        <View style={styles.textContainer}>
+          <Text style={[styles.title, { color: themeColors.text }]}>
+            Get Personalized Recommendations
+          </Text>
+          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+            Answer a few questions about your preferences
+          </Text>
+        </View>
+
+        <View style={[styles.arrowContainer, { backgroundColor: themeColors.accent }]}>
+          <ChevronRight size={scale(18)} color="#000" strokeWidth={2.5} />
+        </View>
+      </View>
+    </AnimatedPressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    marginHorizontal: layout.screenPaddingH,
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    gap: spacing.md,
+  },
+  iconContainer: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(22),
+    backgroundColor: 'rgba(243, 182, 12, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+  },
+  title: {
+    fontSize: scale(15),
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    fontSize: scale(13),
+  },
+  arrowContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

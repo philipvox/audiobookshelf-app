@@ -23,7 +23,7 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Android Auto integration
+              // Packages that cannot be autolinked yet can be added manually here
               add(AndroidAutoPackage())
             }
 

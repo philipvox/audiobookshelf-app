@@ -13,6 +13,7 @@ import {
   Alert,
   StatusBar,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,45 +25,32 @@ import {
   Server,
   Download,
   BarChart3,
-  CheckCheck,
-  Sparkles,
   PlayCircle,
   Folder,
-  CircleDot,
   Type,
-  Music,
   LogOut,
   ChevronRight,
-  Bookmark,
   Bug,
+  Moon,
+  Sun,
+  Library,
+  Sparkles,
+  EyeOff,
   type LucideIcon,
 } from 'lucide-react-native';
+import { useThemeStore, useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
+import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useDismissedCount } from '@/features/recommendations/stores/dismissedItemsStore';
 import { haptics } from '@/core/native/haptics';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
-import { colors, scale } from '@/shared/theme';
+import { accentColors, scale } from '@/shared/theme';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
-import { useWishlistCount } from '@/features/wishlist';
+import { generateErrorReport, exportErrorReportJSON } from '@/utils/runtimeMonitor';
 
-const ACCENT = colors.accent;
-
-// Safe import - store may not exist yet
-let usePreferencesStore: any;
-try {
-  usePreferencesStore = require('@/features/recommendations').usePreferencesStore;
-} catch {
-  usePreferencesStore = null;
-}
-
-// Safe import for wizard store
-let useWizardStore: any;
-try {
-  useWizardStore = require('@/features/reading-history-wizard').useWizardStore;
-} catch {
-  useWizardStore = null;
-}
+const ACCENT = accentColors.red;  // Red accent for primary interactive
 
 // Format bytes to human readable
 function formatBytes(bytes: number): string {
@@ -73,53 +61,8 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-// User Header Component
-interface UserHeaderProps {
-  username: string;
-  role: string;
-  serverUrl: string;
-  onSignOut: () => void;
-  isLoading?: boolean;
-}
-
-function UserHeader({ username, role, serverUrl, onSignOut, isLoading }: UserHeaderProps) {
-  const initials = username
-    .split(' ')
-    .map((word) => word[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || '?';
-
-  // Format server URL for display
-  const displayServer = serverUrl
-    .replace(/^https?:\/\//, '')
-    .replace(/\/$/, '');
-
-  return (
-    <View style={styles.userHeader}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-      <View style={styles.userInfo}>
-        <Text style={styles.username}>{username}</Text>
-        <Text style={styles.userRole}>{role}</Text>
-        <View style={styles.serverRow}>
-          <Server size={scale(12)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
-          <Text style={styles.serverText} numberOfLines={1}>{displayServer}</Text>
-        </View>
-      </View>
-      {/* Quick sign out button - visible without scrolling */}
-      <TouchableOpacity
-        style={[styles.headerSignOut, isLoading && styles.headerSignOutDisabled]}
-        onPress={onSignOut}
-        disabled={isLoading}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <LogOut size={scale(18)} color="#ff4b4b" strokeWidth={2} />
-      </TouchableOpacity>
-    </View>
-  );
-}
+// Theme colors type
+type ThemeColorsType = ReturnType<typeof useThemeColors>;
 
 // Profile Link Component
 interface ProfileLinkProps {
@@ -129,25 +72,64 @@ interface ProfileLinkProps {
   badge?: string;
   badgeColor?: string;
   onPress: () => void;
+  themeColors: ThemeColorsType;
+  iconBgColor?: string;
+  isDarkMode?: boolean;
 }
 
-function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: ProfileLinkProps) {
+function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress, themeColors, iconBgColor, isDarkMode }: ProfileLinkProps) {
+  const iconContainerBg = iconBgColor || (isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border);
   return (
-    <TouchableOpacity style={styles.profileLink} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.linkIconContainer}>
-        <Icon size={scale(20)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+    <TouchableOpacity style={[styles.profileLink, { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : themeColors.border }]} onPress={onPress} activeOpacity={0.7}>
+      <View style={[styles.linkIconContainer, { backgroundColor: iconContainerBg }]}>
+        <Icon size={scale(20)} color={themeColors.text} strokeWidth={2} />
       </View>
       <View style={styles.linkContent}>
-        <Text style={styles.linkLabel}>{label}</Text>
-        {subtitle ? <Text style={styles.linkSubtitle}>{subtitle}</Text> : null}
+        <Text style={[styles.linkLabel, { color: themeColors.text }]}>{label}</Text>
+        {subtitle ? <Text style={[styles.linkSubtitle, { color: themeColors.textSecondary }]}>{subtitle}</Text> : null}
       </View>
       {badge ? (
-        <View style={[styles.badge, badgeColor ? { backgroundColor: badgeColor } : null]}>
-          <Text style={styles.badgeText}>{badge}</Text>
+        <View style={[styles.badge, { borderColor: badgeColor || ACCENT }]}>
+          <Text style={[styles.badgeText, { color: badgeColor || ACCENT }]}>{badge}</Text>
         </View>
       ) : null}
-      <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+      <ChevronRight size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
     </TouchableOpacity>
+  );
+}
+
+// Profile Toggle Component (for settings with on/off switch)
+interface ProfileToggleProps {
+  Icon: LucideIcon;
+  label: string;
+  subtitle?: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  themeColors: ThemeColorsType;
+  isDarkMode?: boolean;
+}
+
+function ProfileToggle({ Icon, label, subtitle, value, onValueChange, themeColors, isDarkMode }: ProfileToggleProps) {
+  const iconContainerBg = isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border;
+  return (
+    <View style={[styles.profileLink, { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : themeColors.border }]}>
+      <View style={[styles.linkIconContainer, { backgroundColor: iconContainerBg }]}>
+        <Icon size={scale(20)} color={themeColors.text} strokeWidth={2} />
+      </View>
+      <View style={styles.linkContent}>
+        <Text style={[styles.linkLabel, { color: themeColors.text }]}>{label}</Text>
+        {subtitle ? <Text style={[styles.linkSubtitle, { color: themeColors.textSecondary }]}>{subtitle}</Text> : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={(newValue) => {
+          haptics.selection();
+          onValueChange(newValue);
+        }}
+        trackColor={{ false: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', true: accentColors.gold }}
+        thumbColor="#fff"
+      />
+    </View>
   );
 }
 
@@ -155,13 +137,23 @@ function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: Prof
 interface SectionGroupProps {
   title: string;
   children: React.ReactNode;
+  themeColors: ThemeColorsType;
+  bgColor?: string;
+  isDarkMode?: boolean;
 }
 
-function SectionGroup({ title, children }: SectionGroupProps) {
+function SectionGroup({ title, children, themeColors, bgColor, isDarkMode }: SectionGroupProps) {
   return (
     <View style={styles.sectionGroup}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionContent}>
+      <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>{title}</Text>
+      <View style={[
+        styles.sectionContent,
+        {
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+        }
+      ]}>
         {children}
       </View>
     </View>
@@ -173,6 +165,8 @@ export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { user, serverUrl, logout, isLoading } = useAuth();
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
 
   // Download stats
   const { downloads } = useDownloads();
@@ -180,16 +174,14 @@ export function ProfileScreen() {
   const downloadCount = completedDownloads.length;
   const totalStorage = completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
 
-  // Wishlist count
-  const wishlistCount = useWishlistCount();
+  // Theme
+  const { mode: themeMode, toggleMode: toggleTheme } = useThemeStore();
 
-  // Safe access to preferences store
-  const hasCompletedOnboarding = usePreferencesStore?.()?.hasCompletedOnboarding ?? false;
+  // Library preferences
+  const { hideSingleBookSeries, setHideSingleBookSeries } = useMyLibraryStore();
 
-  // Safe access to wizard store
-  const wizardState = useWizardStore?.();
-  const wizardCompleted = wizardState?.isComplete ?? false;
-  const canResumeWizard = wizardState?.canResume && !wizardState?.isComplete;
+  // Hidden items count for badge
+  const hiddenItemsCount = useDismissedCount();
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -214,9 +206,15 @@ export function ProfileScreen() {
     return type.charAt(0).toUpperCase() + type.slice(1);
   };
 
+  // In dark mode, use pure black background
+  const bgColor = isDarkMode ? '#000000' : themeColors.backgroundSecondary;
+  const sectionBgColor = isDarkMode ? 'rgba(255,255,255,0.05)' : themeColors.border;
+  const iconContainerBgColor = isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border;
+  const userHeaderBgColor = isDarkMode ? 'rgba(255,255,255,0.05)' : themeColors.border;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT, backgroundColor: bgColor }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={bgColor} />
 
       <ScrollView
         style={styles.scrollView}
@@ -225,100 +223,149 @@ export function ProfileScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Profile</Text>
         </View>
 
         {/* User Header with quick sign out */}
-        <UserHeader
-          username={user?.username || 'User'}
-          role={formatAccountType(user?.type)}
-          serverUrl={serverUrl || ''}
-          onSignOut={handleLogout}
-          isLoading={isLoading}
-        />
+        <View style={[styles.userHeader, { backgroundColor: 'transparent', borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(user?.username || 'User').split(' ').map((word) => word[0]).slice(0, 2).join('').toUpperCase() || '?'}</Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={[styles.username, { color: themeColors.text }]}>{user?.username || 'User'}</Text>
+            <Text style={[styles.userRole, { color: themeColors.textSecondary }]}>{formatAccountType(user?.type)}</Text>
+            <View style={styles.serverRow}>
+              <Server size={scale(12)} color={themeColors.textTertiary} strokeWidth={2} />
+              <Text style={[styles.serverText, { color: themeColors.textTertiary }]} numberOfLines={1}>{(serverUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[styles.headerSignOut, isLoading && styles.headerSignOutDisabled]}
+            onPress={handleLogout}
+            disabled={isLoading}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <LogOut size={scale(18)} color="#ff4b4b" strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
 
         {/* My Stuff Section */}
-        <SectionGroup title="My Stuff">
+        <SectionGroup title="My Stuff" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
           <ProfileLink
             Icon={Download}
             label="Downloads"
             subtitle={`${downloadCount} book${downloadCount !== 1 ? 's' : ''} · ${formatBytes(totalStorage)}`}
             onPress={() => navigation.navigate('Downloads')}
-          />
-          <ProfileLink
-            Icon={Bookmark}
-            label="Wishlist"
-            subtitle={wishlistCount > 0 ? `${wishlistCount} book${wishlistCount !== 1 ? 's' : ''} saved` : 'Books you want to read'}
-            badge={wishlistCount > 0 ? String(wishlistCount) : undefined}
-            badgeColor={ACCENT}
-            onPress={() => navigation.navigate('Wishlist')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={BarChart3}
             label="Listening Stats"
             subtitle="Track your listening activity"
             onPress={() => navigation.navigate('Stats')}
-          />
-          <ProfileLink
-            Icon={CheckCheck}
-            label="Reading History"
-            subtitle="Mark books you've already read"
-            badge={wizardCompleted ? undefined : canResumeWizard ? 'Resume' : 'Set up'}
-            badgeColor={ACCENT}
-            onPress={() => navigation.navigate('ReadingHistoryWizard')}
-          />
-          <ProfileLink
-            Icon={Sparkles}
-            label="Reading Preferences"
-            subtitle="Personalize recommendations"
-            badge={hasCompletedOnboarding ? undefined : 'Set up'}
-            badgeColor={ACCENT}
-            onPress={() => navigation.navigate('Preferences')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
           />
         </SectionGroup>
 
         {/* Settings Section */}
-        <SectionGroup title="Settings">
+        <SectionGroup title="Settings" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
           <ProfileLink
             Icon={PlayCircle}
             label="Playback"
             subtitle="Speed, skip intervals, sleep timer"
             onPress={() => navigation.navigate('PlaybackSettings')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={Folder}
             label="Storage"
             subtitle="Downloads, cache, WiFi-only"
             onPress={() => navigation.navigate('StorageSettings')}
-          />
-          <ProfileLink
-            Icon={CircleDot}
-            label="Haptic Feedback"
-            subtitle="Vibration and tactile feedback"
-            onPress={() => navigation.navigate('HapticSettings')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={Type}
             label="Chapter Names"
             subtitle="Clean up messy chapter names"
             onPress={() => navigation.navigate('ChapterCleaningSettings')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
+          />
+          <ProfileToggle
+            Icon={themeMode === 'dark' ? Moon : Sun}
+            label="Dark Mode"
+            subtitle={themeMode === 'dark' ? 'Using dark theme' : 'Using light theme'}
+            value={themeMode === 'dark'}
+            onValueChange={toggleTheme}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
+          />
+          <ProfileToggle
+            Icon={Library}
+            label="Hide Single-Book Series"
+            subtitle="Hide series with only 1 book from browse"
+            value={hideSingleBookSeries}
+            onValueChange={setHideSingleBookSeries}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
+          />
+        </SectionGroup>
+
+        {/* Recommendations Section */}
+        <SectionGroup title="Recommendations" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
+          <ProfileLink
+            Icon={Sparkles}
+            label="Preferences"
+            subtitle="Tune your recommendations"
+            onPress={() => navigation.navigate('Preferences')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
+          />
+          <ProfileLink
+            Icon={EyeOff}
+            label="Hidden Books"
+            subtitle={hiddenItemsCount > 0 ? `${hiddenItemsCount} hidden from recommendations` : 'No hidden books'}
+            badge={hiddenItemsCount > 0 ? String(hiddenItemsCount) : undefined}
+            badgeColor={themeColors.textSecondary}
+            onPress={() => navigation.navigate('HiddenItems')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
           />
         </SectionGroup>
 
         {/* Developer Section - keep for testing */}
         {__DEV__ && (
-          <SectionGroup title="Developer">
-            <ProfileLink
-              Icon={Music}
-              label="Cassette Player Test"
-              subtitle="Test the retro cassette UI"
-              onPress={() => navigation.navigate('CassetteTest')}
-            />
+          <SectionGroup title="Developer" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
             <ProfileLink
               Icon={Bug}
               label="Stress Tests"
               subtitle="Runtime monitoring & diagnostics"
               onPress={() => navigation.navigate('DebugStressTest')}
+              themeColors={themeColors}
+              isDarkMode={isDarkMode}
+            />
+            <ProfileLink
+              Icon={BarChart3}
+              label="Export Performance Report"
+              subtitle="FPS, memory, errors as JSON"
+              onPress={async () => {
+                try {
+                  const report = await exportErrorReportJSON();
+                  console.log('\n=== PERFORMANCE REPORT ===');
+                  console.log(report);
+                  console.log('=== END REPORT ===\n');
+                  haptics.selection();
+                  Alert.alert('Report Exported', 'Performance report logged to console. Check your terminal.');
+                } catch (e) {
+                  Alert.alert('Export Failed', String(e));
+                }
+              }}
+              themeColors={themeColors}
+              isDarkMode={isDarkMode}
             />
           </SectionGroup>
         )}
@@ -326,26 +373,38 @@ export function ProfileScreen() {
         {/* Sign Out Button */}
         <View style={styles.signOutSection}>
           <TouchableOpacity
-            style={[styles.signOutButton, isLoading && styles.signOutButtonDisabled]}
+            style={[
+              styles.signOutButton,
+              {
+                backgroundColor: isDarkMode ? 'rgba(255,75,75,0.15)' : 'rgba(220,38,38,0.08)',
+                borderColor: isDarkMode ? 'rgba(255,75,75,0.3)' : 'rgba(220,38,38,0.2)',
+              },
+              isLoading && styles.signOutButtonDisabled
+            ]}
             onPress={handleLogout}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <LogOut size={scale(20)} color="#fff" strokeWidth={2} />
-            <Text style={styles.signOutText}>Sign Out</Text>
+            <LogOut size={scale(20)} color={isDarkMode ? '#ff4b4b' : '#dc2626'} strokeWidth={2} />
+            <Text style={[styles.signOutText, { color: isDarkMode ? '#ff4b4b' : '#dc2626' }]}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
         {/* App Footer */}
         <View style={styles.footer}>
-          <Image
-            source={APP_LOGO}
-            style={styles.footerLogo}
-            contentFit="contain"
-          />
-          <Text style={styles.appName}>Secret Library</Text>
-          <Text style={styles.versionText}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
-          <Text style={styles.buildDate}>{VERSION_DATE}</Text>
+          <View style={[
+            styles.footerLogoContainer,
+            { backgroundColor: isDarkMode ? 'transparent' : 'rgba(0,0,0,0.05)' }
+          ]}>
+            <Image
+              source={APP_LOGO}
+              style={[styles.footerLogo, { opacity: isDarkMode ? 0.6 : 1 }]}
+              contentFit="contain"
+            />
+          </View>
+          <Text style={[styles.appName, { color: themeColors.textSecondary }]}>Secret Library</Text>
+          <Text style={[styles.versionText, { color: themeColors.textTertiary }]}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
+          <Text style={[styles.buildDate, { color: themeColors.textTertiary }]}>{VERSION_DATE}</Text>
         </View>
       </ScrollView>
     </View>
@@ -355,7 +414,7 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via themeColors.backgroundSecondary in JSX
   },
   scrollView: {
     flex: 1,
@@ -370,7 +429,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(32),
     fontWeight: '700',
-    color: '#fff',
+    // color set via themeColors.text in JSX
     letterSpacing: -0.5,
   },
   // User Header
@@ -381,7 +440,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(20),
     marginHorizontal: scale(16),
     marginBottom: scale(24),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: scale(16),
   },
   avatar: {
@@ -395,7 +454,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: scale(24),
     fontWeight: '700',
-    color: '#000',
+    color: '#000', // Black on gold accent (intentional)
   },
   userInfo: {
     flex: 1,
@@ -404,12 +463,12 @@ const styles = StyleSheet.create({
   username: {
     fontSize: scale(20),
     fontWeight: '700',
-    color: '#fff',
+    // color set via themeColors.text in JSX
     marginBottom: scale(2),
   },
   userRole: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors.textSecondary in JSX
     marginBottom: scale(6),
   },
   serverRow: {
@@ -419,14 +478,14 @@ const styles = StyleSheet.create({
   },
   serverText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via themeColors.textTertiary in JSX
     flex: 1,
   },
   headerSignOut: {
     width: scale(40),
     height: scale(40),
     borderRadius: scale(20),
-    backgroundColor: 'rgba(255,75,75,0.15)',
+    backgroundColor: 'rgba(255,75,75,0.15)', // Red tint (intentional)
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: scale(8),
@@ -441,14 +500,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionContent: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -459,13 +518,13 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via themeColors.border in JSX
   },
   linkIconContainer: {
     width: scale(36),
     height: scale(36),
     borderRadius: scale(10),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via themeColors.border in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -476,19 +535,21 @@ const styles = StyleSheet.create({
   linkLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
+    // color set via themeColors.text in JSX
     marginBottom: scale(2),
   },
   linkSubtitle: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
   },
   badge: {
-    backgroundColor: 'rgba(193,244,12,0.2)',
+    backgroundColor: 'transparent',
     paddingHorizontal: scale(8),
     paddingVertical: scale(4),
     borderRadius: scale(6),
     marginRight: scale(8),
+    borderWidth: 1,
+    borderColor: ACCENT,
   },
   badgeText: {
     fontSize: scale(11),
@@ -507,10 +568,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: scale(8),
     paddingVertical: scale(14),
-    backgroundColor: 'rgba(255,75,75,0.15)',
+    backgroundColor: 'rgba(255,75,75,0.15)', // Red tint (intentional)
     borderRadius: scale(12),
     borderWidth: 1,
-    borderColor: 'rgba(255,75,75,0.3)',
+    borderColor: 'rgba(255,75,75,0.3)', // Red tint (intentional)
   },
   signOutButtonDisabled: {
     opacity: 0.5,
@@ -518,32 +579,39 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: '#ff4b4b',
+    color: '#ff4b4b', // Red (intentional for destructive action)
   },
   // Footer
   footer: {
     alignItems: 'center',
-    paddingVertical: scale(16),
+    paddingVertical: scale(24),
+  },
+  footerLogoContainer: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: scale(20),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: scale(12),
   },
   footerLogo: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(10),
-    marginBottom: scale(8),
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(14),
   },
   appName: {
-    fontSize: scale(14),
+    fontSize: scale(16),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.3)',
+    // color set via themeColors.textSecondary in JSX
     marginBottom: scale(4),
   },
   versionText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.2)',
+    // color set via themeColors.textTertiary in JSX
   },
   buildDate: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.15)',
+    // color set via themeColors.textTertiary in JSX
     marginTop: scale(2),
   },
 });

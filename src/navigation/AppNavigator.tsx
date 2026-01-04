@@ -14,12 +14,12 @@ import { useAuth } from '@/core/auth';
 import { useLibraryCache } from '@/core/cache';
 import { useDefaultLibrary } from '@/features/library';
 import { LoginScreen } from '@/features/auth/screens/LoginScreen';
-import { MyLibraryScreen } from '@/features/library';
 import { SeriesListScreen } from '@/features/library/screens/SeriesListScreen';
 import { AuthorsListScreen } from '@/features/library/screens/AuthorsListScreen';
 import { NarratorsListScreen } from '@/features/library/screens/NarratorsListScreen';
 import { GenresListScreen } from '@/features/library/screens/GenresListScreen';
 import { GenreDetailScreen } from '@/features/library/screens/GenreDetailScreen';
+import { FilteredBooksScreen } from '@/features/library/screens/FilteredBooksScreen';
 import { HomeScreen } from '@/features/home';
 import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
 import { SearchScreen } from '@/features/search';
@@ -29,7 +29,7 @@ import { AuthorDetailScreen } from '@/features/author';
 import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { BookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen } from '@/features/profile';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MoodDiscoveryScreen, MoodResultsScreen } from '@/features/mood-discovery';
 import { CDPlayerScreen, BookCompletionSheet } from '@/features/player';
@@ -60,7 +60,6 @@ function MainTabs() {
       initialRouteName="HomeTab"
     >
       <Tab.Screen name="HomeTab" component={HomeScreen} />
-      <Tab.Screen name="LibraryTab" component={MyLibraryScreen} />
       <Tab.Screen name="DiscoverTab" component={BrowseScreen} />
       <Tab.Screen name="ProfileTab" component={ProfileScreen} />
     </Tab.Navigator>
@@ -164,6 +163,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="NarratorsList" component={NarratorsListScreen} />
         <Stack.Screen name="GenresList" component={GenresListScreen} />
         <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
+        <Stack.Screen name="FilteredBooks" component={FilteredBooksScreen} />
         <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
         <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
@@ -180,6 +180,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="JoystickSeekSettings" component={JoystickSeekSettingsScreen} />
         <Stack.Screen name="HapticSettings" component={HapticSettingsScreen} />
         <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
+        <Stack.Screen name="HiddenItems" component={HiddenItemsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         {__DEV__ && (
           <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />

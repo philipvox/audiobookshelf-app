@@ -22,6 +22,7 @@ import { useCoverUrl } from '@/core/cache';
 import type { LibraryItem } from '@/core/types';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { useDownloads } from '@/core/hooks/useDownloads';
+import { downloadManager } from '@/core/services/downloadManager';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
 import { usePlayerStore } from '@/features/player';
 import { useNetworkStatus } from './NetworkStatusBar';
@@ -36,6 +37,7 @@ import {
   formatProgress,
   formatDuration,
 } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import { ThumbnailProgressBar } from './ThumbnailProgressBar';
 
 // Download Icon
@@ -151,14 +153,24 @@ const inlineProgressStyles = StyleSheet.create({
   },
 });
 
+// Pause Icon for paused downloads
+const PauseIcon = ({ size = 12, color = '#FF9800' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"
+      fill={color}
+    />
+  </Svg>
+);
+
 // Progress Ring for downloading
-const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number }) => {
+const ProgressRing = ({ progress, size = 28, isPaused = false }: { progress: number; size?: number; isPaused?: boolean }) => {
   const strokeWidth = 2.5;
   const ringRadius = (size - strokeWidth) / 2;
   const circumference = ringRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
   const progressPct = Math.round(progress);
-  const displayText = progressPct === 0 ? '...' : `${progressPct}%`;
+  const progressColor = isPaused ? '#FF9800' : colors.textPrimary;
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
@@ -175,7 +187,7 @@ const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number
           cx={size / 2}
           cy={size / 2}
           r={ringRadius}
-          stroke={colors.textPrimary}
+          stroke={progressColor}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={`${circumference} ${circumference}`}
@@ -184,7 +196,11 @@ const ProgressRing = ({ progress, size = 28 }: { progress: number; size?: number
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <Text style={styles.progressText}>{displayText}</Text>
+      {isPaused ? (
+        <PauseIcon size={size * 0.4} color="#FF9800" />
+      ) : (
+        <Text style={styles.progressText}>{progressPct === 0 ? '...' : `${progressPct}%`}</Text>
+      )}
     </View>
   );
 };
@@ -193,6 +209,9 @@ export type BookCardActionType = 'auto' | 'download' | 'play';
 
 /** Page context for context-aware secondary info (NNGroup Heuristic #8 - Minimalist Design) */
 export type BookCardContext = 'browse' | 'library' | 'author_detail' | 'narrator_detail' | 'series_detail';
+
+/** Layout variant for different contexts */
+export type BookCardLayout = 'default' | 'search';
 
 export interface BookCardProps {
   book: LibraryItem;
@@ -221,6 +240,13 @@ export interface BookCardProps {
   showStatusBadge?: boolean;
   /** Show wishlist bookmark button on cover top-right */
   showWishlistButton?: boolean;
+  /** Layout variant:
+   * - default: Title first, then author (standard)
+   * - search: Author first (gray), then title (bold) - per reference design
+   */
+  layout?: BookCardLayout;
+  /** Show play button overlay on cover */
+  showPlayOverlay?: boolean;
 }
 
 export function BookCard({
@@ -233,9 +259,14 @@ export function BookCard({
   context = 'browse',
   showStatusBadge = false,
   showWishlistButton = false,
+  layout = 'default',
+  showPlayOverlay = false,
 }: BookCardProps) {
+  // Theme colors for search layout
+  const themeColors = useThemeColors();
+
   // State from hooks
-  const { isDownloaded, isDownloading, progress } = useDownloadStatus(book.id);
+  const { isDownloaded, isDownloading, isPaused, isPending, progress } = useDownloadStatus(book.id);
   const isInQueue = useIsInQueue(book.id);
   const currentBookId = usePlayerStore((s) => s.currentBook?.id);
   const isNowPlaying = currentBookId === book.id;
@@ -294,11 +325,31 @@ export function BookCard({
     ? Math.round(duration * (1 - progressValue))
     : 0;
 
-  // Handle download press
-  const handleDownloadPress = useCallback(() => {
+  // Handle download press - supports pause/resume
+  const handleDownloadPress = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // If downloading, pause it
+    if (isDownloading && !isPaused) {
+      await downloadManager.pauseDownload(book.id);
+      return;
+    }
+
+    // If paused, resume it
+    if (isPaused) {
+      await downloadManager.resumeDownload(book.id);
+      return;
+    }
+
+    // If pending, cancel it
+    if (isPending) {
+      await downloadManager.cancelDownload(book.id);
+      return;
+    }
+
+    // Otherwise queue the download
     queueDownload(book);
-  }, [book, queueDownload]);
+  }, [book, queueDownload, isDownloading, isPaused, isPending]);
 
   // Handle play press
   const handlePlayPress = useCallback(() => {
@@ -393,6 +444,17 @@ export function BookCard({
             <ThumbnailProgressBar progress={userProgress?.progress || 0} />
           )}
 
+          {/* Play button overlay on cover (for search layout) */}
+          {showPlayOverlay && onPlayPress && (
+            <TouchableOpacity
+              style={styles.playOverlay}
+              onPress={handlePlayPress}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <PlayIcon size={scale(16)} color="#fff" />
+            </TouchableOpacity>
+          )}
+
           {/* Queue button on cover - only for downloaded books */}
           {isDownloaded && !isNowPlaying && (
             <TouchableOpacity
@@ -448,19 +510,34 @@ export function BookCard({
 
         {/* Book info */}
         <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {secondaryPerson}{durationText ? ` · ${durationText}` : ''}
-          </Text>
-          {showListeningProgress && progressPercent > 0 && (
-            <View style={styles.progressRow}>
-              <InlineProgressBar progress={progressValue} />
-              <Text style={styles.listeningProgress}>
-                {timeRemaining > 0 ? `${formatDuration.short(timeRemaining)} left` : 'Complete'}
+          {layout === 'search' ? (
+            <>
+              {/* Search layout: Author first (gray), then title (bold) */}
+              <Text style={[styles.searchAuthor, { color: themeColors.textSecondary }]} numberOfLines={1}>
+                {secondaryPerson}
               </Text>
-            </View>
+              <Text style={[styles.searchTitle, { color: themeColors.text }]} numberOfLines={2}>
+                {title}
+              </Text>
+            </>
+          ) : (
+            <>
+              {/* Default layout: Title first, then author */}
+              <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={[styles.subtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>
+                {secondaryPerson}{durationText ? ` · ${durationText}` : ''}
+              </Text>
+              {showListeningProgress && progressPercent > 0 && (
+                <View style={styles.progressRow}>
+                  <InlineProgressBar progress={progressValue} />
+                  <Text style={[styles.listeningProgress, { color: themeColors.textTertiary }]}>
+                    {timeRemaining > 0 ? `${formatDuration.short(timeRemaining)} left` : 'Complete'}
+                  </Text>
+                </View>
+              )}
+            </>
           )}
         </View>
       </Pressable>
@@ -470,11 +547,11 @@ export function BookCard({
       {(actionType === 'auto' || actionType === 'download') && !isDownloaded && (
         <TouchableOpacity
           style={[styles.actionButton, isUnavailableOffline && styles.actionButtonDisabled]}
-          onPress={isDownloading || isUnavailableOffline ? undefined : handleDownloadPress}
-          disabled={isDownloading || isUnavailableOffline}
+          onPress={isUnavailableOffline ? undefined : handleDownloadPress}
+          disabled={isUnavailableOffline}
         >
-          {isDownloading ? (
-            <ProgressRing progress={progress * 100} size={scale(28)} />
+          {isDownloading || isPaused || isPending ? (
+            <ProgressRing progress={progress * 100} size={scale(28)} isPaused={isPaused} />
           ) : isUnavailableOffline ? (
             <CloudOffIcon size={scale(20)} color={colors.textTertiary} />
           ) : (
@@ -505,8 +582,8 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: scale(10),
+    paddingHorizontal: scale(16),
   },
   cardPressable: {
     flexDirection: 'row',
@@ -517,16 +594,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   cover: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: radius.cover,
+    width: scale(64),
+    height: scale(64),
+    borderRadius: radius.sm,
     backgroundColor: colors.backgroundElevated,
   },
   coverNotDownloaded: {
-    opacity: 0.7,
+    // Full opacity - don't dim covers
   },
   coverUnavailable: {
-    opacity: 0.4,
+    // Full opacity - don't dim covers
   },
   queueButton: {
     position: 'absolute',
@@ -583,18 +660,44 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginLeft: scale(14),
     justifyContent: 'center',
   },
   title: {
     ...typography.headlineSmall,
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xxs,
   },
   subtitle: {
     ...typography.bodySmall,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xxs,
+  },
+  // Search layout styles
+  searchAuthor: {
+    ...typography.bodySmall,
+    // color set via themeColors in JSX
+    marginBottom: spacing.xxs,
+  },
+  searchTitle: {
+    ...typography.headlineSmall,
+    // color set via themeColors in JSX
+    fontWeight: '600',
+    lineHeight: scale(18),
+  },
+  playOverlay: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: scale(-14),
+    marginLeft: scale(-14),
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: scale(2), // Offset for visual centering of play icon
   },
   progressRow: {
     flexDirection: 'row',
@@ -604,7 +707,7 @@ const styles = StyleSheet.create({
   },
   listeningProgress: {
     ...typography.labelSmall,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     flexShrink: 0,
   },
   actionButton: {

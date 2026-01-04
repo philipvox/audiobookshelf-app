@@ -33,9 +33,9 @@ import { colors, spacing, radius, wp, hp, scale } from '@/shared/theme';
 // CONSTANTS
 // ============================================================================
 
-/** Dark theme colors for skeleton */
-const SKELETON_BG = '#2a2a2a';
-const SHIMMER_COLOR = 'rgba(255, 255, 255, 0.08)';
+/** Light theme colors for skeleton */
+const SKELETON_BG = 'rgba(0, 0, 0, 0.08)';
+const SHIMMER_COLOR = 'rgba(255, 255, 255, 0.5)';
 
 /** Animation duration in ms */
 const SHIMMER_DURATION = 1200;

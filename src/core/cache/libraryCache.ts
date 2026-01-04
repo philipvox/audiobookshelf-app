@@ -9,6 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
+import { searchIndex } from './searchIndex';
+import { normalizeForSearch } from '@/features/search/utils/fuzzySearch';
 
 const CACHE_KEY = 'library_cache_v1';
 const CACHE_TTL_DAYS = 30;
@@ -272,6 +274,9 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
               // Silently fail - will use local counts
             });
 
+            // Build search index in background
+            searchIndex.build(parsed.items);
+
             set({
               items: parsed.items,
               isLoaded: true,
@@ -342,6 +347,9 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
       DEBUG && console.log(`[LibraryCache] Cached ${items.length} items, ${indexes.authors.size} authors`);
 
+      // Build search index
+      searchIndex.build(items);
+
       set({
         items,
         isLoaded: true,
@@ -404,6 +412,13 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     const { items } = get();
     if (!query.trim()) return items;
 
+    // Use trigram-based search index for better performance
+    if (searchIndex.ready) {
+      const results = searchIndex.search(query, 100);
+      return results.map(r => r.item);
+    }
+
+    // Fallback to linear search if index not built
     const lowerQuery = query.toLowerCase();
     return items.filter((item) => {
       const metadata = getMetadata(item);
@@ -425,22 +440,81 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     let { items, isLoaded } = get();
     DEBUG && console.log(`[LibraryCache] filterItems called. Items: ${items.length}, isLoaded: ${isLoaded}`);
 
-    // Text search
+    // Text search - optimized for performance
     if (filters.query?.trim()) {
-      const lowerQuery = filters.query.toLowerCase();
+      const lowerQuery = filters.query.trim().toLowerCase();
       const beforeCount = items.length;
+
+      // Pre-compute normalized query ONCE (strips spaces, punctuation, accents)
+      // e.g., "earth sea" -> "earthsea", "Carré" -> "carre"
+      const queryNorm = normalizeForSearch(lowerQuery);
+      const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 0);
+      const hasMultipleWords = queryWords.length > 1;
+      // FIX 4: Only use significant words (>2 chars) for multi-word matching
+      const significantWords = queryWords.filter(w => w.length > 2);
+
       items = items.filter((item) => {
         const metadata = getMetadata(item);
         const title = (metadata.title || '').toLowerCase();
         const author = (metadata.authorName || '').toLowerCase();
         const narrator = (metadata.narratorName || '').toLowerCase();
         const series = (metadata.seriesName || '').toLowerCase();
-        return (
+
+        // Fast path 1: Simple substring match (handles 95%+ of searches)
+        if (
           title.includes(lowerQuery) ||
           author.includes(lowerQuery) ||
           narrator.includes(lowerQuery) ||
           series.includes(lowerQuery)
-        );
+        ) {
+          return true;
+        }
+
+        // Fast path 2: Word prefix matches
+        // FIX 5: Include author and narrator (e.g., "sand" matches "Sanderson")
+        if (
+          title.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
+          author.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
+          narrator.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
+          series.split(/\s+/).some(w => w.startsWith(lowerQuery))
+        ) {
+          return true;
+        }
+
+        // Fast path 3: Space-insensitive + accent-normalized matching
+        // FIX 1: Runs for ALL queries, not just multi-word
+        // FIX 7: Includes author and narrator
+        // FIX 8: Includes accent normalization
+        // "earthsea" matches "A Wizard of Earth Sea"
+        // "leguin" matches "Ursula K. Le Guin"
+        // "carre" matches "John le Carré"
+        if (queryNorm.length >= 3) {
+          const titleNorm = normalizeForSearch(title);
+          const authorNorm = normalizeForSearch(author);
+          const narratorNorm = normalizeForSearch(narrator);
+          const seriesNorm = normalizeForSearch(series);
+          if (
+            titleNorm.includes(queryNorm) ||
+            authorNorm.includes(queryNorm) ||
+            narratorNorm.includes(queryNorm) ||
+            seriesNorm.includes(queryNorm)
+          ) {
+            return true;
+          }
+        }
+
+        // Fast path 4: Multi-word search - all significant words must appear
+        // FIX 4: Uses significant words only (filters "a", "of", "the")
+        // "long sun" matches "Lake of the Long Sun"
+        // "a wizard of earthsea" matches (uses "wizard", "earthsea")
+        if (hasMultipleWords && significantWords.length > 0) {
+          const combined = `${title} ${author} ${series}`;
+          if (significantWords.every(word => combined.includes(word))) {
+            return true;
+          }
+        }
+
+        return false;
       });
       DEBUG && console.log(`[LibraryCache] Text search "${filters.query}": ${beforeCount} -> ${items.length} items`);
     }
@@ -558,6 +632,29 @@ export function getAllSeries(): SeriesInfo[] {
 
 export function getAllGenres(): string[] {
   return useLibraryCache.getState().genres;
+}
+
+/**
+ * Get genres sorted by book count (most popular first)
+ * Returns array of { name, bookCount } objects
+ */
+export function getGenresByPopularity(): GenreInfo[] {
+  const { items } = useLibraryCache.getState();
+  const genreCounts = new Map<string, number>();
+
+  // Count books per genre
+  for (const item of items) {
+    const metadata = (item.media?.metadata as any) || {};
+    const genres: string[] = metadata.genres || [];
+    for (const genre of genres) {
+      genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+    }
+  }
+
+  // Convert to array and sort by count descending
+  return Array.from(genreCounts.entries())
+    .map(([name, bookCount]) => ({ name, bookCount }))
+    .sort((a, b) => b.bookCount - a.bookCount);
 }
 
 /**

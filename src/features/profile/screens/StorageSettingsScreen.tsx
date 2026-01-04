@@ -34,9 +34,26 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale } from '@/shared/theme';
+import { accentColors, scale } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
+
+// Helper to create theme-aware colors
+function createColors(themeColors: ThemeColors) {
+  return {
+    accent: ACCENT,
+    background: themeColors.backgroundSecondary,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    card: themeColors.border,
+    border: themeColors.border,
+    iconBg: themeColors.border,
+    danger: '#ff4b4b', // Intentional: destructive action color
+    dangerBg: 'rgba(255,75,75,0.15)',
+  };
+}
 
 // Format bytes to human readable
 function formatBytes(bytes: number): string {
@@ -58,6 +75,7 @@ interface SettingsRowProps {
   onSwitchChange?: (value: boolean) => void;
   note?: string;
   danger?: boolean;
+  colors: ReturnType<typeof createColors>;
 }
 
 function SettingsRow({
@@ -70,25 +88,26 @@ function SettingsRow({
   onSwitchChange,
   note,
   danger,
+  colors,
 }: SettingsRowProps) {
   const content = (
-    <View style={styles.settingsRow}>
+    <View style={[styles.settingsRow, { borderBottomColor: colors.border }]}>
       <View style={styles.rowLeft}>
-        <View style={[styles.iconContainer, danger && styles.iconContainerDanger]}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }, danger && { backgroundColor: colors.dangerBg }]}>
           <Icon
             size={scale(18)}
-            color={danger ? '#ff4b4b' : 'rgba(255,255,255,0.8)'}
+            color={danger ? colors.danger : colors.textSecondary}
             strokeWidth={2}
           />
         </View>
         <View style={styles.rowContent}>
-          <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
-          {note ? <Text style={styles.rowNote}>{note}</Text> : null}
+          <Text style={[styles.rowLabel, { color: colors.text }, danger && { color: colors.danger }]}>{label}</Text>
+          {note ? <Text style={[styles.rowNote, { color: colors.textTertiary }]}>{note}</Text> : null}
         </View>
       </View>
       <View style={styles.rowRight}>
         {value ? (
-          <Text style={[styles.rowValue, valueColor ? { color: valueColor } : null]}>
+          <Text style={[styles.rowValue, { color: colors.accent }, valueColor ? { color: valueColor } : null]}>
             {value}
           </Text>
         ) : null}
@@ -96,12 +115,12 @@ function SettingsRow({
           <Switch
             value={switchValue}
             onValueChange={onSwitchChange}
-            trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+            trackColor={{ false: colors.border, true: ACCENT }}
             thumbColor="#fff"
           />
         ) : null}
         {onPress ? (
-          <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+          <ChevronRight size={scale(18)} color={colors.textTertiary} strokeWidth={2} />
         ) : null}
       </View>
     </View>
@@ -119,20 +138,20 @@ function SettingsRow({
 }
 
 // Section Header Component
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
+  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
 }
 
 // Storage Meter Component
-function StorageMeter({ used, label }: { used: number; label: string }) {
+function StorageMeter({ used, label, colors }: { used: number; label: string; colors: ReturnType<typeof createColors> }) {
   return (
     <View style={styles.storageMeter}>
       <View style={styles.storageIcon}>
-        <Folder size={scale(24)} color={ACCENT} strokeWidth={2} />
+        <Folder size={scale(24)} color={colors.accent} strokeWidth={2} />
       </View>
       <View style={styles.storageInfo}>
-        <Text style={styles.storageValue}>{formatBytes(used)}</Text>
-        <Text style={styles.storageLabel}>{label}</Text>
+        <Text style={[styles.storageValue, { color: colors.text }]}>{formatBytes(used)}</Text>
+        <Text style={[styles.storageLabel, { color: colors.textTertiary }]}>{label}</Text>
       </View>
     </View>
   );
@@ -141,6 +160,8 @@ function StorageMeter({ used, label }: { used: number; label: string }) {
 export function StorageSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
 
   // Downloads data
   const { downloads } = useDownloads();
@@ -221,8 +242,8 @@ export function StorageSettingsScreen() {
   }, [downloadCount, totalStorage, isClearingDownloads]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -231,9 +252,9 @@ export function StorageSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Storage</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Storage</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -243,19 +264,20 @@ export function StorageSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Storage Overview */}
-        <View style={styles.storageOverview}>
-          <StorageMeter used={totalStorage} label={`${downloadCount} downloaded book${downloadCount !== 1 ? 's' : ''}`} />
+        <View style={[styles.storageOverview, { backgroundColor: colors.card }]}>
+          <StorageMeter used={totalStorage} label={`${downloadCount} downloaded book${downloadCount !== 1 ? 's' : ''}`} colors={colors} />
         </View>
 
         {/* Downloads Section */}
         <View style={styles.section}>
-          <SectionHeader title="Downloads" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Downloads" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Download}
               label="Manage Downloads"
               value={`${downloadCount} book${downloadCount !== 1 ? 's' : ''}`}
               onPress={handleManageDownloads}
+              colors={colors}
             />
             <SettingsRow
               Icon={Wifi}
@@ -263,6 +285,7 @@ export function StorageSettingsScreen() {
               switchValue={wifiOnlyEnabled}
               onSwitchChange={handleWifiOnlyToggle}
               note="Pause downloads when not on WiFi"
+              colors={colors}
             />
             <SettingsRow
               Icon={Library}
@@ -270,45 +293,48 @@ export function StorageSettingsScreen() {
               switchValue={autoDownloadSeriesEnabled}
               onSwitchChange={handleAutoDownloadSeriesToggle}
               note="Queue next book at 80% progress"
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Cache Section */}
         <View style={styles.section}>
-          <SectionHeader title="Cache" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Cache" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={RefreshCw}
               label="Refresh Library Cache"
               value={isRefreshingCache ? 'Refreshing...' : undefined}
-              valueColor="rgba(255,255,255,0.5)"
+              valueColor={colors.textTertiary}
               onPress={handleRefreshCache}
               note="Re-sync books and series from server"
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Danger Zone Section */}
         <View style={styles.section}>
-          <SectionHeader title="Danger Zone" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Danger Zone" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Trash2}
               label="Clear All Downloads"
               onPress={isClearingDownloads ? undefined : handleClearAllDownloads}
               value={isClearingDownloads ? 'Clearing...' : undefined}
-              valueColor="rgba(255,255,255,0.5)"
+              valueColor={colors.textTertiary}
               note={`Free up ${formatBytes(totalStorage)}`}
               danger
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
-          <Text style={styles.infoText}>
+          <Info size={scale(16)} color={colors.textTertiary} strokeWidth={2} />
+          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
             Downloads are stored locally on your device. Clearing downloads will not affect your listening progress, which is synced with the server.
           </Text>
         </View>
@@ -320,7 +346,7 @@ export function StorageSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via colors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -338,7 +364,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -354,7 +380,7 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(16),
     marginBottom: scale(24),
     padding: scale(20),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(16),
   },
   storageMeter: {
@@ -365,7 +391,7 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(12),
-    backgroundColor: 'rgba(193,244,12,0.15)',
+    backgroundColor: 'rgba(193,244,12,0.15)', // Intentional: accent highlight
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -375,11 +401,11 @@ const styles = StyleSheet.create({
   storageValue: {
     fontSize: scale(24),
     fontWeight: '700',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   storageLabel: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
   // Sections
@@ -389,14 +415,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -408,7 +434,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via colors.border in JSX
   },
   rowLeft: {
     flexDirection: 'row',
@@ -419,12 +445,9 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconContainerDanger: {
-    backgroundColor: 'rgba(255,75,75,0.15)',
   },
   rowContent: {
     flex: 1,
@@ -433,14 +456,11 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
-  },
-  rowLabelDanger: {
-    color: '#ff4b4b',
+    // color set via colors.text in JSX
   },
   rowNote: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
   rowRight: {
@@ -450,7 +470,7 @@ const styles = StyleSheet.create({
   },
   rowValue: {
     fontSize: scale(14),
-    color: ACCENT,
+    // color set via colors.accent in JSX
     fontWeight: '500',
   },
   // Info Section
@@ -464,7 +484,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
 });

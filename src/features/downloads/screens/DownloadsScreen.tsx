@@ -37,28 +37,41 @@ import { sqliteCache } from '@/core/services/sqliteCache';
 import { LibraryItem } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, wp } from '@/shared/theme';
+import { accentColors, scale, wp } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 import { Snackbar, useSnackbar } from '@/shared/components';
 
 // ============================================================================
-// DESIGN TOKENS (from spec)
+// DESIGN TOKENS - Base values, theme-specific colors passed via props/context
 // ============================================================================
 
-const COLORS = {
-  accent: colors.accent,
-  background: colors.backgroundPrimary,
-  storageUsed: colors.accent,
-  storageFree: 'rgba(255, 255, 255, 0.1)',
-  progressFill: colors.accent,
-  progressTrack: 'rgba(255, 255, 255, 0.1)',
-  textPrimary: colors.textPrimary,
-  textSecondary: 'rgba(255, 255, 255, 0.6)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-  cardBackground: 'rgba(255, 255, 255, 0.05)',
-  cardBorder: 'rgba(255, 255, 255, 0.08)',
+const ACCENT = accentColors.gold;
+
+// Static accent-related colors (not theme dependent)
+const STATIC_COLORS = {
+  accent: ACCENT,
+  storageUsed: ACCENT,
+  progressFill: ACCENT,
   destructive: '#FF453A',
   success: '#30D158',
 };
+
+// Helper to create theme-aware COLORS object
+function createColors(themeColors: ThemeColors) {
+  return {
+    ...STATIC_COLORS,
+    background: themeColors.background,
+    storageFree: themeColors.border,
+    progressTrack: themeColors.border,
+    textPrimary: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    cardBackground: themeColors.border,
+    cardBorder: themeColors.border,
+  };
+}
+
+// Colors for StyleSheet defaults (theme-specific colors set via inline styles in JSX)
 
 const SPACING = {
   pageHorizontal: wp(4),
@@ -154,9 +167,10 @@ interface StorageCardProps {
   usedBytes: number;
   onClearCache?: () => void;
   cacheSize?: number;
+  colors: ReturnType<typeof createColors>;
 }
 
-function StorageCard({ usedBytes, onClearCache, cacheSize = 0 }: StorageCardProps) {
+function StorageCard({ usedBytes, onClearCache, cacheSize = 0, colors }: StorageCardProps) {
   const [freeBytes, setFreeBytes] = useState<number | null>(null);
 
   useEffect(() => {
@@ -169,27 +183,27 @@ function StorageCard({ usedBytes, onClearCache, cacheSize = 0 }: StorageCardProp
   const usagePercent = totalBytes ? Math.min((usedBytes / totalBytes) * 100, 100) : 1;
 
   return (
-    <View style={styles.storageCard}>
-      <Text style={styles.storageTitle}>Storage</Text>
+    <View style={[styles.storageCard, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder }]}>
+      <Text style={[styles.storageTitle, { color: colors.textPrimary }]}>Storage</Text>
 
       {/* Storage bar */}
-      <View style={styles.storageBar}>
+      <View style={[styles.storageBar, { backgroundColor: colors.storageFree }]}>
         <View style={[styles.storageBarFill, { width: `${usagePercent}%` }]} />
       </View>
 
       {/* Labels */}
       <View style={styles.storageLabels}>
-        <Text style={styles.storageUsedLabel}>{formatBytes(usedBytes)} used</Text>
-        <Text style={styles.storageFreeLabel}>
+        <Text style={[styles.storageUsedLabel, { color: colors.textPrimary }]}>{formatBytes(usedBytes)} used</Text>
+        <Text style={[styles.storageFreeLabel, { color: colors.textSecondary }]}>
           {freeBytes ? `${formatBytes(freeBytes)} free` : 'Calculating...'}
         </Text>
       </View>
 
       {/* Clear cache button */}
       {cacheSize > 0 && onClearCache && (
-        <TouchableOpacity style={styles.clearCacheButton} onPress={onClearCache} activeOpacity={0.7}>
-          <Text style={styles.clearCacheText}>Clear Cache</Text>
-          <Text style={styles.clearCacheSize}>{formatBytes(cacheSize)}</Text>
+        <TouchableOpacity style={[styles.clearCacheButton, { borderTopColor: colors.cardBorder }]} onPress={onClearCache} activeOpacity={0.7}>
+          <Text style={[styles.clearCacheText, { color: colors.textPrimary }]}>Clear Cache</Text>
+          <Text style={[styles.clearCacheSize, { color: colors.textSecondary }]}>{formatBytes(cacheSize)}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -205,9 +219,10 @@ interface ActiveDownloadRowProps {
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function ActiveDownloadRow({ download, onPause, onResume, onCancel }: ActiveDownloadRowProps) {
+function ActiveDownloadRow({ download, onPause, onResume, onCancel, colors }: ActiveDownloadRowProps) {
   const [book, setBook] = useState<LibraryItem | null>(null);
   const coverUrl = useCoverUrl(download.itemId);
 
@@ -228,20 +243,20 @@ function ActiveDownloadRow({ download, onPause, onResume, onCancel }: ActiveDown
   const estimatedSeconds = download.totalBytes > 0 ? (bytesRemaining / (download.totalBytes / 300)) : 0; // Assume ~300s for full download
 
   return (
-    <View style={styles.downloadRow}>
+    <View style={[styles.downloadRow, { backgroundColor: colors.cardBackground }]}>
       <Image source={coverUrl} style={styles.downloadCover} contentFit="cover" />
 
       <View style={styles.downloadInfo}>
-        <Text style={styles.downloadTitle} numberOfLines={1}>{title}</Text>
-        <Text style={styles.downloadAuthor} numberOfLines={1}>{author}</Text>
+        <Text style={[styles.downloadTitle, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.downloadAuthor, { color: colors.textSecondary }]} numberOfLines={1}>{author}</Text>
 
         {/* Progress bar */}
-        <View style={styles.progressBar}>
+        <View style={[styles.progressBar, { backgroundColor: colors.progressTrack }]}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
 
         {/* Progress text */}
-        <Text style={styles.progressText}>
+        <Text style={[styles.progressText, { color: colors.textTertiary }]}>
           {isQueued ? 'Waiting...' : (
             <>
               {formatBytes(download.bytesDownloaded || 0)} / {formatBytes(download.totalBytes || 0)}
@@ -261,14 +276,14 @@ function ActiveDownloadRow({ download, onPause, onResume, onCancel }: ActiveDown
             activeOpacity={0.7}
           >
             {isPaused ? (
-              <PlayIcon size={scale(18)} color={COLORS.accent} />
+              <PlayIcon size={scale(18)} color={colors.accent} />
             ) : (
-              <PauseIcon size={scale(18)} color={COLORS.textSecondary} />
+              <PauseIcon size={scale(18)} color={colors.textSecondary} />
             )}
           </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.actionButton} onPress={onCancel} activeOpacity={0.7}>
-          <CloseIcon size={scale(18)} color={COLORS.destructive} />
+          <CloseIcon size={scale(18)} color={colors.destructive} />
         </TouchableOpacity>
       </View>
     </View>
@@ -283,9 +298,10 @@ interface DownloadedRowProps {
   download: DownloadTask;
   onPress: () => void;
   onDelete: () => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function DownloadedRow({ download, onPress, onDelete }: DownloadedRowProps) {
+function DownloadedRow({ download, onPress, onDelete, colors }: DownloadedRowProps) {
   const [book, setBook] = useState<LibraryItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const coverUrl = useCoverUrl(download.itemId);
@@ -324,18 +340,18 @@ function DownloadedRow({ download, onPress, onDelete }: DownloadedRowProps) {
       rightThreshold={40}
       friction={2}
     >
-      <TouchableOpacity style={styles.downloadedRow} onPress={onPress} activeOpacity={0.7}>
+      <TouchableOpacity style={[styles.downloadedRow, { backgroundColor: colors.cardBackground }]} onPress={onPress} activeOpacity={0.7}>
         <Image source={coverUrl} style={styles.downloadCover} contentFit="cover" />
 
         <View style={styles.downloadInfo}>
-          <Text style={styles.downloadTitle} numberOfLines={1}>{title}</Text>
-          <Text style={styles.downloadAuthor} numberOfLines={1}>
+          <Text style={[styles.downloadTitle, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
+          <Text style={[styles.downloadAuthor, { color: colors.textSecondary }]} numberOfLines={1}>
             {author} · {formatDate(downloadDate)}
           </Text>
         </View>
 
-        <Text style={styles.downloadSize}>{formatBytes(download.totalBytes || 0)}</Text>
-        <ChevronIcon size={scale(18)} />
+        <Text style={[styles.downloadSize, { color: colors.textSecondary }]}>{formatBytes(download.totalBytes || 0)}</Text>
+        <ChevronIcon size={scale(18)} color={colors.textTertiary} />
       </TouchableOpacity>
     </Swipeable>
   );
@@ -351,17 +367,18 @@ interface SectionHeaderProps {
   actionLabel?: string;
   onAction?: () => void;
   actionColor?: string;
+  colors: ReturnType<typeof createColors>;
 }
 
-function SectionHeader({ title, count, actionLabel, onAction, actionColor = COLORS.accent }: SectionHeaderProps) {
+function SectionHeader({ title, count, actionLabel, onAction, actionColor, colors }: SectionHeaderProps) {
   return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>
+    <View style={[styles.sectionHeader, { borderBottomColor: colors.cardBorder }]}>
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
         {title}{count !== undefined && ` (${count})`}
       </Text>
       {actionLabel && onAction && (
         <TouchableOpacity onPress={onAction} activeOpacity={0.7}>
-          <Text style={[styles.sectionAction, { color: actionColor }]}>{actionLabel}</Text>
+          <Text style={[styles.sectionAction, { color: actionColor || colors.accent }]}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -372,16 +389,21 @@ function SectionHeader({ title, count, actionLabel, onAction, actionColor = COLO
 // EMPTY STATE COMPONENT
 // ============================================================================
 
-function EmptyState({ onBrowse }: { onBrowse: () => void }) {
+interface EmptyStateProps {
+  onBrowse: () => void;
+  colors: ReturnType<typeof createColors>;
+}
+
+function EmptyState({ onBrowse, colors }: EmptyStateProps) {
   return (
     <View style={styles.emptyState}>
-      <DownloadIcon size={scale(64)} />
-      <Text style={styles.emptyTitle}>No Downloads Yet</Text>
-      <Text style={styles.emptyDescription}>
+      <DownloadIcon size={scale(64)} color={colors.textTertiary} />
+      <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No Downloads Yet</Text>
+      <Text style={[styles.emptyDescription, { color: colors.textSecondary }]}>
         Download audiobooks to listen offline.{'\n'}They'll appear here.
       </Text>
-      <TouchableOpacity style={styles.browseButton} onPress={onBrowse} activeOpacity={0.7}>
-        <Text style={styles.browseButtonText}>Browse Library</Text>
+      <TouchableOpacity style={[styles.browseButton, { borderColor: colors.accent }]} onPress={onBrowse} activeOpacity={0.7}>
+        <Text style={[styles.browseButtonText, { color: colors.accent }]}>Browse Library</Text>
       </TouchableOpacity>
     </View>
   );
@@ -394,6 +416,8 @@ function EmptyState({ onBrowse }: { onBrowse: () => void }) {
 export function DownloadsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
   const { downloads, deleteDownload, pauseDownload, resumeDownload, cancelDownload } = useDownloads();
 
   // Snackbar for undo functionality
@@ -549,20 +573,20 @@ export function DownloadsScreen() {
   }, [navigation]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <BackIcon size={scale(24)} />
+          <BackIcon size={scale(24)} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Downloads</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Downloads</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       {!hasDownloads ? (
-        <EmptyState onBrowse={handleBrowse} />
+        <EmptyState onBrowse={handleBrowse} colors={colors} />
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -570,7 +594,7 @@ export function DownloadsScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Storage Card */}
-          <StorageCard usedBytes={totalUsedBytes} />
+          <StorageCard usedBytes={totalUsedBytes} colors={colors} />
 
           {/* Downloading Section */}
           {downloading.length > 0 && (
@@ -580,6 +604,7 @@ export function DownloadsScreen() {
                 count={downloading.length}
                 actionLabel="Pause All"
                 onAction={handlePauseAll}
+                colors={colors}
               />
               {downloading.map((d) => (
                 <ActiveDownloadRow
@@ -588,6 +613,7 @@ export function DownloadsScreen() {
                   onPause={() => pauseDownload(d.itemId)}
                   onResume={() => resumeDownload(d.itemId)}
                   onCancel={() => handleCancelDownload(d.itemId)}
+                  colors={colors}
                 />
               ))}
             </View>
@@ -596,14 +622,15 @@ export function DownloadsScreen() {
           {/* Queued Section */}
           {queued.length > 0 && (
             <View style={styles.section}>
-              <SectionHeader title="Queued" count={queued.length} />
-              {queued.map((d, index) => (
+              <SectionHeader title="Queued" count={queued.length} colors={colors} />
+              {queued.map((d) => (
                 <ActiveDownloadRow
                   key={d.itemId}
                   download={d}
                   onPause={() => {}}
                   onResume={() => {}}
                   onCancel={() => handleCancelDownload(d.itemId)}
+                  colors={colors}
                 />
               ))}
             </View>
@@ -617,7 +644,8 @@ export function DownloadsScreen() {
                 count={completed.length}
                 actionLabel="Delete All"
                 onAction={handleDeleteAll}
-                actionColor={COLORS.destructive}
+                actionColor={colors.destructive}
+                colors={colors}
               />
               {completed.map((d) => (
                 <DownloadedRow
@@ -625,19 +653,20 @@ export function DownloadsScreen() {
                   download={d}
                   onPress={() => handleBookPress(d.itemId)}
                   onDelete={() => deleteDownload(d.itemId)}
+                  colors={colors}
                 />
               ))}
             </View>
           )}
 
           {/* Download Settings Link */}
-          <TouchableOpacity style={styles.settingsLink} onPress={handleSettings} activeOpacity={0.7}>
-            <SettingsIcon size={scale(20)} color={COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.settingsLink, { backgroundColor: colors.cardBackground }]} onPress={handleSettings} activeOpacity={0.7}>
+            <SettingsIcon size={scale(20)} color={colors.textSecondary} />
             <View style={styles.settingsLinkContent}>
-              <Text style={styles.settingsLinkTitle}>Download Settings</Text>
-              <Text style={styles.settingsLinkSubtitle}>Quality, WiFi-only, storage location</Text>
+              <Text style={[styles.settingsLinkTitle, { color: colors.textPrimary }]}>Download Settings</Text>
+              <Text style={[styles.settingsLinkSubtitle, { color: colors.textSecondary }]}>Quality, WiFi-only, storage location</Text>
             </View>
-            <ChevronIcon />
+            <ChevronIcon color={colors.textTertiary} />
           </TouchableOpacity>
         </ScrollView>
       )}
@@ -655,7 +684,7 @@ export function DownloadsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    // backgroundColor set via colors.background in JSX
   },
 
   // Header
@@ -675,7 +704,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(17),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -691,29 +720,29 @@ const styles = StyleSheet.create({
 
   // Storage Card
   storageCard: {
-    backgroundColor: COLORS.cardBackground,
+    // backgroundColor set via colors.cardBackground in JSX
     borderRadius: scale(12),
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    // borderColor set via colors.cardBorder in JSX
     padding: SPACING.cardPadding,
     marginBottom: SPACING.sectionGap,
   },
   storageTitle: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
     marginBottom: scale(12),
   },
   storageBar: {
     height: 8,
-    backgroundColor: COLORS.storageFree,
+    // backgroundColor set via colors.storageFree in JSX
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: scale(8),
   },
   storageBarFill: {
     height: '100%',
-    backgroundColor: COLORS.storageUsed,
+    backgroundColor: ACCENT, // Gold accent - intentional
     borderRadius: 4,
   },
   storageLabels: {
@@ -722,11 +751,11 @@ const styles = StyleSheet.create({
   },
   storageUsedLabel: {
     fontSize: scale(13),
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
   },
   storageFreeLabel: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
   },
   clearCacheButton: {
     flexDirection: 'row',
@@ -735,15 +764,15 @@ const styles = StyleSheet.create({
     marginTop: scale(12),
     paddingTop: scale(12),
     borderTopWidth: 1,
-    borderTopColor: COLORS.cardBorder,
+    // borderTopColor set via colors.cardBorder in JSX
   },
   clearCacheText: {
     fontSize: scale(14),
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
   },
   clearCacheSize: {
     fontSize: scale(14),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
   },
 
   // Section
@@ -756,24 +785,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.itemGap,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
+    // borderBottomColor set via colors.cardBorder in JSX
     marginBottom: scale(8),
   },
   sectionTitle: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
   },
   sectionAction: {
     fontSize: scale(13),
     fontWeight: '500',
+    // color set dynamically in JSX
   },
 
   // Download rows
   downloadRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBackground,
+    // backgroundColor set via colors.cardBackground in JSX
     borderRadius: scale(12),
     padding: SPACING.itemGap,
     marginBottom: scale(8),
@@ -782,7 +812,7 @@ const styles = StyleSheet.create({
   downloadedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBackground,
+    // backgroundColor set via colors.cardBackground in JSX
     borderRadius: scale(12),
     padding: SPACING.itemGap,
     marginBottom: scale(8),
@@ -792,7 +822,7 @@ const styles = StyleSheet.create({
     width: SPACING.coverSize,
     height: SPACING.coverSize,
     borderRadius: 6,
-    backgroundColor: '#262626',
+    backgroundColor: '#262626', // Placeholder fallback
   },
   downloadInfo: {
     flex: 1,
@@ -800,36 +830,36 @@ const styles = StyleSheet.create({
   downloadTitle: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
     marginBottom: 2,
   },
   downloadAuthor: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
     marginBottom: scale(6),
   },
   downloadSize: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
     marginRight: scale(4),
   },
 
   // Progress
   progressBar: {
     height: 4,
-    backgroundColor: COLORS.progressTrack,
+    // backgroundColor set via colors.progressTrack in JSX
     borderRadius: 2,
     overflow: 'hidden',
     marginBottom: scale(4),
   },
   progressFill: {
     height: '100%',
-    backgroundColor: COLORS.progressFill,
+    backgroundColor: ACCENT, // Gold accent - intentional
     borderRadius: 2,
   },
   progressText: {
     fontSize: scale(12),
-    color: COLORS.textTertiary,
+    // color set via colors.textTertiary in JSX
   },
 
   // Actions
@@ -846,7 +876,7 @@ const styles = StyleSheet.create({
 
   // Swipe delete
   swipeDeleteButton: {
-    backgroundColor: COLORS.destructive,
+    backgroundColor: '#FF453A', // Destructive red - intentional
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
@@ -855,7 +885,7 @@ const styles = StyleSheet.create({
     marginLeft: scale(8),
   },
   swipeDeleteText: {
-    color: '#fff',
+    color: '#fff', // White on destructive red - intentional
     fontSize: scale(12),
     fontWeight: '600',
     marginTop: scale(4),
@@ -865,7 +895,7 @@ const styles = StyleSheet.create({
   settingsLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBackground,
+    // backgroundColor set via colors.cardBackground in JSX
     borderRadius: scale(12),
     padding: SPACING.cardPadding,
     marginTop: scale(8),
@@ -877,11 +907,11 @@ const styles = StyleSheet.create({
   settingsLinkTitle: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
   },
   settingsLinkSubtitle: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
     marginTop: 2,
   },
 
@@ -895,13 +925,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: scale(17),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via colors.textPrimary in JSX
     marginTop: scale(16),
     marginBottom: scale(8),
   },
   emptyDescription: {
     fontSize: scale(14),
-    color: COLORS.textSecondary,
+    // color set via colors.textSecondary in JSX
     textAlign: 'center',
     lineHeight: scale(20),
     marginBottom: scale(24),
@@ -910,12 +940,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(24),
     paddingVertical: scale(12),
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    // borderColor set via colors.accent in JSX
     borderRadius: scale(24),
   },
   browseButtonText: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: COLORS.accent,
+    // color set via colors.accent in JSX
   },
 });

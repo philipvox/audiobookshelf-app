@@ -41,7 +41,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FAF8F5"
+        "backgroundColor": "#231f20"
       },
       "package": "com.secretlibrary.app",
       "versionCode": 2,

@@ -1,51 +1,68 @@
 /**
  * src/features/author/screens/AuthorDetailScreen.tsx
  *
- * Enhanced author detail screen based on UX research.
+ * Author detail screen redesigned to match SeriesDetailScreen pattern.
  * Features:
- * - Continue Listening section (in-progress books)
- * - Expandable bio with "Read more"
- * - Series grouping
- * - Related Authors discovery
- * - Book list with progress bars
+ * - Blurred hero background with gradient fade
+ * - Stacked book covers
+ * - FlatList with ListHeaderComponent for performance
+ * - Clean title section with book count and duration
+ * - Progress stats (completed/in-progress)
+ * - Follow button in header
+ * - Expandable bio section
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  FlatList,
   RefreshControl,
+  FlatList,
+  ScrollView,
 } from 'react-native';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, User, CheckCircle, Play, ArrowUp, ArrowDown, Bell, BellOff } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ChevronLeft,
+  User,
+  CheckCircle,
+  Bell,
+  BellOff,
+  BookOpen,
+  ChevronRight,
+  Play,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache, getAllAuthors } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 import { useWishlistStore, useIsAuthorFollowed } from '@/features/wishlist';
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale } from '@/shared/theme';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { scale, wp, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
 type AuthorDetailRouteParams = {
   AuthorDetail: { authorName: string } | { name: string };
 };
 
-const BG_COLOR = colors.backgroundPrimary;
-const ACCENT = colors.accent;
-const AVATAR_SIZE = scale(120);
-const BIO_TRUNCATE_LENGTH = 150;
+// Screen dimensions
+const SCREEN_WIDTH = wp(100);
 
-type SortType = 'title' | 'recent' | 'duration' | 'progress';
-type SortDirection = 'asc' | 'desc';
+// Stacked covers constants
+const STACK_COVER_SIZE = SCREEN_WIDTH * 0.38;
+const STACK_OFFSET = SCREEN_WIDTH * 0.12;
+const STACK_ROTATION = 8;
+const STACK_VERTICAL_OFFSET = scale(12);
+const MAX_STACK_COVERS = 5;
+
+const BIO_TRUNCATE_LENGTH = 200;
 
 // Helper to get metadata
 const getMetadata = (item: LibraryItem) => item.media?.metadata as any;
@@ -77,53 +94,245 @@ const formatTimeRemaining = (seconds: number): string => {
   return `${minutes}m left`;
 };
 
-export function AuthorDetailScreen() {
-  const route = useRoute<RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>>();
-  const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
-  const { loadBook } = usePlayerStore();
+// Stacked book covers component with optional author image as center cover
+interface StackedCoversProps {
+  bookIds: string[];
+  authorImageUrl?: string | null;  // Author image to show as center/top cover
+  authorName?: string;             // For initials fallback
+}
 
-  // Handle both param formats - with null safety
-  const authorName = (route.params as any).authorName || (route.params as any).name || '';
+const StackedCovers = React.memo(function StackedCovers({ bookIds, authorImageUrl, authorName }: StackedCoversProps) {
+  const themeColors = useThemeColors();
 
-  // Early return if no author name provided
-  if (!authorName) {
+  // Max 5 total cards: author in center + up to 4 books (2 on each side)
+  // Books must be even for symmetric display
+  const stackBooks = useMemo(() => {
+    // Cap at 4 books (for max 5 total with author)
+    let maxBooks = Math.min(4, bookIds.length);
+    // Make even (so we have equal books on each side)
+    if (maxBooks % 2 !== 0) maxBooks -= 1;
+    // If only 1 book, show just author (can't be symmetric)
+    if (bookIds.length === 1) maxBooks = 0;
+    return bookIds.slice(0, maxBooks);
+  }, [bookIds]);
+
+  const count = stackBooks.length;
+
+  const coverUrls = useMemo(() =>
+    stackBooks.map(id => apiClient.getItemCoverUrl(id)),
+    [stackBooks]
+  );
+
+  // Generate initials from author name
+  const initials = useMemo(() => {
+    if (!authorName) return '';
+    return authorName
+      .split(' ')
+      .map((word) => word[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  }, [authorName]);
+
+  // Generate a consistent color based on name
+  const avatarColor = useMemo(() => {
+    if (!authorName) return '#F3B60C';
+    const colorIndex = authorName.charCodeAt(0) % 5;
+    const avatarColors = ['#F3B60C', '#4CAF50', '#FF9800', '#2196F3', '#9C27B0'];
+    return avatarColors[colorIndex];
+  }, [authorName]);
+
+  // If no books to show (0 or 1 book), just show author image
+  if (count === 0) {
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Author</Text>
-          <View style={styles.headerButton} />
-        </View>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Author not found</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.errorButton}>
-            <Text style={styles.errorButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={stackStyles.container}>
+        {authorImageUrl ? (
+          <Image
+            source={authorImageUrl}
+            style={[stackStyles.cover, { backgroundColor: themeColors.surfaceElevated }]}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={[stackStyles.cover, stackStyles.placeholder, { backgroundColor: avatarColor }]}>
+            {initials ? (
+              <Text style={stackStyles.initialsText}>{initials}</Text>
+            ) : (
+              <User size={scale(48)} color="#FFFFFF" strokeWidth={1.5} />
+            )}
+          </View>
+        )}
       </View>
     );
   }
 
-  const [sortBy, setSortBy] = useState<SortType>('title');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  // Author is always in the center
+  // Books split evenly: half on left, half on right
+  const booksPerSide = count / 2;
+  const totalCovers = count + 1;  // Book covers + author
+  const centerIndex = booksPerSide;  // Author position
+
+  // Dynamic container width
+  const containerWidth = STACK_COVER_SIZE + (totalCovers - 1) * STACK_OFFSET;
+
+  return (
+    <View style={[stackStyles.container, { width: containerWidth }]}>
+      {/* Render book covers with author in center */}
+      {stackBooks.map((bookId, index) => {
+        // Position: 0,1 are left of author, 2,3 are right of author
+        const adjustedIndex = index < booksPerSide ? index : index + 1;
+
+        // Fan rotation: left books tilt left, right books tilt right
+        const rotation = (adjustedIndex - centerIndex) * STACK_ROTATION;
+        // Z-index: center is highest, sides go down
+        const distanceFromCenter = Math.abs(adjustedIndex - centerIndex);
+        const zIndex = totalCovers - Math.floor(distanceFromCenter);
+        // Scale: center is biggest, sides get smaller
+        const scaleValue = 1 - (distanceFromCenter * 0.08);
+        const coverSize = STACK_COVER_SIZE * scaleValue;
+        // Horizontal offset
+        const sizeDiff = (STACK_COVER_SIZE - coverSize) / 2;
+        const horizontalOffset = adjustedIndex * STACK_OFFSET + sizeDiff;
+        // Vertical offset
+        const verticalOffset = sizeDiff + (distanceFromCenter * STACK_VERTICAL_OFFSET);
+
+        return (
+          <View
+            key={bookId}
+            style={[
+              stackStyles.coverWrapper,
+              {
+                left: horizontalOffset,
+                top: verticalOffset,
+                zIndex,
+                transform: [{ rotate: `${rotation}deg` }],
+              },
+            ]}
+          >
+            <Image
+              source={coverUrls[index]}
+              style={[
+                stackStyles.cover,
+                {
+                  width: coverSize,
+                  height: coverSize,
+                  backgroundColor: themeColors.surfaceElevated,
+                },
+              ]}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          </View>
+        );
+      })}
+
+      {/* Author image/initials in the center (highest z-index) */}
+      <View
+        style={[
+          stackStyles.coverWrapper,
+          {
+            left: centerIndex * STACK_OFFSET,
+            top: 0,
+            zIndex: totalCovers + 1,
+            transform: [{ rotate: '0deg' }],
+          },
+        ]}
+      >
+        {authorImageUrl ? (
+          <Image
+            source={authorImageUrl}
+            style={[
+              stackStyles.cover,
+              stackStyles.authorCover,
+              {
+                width: STACK_COVER_SIZE,
+                height: STACK_COVER_SIZE,
+                backgroundColor: themeColors.surfaceElevated,
+              },
+            ]}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View
+            style={[
+              stackStyles.cover,
+              stackStyles.authorCover,
+              stackStyles.placeholder,
+              {
+                width: STACK_COVER_SIZE,
+                height: STACK_COVER_SIZE,
+                backgroundColor: avatarColor,
+              },
+            ]}
+          >
+            {initials ? (
+              <Text style={stackStyles.initialsText}>{initials}</Text>
+            ) : (
+              <User size={scale(48)} color="#FFFFFF" strokeWidth={1.5} />
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+});
+
+const stackStyles = StyleSheet.create({
+  container: {
+    height: STACK_COVER_SIZE + STACK_VERTICAL_OFFSET * 2 + 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: scale(40),
+    marginBottom: 24,
+  },
+  coverWrapper: {
+    position: 'absolute',
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  cover: {
+    width: STACK_COVER_SIZE,
+    height: STACK_COVER_SIZE,
+    borderRadius: radius.sm,
+  },
+  authorCover: {
+    borderRadius: radius.sm,  // Square with same radius as book covers
+  },
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  initialsText: {
+    fontSize: scale(36),
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+});
+
+export function AuthorDetailScreen() {
+  const route = useRoute<RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>>();
+  const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList>(null);
+
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
+  // Handle both param formats - with null safety
+  const authorName = (route.params as any).authorName || (route.params as any).name || '';
+
   const [bioExpanded, setBioExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [authorBooks, setAuthorBooks] = useState<LibraryItem[]>([]);
+  const [isLoadingBooks, setIsLoadingBooks] = useState(false);
+  const [sortOption, setSortOption] = useState<'recent' | 'title' | 'duration' | 'series'>('title');
 
   const { getAuthor, isLoaded, refreshCache } = useLibraryCache();
-
-  // Pull-to-refresh handler
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await refreshCache();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [refreshCache]);
+  const currentBookId = usePlayerStore((s) => s.currentBook?.id);
 
   // Follow author functionality
   const isFollowing = useIsAuthorFollowed(authorName);
@@ -145,193 +354,191 @@ export function AuthorDetailScreen() {
     return getAuthor(authorName);
   }, [isLoaded, authorName, getAuthor]);
 
-  // Extract unique genres from author's books
-  const genres = useMemo(() => {
-    if (!authorInfo?.books) return [];
-    const genreSet = new Set<string>();
-    authorInfo.books.forEach(book => {
-      const metadata = getMetadata(book);
-      if (metadata?.genres) {
-        metadata.genres.forEach((g: string) => genreSet.add(g));
-      }
-    });
-    return Array.from(genreSet).slice(0, 5);
-  }, [authorInfo?.books]);
+  // Fetch author books from API when we have an author ID
+  // This is more reliable than cache name-matching because the server knows
+  // the true book-to-author relationships (handles name variations, co-authors, etc.)
+  useEffect(() => {
+    const fetchAuthorBooks = async () => {
+      if (!authorInfo?.id) return;
 
-  // In-progress books (Continue Listening)
-  const inProgressBooks = useMemo(() => {
-    if (!authorInfo?.books) return [];
-    return authorInfo.books
+      setIsLoadingBooks(true);
+      try {
+        const authorData = await apiClient.getAuthor(authorInfo.id, { include: 'items' });
+        if (authorData?.libraryItems) {
+          setAuthorBooks(authorData.libraryItems as LibraryItem[]);
+        }
+      } catch (error) {
+        console.warn('[AuthorDetail] Failed to fetch author books from API:', error);
+        // Will fall back to cache-based books
+      } finally {
+        setIsLoadingBooks(false);
+      }
+    };
+
+    fetchAuthorBooks();
+  }, [authorInfo?.id]);
+
+  // All books (unsorted) - prefer API-fetched books, fall back to cache
+  const allBooks = useMemo(() => {
+    const books = authorBooks.length > 0 ? authorBooks : (authorInfo?.books || []);
+    return books;
+  }, [authorBooks, authorInfo?.books]);
+
+  // Continue Listening books - in-progress, sorted by highest progress first (Goal Gradient)
+  const continueListeningBooks = useMemo(() => {
+    return allBooks
       .filter(book => {
         const progress = getProgress(book);
-        return progress > 0 && progress < 0.95;
+        return progress > 0 && progress < 0.95; // In progress, not finished
       })
-      .sort((a, b) => {
-        const aTime = (a as any).userMediaProgress?.lastUpdate || 0;
-        const bTime = (b as any).userMediaProgress?.lastUpdate || 0;
-        return bTime - aTime;
+      .sort((a, b) => getProgress(b) - getProgress(a)); // Highest progress first
+  }, [allBooks]);
+
+  // Sorted books for All Books section (excludes in-progress books if they're in Continue Listening)
+  const sortedBooks = useMemo(() => {
+    if (allBooks.length === 0) return [];
+
+    // Sort based on selected option
+    return [...allBooks].sort((a, b) => {
+      switch (sortOption) {
+        case 'title':
+          return (getMetadata(a)?.title || '').toLowerCase()
+            .localeCompare((getMetadata(b)?.title || '').toLowerCase());
+        case 'duration':
+          return ((a.media as any)?.duration || 0) - ((b.media as any)?.duration || 0);
+        case 'recent':
+          return ((b as any).addedAt || 0) - ((a as any).addedAt || 0);
+        case 'series':
+          // Group by series, then by sequence
+          const seriesA = getMetadata(a)?.seriesName || 'zzz';
+          const seriesB = getMetadata(b)?.seriesName || 'zzz';
+          if (seriesA !== seriesB) return seriesA.localeCompare(seriesB);
+          const seqA = parseFloat(getMetadata(a)?.seriesName?.match(/#([\d.]+)/)?.[1] || '999');
+          const seqB = parseFloat(getMetadata(b)?.seriesName?.match(/#([\d.]+)/)?.[1] || '999');
+          return seqA - seqB;
+        default:
+          return 0;
+      }
+    });
+  }, [allBooks, sortOption]);
+
+  // Aggregate genres from all books
+  const authorGenres = useMemo(() => {
+    const genreCount = new Map<string, number>();
+    allBooks.forEach(book => {
+      const genres = getMetadata(book)?.genres || [];
+      genres.forEach((genre: string) => {
+        genreCount.set(genre, (genreCount.get(genre) || 0) + 1);
       });
-  }, [authorInfo?.books]);
+    });
+    // Return top 3 genres sorted by frequency
+    return Array.from(genreCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([genre]) => genre);
+  }, [allBooks]);
 
-  // Group books by series
-  const seriesGroups = useMemo(() => {
-    if (!authorInfo?.books) return [];
+  // Similar Authors - based on genre overlap
+  const similarAuthors = useMemo(() => {
+    if (authorGenres.length === 0 || !authorName) return [];
 
-    const seriesMap = new Map<string, LibraryItem[]>();
-    const standalone: LibraryItem[] = [];
+    const allAuthorsData = getAllAuthors();
+    const currentAuthorGenresSet = new Set(authorGenres.map(g => g.toLowerCase()));
 
-    authorInfo.books.forEach(book => {
-      const metadata = getMetadata(book);
-      const seriesName = metadata?.seriesName;
+    return allAuthorsData
+      .filter(a => a.name.toLowerCase() !== authorName.toLowerCase())
+      .map(author => {
+        // Get genres from author's books
+        const authorBooksGenres = new Set<string>();
+        author.books.forEach(book => {
+          const genres = getMetadata(book)?.genres || [];
+          genres.forEach((g: string) => authorBooksGenres.add(g.toLowerCase()));
+        });
 
-      if (seriesName) {
-        const cleanSeriesName = seriesName.split('#')[0].trim();
-        if (!seriesMap.has(cleanSeriesName)) {
-          seriesMap.set(cleanSeriesName, []);
-        }
-        seriesMap.get(cleanSeriesName)!.push(book);
-      } else {
-        standalone.push(book);
+        // Calculate genre overlap score
+        let overlapCount = 0;
+        currentAuthorGenresSet.forEach(g => {
+          if (authorBooksGenres.has(g)) overlapCount++;
+        });
+
+        const score = overlapCount / Math.max(currentAuthorGenresSet.size, 1);
+        return { author, score };
+      })
+      .filter(a => a.score > 0.3) // At least 30% genre overlap
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(a => a.author);
+  }, [authorGenres, authorName]);
+
+  // Progress stats
+  const progressStats = useMemo(() => {
+    let completed = 0;
+    let inProgress = 0;
+
+    sortedBooks.forEach(book => {
+      const progress = getProgress(book);
+      if (progress >= 0.95) {
+        completed++;
+      } else if (progress > 0) {
+        inProgress++;
       }
     });
 
-    const groups: { name: string; books: LibraryItem[]; bookCount: number }[] = [];
+    return { completed, inProgress };
+  }, [sortedBooks]);
 
-    seriesMap.forEach((books, name) => {
-      const sortedBooks = books.sort((a, b) => {
-        const aSeq = parseFloat((getMetadata(a)?.seriesName || '').match(/#([\d.]+)/)?.[1] || '999');
-        const bSeq = parseFloat((getMetadata(b)?.seriesName || '').match(/#([\d.]+)/)?.[1] || '999');
-        return aSeq - bSeq;
-      });
-      groups.push({ name, books: sortedBooks, bookCount: books.length });
+  // Total duration
+  const totalDuration = useMemo(() => {
+    return sortedBooks.reduce((sum, book) => sum + ((book.media as any)?.duration || 0), 0);
+  }, [sortedBooks]);
+
+  const formatTotalDuration = () => {
+    const hours = Math.floor(totalDuration / 3600);
+    return `${hours}h`;
+  };
+
+  // Extract unique series from author's books
+  const authorSeries = useMemo(() => {
+    const seriesMap = new Map<string, { name: string; bookCount: number; bookIds: string[] }>();
+
+    sortedBooks.forEach(book => {
+      const metadata = getMetadata(book);
+      // Check for series info in metadata
+      const seriesName = metadata?.series?.name || metadata?.seriesName?.replace(/\s*#[\d.]+$/, '');
+
+      if (seriesName) {
+        const existing = seriesMap.get(seriesName);
+        if (existing) {
+          existing.bookCount++;
+          if (existing.bookIds.length < 3) {
+            existing.bookIds.push(book.id);
+          }
+        } else {
+          seriesMap.set(seriesName, {
+            name: seriesName,
+            bookCount: 1,
+            bookIds: [book.id],
+          });
+        }
+      }
     });
 
-    groups.sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(seriesMap.values()).sort((a, b) => b.bookCount - a.bookCount);
+  }, [sortedBooks]);
 
-    if (standalone.length > 0) {
-      groups.push({ name: 'Standalone Books', books: standalone, bookCount: standalone.length });
-    }
-
-    return groups;
-  }, [authorInfo?.books]);
-
-  // Sorted books for list view
-  const sortedBooks = useMemo(() => {
-    if (!authorInfo?.books) return [];
-    const sorted = [...authorInfo.books];
-    const direction = sortDirection === 'asc' ? 1 : -1;
-
-    switch (sortBy) {
-      case 'title':
-        return sorted.sort((a, b) =>
-          direction * (getMetadata(a)?.title || '').localeCompare(getMetadata(b)?.title || '')
-        );
-      case 'recent':
-        return sorted.sort((a, b) => direction * ((b.addedAt || 0) - (a.addedAt || 0)));
-      case 'duration':
-        return sorted.sort((a, b) => {
-          const aDur = (a.media as any)?.duration || 0;
-          const bDur = (b.media as any)?.duration || 0;
-          return direction * (aDur - bDur);
-        });
-      case 'progress':
-        return sorted.sort((a, b) => direction * (getProgress(b) - getProgress(a)));
-      default:
-        return sorted;
-    }
-  }, [authorInfo?.books, sortBy, sortDirection]);
-
-  // Related authors (same genres)
-  const relatedAuthors = useMemo(() => {
-    if (!isLoaded || genres.length === 0) return [];
-
-    const allAuthors = getAllAuthors();
-    const authorGenreSet = new Set(genres);
-
-    return allAuthors
-      .filter(a => a.name !== authorName)
-      .map(author => {
-        // Calculate genre overlap
-        const authorGenres = new Set<string>();
-        author.books?.forEach(book => {
-          const metadata = getMetadata(book);
-          metadata?.genres?.forEach((g: string) => authorGenres.add(g));
-        });
-
-        let overlap = 0;
-        authorGenres.forEach(g => {
-          if (authorGenreSet.has(g)) overlap++;
-        });
-
-        return { ...author, overlap };
-      })
-      .filter(a => a.overlap > 0 && a.bookCount > 0)
-      .sort((a, b) => b.overlap - a.overlap)
-      .slice(0, 6);
-  }, [isLoaded, genres, authorName]);
-
-  const handleSortPress = (type: SortType) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (sortBy === type) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(type);
-      setSortDirection('asc');
-    }
-  };
-
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.navigate('Main');
-    }
-  };
-
-  const handleBookPress = useCallback((book: LibraryItem) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('BookDetail', { id: book.id });
-  }, [navigation]);
-
-  const handlePlayBook = useCallback((book: LibraryItem) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    loadBook(book);
-  }, [loadBook]);
-
-  const handleGenrePress = useCallback((genre: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('GenreDetail', { genreName: genre });
-  }, [navigation]);
-
+  // Handle series press
   const handleSeriesPress = useCallback((seriesName: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate('SeriesDetail', { seriesName });
   }, [navigation]);
 
-  const handleAuthorPress = useCallback((name: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.push('AuthorDetail', { authorName: name });
-  }, [navigation]);
-
-  // Generate initials - null safe
-  const initials = useMemo(() => {
-    if (!authorName || typeof authorName !== 'string') return '??';
-    const parts = authorName.trim().split(' ').filter(Boolean);
-    if (parts.length === 0) return '??';
-    return parts
-      .map((word: string) => word[0] || '')
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || '??';
-  }, [authorName]);
-
   // Get author image URL
   const authorImageUrl = useMemo(() => {
-    if (authorInfo?.id && authorInfo?.imagePath) {
-      return apiClient.getAuthorImageUrl(authorInfo.id);
-    }
-    return null;
-  }, [authorInfo?.id, authorInfo?.imagePath]);
+    return authorInfo?.id ? apiClient.getAuthorImageUrl(authorInfo.id) : null;
+  }, [authorInfo?.id]);
+
+  // Get first book cover URL for hero background
+  const bookIds = useMemo(() => sortedBooks.map(b => b.id), [sortedBooks]);
+  const firstBookCoverUrl = useMemo(() => bookIds[0] ? apiClient.getItemCoverUrl(bookIds[0]) : null, [bookIds]);
 
   // Bio handling
   const shouldTruncateBio = (authorInfo?.description?.length || 0) > BIO_TRUNCATE_LENGTH;
@@ -339,154 +546,64 @@ export function AuthorDetailScreen() {
     ? authorInfo?.description
     : authorInfo?.description?.slice(0, BIO_TRUNCATE_LENGTH) + '...';
 
-  // Render book list item with progress
-  const renderBookItem = useCallback((book: LibraryItem, showNarrator = true) => {
-    const metadata = getMetadata(book);
-    const progress = getProgress(book);
-    const duration = (book.media as any)?.duration || 0;
-    const isCompleted = progress >= 0.95;
-    const seriesMatch = metadata?.seriesName?.match(/^(.+?)\s*#([\d.]+)$/);
-    const seriesName = seriesMatch ? seriesMatch[1] : null;
-    const sequence = seriesMatch ? seriesMatch[2] : null;
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshCache();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshCache]);
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Main' as never);
+    }
+  };
+
+  const handleBookPress = useCallback((bookId: string) => {
+    navigation.navigate('BookDetail', { id: bookId });
+  }, [navigation]);
+
+  const handleNarratorPress = useCallback((narratorName: string) => {
+    navigation.navigate('NarratorDetail', { narratorName });
+  }, [navigation]);
+
+  const handleAuthorPress = useCallback((targetAuthorName: string) => {
+    navigation.navigate('AuthorDetail', { authorName: targetAuthorName });
+  }, [navigation]);
+
+  // Early return if no author name provided
+  if (!authorName) {
     return (
-      <TouchableOpacity
-        key={book.id}
-        style={styles.bookItem}
-        onPress={() => handleBookPress(book)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.bookCoverContainer}>
-          <Image
-            source={apiClient.getItemCoverUrl(book.id)}
-            style={styles.bookCover}
-            contentFit="cover"
-          />
-          {isCompleted && (
-            <View style={styles.completedBadge}>
-              <CheckCircle size={scale(16)} color={ACCENT} strokeWidth={2} />
-            </View>
-          )}
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+        <View style={[styles.scrollHeader, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity style={styles.headerActionButton} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={scale(18)} color="#000" strokeWidth={2.5} />
+          </TouchableOpacity>
+          <View style={styles.headerActions} />
         </View>
-
-        <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={1}>{metadata?.title}</Text>
-          {seriesName && (
-            <Text style={styles.bookSeries} numberOfLines={1}>
-              {seriesName} #{sequence}
-            </Text>
-          )}
-          <View style={styles.bookMetaRow}>
-            <Text style={styles.bookMeta}>{formatDuration(duration)}</Text>
-            {showNarrator && metadata?.narratorName && (
-              <>
-                <Text style={styles.bookMetaDot}>•</Text>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('NarratorDetail', { narratorName: metadata.narratorName })}
-                >
-                  <Text style={styles.bookNarrator} numberOfLines={1}>{metadata.narratorName}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* Progress bar */}
-          {progress > 0 && !isCompleted && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-              </View>
-              <Text style={styles.progressText}>
-                {formatTimeRemaining(duration * (1 - progress))}
-              </Text>
-            </View>
-          )}
+        <View style={styles.emptyContainer}>
+          <User size={48} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Author not found</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
+            This author may have been removed
+          </Text>
         </View>
-
-        <TouchableOpacity
-          style={styles.playButton}
-          onPress={() => handlePlayBook(book)}
-        >
-          <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
-        </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     );
-  }, [handleBookPress, handlePlayBook, navigation]);
-
-  // Render continue listening card
-  const renderContinueListeningCard = useCallback(({ item }: { item: LibraryItem }) => {
-    const metadata = getMetadata(item);
-    const progress = getProgress(item);
-    const duration = (item.media as any)?.duration || 0;
-
-    return (
-      <TouchableOpacity
-        style={styles.continueCard}
-        onPress={() => handleBookPress(item)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.continueCoverContainer}>
-          <Image
-            source={apiClient.getItemCoverUrl(item.id)}
-            style={styles.continueCover}
-            contentFit="cover"
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
-            style={styles.continueGradient}
-          />
-          <View style={styles.continueProgress}>
-            <View style={[styles.continueProgressFill, { width: `${Math.round(progress * 100)}%` }]} />
-          </View>
-          <Text style={styles.continueProgressText}>{Math.round(progress * 100)}%</Text>
-        </View>
-        <Text style={styles.continueTitle} numberOfLines={2}>{metadata?.title}</Text>
-        <Text style={styles.continueRemaining}>
-          {formatTimeRemaining(duration * (1 - progress))}
-        </Text>
-      </TouchableOpacity>
-    );
-  }, [handleBookPress]);
-
-  // Render related author card
-  const renderRelatedAuthor = useCallback((author: any) => {
-    const imageUrl = author.id && author.imagePath
-      ? apiClient.getAuthorImageUrl(author.id)
-      : null;
-    const authorInitials = author.name
-      .split(' ')
-      .map((w: string) => w[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-
-    return (
-      <TouchableOpacity
-        key={author.name}
-        style={styles.relatedAuthor}
-        onPress={() => handleAuthorPress(author.name)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.relatedAuthorAvatar}>
-          {imageUrl ? (
-            <Image source={imageUrl} style={styles.relatedAuthorImage} contentFit="cover" />
-          ) : (
-            <Text style={styles.relatedAuthorInitials}>{authorInitials}</Text>
-          )}
-        </View>
-        <Text style={styles.relatedAuthorName} numberOfLines={1}>{author.name}</Text>
-        <Text style={styles.relatedAuthorBooks}>{author.bookCount} books</Text>
-      </TouchableOpacity>
-    );
-  }, [handleAuthorPress]);
+  }
 
   // Loading state
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+        <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
         </View>
       </View>
     );
@@ -495,224 +612,474 @@ export function AuthorDetailScreen() {
   // Not found state
   if (!authorInfo) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+        <View style={[styles.scrollHeader, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity style={styles.headerActionButton} onPress={handleBack}>
+            <ChevronLeft size={scale(18)} color="#000" strokeWidth={2.5} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Author</Text>
-          <View style={styles.headerButton} />
+          <View style={styles.headerActions} />
         </View>
         <View style={styles.emptyContainer}>
-          <User size={scale(48)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>Author not found</Text>
-          <Text style={styles.emptySubtitle}>This author may have been removed</Text>
+          <User size={48} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Author not found</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
+            This author may have been removed
+          </Text>
         </View>
       </View>
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
+  const renderBookItem = useCallback(({ item }: { item: LibraryItem }) => {
+    const metadata = getMetadata(item);
+    const progress = getProgress(item);
+    const duration = (item.media as any)?.duration || 0;
+    const isCompleted = progress >= 0.95;
+    const isNowPlaying = item.id === currentBookId;
+    const seriesMatch = metadata?.seriesName?.match(/^(.+?)\s*#([\d.]+)$/);
+    const seriesName = seriesMatch ? seriesMatch[1] : null;
+    const sequence = seriesMatch ? seriesMatch[2] : null;
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Author</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={ACCENT}
-            colors={[ACCENT]}
-          />
-        }
+    return (
+      <TouchableOpacity
+        style={[
+          styles.bookItem,
+          { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+          isNowPlaying && { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }
+        ]}
+        onPress={() => handleBookPress(item.id)}
+        activeOpacity={0.7}
       >
-        {/* Author Header */}
-        <View style={styles.entityHeader}>
-          <View style={styles.avatarContainer}>
-            {authorImageUrl ? (
-              <Image
-                source={authorImageUrl}
-                style={styles.avatarImage}
-                contentFit="cover"
-                transition={200}
-              />
-            ) : (
-              <Text style={styles.initialsText}>{initials}</Text>
+        <View style={[styles.bookCoverContainer, { backgroundColor: themeColors.surfaceElevated }]}>
+          <Image
+            source={apiClient.getItemCoverUrl(item.id)}
+            style={styles.bookCover}
+            contentFit="cover"
+          />
+          {isCompleted && (
+            <View style={styles.completedBadge}>
+              <CheckCircle size={scale(16)} color="#4CAF50" strokeWidth={2} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.bookInfo}>
+          <Text style={[styles.bookTitle, { color: themeColors.text }]} numberOfLines={1}>
+            {metadata?.title}
+          </Text>
+          {seriesName && (
+            <Text style={[styles.bookSeries, { color: themeColors.textSecondary }]} numberOfLines={1}>
+              {seriesName} #{sequence}
+            </Text>
+          )}
+          <View style={styles.bookMetaRow}>
+            <Text style={[styles.bookMeta, { color: themeColors.textSecondary }]}>
+              {formatDuration(duration)}
+            </Text>
+            {metadata?.narratorName && (
+              <>
+                <Text style={[styles.bookMetaDot, { color: themeColors.textTertiary }]}>·</Text>
+                <TouchableOpacity onPress={() => handleNarratorPress(metadata.narratorName)}>
+                  <Text style={[styles.bookNarrator, { color: themeColors.accent }]} numberOfLines={1}>
+                    {metadata.narratorName}
+                  </Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
-          <Text style={styles.entityName}>{authorInfo.name}</Text>
-          <Text style={styles.entityStats}>
-            {authorInfo.bookCount} {authorInfo.bookCount === 1 ? 'book' : 'books'} in library
-          </Text>
 
+          {/* Progress bar */}
+          {progress > 0 && !isCompleted && (
+            <View style={styles.progressContainer}>
+              <View style={[styles.progressBar, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}>
+                <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: themeColors.accent }]} />
+              </View>
+              <Text style={[styles.progressText, { color: themeColors.textSecondary }]}>
+                {formatTimeRemaining(duration * (1 - progress))}
+              </Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  }, [currentBookId, handleBookPress, handleNarratorPress, themeColors, isDarkMode]);
+
+  const ListHeader = useMemo(() => (
+    <>
+      {/* Scrollable blurred background */}
+      {firstBookCoverUrl && (
+        <View style={styles.heroBackgroundScrollable}>
+          <Image
+            source={firstBookCoverUrl}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            blurRadius={25}
+          />
+          <BlurView intensity={30} tint={isDarkMode ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={
+              isDarkMode
+                ? ['transparent', 'transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', themeColors.background]
+                : ['transparent', 'transparent', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)', themeColors.background]
+            }
+            locations={[0, 0.5, 0.7, 0.85, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      )}
+
+      {/* Header - scrolls with content */}
+      <View style={styles.scrollHeader}>
+        <TouchableOpacity style={styles.headerActionButton} onPress={handleBack}>
+          <ChevronLeft size={scale(18)} color="#000" strokeWidth={2.5} />
+        </TouchableOpacity>
+
+        {/* Action Buttons in Header */}
+        <View style={styles.headerActions}>
           {/* Follow Button */}
           <TouchableOpacity
             style={[
-              styles.followButton,
-              isFollowing && styles.followButtonActive
+              styles.headerActionButton,
+              isFollowing && { backgroundColor: '#000' }
             ]}
             onPress={handleFollowToggle}
             activeOpacity={0.7}
           >
             {isFollowing ? (
-              <BellOff size={scale(16)} color="#000" strokeWidth={2} />
+              <BellOff size={scale(16)} color="#fff" strokeWidth={2} />
             ) : (
-              <Bell size={scale(16)} color={ACCENT} strokeWidth={2} />
+              <Bell size={scale(16)} color="#000" strokeWidth={2} />
             )}
-            <Text style={[
-              styles.followButtonText,
-              isFollowing && styles.followButtonTextActive
-            ]}>
-              {isFollowing ? 'Following' : 'Follow'}
-            </Text>
           </TouchableOpacity>
-
-          {/* Genre chips */}
-          {genres.length > 0 && (
-            <View style={styles.genreRow}>
-              {genres.map(genre => (
-                <TouchableOpacity
-                  key={genre}
-                  style={styles.genreChip}
-                  onPress={() => handleGenrePress(genre)}
-                >
-                  <Text style={styles.genreChipText}>{genre}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* Bio with Read more */}
-          {authorInfo.description && (
-            <View style={styles.bioContainer}>
-              <Text style={styles.bioText}>{displayBio}</Text>
-              {shouldTruncateBio && (
-                <TouchableOpacity onPress={() => setBioExpanded(!bioExpanded)}>
-                  <Text style={styles.bioToggle}>
-                    {bioExpanded ? 'Read less' : 'Read more'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
         </View>
+      </View>
 
-        {/* Continue Listening Section */}
-        {inProgressBooks.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Continue Listening</Text>
-            <FlatList
-              data={inProgressBooks}
-              renderItem={renderContinueListeningCard}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
-              removeClippedSubviews={true}
-            />
-          </View>
-        )}
+      {/* Author Info with Stacked Covers */}
+      <View style={styles.authorHeader}>
+        <StackedCovers
+          bookIds={bookIds}
+          authorImageUrl={authorImageUrl}
+          authorName={authorInfo?.name}
+        />
+        <Text style={[styles.authorName, { color: themeColors.text }]}>{authorInfo?.name}</Text>
 
-        {/* Series Section */}
-        {seriesGroups.length > 0 && seriesGroups.some(g => g.name !== 'Standalone Books') && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Series</Text>
-            {seriesGroups
-              .filter(g => g.name !== 'Standalone Books')
-              .map(series => (
-                <TouchableOpacity
-                  key={series.name}
-                  style={styles.seriesRow}
-                  onPress={() => handleSeriesPress(series.name)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.seriesCovers}>
-                    {series.books.slice(0, 3).map((book, idx) => (
-                      <Image
-                        key={book.id}
-                        source={apiClient.getItemCoverUrl(book.id)}
-                        style={[
-                          styles.seriesCoverSmall,
-                          { marginLeft: idx > 0 ? -scale(20) : 0, zIndex: 3 - idx }
-                        ]}
-                        contentFit="cover"
-                      />
-                    ))}
-                  </View>
-                  <View style={styles.seriesInfo}>
-                    <Text style={styles.seriesName}>{series.name}</Text>
-                    <Text style={styles.seriesBooks}>
-                      {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
-                    </Text>
-                  </View>
-                  <ChevronRight size={scale(20)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
-                </TouchableOpacity>
-              ))}
-          </View>
-        )}
+        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
+          {authorInfo?.bookCount} {authorInfo?.bookCount === 1 ? 'book' : 'books'} · {formatTotalDuration()}
+        </Text>
 
-        {/* All Books Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>All Books</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.sortButtons}>
-                {(['title', 'recent', 'duration', 'progress'] as SortType[]).map(type => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[styles.sortButton, sortBy === type && styles.sortButtonActive]}
-                    onPress={() => handleSortPress(type)}
-                  >
-                    {sortBy === type && (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp size={scale(12)} color="#000" strokeWidth={2} />
-                      ) : (
-                        <ArrowDown size={scale(12)} color="#000" strokeWidth={2} />
-                      )
-                    )}
-                    <Text style={[styles.sortButtonText, sortBy === type && styles.sortButtonTextActive]}>
-                      {type === 'title' ? 'Title' :
-                       type === 'recent' ? 'Recent' :
-                       type === 'duration' ? 'Duration' : 'Progress'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+        {/* Genre tags */}
+        {authorGenres.length > 0 && (
+          <View style={styles.genreTagsRow}>
+            {authorGenres.map((genre) => (
+              <View key={genre} style={[styles.genreTag, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}>
+                <Text style={[styles.genreTagText, { color: themeColors.textSecondary }]}>{genre}</Text>
               </View>
-            </ScrollView>
-          </View>
-
-          <View style={styles.bookList}>
-            {sortedBooks.map(book => renderBookItem(book))}
-          </View>
-        </View>
-
-        {/* Related Authors Section */}
-        {relatedAuthors.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Similar Authors</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
-            >
-              {relatedAuthors.map(author => renderRelatedAuthor(author))}
-            </ScrollView>
+            ))}
           </View>
         )}
-      </ScrollView>
+
+        {/* Progress stats */}
+        {(progressStats.completed > 0 || progressStats.inProgress > 0) && (
+          <View style={styles.progressStatsRow}>
+            {progressStats.completed > 0 && (
+              <View style={[styles.progressStat, { backgroundColor: isDarkMode ? 'rgba(76, 175, 80, 0.2)' : 'rgba(76, 175, 80, 0.15)' }]}>
+                <CheckCircle size={scale(14)} color="#4CAF50" strokeWidth={2} />
+                <Text style={[styles.progressStatText, { color: themeColors.text }]}>
+                  {progressStats.completed} completed
+                </Text>
+              </View>
+            )}
+            {progressStats.inProgress > 0 && (
+              <View style={[styles.progressStat, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}>
+                <BookOpen size={scale(14)} color={themeColors.textSecondary} strokeWidth={2} />
+                <Text style={[styles.progressStatText, { color: themeColors.text }]}>
+                  {progressStats.inProgress} in progress
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Bio with Read more */}
+        {authorInfo?.description && (
+          <View style={styles.bioContainer}>
+            <Text style={[styles.bioText, { color: themeColors.textSecondary }]}>{displayBio}</Text>
+            {shouldTruncateBio && (
+              <TouchableOpacity onPress={() => setBioExpanded(!bioExpanded)}>
+                <Text style={[styles.bioToggle, { color: themeColors.accent }]}>
+                  {bioExpanded ? 'Read less' : 'Read more'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Continue Listening section - Zeigarnik Effect: show incomplete first */}
+      {continueListeningBooks.length > 0 && (
+        <View style={styles.continueListeningSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+              Continue Listening
+            </Text>
+          </View>
+          {continueListeningBooks.map((book) => {
+            const metadata = getMetadata(book);
+            const progress = getProgress(book);
+            const duration = (book.media as any)?.duration || 0;
+            const remaining = duration * (1 - progress);
+
+            return (
+              <TouchableOpacity
+                key={book.id}
+                style={[styles.continueListeningItem, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}
+                onPress={() => handleBookPress(book.id)}
+                activeOpacity={0.7}
+              >
+                <Image
+                  source={apiClient.getItemCoverUrl(book.id)}
+                  style={[styles.continueListeningCover, { backgroundColor: themeColors.surfaceElevated }]}
+                  contentFit="cover"
+                />
+                <View style={styles.continueListeningInfo}>
+                  <Text style={[styles.continueListeningTitle, { color: themeColors.text }]} numberOfLines={1}>
+                    {metadata?.title}
+                  </Text>
+                  {metadata?.seriesName && (
+                    <Text style={[styles.continueListeningSeries, { color: themeColors.textSecondary }]} numberOfLines={1}>
+                      {metadata.seriesName}
+                    </Text>
+                  )}
+                  {metadata?.narratorName && (
+                    <TouchableOpacity onPress={() => handleNarratorPress(metadata.narratorName)}>
+                      <Text style={[styles.continueListeningNarrator, { color: themeColors.accent }]} numberOfLines={1}>
+                        {metadata.narratorName}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* Progress bar */}
+                  <View style={styles.continueListeningProgressRow}>
+                    <View style={[styles.continueListeningProgressTrack, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}>
+                      <View style={[styles.continueListeningProgressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: themeColors.accent }]} />
+                    </View>
+                    <Text style={[styles.continueListeningProgressText, { color: themeColors.textSecondary }]}>
+                      {Math.round(progress * 100)}%
+                    </Text>
+                  </View>
+                  {/* Time remaining - Goal Gradient effect */}
+                  <Text style={[styles.continueListeningRemaining, { color: themeColors.text }]}>
+                    {formatTimeRemaining(remaining)}
+                  </Text>
+                </View>
+                <TouchableOpacity style={[styles.continueListeningPlayButton, { backgroundColor: themeColors.accent }]}>
+                  <Play size={scale(16)} color="#000" fill="#000" strokeWidth={0} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Series section (above books) */}
+      {authorSeries.length > 0 && (
+        <View style={styles.seriesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+              Series
+            </Text>
+            <Text style={[styles.sectionCount, { color: themeColors.textSecondary }]}>
+              {authorSeries.length}
+            </Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.seriesScrollContent}
+          >
+            {authorSeries.map((series) => (
+              <TouchableOpacity
+                key={series.name}
+                style={[styles.seriesCard, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+                onPress={() => handleSeriesPress(series.name)}
+                activeOpacity={0.7}
+              >
+                {/* Fanned mini covers */}
+                <View style={styles.seriesCoverStack}>
+                  {series.bookIds.slice(0, 3).map((bookId, idx) => (
+                    <Image
+                      key={bookId}
+                      source={apiClient.getItemCoverUrl(bookId)}
+                      style={[
+                        styles.seriesMiniCover,
+                        {
+                          left: idx * scale(14),
+                          zIndex: 3 - idx,
+                          transform: [{ rotate: `${(idx - 1) * 5}deg` }],
+                          backgroundColor: themeColors.surfaceElevated,
+                        },
+                      ]}
+                      contentFit="cover"
+                    />
+                  ))}
+                </View>
+                <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>
+                  {series.name}
+                </Text>
+                <Text style={[styles.seriesBookCount, { color: themeColors.textSecondary }]}>
+                  {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
+                </Text>
+                <ChevronRight size={scale(14)} color={themeColors.textTertiary} style={styles.seriesChevron} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Books section header with sort controls */}
+      <View style={styles.booksSection}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+          All Books ({sortedBooks.length})
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortControlsScroll}>
+          <View style={styles.sortControls}>
+            {(['title', 'recent', 'duration', 'series'] as const).map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.sortButton,
+                  { backgroundColor: sortOption === option
+                    ? themeColors.accent
+                    : isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)'
+                  }
+                ]}
+                onPress={() => setSortOption(option)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.sortButtonText,
+                  { color: sortOption === option ? '#000' : themeColors.textSecondary }
+                ]}>
+                  {option === 'title' ? 'Title' : option === 'recent' ? 'Recent' : option === 'duration' ? 'Duration' : 'Series'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    </>
+  ), [
+    firstBookCoverUrl, isDarkMode, themeColors, bookIds, authorInfo, authorImageUrl,
+    progressStats, displayBio, shouldTruncateBio, bioExpanded, authorSeries, authorGenres,
+    continueListeningBooks, sortedBooks.length, sortOption,
+    isFollowing, handleFollowToggle, handleBack, handleSeriesPress, handleBookPress, handleNarratorPress
+  ]);
+
+  const ListEmpty = () => (
+    <View style={styles.emptyListContainer}>
+      <User size={scale(40)} color={themeColors.textTertiary} strokeWidth={1.5} />
+      <Text style={[styles.emptyListTitle, { color: themeColors.text }]}>No books found</Text>
+      <Text style={[styles.emptyListSubtitle, { color: themeColors.textSecondary }]}>
+        This author has no books in your library
+      </Text>
+    </View>
+  );
+
+  // Similar Authors footer component
+  const ListFooter = useMemo(() => {
+    if (similarAuthors.length === 0) return null;
+
+    return (
+      <View style={styles.similarAuthorsSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+            Readers Also Enjoy
+          </Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.similarAuthorsScrollContent}
+        >
+          {similarAuthors.map((author) => {
+            // Generate initials
+            const initials = author.name
+              .split(' ')
+              .map((word) => word[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase();
+
+            // Generate a consistent color based on name
+            const colorIndex = author.name.charCodeAt(0) % 5;
+            const avatarColors = ['#F3B60C', '#4CAF50', '#FF9800', '#2196F3', '#9C27B0'];
+            const avatarColor = avatarColors[colorIndex];
+
+            const authorImageUrl = author.id ? apiClient.getAuthorImageUrl(author.id) : null;
+
+            return (
+              <TouchableOpacity
+                key={author.name}
+                style={styles.similarAuthorCard}
+                onPress={() => handleAuthorPress(author.name)}
+                activeOpacity={0.7}
+              >
+                {authorImageUrl ? (
+                  <Image
+                    source={authorImageUrl}
+                    style={[styles.similarAuthorImage, { backgroundColor: themeColors.surfaceElevated }]}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.similarAuthorImage, { backgroundColor: avatarColor }]}>
+                    <Text style={styles.similarAuthorInitials}>{initials}</Text>
+                  </View>
+                )}
+                <Text style={[styles.similarAuthorName, { color: themeColors.text }]} numberOfLines={2}>
+                  {author.name}
+                </Text>
+                <Text style={[styles.similarAuthorCount, { color: themeColors.textSecondary }]}>
+                  {author.bookCount} {author.bookCount === 1 ? 'book' : 'books'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  }, [similarAuthors, themeColors, handleAuthorPress]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor="transparent" translucent />
+
+      <FlatList
+        ref={flatListRef}
+        data={sortedBooks}
+        renderItem={renderBookItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        ListFooterComponent={ListFooter}
+        style={{ backgroundColor: themeColors.background }}
+        contentContainerStyle={{
+          paddingTop: insets.top,
+          paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom,
+        }}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        windowSize={5}
+        maxToRenderPerBatch={5}
+        initialNumToRender={10}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={themeColors.text}
+            progressViewOffset={20}
+          />
+        }
+      />
     </View>
   );
 }
@@ -720,28 +1087,35 @@ export function AuthorDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
   },
-  header: {
+  heroBackgroundScrollable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: scale(550),
+    marginTop: -scale(100),
+  },
+  scrollHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: scale(12),
-    paddingBottom: scale(12),
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
-  headerButton: {
-    width: scale(40),
-    height: scale(40),
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+  },
+  headerActionButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: scale(17),
-    fontWeight: '600',
-    color: '#fff',
-  },
-  content: {
-    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -749,272 +1123,144 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: scale(16),
+    fontSize: 16,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: scale(40),
+    paddingHorizontal: 40,
   },
   emptyTitle: {
-    color: '#fff',
-    fontSize: scale(18),
+    fontSize: 18,
     fontWeight: '600',
-    marginTop: scale(16),
+    marginTop: 16,
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: scale(14),
-    marginTop: scale(4),
+    fontSize: 14,
+    marginTop: 4,
     textAlign: 'center',
   },
-
-  // Entity Header
-  entityHeader: {
+  authorHeader: {
     alignItems: 'center',
-    paddingHorizontal: scale(20),
-    paddingTop: scale(10),
-    paddingBottom: scale(24),
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 24,
   },
-  avatarContainer: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: ACCENT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: scale(16),
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  initialsText: {
-    fontSize: scale(48),
+  authorName: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#000',
-  },
-  entityName: {
-    fontSize: scale(24),
-    fontWeight: '700',
-    color: '#fff',
     textAlign: 'center',
     marginBottom: scale(4),
   },
-  entityStats: {
-    fontSize: scale(14),
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: scale(12),
+  bookCount: {
+    fontSize: 14,
+    marginTop: scale(4),
   },
-  followButton: {
+  progressStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+    marginTop: scale(12),
+  },
+  progressStat: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(6),
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(8),
-    borderRadius: scale(20),
-    borderWidth: 1,
-    borderColor: ACCENT,
-    marginBottom: scale(16),
-  },
-  followButtonActive: {
-    backgroundColor: ACCENT,
-    borderColor: ACCENT,
-  },
-  followButtonText: {
-    fontSize: scale(14),
-    fontWeight: '600',
-    color: ACCENT,
-  },
-  followButtonTextActive: {
-    color: '#000',
-  },
-  genreRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: scale(8),
-    marginBottom: scale(16),
-  },
-  genreChip: {
     paddingHorizontal: scale(12),
     paddingVertical: scale(6),
-    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: scale(16),
   },
-  genreChipText: {
-    fontSize: scale(12),
-    color: 'rgba(255,255,255,0.8)',
+  progressStatText: {
+    fontSize: scale(13),
+    fontWeight: '500',
   },
   bioContainer: {
-    paddingHorizontal: scale(20),
+    marginTop: scale(16),
+    paddingHorizontal: scale(10),
   },
   bioText: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.7)',
     lineHeight: scale(20),
     textAlign: 'center',
   },
   bioToggle: {
     fontSize: scale(14),
-    color: ACCENT,
     fontWeight: '500',
     marginTop: scale(4),
     textAlign: 'center',
   },
-
-  // Sections
-  section: {
-    marginBottom: scale(24),
+  // Series section
+  seriesSection: {
+    paddingTop: scale(16),
+    paddingBottom: scale(8),
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: scale(20),
+    paddingHorizontal: scale(16),
     marginBottom: scale(12),
+    gap: scale(8),
+  },
+  sectionCount: {
+    fontSize: scale(14),
+    fontWeight: '500',
+  },
+  seriesScrollContent: {
+    paddingHorizontal: scale(16),
+    gap: scale(12),
+  },
+  seriesCard: {
+    width: scale(140),
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(12),
+    borderRadius: scale(12),
+    alignItems: 'center',
+  },
+  seriesCoverStack: {
+    width: scale(70),
+    height: scale(70),
+    marginBottom: scale(10),
+    position: 'relative',
+  },
+  seriesMiniCover: {
+    position: 'absolute',
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(4),
+  },
+  seriesName: {
+    fontSize: scale(13),
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: scale(4),
+  },
+  seriesBookCount: {
+    fontSize: scale(11),
+    textAlign: 'center',
+  },
+  seriesChevron: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+  },
+
+  // Books section
+  booksSection: {
+    paddingTop: scale(8),
+    paddingHorizontal: scale(16),
+    paddingBottom: scale(8),
   },
   sectionTitle: {
     fontSize: scale(18),
-    fontWeight: '600',
-    color: '#fff',
-    paddingHorizontal: scale(20),
-    marginBottom: scale(12),
-  },
-  horizontalList: {
-    paddingHorizontal: scale(20),
-    gap: scale(12),
-  },
-
-  // Continue Listening Cards
-  continueCard: {
-    width: scale(140),
-  },
-  continueCoverContainer: {
-    width: scale(140),
-    height: scale(140),
-    borderRadius: scale(8),
-    overflow: 'hidden',
-    marginBottom: scale(8),
-    position: 'relative',
-  },
-  continueCover: {
-    width: '100%',
-    height: '100%',
-  },
-  continueGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: scale(60),
-  },
-  continueProgress: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  continueProgressFill: {
-    height: '100%',
-    backgroundColor: ACCENT,
-  },
-  continueProgressText: {
-    position: 'absolute',
-    bottom: scale(8),
-    right: scale(8),
-    fontSize: scale(12),
     fontWeight: '700',
-    color: '#fff',
-  },
-  continueTitle: {
-    fontSize: scale(13),
-    fontWeight: '500',
-    color: '#fff',
-    lineHeight: scale(18),
-  },
-  continueRemaining: {
-    fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: scale(2),
-  },
-
-  // Series Row
-  seriesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: scale(20),
-    marginBottom: scale(12),
-    padding: scale(12),
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: scale(12),
-  },
-  seriesCovers: {
-    flexDirection: 'row',
-    marginRight: scale(12),
-  },
-  seriesCoverSmall: {
-    width: scale(45),
-    height: scale(45),
-    borderRadius: scale(6),
-    borderWidth: 1,
-    borderColor: BG_COLOR,
-  },
-  seriesInfo: {
-    flex: 1,
-  },
-  seriesName: {
-    fontSize: scale(15),
-    fontWeight: '600',
-    color: '#fff',
-  },
-  seriesBooks: {
-    fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: scale(2),
-  },
-
-  // Sort Buttons
-  sortButtons: {
-    flexDirection: 'row',
-    gap: scale(8),
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(4),
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(6),
-    borderRadius: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  sortButtonActive: {
-    backgroundColor: ACCENT,
-  },
-  sortButtonText: {
-    fontSize: scale(12),
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '500',
-  },
-  sortButtonTextActive: {
-    color: '#000',
-  },
-
-  // Book List
-  bookList: {
-    paddingHorizontal: scale(20),
   },
   bookItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: scale(12),
+    paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   bookCoverContainer: {
     position: 'relative',
@@ -1032,6 +1278,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: scale(2),
     right: scale(2),
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: scale(8),
   },
   bookInfo: {
     flex: 1,
@@ -1039,31 +1287,26 @@ const styles = StyleSheet.create({
   bookTitle: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
     marginBottom: scale(2),
   },
   bookSeries: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
     marginBottom: scale(2),
   },
   bookMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   bookMeta: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
   },
   bookMetaDot: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.3)',
     marginHorizontal: scale(6),
   },
   bookNarrator: {
     fontSize: scale(12),
-    color: '#4A90D9',
-    flex: 1,
   },
   progressContainer: {
     flexDirection: 'row',
@@ -1074,86 +1317,174 @@ const styles = StyleSheet.create({
   progressBar: {
     flex: 1,
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: scale(2),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT,
     borderRadius: scale(2),
   },
   progressText: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
   },
-  playButton: {
+  emptyListContainer: {
+    alignItems: 'center',
+    paddingVertical: scale(40),
+    paddingHorizontal: scale(20),
+  },
+  emptyListTitle: {
+    fontSize: scale(16),
+    fontWeight: '600',
+    marginTop: scale(12),
+  },
+  emptyListSubtitle: {
+    fontSize: scale(13),
+    marginTop: scale(4),
+    textAlign: 'center',
+  },
+
+  // Genre tags
+  genreTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: scale(8),
+    marginTop: scale(8),
+    paddingHorizontal: scale(16),
+  },
+  genreTag: {
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
+  },
+  genreTagText: {
+    fontSize: scale(12),
+    fontWeight: '500',
+  },
+
+  // Continue Listening section
+  continueListeningSection: {
+    paddingTop: scale(16),
+    paddingBottom: scale(8),
+    paddingHorizontal: scale(16),
+  },
+  continueListeningItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: scale(12),
+    borderRadius: scale(12),
+    marginTop: scale(8),
+  },
+  continueListeningCover: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(6),
+  },
+  continueListeningInfo: {
+    flex: 1,
+    marginLeft: scale(12),
+    marginRight: scale(12),
+  },
+  continueListeningTitle: {
+    fontSize: scale(15),
+    fontWeight: '600',
+    marginBottom: scale(2),
+  },
+  continueListeningSeries: {
+    fontSize: scale(12),
+    marginBottom: scale(2),
+  },
+  continueListeningNarrator: {
+    fontSize: scale(12),
+    marginBottom: scale(4),
+  },
+  continueListeningProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    marginBottom: scale(2),
+  },
+  continueListeningProgressTrack: {
+    flex: 1,
+    height: scale(4),
+    borderRadius: scale(2),
+    overflow: 'hidden',
+  },
+  continueListeningProgressFill: {
+    height: '100%',
+    borderRadius: scale(2),
+  },
+  continueListeningProgressText: {
+    fontSize: scale(11),
+    fontWeight: '500',
+  },
+  continueListeningRemaining: {
+    fontSize: scale(12),
+    fontWeight: '600',
+  },
+  continueListeningPlayButton: {
     width: scale(40),
     height: scale(40),
     borderRadius: scale(20),
-    backgroundColor: ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: scale(8),
   },
 
-  // Related Authors
-  relatedAuthor: {
-    width: scale(90),
+  // Sort controls
+  sortControlsScroll: {
+    marginTop: scale(8),
+    marginHorizontal: scale(-16),
+  },
+  sortControls: {
+    flexDirection: 'row',
+    gap: scale(8),
+    paddingHorizontal: scale(16),
+  },
+  sortButton: {
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(6),
+    borderRadius: scale(16),
+  },
+  sortButtonText: {
+    fontSize: scale(13),
+    fontWeight: '500',
+  },
+
+  // Similar Authors section
+  similarAuthorsSection: {
+    paddingTop: scale(24),
+    paddingBottom: scale(16),
+  },
+  similarAuthorsScrollContent: {
+    paddingHorizontal: scale(16),
+    gap: scale(16),
+  },
+  similarAuthorCard: {
+    width: scale(100),
     alignItems: 'center',
   },
-  relatedAuthorAvatar: {
-    width: scale(70),
-    height: scale(70),
-    borderRadius: scale(35),
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  similarAuthorImage: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: scale(40),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(8),
-    overflow: 'hidden',
   },
-  relatedAuthorImage: {
-    width: '100%',
-    height: '100%',
-  },
-  relatedAuthorInitials: {
+  similarAuthorInitials: {
     fontSize: scale(24),
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
-  },
-  relatedAuthorName: {
-    fontSize: scale(12),
-    fontWeight: '500',
+    fontWeight: '700',
     color: '#fff',
-    textAlign: 'center',
   },
-  relatedAuthorBooks: {
-    fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: scale(2),
-  },
-
-  // Error state styles
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: scale(40),
-  },
-  errorText: {
-    fontSize: scale(16),
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: scale(16),
-  },
-  errorButton: {
-    backgroundColor: ACCENT,
-    paddingHorizontal: scale(24),
-    paddingVertical: scale(12),
-    borderRadius: scale(8),
-  },
-  errorButtonText: {
-    fontSize: scale(14),
+  similarAuthorName: {
+    fontSize: scale(13),
     fontWeight: '600',
-    color: '#000',
+    textAlign: 'center',
+    marginBottom: scale(2),
+  },
+  similarAuthorCount: {
+    fontSize: scale(11),
+    textAlign: 'center',
   },
 });

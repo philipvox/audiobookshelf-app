@@ -12,3 +12,13 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
+
+# Android Auto / MediaBrowserService
+-keep class com.secretlibrary.app.MediaPlaybackService { *; }
+-keep class com.secretlibrary.app.AndroidAutoModule { *; }
+-keep class com.secretlibrary.app.AndroidAutoPackage { *; }
+
+# AndroidX Media classes for Android Auto
+-keep class androidx.media.** { *; }
+-keep class android.support.v4.media.** { *; }
+-keep class android.support.v4.media.session.** { *; }

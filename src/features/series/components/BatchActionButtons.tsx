@@ -1,22 +1,19 @@
 /**
  * src/features/series/components/BatchActionButtons.tsx
  *
- * Enhanced batch action buttons based on UX research.
- * Features:
- * - Smart dynamic button text based on series state
- * - Specific book names in CTAs
- * - Progress percentage in continue button
- * - Context-aware actions
+ * Clean batch action buttons for series.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import {
   ArrowDownCircle,
   CheckCircle,
@@ -29,10 +26,75 @@ import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { usePlayerStore } from '@/features/player';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { scale } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
 const MAX_BATCH_DOWNLOAD = 3;
+
+// Custom Alert Modal Component
+interface CustomAlertProps {
+  visible: boolean;
+  title: string;
+  message: string;
+  buttons: { text: string; onPress?: () => void; style?: 'default' | 'cancel' }[];
+  onDismiss: () => void;
+}
+
+function CustomAlert({ visible, title, message, buttons, onDismiss }: CustomAlertProps) {
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onDismiss}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onDismiss}>
+        <BlurView
+          intensity={40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <Pressable
+          style={[
+            styles.modalContent,
+            { backgroundColor: isDarkMode ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.95)' }
+          ]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={[styles.modalTitle, { color: themeColors.text }]}>{title}</Text>
+          <Text style={[styles.modalMessage, { color: themeColors.textSecondary }]}>{message}</Text>
+
+          <View style={styles.modalButtons}>
+            {buttons.map((button, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.modalButton,
+                  index < buttons.length - 1 && [styles.modalButtonBorder, { borderBottomColor: themeColors.border }]
+                ]}
+                onPress={() => {
+                  onDismiss();
+                  button.onPress?.();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.modalButtonText,
+                  { color: button.style === 'cancel' ? themeColors.textSecondary : '#007AFF' }
+                ]}>
+                  {button.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 interface BatchActionButtonsProps {
   booksToDownload: LibraryItem[];
@@ -44,14 +106,11 @@ interface BatchActionButtonsProps {
   inProgressBook?: LibraryItem | null;
   inProgressPercent?: number;
   onContinue: () => void;
-  hasRealSequences?: boolean; // Whether the series has meaningful sequence numbers
+  hasRealSequences?: boolean;
 }
 
-// Get raw sequence number for book - returns null if unknown
 function getRawSequence(item: LibraryItem): number | null {
   const metadata = (item.media?.metadata as any) || {};
-
-  // First check series array (preferred - has explicit sequence)
   if (metadata.series?.length > 0) {
     const primarySeries = metadata.series[0];
     if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
@@ -61,25 +120,20 @@ function getRawSequence(item: LibraryItem): number | null {
       }
     }
   }
-
-  // Fallback: check seriesName for #N pattern
   const seriesName = metadata.seriesName || '';
   const match = seriesName.match(/#([\d.]+)/);
   return match ? parseFloat(match[1]) : null;
 }
 
-// Get sequence for display - returns null if sequences aren't real
 function getSequenceForDisplay(item: LibraryItem, hasReal: boolean): number | null {
   if (!hasReal) return null;
   return getRawSequence(item);
 }
 
-// Get book title
 function getTitle(item: LibraryItem): string {
   return (item.media?.metadata as any)?.title || 'Unknown';
 }
 
-// Format time remaining
 function formatTimeRemaining(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -99,62 +153,81 @@ export function BatchActionButtons({
   inProgressBook,
   inProgressPercent = 0,
   onContinue,
-  hasRealSequences = true, // Default to true for backwards compatibility
+  hasRealSequences = true,
 }: BatchActionButtonsProps) {
   const navigation = useNavigation<any>();
   const { queueDownload } = useDownloads();
   const { loadBook } = usePlayerStore();
+  const themeColors = useThemeColors();
 
-  // Determine series state
+  // Alert state
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    buttons: { text: string; onPress?: () => void; style?: 'default' | 'cancel' }[];
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+  });
+
+  const showAlert = useCallback((
+    title: string,
+    message: string,
+    buttons: { text: string; onPress?: () => void; style?: 'default' | 'cancel' }[]
+  ) => {
+    setAlertConfig({ visible: true, title, message, buttons });
+  }, []);
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+  }, []);
+
   const seriesState = useMemo(() => {
     if (seriesComplete) return 'completed';
     if (inProgressBook && inProgressPercent > 0) return 'mid_book';
     if (nextBook) {
       const seq = getSequenceForDisplay(nextBook, hasRealSequences);
       if (seq === 1) return 'not_started';
-      // If no real sequences, treat as not_started instead of between_books
       if (!hasRealSequences) return 'not_started';
       return 'between_books';
     }
     return 'not_started';
   }, [seriesComplete, inProgressBook, inProgressPercent, nextBook, hasRealSequences]);
 
-  // Calculate remaining time for current book
   const currentBookRemaining = useMemo(() => {
     if (!inProgressBook) return 0;
     const duration = (inProgressBook.media as any)?.duration || 0;
     return duration * (1 - (inProgressPercent / 100));
   }, [inProgressBook, inProgressPercent]);
 
-  // Handle batch download
   const handleDownloadNext = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const toDownload = booksToDownload.slice(0, MAX_BATCH_DOWNLOAD);
     if (toDownload.length === 0) return;
 
-    // Queue all downloads
     for (const book of toDownload) {
       await queueDownload(book);
     }
 
-    // Show feedback
     const bookNames = toDownload.map((b, i) => {
       if (i === 0) return getTitle(b);
       const seq = getSequenceForDisplay(b, hasRealSequences);
       return seq !== null ? `Book ${seq}` : getTitle(b);
     }).join(', ');
 
-    Alert.alert(
+    showAlert(
       'Downloads Started',
       toDownload.length === 1
         ? `"${getTitle(toDownload[0])}" is downloading.`
         : `${toDownload.length} books queued: ${bookNames}`,
       [{ text: 'OK' }]
     );
-  }, [booksToDownload, queueDownload]);
+  }, [booksToDownload, queueDownload, showAlert]);
 
-  // Handle continue/start series
   const handleContinue = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -164,8 +237,7 @@ export function BatchActionButtons({
     const isDownloaded = nextBookDownloaded || (inProgressBook && nextBookDownloaded);
 
     if (!isDownloaded && !inProgressBook) {
-      // Offer to download or stream
-      Alert.alert(
+      showAlert(
         'Book Not Downloaded',
         `"${getTitle(targetBook)}" needs to be downloaded for offline listening. Stream it now?`,
         [
@@ -180,27 +252,23 @@ export function BatchActionButtons({
     }
 
     await loadBook(targetBook, { autoPlay: true, showPlayer: true });
-  }, [inProgressBook, nextBook, nextBookDownloaded, loadBook, queueDownload]);
+  }, [inProgressBook, nextBook, nextBookDownloaded, loadBook, queueDownload, showAlert]);
 
-  // Handle similar series (for completed state)
   const handleFindSimilar = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate('Main', { screen: 'DiscoverTab' });
   }, [navigation]);
 
-  // Handle listen again
   const handleListenAgain = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // For completed series, start from book 1
     if (booksToDownload.length > 0 || nextBook) {
-      const firstBook = nextBook; // nextBook should be book 1 for completed series
+      const firstBook = nextBook;
       if (firstBook) {
         await loadBook(firstBook, { autoPlay: true, showPlayer: true });
       }
     }
   }, [nextBook, booksToDownload, loadBook]);
 
-  // Determine button configurations
   const downloadCount = Math.min(booksToDownload.length, MAX_BATCH_DOWNLOAD);
   const canDownload = downloadCount > 0 && !seriesComplete;
   const nextSeq = nextBook ? getSequenceForDisplay(nextBook, hasRealSequences) : null;
@@ -208,7 +276,7 @@ export function BatchActionButtons({
   const isNearEnd = hasSequence && nextSeq >= totalBooks - 1;
   const isFinalBook = hasSequence && nextSeq === totalBooks;
 
-  // Download button text & icon
+  // Download button text - cleaner format
   let downloadText = 'All Downloaded';
   let DownloadIcon = CheckCircle;
   let showDownloadButton = true;
@@ -217,22 +285,19 @@ export function BatchActionButtons({
     showDownloadButton = false;
   } else if (canDownload) {
     DownloadIcon = ArrowDownCircle;
-    if (seriesState === 'not_started' && hasSequence) {
-      downloadText = `Download Book 1`;
-    } else if (isFinalBook) {
-      downloadText = `Download Final Book`;
-    } else if (downloadCount === 1 && hasSequence) {
-      downloadText = `Download Book ${nextSeq}`;
+    if (downloadCount === 1 && hasSequence) {
+      // Format single book number nicely
+      const bookNum = Number.isInteger(nextSeq) ? nextSeq : nextSeq?.toFixed(1);
+      downloadText = `Download Book ${bookNum}`;
     } else if (downloadCount === 1) {
       downloadText = `Download Next`;
-    } else if (isNearEnd) {
-      downloadText = `Download Last ${downloadCount}`;
     } else {
+      // Just show count, not ugly decimal numbers
       downloadText = `Download Next ${downloadCount}`;
     }
   }
 
-  // Continue button text & icon
+  // Continue button text
   let continueText = 'Continue Series';
   let ContinueIcon = Play;
   let continueEnabled = true;
@@ -249,87 +314,108 @@ export function BatchActionButtons({
     continueText = hasSequence ? 'Start Book 1' : 'Start Series';
   } else if (seriesState === 'between_books' && nextBook) {
     const seq = getSequenceForDisplay(nextBook, hasRealSequences);
-    const title = getTitle(nextBook);
-    // Truncate title if too long
-    const shortTitle = title.length > 15 ? title.substring(0, 15) + '...' : title;
-    continueText = seq !== null ? `Start Book ${seq}` : `Start ${shortTitle}`;
+    if (seq !== null) {
+      const bookNum = Number.isInteger(seq) ? seq : seq.toFixed(1);
+      continueText = `Start Book ${bookNum}`;
+    } else {
+      continueText = 'Start Next';
+    }
   }
 
-  // Completed state has special buttons
+  // Completed state
   if (seriesComplete) {
     return (
-      <View style={styles.container}>
-        <TouchableOpacity
-          style={[styles.button, styles.outlineButton]}
-          onPress={handleListenAgain}
-          activeOpacity={0.7}
-        >
-          <RefreshCw size={scale(18)} color={ACCENT} strokeWidth={2} />
-          <Text style={styles.outlineButtonText}>Listen Again</Text>
-        </TouchableOpacity>
+      <>
+        <CustomAlert
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          buttons={alertConfig.buttons}
+          onDismiss={hideAlert}
+        />
+        <View style={styles.container}>
+          <TouchableOpacity
+            style={[styles.button, styles.outlineButton, { borderColor: themeColors.text }]}
+            onPress={handleListenAgain}
+            activeOpacity={0.7}
+          >
+            <RefreshCw size={scale(18)} color={themeColors.text} strokeWidth={2} />
+            <Text style={[styles.outlineButtonText, { color: themeColors.text }]}>Listen Again</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, styles.continueButton]}
-          onPress={handleFindSimilar}
-          activeOpacity={0.7}
-        >
-          <Compass size={scale(18)} color="#000" strokeWidth={2} />
-          <Text style={styles.continueButtonText}>Find Similar</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.button, styles.continueButton, { backgroundColor: themeColors.text }]}
+            onPress={handleFindSimilar}
+            activeOpacity={0.7}
+          >
+            <Compass size={scale(18)} color={themeColors.background} strokeWidth={2} />
+            <Text style={[styles.continueButtonText, { color: themeColors.background }]}>Find Similar</Text>
+          </TouchableOpacity>
+        </View>
+      </>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Download Button */}
-      {showDownloadButton && (
+    <>
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={hideAlert}
+      />
+      <View style={styles.container}>
+        {/* Download Button - black outline style */}
+        {showDownloadButton && (
+          <TouchableOpacity
+            style={[
+              styles.button,
+              styles.outlineButton,
+              { borderColor: canDownload ? themeColors.text : themeColors.border },
+            ]}
+            onPress={handleDownloadNext}
+            disabled={!canDownload}
+            activeOpacity={0.7}
+          >
+            <DownloadIcon
+              size={scale(18)}
+              color={canDownload ? themeColors.text : themeColors.textTertiary}
+              strokeWidth={2}
+            />
+            <Text style={[
+              styles.outlineButtonText,
+              { color: canDownload ? themeColors.text : themeColors.textTertiary },
+            ]}>
+              {downloadText}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Continue Button - black outline, no fill */}
         <TouchableOpacity
           style={[
             styles.button,
-            styles.downloadButton,
-            !canDownload && styles.buttonDisabled,
+            styles.outlineButton,
+            { borderColor: themeColors.text },
+            !showDownloadButton && styles.buttonFull,
           ]}
-          onPress={handleDownloadNext}
-          disabled={!canDownload}
+          onPress={handleContinue}
+          disabled={!continueEnabled}
           activeOpacity={0.7}
         >
-          <DownloadIcon
+          <ContinueIcon
             size={scale(18)}
-            color={canDownload ? 'rgba(255,255,255,0.9)' : ACCENT}
+            color={themeColors.text}
             strokeWidth={2}
+            fill={ContinueIcon === Play ? themeColors.text : undefined}
           />
-          <Text style={[
-            styles.buttonText,
-            !canDownload && styles.buttonTextDisabled,
-          ]}>
-            {downloadText}
+          <Text style={[styles.outlineButtonText, { color: themeColors.text }]}>
+            {continueText}
           </Text>
         </TouchableOpacity>
-      )}
-
-      {/* Continue Button */}
-      <TouchableOpacity
-        style={[
-          styles.button,
-          styles.continueButton,
-          !showDownloadButton && styles.buttonFull,
-        ]}
-        onPress={handleContinue}
-        disabled={!continueEnabled}
-        activeOpacity={0.7}
-      >
-        <ContinueIcon
-          size={scale(18)}
-          color="#000"
-          strokeWidth={2}
-          fill={ContinueIcon === Play ? "#000" : undefined}
-        />
-        <Text style={styles.continueButtonText}>
-          {continueText}
-        </Text>
-      </TouchableOpacity>
-    </View>
+      </View>
+    </>
   );
 }
 
@@ -352,36 +438,62 @@ const styles = StyleSheet.create({
   buttonFull: {
     flex: 2,
   },
-  downloadButton: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  continueButton: {
-    backgroundColor: ACCENT,
-  },
   outlineButton: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: ACCENT,
   },
-  buttonDisabled: {
-    backgroundColor: 'rgba(244,182,12,0.1)',
-  },
-  buttonText: {
-    fontSize: scale(13),
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-  },
-  buttonTextDisabled: {
-    color: ACCENT,
+  continueButton: {
+    // backgroundColor set dynamically
   },
   continueButtonText: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: '#000',
   },
   outlineButtonText: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: ACCENT,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: scale(40),
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: scale(320),
+    borderRadius: scale(14),
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: scale(17),
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingTop: scale(20),
+    paddingHorizontal: scale(20),
+  },
+  modalMessage: {
+    fontSize: scale(13),
+    textAlign: 'center',
+    paddingHorizontal: scale(20),
+    paddingTop: scale(8),
+    paddingBottom: scale(20),
+    lineHeight: scale(18),
+  },
+  modalButtons: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  modalButton: {
+    paddingVertical: scale(14),
+    alignItems: 'center',
+  },
+  modalButtonBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalButtonText: {
+    fontSize: scale(17),
+    fontWeight: '400',
   },
 });

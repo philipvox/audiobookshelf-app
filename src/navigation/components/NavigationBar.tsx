@@ -11,12 +11,13 @@ import { FloatingTabBar } from './FloatingTabBar';
 
 export { FloatingTabBar as NavigationBar };
 
-// Tab bar height constant
-const TAB_BAR_HEIGHT = 82;
+// Tab bar height constant (iOS: 49pt, Android: 56dp, we use 52)
+const TAB_BAR_HEIGHT = 52;
 
 /** Total height of navigation bar (for content padding) */
 export function useNavigationBarHeight(): number {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, spacing.lg) + spacing.sm;
+  // Safe area already handles home indicator, just add minimal buffer
+  const bottomPadding = Math.max(insets.bottom, spacing.md);
   return TAB_BAR_HEIGHT + bottomPadding;
 }

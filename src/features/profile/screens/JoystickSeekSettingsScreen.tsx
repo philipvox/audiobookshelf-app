@@ -49,9 +49,24 @@ import {
 } from '@/features/player/stores/joystickSeekStore';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, wp } from '@/shared/theme';
+import { accentColors, scale, wp } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
+
+// Helper to create theme-aware colors
+function createColors(themeColors: ThemeColors) {
+  return {
+    accent: ACCENT,
+    background: themeColors.backgroundSecondary,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    card: themeColors.border,
+    border: themeColors.border,
+    iconBg: themeColors.border,
+  };
+}
 
 // ============================================================================
 // CURVE PREVIEW COMPONENT
@@ -558,6 +573,8 @@ function TestArea({ settings, onTestPositionChange }: TestAreaProps) {
 export function JoystickSeekSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
 
   // Store
   const enabled = useJoystickSeekStore((s) => s.enabled);
@@ -612,8 +629,8 @@ export function JoystickSeekSettingsScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -622,9 +639,9 @@ export function JoystickSeekSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Joystick Seek</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Joystick Seek</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -634,27 +651,27 @@ export function JoystickSeekSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Description */}
-        <Text style={styles.description}>
+        <Text style={[styles.description, { color: colors.textSecondary }]}>
           Hold and drag from the play button to seek through your audiobook at variable speeds.
           Drag further for faster seeking.
         </Text>
 
         {/* Enable Toggle */}
         <View style={styles.section}>
-          <View style={styles.sectionCard}>
-            <View style={styles.settingsRow}>
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.settingsRow, { borderBottomColor: colors.border }]}>
               <View style={styles.rowLeft}>
-                <View style={styles.iconContainer}>
-                  <Gamepad2 size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+                <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
+                  <Gamepad2 size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
                 </View>
                 <View style={styles.rowContent}>
-                  <Text style={styles.rowLabel}>Enable Joystick Seek</Text>
+                  <Text style={[styles.rowLabel, { color: colors.text }]}>Enable Joystick Seek</Text>
                 </View>
               </View>
               <Switch
                 value={enabled}
                 onValueChange={setEnabled}
-                trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+                trackColor={{ false: colors.border, true: ACCENT }}
                 thumbColor="#fff"
               />
             </View>
@@ -677,7 +694,7 @@ export function JoystickSeekSettingsScreen() {
 
             {/* Speed Range Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionHeader}>Speed Range</Text>
+              <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Speed Range</Text>
 
               <SpeedSlider
                 label="Minimum Speed"
@@ -702,21 +719,21 @@ export function JoystickSeekSettingsScreen() {
 
             {/* Advanced Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionHeader}>Advanced</Text>
-              <View style={styles.sectionCard}>
+              <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Advanced</Text>
+              <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
                 {/* Deadzone Slider */}
-                <View style={styles.sliderRow}>
+                <View style={[styles.sliderRow, { borderBottomColor: colors.border }]}>
                   <View style={styles.sliderHeader}>
                     <View style={styles.rowLeft}>
-                      <View style={styles.iconContainer}>
-                        <Maximize size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+                      <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
+                        <Maximize size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
                       </View>
                       <View style={styles.rowContent}>
-                        <Text style={styles.rowLabel}>Deadzone</Text>
-                        <Text style={styles.rowNote}>Distance before seeking starts</Text>
+                        <Text style={[styles.rowLabel, { color: colors.text }]}>Deadzone</Text>
+                        <Text style={[styles.rowNote, { color: colors.textTertiary }]}>Distance before seeking starts</Text>
                       </View>
                     </View>
-                    <Text style={styles.rowValue}>{deadzone}pt</Text>
+                    <Text style={[styles.rowValue, { color: colors.accent }]}>{deadzone}pt</Text>
                   </View>
                   <Slider
                     style={styles.slider}
@@ -728,24 +745,24 @@ export function JoystickSeekSettingsScreen() {
                       setDeadzone(value);
                     }}
                     minimumTrackTintColor={ACCENT}
-                    maximumTrackTintColor="rgba(255,255,255,0.2)"
+                    maximumTrackTintColor={colors.border}
                     thumbTintColor="#fff"
                   />
                 </View>
 
                 {/* Curve Exponent Slider */}
-                <View style={styles.sliderRow}>
+                <View style={[styles.sliderRow, { borderBottomColor: colors.border }]}>
                   <View style={styles.sliderHeader}>
                     <View style={styles.rowLeft}>
-                      <View style={styles.iconContainer}>
-                        <TrendingUp size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+                      <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
+                        <TrendingUp size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
                       </View>
                       <View style={styles.rowContent}>
-                        <Text style={styles.rowLabel}>Curve Exponent</Text>
-                        <Text style={styles.rowNote}>Fine-tune response curve</Text>
+                        <Text style={[styles.rowLabel, { color: colors.text }]}>Curve Exponent</Text>
+                        <Text style={[styles.rowNote, { color: colors.textTertiary }]}>Fine-tune response curve</Text>
                       </View>
                     </View>
-                    <Text style={styles.rowValue}>{curveExponent.toFixed(2)}</Text>
+                    <Text style={[styles.rowValue, { color: colors.accent }]}>{curveExponent.toFixed(2)}</Text>
                   </View>
                   <Slider
                     style={styles.slider}
@@ -757,26 +774,26 @@ export function JoystickSeekSettingsScreen() {
                       setCurveExponent(value);
                     }}
                     minimumTrackTintColor={ACCENT}
-                    maximumTrackTintColor="rgba(255,255,255,0.2)"
+                    maximumTrackTintColor={colors.border}
                     thumbTintColor="#fff"
                   />
                 </View>
 
                 {/* Haptic Feedback */}
-                <View style={[styles.settingsRow, styles.settingsRowLast]}>
+                <View style={[styles.settingsRow, styles.settingsRowLast, { borderBottomColor: colors.border }]}>
                   <View style={styles.rowLeft}>
-                    <View style={styles.iconContainer}>
-                      <Activity size={scale(18)} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+                    <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
+                      <Activity size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
                     </View>
                     <View style={styles.rowContent}>
-                      <Text style={styles.rowLabel}>Haptic Feedback</Text>
-                      <Text style={styles.rowNote}>Vibrate during seeking</Text>
+                      <Text style={[styles.rowLabel, { color: colors.text }]}>Haptic Feedback</Text>
+                      <Text style={[styles.rowNote, { color: colors.textTertiary }]}>Vibrate during seeking</Text>
                     </View>
                   </View>
                   <Switch
                     value={hapticEnabled}
                     onValueChange={setHapticEnabled}
-                    trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+                    trackColor={{ false: colors.border, true: ACCENT }}
                     thumbColor="#fff"
                   />
                 </View>
@@ -787,8 +804,8 @@ export function JoystickSeekSettingsScreen() {
             <TestArea settings={settings} onTestPositionChange={setTestPosition} />
 
             {/* Reset Button */}
-            <TouchableOpacity style={styles.resetButton} onPress={handleReset} activeOpacity={0.7}>
-              <Text style={styles.resetButtonText}>Reset to Defaults</Text>
+            <TouchableOpacity style={[styles.resetButton, { borderColor: colors.border }]} onPress={handleReset} activeOpacity={0.7}>
+              <Text style={[styles.resetButtonText, { color: colors.textSecondary }]}>Reset to Defaults</Text>
             </TouchableOpacity>
           </>
         )}
@@ -806,7 +823,7 @@ export function JoystickSeekSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via colors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -824,7 +841,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -837,7 +854,7 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via colors.textSecondary in JSX
     lineHeight: scale(20),
     marginHorizontal: scale(20),
     marginBottom: scale(20),
@@ -850,14 +867,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -870,7 +887,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via colors.border in JSX
   },
   settingsRowLast: {
     borderBottomWidth: 0,
@@ -884,7 +901,7 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -895,16 +912,16 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   rowNote: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
   rowValue: {
     fontSize: scale(14),
-    color: ACCENT,
+    // color set via colors.accent in JSX
     fontWeight: '500',
   },
 

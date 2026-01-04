@@ -23,9 +23,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueue, useQueueStore } from '../stores/queueStore';
 import { SwipeableQueueItem } from '../components/SwipeableQueueItem';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { accentColors, scale, spacing, radius } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 // Format duration to human readable
 function formatDuration(seconds: number): string {
@@ -40,6 +41,7 @@ function formatDuration(seconds: number): string {
 export function QueueScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const queue = useQueue();
   const removeFromQueue = useQueueStore((state) => state.removeFromQueue);
   const reorderQueue = useQueueStore((state) => state.reorderQueue);
@@ -112,25 +114,25 @@ export function QueueScreen() {
   // Empty state
   if (queue.length === 0) {
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+            <ChevronLeft size={scale(24)} color={themeColors.text} strokeWidth={2} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Queue</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Queue</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         {/* Empty State */}
         <View style={styles.emptyContainer}>
-          <View style={styles.emptyIcon}>
-            <Headphones size={scale(48)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <View style={[styles.emptyIcon, { backgroundColor: themeColors.border }]}>
+            <Headphones size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
           </View>
-          <Text style={styles.emptyTitle}>Nothing in your queue</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Nothing in your queue</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
             Add books from your library to plan your listening journey.
           </Text>
           <TouchableOpacity style={styles.browseButton} onPress={handleBrowseLibrary}>
@@ -142,22 +144,22 @@ export function QueueScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={themeColors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Queue</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Queue</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       {/* Stats Header */}
-      <View style={styles.statsHeader}>
+      <View style={[styles.statsHeader, { backgroundColor: themeColors.border }]}>
         <View style={styles.statsInfo}>
-          <Text style={styles.statsText}>
+          <Text style={[styles.statsText, { color: themeColors.textSecondary }]}>
             {queue.length} book{queue.length !== 1 ? 's' : ''} · {formatDuration(totalDuration)} total
           </Text>
         </View>
@@ -187,7 +189,7 @@ export function QueueScreen() {
         )}
         ListFooterComponent={
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
+            <Text style={[styles.footerText, { color: themeColors.textTertiary }]}>
               Swipe left to remove · Tap ▲ to play next
             </Text>
           </View>
@@ -200,7 +202,7 @@ export function QueueScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -218,7 +220,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors.text in JSX
     textAlign: 'center',
   },
   headerSpacer: {
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     marginHorizontal: scale(16),
     marginBottom: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     borderRadius: scale(10),
   },
   statsInfo: {
@@ -240,7 +242,7 @@ const styles = StyleSheet.create({
   },
   statsText: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.7)',
+    // color set via themeColors.textSecondary in JSX
   },
   clearButton: {
     paddingHorizontal: scale(12),
@@ -251,7 +253,7 @@ const styles = StyleSheet.create({
   clearButtonText: {
     fontSize: scale(13),
     fontWeight: '500',
-    color: '#ff4b4b',
+    color: '#ff4b4b', // Intentional: destructive action color
   },
   listContent: {
     paddingHorizontal: scale(16),
@@ -268,7 +270,7 @@ const styles = StyleSheet.create({
     width: scale(80),
     height: scale(80),
     borderRadius: scale(40),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(20),
@@ -276,12 +278,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors.text in JSX
     marginBottom: scale(8),
   },
   emptySubtitle: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors.textSecondary in JSX
     textAlign: 'center',
     lineHeight: scale(20),
     marginBottom: scale(24),
@@ -295,7 +297,7 @@ const styles = StyleSheet.create({
   browseButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#000',
+    color: '#000', // Intentional: black text on gold accent
   },
   footer: {
     alignItems: 'center',
@@ -303,6 +305,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via themeColors.textTertiary in JSX
   },
 });

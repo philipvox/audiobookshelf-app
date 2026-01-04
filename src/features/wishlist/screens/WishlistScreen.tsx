@@ -36,10 +36,11 @@ import {
 } from '../stores/wishlistStore';
 import { useLibraryCache } from '@/core/cache';
 import { WishlistItemRow } from '../components/WishlistItemRow';
-import { colors, scale, spacing, radius, layout } from '@/shared/theme';
+import { accentColors, scale, spacing, radius, layout } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import { ChevronRight, BellOff } from 'lucide-react-native';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 type TabId = 'all' | 'must-read' | 'authors' | 'series';
 
@@ -66,6 +67,7 @@ const SORT_OPTIONS: { value: WishlistSortOption; label: string }[] = [
 export function WishlistScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
 
   // Store state
   const items = useWishlistStore((s) => s.items);
@@ -176,9 +178,9 @@ export function WishlistScreen() {
     if (activeTab === 'authors') {
       return (
         <View style={styles.emptyState}>
-          <User size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>No Followed Authors</Text>
-          <Text style={styles.emptySubtitle}>
+          <User size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No Followed Authors</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
             Follow authors to get notified when they release new books
           </Text>
         </View>
@@ -188,9 +190,9 @@ export function WishlistScreen() {
     if (activeTab === 'series') {
       return (
         <View style={styles.emptyState}>
-          <Library size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>No Tracked Series</Text>
-          <Text style={styles.emptySubtitle}>
+          <Library size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No Tracked Series</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
             Track series to see your progress and upcoming releases
           </Text>
         </View>
@@ -199,9 +201,9 @@ export function WishlistScreen() {
 
     return (
       <View style={styles.emptyState}>
-        <Bookmark size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-        <Text style={styles.emptyTitle}>Your Wishlist is Empty</Text>
-        <Text style={styles.emptySubtitle}>
+        <Bookmark size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
+        <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Your Wishlist is Empty</Text>
+        <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
           Add books you want to read by tapping the bookmark icon on any book
         </Text>
         <TouchableOpacity style={styles.emptyButton} onPress={handleAddPress}>
@@ -210,7 +212,7 @@ export function WishlistScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [activeTab, handleAddPress]);
+  }, [activeTab, handleAddPress, themeColors]);
 
   const keyExtractor = useCallback((item: WishlistItem) => item.id, []);
 
@@ -232,17 +234,17 @@ export function WishlistScreen() {
   }, [wishlistCount, items, authorsCount, seriesCount]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Wishlist</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Wishlist</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.headerButton}
             onPress={handleSortPress}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <SortAsc size={scale(20)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+            <SortAsc size={scale(20)} color={themeColors.textSecondary} strokeWidth={2} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addButton}
@@ -256,12 +258,13 @@ export function WishlistScreen() {
 
       {/* Sort Picker (dropdown) */}
       {showSortPicker && (
-        <View style={styles.sortPicker}>
+        <View style={[styles.sortPicker, { backgroundColor: themeColors.backgroundSecondary }]}>
           {SORT_OPTIONS.map((option) => (
             <TouchableOpacity
               key={option.value}
               style={[
                 styles.sortOption,
+                { borderBottomColor: themeColors.border },
                 sortBy === option.value && styles.sortOptionActive,
               ]}
               onPress={() => handleSortSelect(option.value)}
@@ -269,6 +272,7 @@ export function WishlistScreen() {
               <Text
                 style={[
                   styles.sortOptionText,
+                  { color: themeColors.textSecondary },
                   sortBy === option.value && styles.sortOptionTextActive,
                 ]}
               >
@@ -287,16 +291,16 @@ export function WishlistScreen() {
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.tab, isActive && styles.tabActive]}
+              style={[styles.tab, { backgroundColor: themeColors.border }, isActive && styles.tabActive]}
               onPress={() => handleTabPress(tab.id)}
             >
               <tab.Icon
                 size={scale(16)}
-                color={isActive ? '#000' : 'rgba(255,255,255,0.6)'}
+                color={isActive ? '#000' : themeColors.textSecondary}
                 strokeWidth={2}
                 fill={isActive && tab.id === 'must-read' ? '#000' : 'transparent'}
               />
-              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+              <Text style={[styles.tabText, { color: themeColors.textSecondary }, isActive && styles.tabTextActive]}>
                 {tab.label}
               </Text>
               {badge !== undefined && (
@@ -330,12 +334,12 @@ export function WishlistScreen() {
                   onPress={() => handleAuthorPress(item)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.authorAvatar}>
-                    <User size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                  <View style={[styles.authorAvatar, { backgroundColor: themeColors.border }]}>
+                    <User size={scale(20)} color={themeColors.textSecondary} strokeWidth={2} />
                   </View>
                   <View style={styles.authorInfo}>
-                    <Text style={styles.authorName}>{item.name}</Text>
-                    <Text style={styles.authorMeta}>
+                    <Text style={[styles.authorName, { color: themeColors.text }]}>{item.name}</Text>
+                    <Text style={[styles.authorMeta, { color: themeColors.textTertiary }]}>
                       {bookCount > 0 ? `${bookCount} books in library` : 'Following'}
                     </Text>
                   </View>
@@ -344,14 +348,14 @@ export function WishlistScreen() {
                     onPress={() => handleUnfollowAuthor(item)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <BellOff size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+                    <BellOff size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
                   </TouchableOpacity>
-                  <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+                  <ChevronRight size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
                 </TouchableOpacity>
               );
             }}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.authorSeparator} />}
+            ItemSeparatorComponent={() => <View style={[styles.authorSeparator, { backgroundColor: themeColors.border }]} />}
           />
         )
       ) : activeTab === 'series' ? (
@@ -372,12 +376,12 @@ export function WishlistScreen() {
                   onPress={() => handleSeriesPress(item)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.seriesIcon}>
-                    <Library size={scale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                  <View style={[styles.seriesIcon, { backgroundColor: themeColors.border }]}>
+                    <Library size={scale(20)} color={themeColors.textSecondary} strokeWidth={2} />
                   </View>
                   <View style={styles.seriesInfo}>
-                    <Text style={styles.seriesName}>{item.name}</Text>
-                    <Text style={styles.seriesMeta}>
+                    <Text style={[styles.seriesName, { color: themeColors.text }]}>{item.name}</Text>
+                    <Text style={[styles.seriesMeta, { color: themeColors.textTertiary }]}>
                       {bookCount > 0 ? `${bookCount} books in library` : 'Tracking'}
                     </Text>
                   </View>
@@ -386,14 +390,14 @@ export function WishlistScreen() {
                     onPress={() => handleUntrackSeries(item)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <BellOff size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+                    <BellOff size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
                   </TouchableOpacity>
-                  <ChevronRight size={scale(18)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+                  <ChevronRight size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
                 </TouchableOpacity>
               );
             }}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.seriesSeparator} />}
+            ItemSeparatorComponent={() => <View style={[styles.seriesSeparator, { backgroundColor: themeColors.border }]} />}
           />
         )
       ) : (
@@ -414,7 +418,7 @@ export function WishlistScreen() {
               tintColor={ACCENT}
             />
           }
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ItemSeparatorComponent={() => <View style={[styles.separator, { backgroundColor: themeColors.border }]} />}
         />
       )}
     </View>
@@ -424,7 +428,7 @@ export function WishlistScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -436,7 +440,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(28),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
   },
   headerActions: {
     flexDirection: 'row',
@@ -455,7 +459,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sortPicker: {
-    backgroundColor: '#1c1c1e',
+    // backgroundColor set via themeColors.backgroundSecondary in JSX
     marginHorizontal: layout.screenPaddingH,
     borderRadius: radius.md,
     marginBottom: spacing.md,
@@ -465,14 +469,14 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    // borderBottomColor set via themeColors.border in JSX
   },
   sortOptionActive: {
     backgroundColor: 'rgba(244,182,12,0.1)',
   },
   sortOptionText: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.7)',
+    // color set via themeColors.textSecondary in JSX
   },
   sortOptionTextActive: {
     color: ACCENT,
@@ -490,7 +494,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(8),
     paddingHorizontal: scale(12),
     borderRadius: scale(20),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via themeColors.border in JSX
     gap: scale(6),
   },
   tabActive: {
@@ -498,11 +502,11 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.7)',
+    // color set via themeColors.textSecondary in JSX
     fontWeight: '500',
   },
   tabTextActive: {
-    color: '#000',
+    color: '#000', // Intentional: black text on gold accent
     fontWeight: '600',
   },
   tabBadge: {
@@ -522,7 +526,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tabBadgeTextActive: {
-    color: '#000',
+    color: '#000', // Intentional: black text on gold accent
   },
   listContent: {
     paddingBottom: scale(100),
@@ -533,7 +537,7 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     marginLeft: scale(84),
   },
   emptyState: {
@@ -545,13 +549,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
   emptySubtitle: {
     fontSize: scale(14),
-    color: colors.textTertiary,
+    // color set via themeColors.textSecondary in JSX
     textAlign: 'center',
     lineHeight: scale(20),
   },
@@ -568,7 +572,7 @@ const styles = StyleSheet.create({
   emptyButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#000',
+    color: '#000', // Intentional: black text on gold accent
   },
   authorRow: {
     flexDirection: 'row',
@@ -580,7 +584,7 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(24),
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // backgroundColor set via themeColors.border in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -591,16 +595,16 @@ const styles = StyleSheet.create({
   authorName: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
   },
   authorMeta: {
     fontSize: scale(12),
-    color: colors.textTertiary,
+    // color set via themeColors.textTertiary in JSX
     marginTop: scale(2),
   },
   authorSeparator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     marginLeft: scale(76),
   },
   seriesRow: {
@@ -613,7 +617,7 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // backgroundColor set via themeColors.border in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -624,16 +628,16 @@ const styles = StyleSheet.create({
   seriesName: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
   },
   seriesMeta: {
     fontSize: scale(12),
-    color: colors.textTertiary,
+    // color set via themeColors.textTertiary in JSX
     marginTop: scale(2),
   },
   seriesSeparator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via themeColors.border in JSX
     marginLeft: scale(76),
   },
   unfollowButton: {

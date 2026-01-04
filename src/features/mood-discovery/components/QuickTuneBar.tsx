@@ -18,7 +18,7 @@ import Animated, {
   FadeOut,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { MOODS, PACES, WEIGHTS, WORLDS, MoodSession } from '../types';
+import { MOODS, PACES, WEIGHTS, WORLDS, LENGTHS, MoodSession } from '../types';
 import {
   useSessionInfo,
   formatTimeRemaining,
@@ -92,6 +92,7 @@ export function QuickTuneBar({
   const paceConfig = session.pace !== 'any' ? PACES.find((p) => p.id === session.pace) : null;
   const weightConfig = session.weight !== 'any' ? WEIGHTS.find((w) => w.id === session.weight) : null;
   const worldConfig = session.world !== 'any' ? WORLDS.find((w) => w.id === session.world) : null;
+  const lengthConfig = session.length !== 'any' ? LENGTHS.find((l) => l.id === session.length) : null;
 
   return (
     <Animated.View
@@ -180,6 +181,15 @@ export function QuickTuneBar({
             label={worldConfig.label}
             icon={worldConfig.icon}
             iconSet={worldConfig.iconSet}
+          />
+        )}
+
+        {/* Length chip */}
+        {lengthConfig && (
+          <FilterChip
+            label={lengthConfig.label}
+            icon={lengthConfig.icon}
+            iconSet={lengthConfig.iconSet}
           />
         )}
       </ScrollView>

@@ -1,8 +1,7 @@
 /**
  * src/features/discover/components/CategoryGrid.tsx
  *
- * Browse by Category grid using app design system.
- * Shows Genres, Authors, Series, and Narrators with counts.
+ * Simple 2-column category grid with icons - genres only, inline with homepage design
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -14,17 +13,15 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Icon } from '@/shared/components/Icon';
-import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators, getAllGenres } from '@/core/cache';
-import { colors, scale, wp, spacing, radius, layout, typography } from '@/shared/theme';
+import { useLibraryCache, getAllGenres } from '@/core/cache';
+import { scale, wp, spacing, radius, layout } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = scale(10);
 const COLUMN_WIDTH = (SCREEN_WIDTH - layout.screenPaddingH * 2 - GAP) / 2;
 
-const COLORS = { playButton: colors.accent, textPrimary: colors.textPrimary, textTertiary: colors.textTertiary };
-const DIMENSIONS = { sectionGap: layout.sectionGap, cardRadius: radius.card };
-const TYPOGRAPHY = { sectionTitle: { fontSize: scale(13), fontWeight: '600' as const }, cardTitle: { fontSize: scale(14), fontWeight: '500' as const } };
-const LAYOUT = { carouselPaddingHorizontal: layout.screenPaddingH, sectionHeaderMarginBottom: spacing.md };
+// Icons use text color for black/white design
 
 interface BrowseCategory {
   id: string;
@@ -37,20 +34,23 @@ interface BrowseCategory {
 interface CategoryCardProps {
   category: BrowseCategory;
   onPress: () => void;
+  textColor: string;
+  textTertiaryColor: string;
+  bgColor: string;
 }
 
-const CategoryCard = React.memo(function CategoryCard({ category, onPress }: CategoryCardProps) {
+const CategoryCard = React.memo(function CategoryCard({ category, onPress, textColor, textTertiaryColor, bgColor }: CategoryCardProps) {
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { backgroundColor: bgColor }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Icon name={category.icon as any} size={scale(22)} color={COLORS.playButton} />
+      <Icon name={category.icon as any} size={scale(20)} color={textColor} />
       <View style={styles.cardText}>
-        <Text style={styles.categoryName}>{category.name}</Text>
+        <Text style={[styles.categoryName, { color: textColor }]}>{category.name}</Text>
         {category.count > 0 && (
-          <Text style={styles.categoryCount}>{category.count}</Text>
+          <Text style={[styles.categoryCount, { color: textTertiaryColor }]}>{category.count}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -59,9 +59,9 @@ const CategoryCard = React.memo(function CategoryCard({ category, onPress }: Cat
 
 export function CategoryGrid() {
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
   const { isLoaded } = useLibraryCache();
 
-  // Build categories with counts from cache
   const categories = useMemo((): BrowseCategory[] => {
     if (!isLoaded) {
       return [
@@ -73,15 +73,10 @@ export function CategoryGrid() {
     }
 
     const genres = getAllGenres();
-    const authors = getAllAuthors();
-    const series = getAllSeries();
-    const narrators = getAllNarrators();
 
     return [
       { id: 'genres', name: 'Genres', icon: 'Layers', count: genres.length, route: 'GenresList' },
-      { id: 'authors', name: 'Authors', icon: 'User', count: authors.length, route: 'AuthorsList' },
-      { id: 'series', name: 'Series', icon: 'Library', count: series.length, route: 'SeriesList' },
-      { id: 'narrators', name: 'Narrators', icon: 'Mic', count: narrators.length, route: 'NarratorsList' },
+      { id: 'narrators', name: 'Narrators', icon: 'Mic', count: 0, route: 'NarratorsList' },
     ];
   }, [isLoaded]);
 
@@ -91,7 +86,7 @@ export function CategoryGrid() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Browse By</Text>
+      <Text style={[styles.title, { color: themeColors.text }]}>Browse</Text>
 
       <View style={styles.grid}>
         {categories.map((category) => (
@@ -99,6 +94,9 @@ export function CategoryGrid() {
             key={category.id}
             category={category}
             onPress={() => handleCategoryPress(category)}
+            textColor={themeColors.text}
+            textTertiaryColor={themeColors.textTertiary}
+            bgColor={themeColors.backgroundSecondary}
           />
         ))}
       </View>
@@ -108,14 +106,14 @@ export function CategoryGrid() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: LAYOUT.carouselPaddingHorizontal,
-    marginTop: scale(8),
-    marginBottom: DIMENSIONS.sectionGap,
+    paddingHorizontal: layout.screenPaddingH,
+    marginBottom: spacing.xl,
   },
   title: {
-    ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.textPrimary,
-    marginBottom: LAYOUT.sectionHeaderMarginBottom,
+    fontSize: scale(18),
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: spacing.md,
   },
   grid: {
     flexDirection: 'row',
@@ -124,9 +122,8 @@ const styles = StyleSheet.create({
   },
   card: {
     width: COLUMN_WIDTH,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: DIMENSIONS.cardRadius,
-    paddingVertical: scale(16),
+    borderRadius: radius.card,
+    paddingVertical: scale(14),
     paddingHorizontal: scale(12),
     flexDirection: 'row',
     alignItems: 'center',
@@ -139,11 +136,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryName: {
-    ...TYPOGRAPHY.cardTitle,
-    color: COLORS.textPrimary,
+    fontSize: scale(14),
+    fontWeight: '500',
   },
   categoryCount: {
-    fontSize: scale(13),
-    color: COLORS.textTertiary,
+    fontSize: scale(12),
   },
 });

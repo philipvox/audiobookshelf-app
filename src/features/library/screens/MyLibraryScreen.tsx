@@ -62,22 +62,28 @@ import { ContinueListeningHero } from '../components/ContinueListeningHero';
 import { LibraryEmptyState } from '../components/LibraryEmptyState';
 import { useMyLibraryStore } from '../stores/myLibraryStore';
 import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
-import { useGalleryStore } from '@/features/reading-history-wizard';
+import { useFinishedBookIds } from '@/core/hooks/useUserBooks';
 import { useContinueListening } from '@/features/home/hooks/useContinueListening';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
-import { colors, scale, spacing, radius } from '@/shared/theme';
-
-const COLORS = {
-  background: colors.backgroundPrimary,
-  textPrimary: colors.textPrimary,
-  textSecondary: colors.textSecondary,
-  accent: colors.accent,
-  cardBg: colors.cardBackground,
-};
+import { fpsMonitor } from '@/utils/runtimeMonitor';
+import { scale, spacing, radius, wp } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { SeriesHeartButton } from '@/shared/components';
 
 const HORIZONTAL_CARD_WIDTH = scale(110);
 const HORIZONTAL_CARD_COVER = scale(100);
+
+// Fanned series card dimensions
+const SCREEN_WIDTH = wp(100);
+const PADDING = 16;
+const GAP = 12;
+const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
+const COVER_SIZE = 60;
+const FAN_OFFSET = 18;
+const FAN_ROTATION = 8;
+const FAN_VERTICAL_OFFSET = 6;
+const MAX_VISIBLE_BOOKS = 5;
 
 // Tab types
 type TabType = 'all' | 'downloaded' | 'in-progress' | 'not-started' | 'completed' | 'favorites';
@@ -200,25 +206,29 @@ interface SeriesGroup {
   inProgressCount: number;
 }
 
-// Tab configuration
-const TABS: TabConfig[] = [
-  { id: 'all', label: 'All', Icon: Library },
-  { id: 'downloaded', label: 'Downloaded', Icon: CloudDownload },
-  { id: 'in-progress', label: 'In Progress', Icon: PlayCircle },
-  { id: 'not-started', label: 'Not Started', Icon: BookOpen },
-  { id: 'completed', label: 'Completed', Icon: CheckCircle },
-  { id: 'favorites', label: 'Favorites', Icon: Heart },
-];
+// Tab configuration - simplified to main categories
+const TAB_LABELS: Record<TabType, string> = {
+  'all': 'All',
+  'downloaded': 'Downloaded',
+  'in-progress': 'In Progress',
+  'not-started': 'Not Started',
+  'completed': 'Finished',
+  'favorites': 'Favorites',
+};
 
-// Tab bar component
+// Ordered tabs for display
+const TAB_ORDER: TabType[] = ['all', 'downloaded', 'in-progress', 'completed', 'favorites'];
+
+// Tab bar component - Home-style large text tabs
 const TabBar = React.memo(function TabBar({
   activeTab,
   onTabChange,
-  counts,
+  themeColors,
 }: {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   counts: Record<TabType, number>;
+  themeColors: ReturnType<typeof useThemeColors>;
 }) {
   return (
     <ScrollView
@@ -227,41 +237,123 @@ const TabBar = React.memo(function TabBar({
       contentContainerStyle={styles.tabBar}
       style={styles.tabBarContainer}
     >
-      {TABS.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const count = counts[tab.id];
-        const TabIcon = tab.Icon;
+      {TAB_ORDER.map((tabId) => {
+        const isActive = activeTab === tabId;
         return (
-          <Pressable
-            key={tab.id}
-            style={[styles.tab, isActive && styles.tabActive]}
+          <TouchableOpacity
+            key={tabId}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onTabChange(tab.id);
+              onTabChange(tabId);
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={`${tab.label}${count > 0 ? `, ${count} items` : ''}`}
+            style={styles.textTab}
           >
-            <TabIcon
-              size={scale(16)}
-              color={isActive ? COLORS.accent : COLORS.textSecondary}
-              strokeWidth={isActive ? 2.5 : 2}
-            />
-            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-              {tab.label}
+            <Text style={[
+              styles.textTabLabel,
+              { color: isActive ? themeColors.text : themeColors.textTertiary },
+            ]}>
+              {TAB_LABELS[tabId]}
             </Text>
-            {count > 0 && (
-              <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
-                <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
-                  {count}
-                </Text>
-              </View>
-            )}
-          </Pressable>
+          </TouchableOpacity>
         );
       })}
     </ScrollView>
+  );
+});
+
+// Fanned Series Card Component
+interface FannedSeriesCardData {
+  name: string;
+  books: Array<{ id: string }>;
+  bookCount?: number;
+}
+
+const FannedSeriesCard = React.memo(function FannedSeriesCard({
+  series,
+  onPress,
+  themeColors,
+  isDarkMode,
+}: {
+  series: FannedSeriesCardData;
+  onPress: () => void;
+  themeColors: ReturnType<typeof useThemeColors>;
+  isDarkMode: boolean;
+}) {
+  // Get cover URLs for up to 5 books
+  const bookCovers = useMemo(() => {
+    return (series.books || []).slice(0, MAX_VISIBLE_BOOKS).map(book => apiClient.getItemCoverUrl(book.id));
+  }, [series.books]);
+
+  const numCovers = bookCovers.length;
+  const cardBgColor = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const bookCount = series.bookCount ?? series.books?.length ?? 0;
+
+  return (
+    <TouchableOpacity
+      style={[styles.fannedSeriesCard, { backgroundColor: cardBgColor }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {/* Heart button - top right */}
+      <SeriesHeartButton
+        seriesName={series.name}
+        size={10}
+        showCircle
+        style={styles.fannedHeartButton}
+      />
+
+      {/* Fanned covers */}
+      <View style={styles.fannedCoverFan}>
+        {numCovers > 0 ? (
+          <View style={[
+            styles.fannedFanContainer,
+            { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }
+          ]}>
+            {bookCovers.map((coverUrl, idx) => {
+              const middleIndex = (numCovers - 1) / 2;
+              const rotation = (idx - middleIndex) * FAN_ROTATION;
+              const distanceFromCenter = Math.abs(idx - middleIndex);
+              const zIndex = numCovers - Math.floor(distanceFromCenter);
+              const scaleValue = 1 - (distanceFromCenter * 0.12);
+              const coverSize = COVER_SIZE * scaleValue;
+              const sizeOffset = (COVER_SIZE - coverSize) / 2;
+              const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
+              const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
+
+              return (
+                <Image
+                  key={idx}
+                  source={coverUrl}
+                  style={[
+                    styles.fannedCover,
+                    {
+                      width: coverSize,
+                      height: coverSize,
+                      left: horizontalOffset,
+                      top: verticalOffset,
+                      zIndex,
+                      transform: [{ rotate: `${rotation}deg` }],
+                    },
+                  ]}
+                  contentFit="cover"
+                  transition={150}
+                />
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+
+      {/* Series name */}
+      <Text style={[styles.fannedSeriesName, { color: themeColors.text }]} numberOfLines={2}>
+        {series.name}
+      </Text>
+      <Text style={[styles.fannedBookCount, { color: themeColors.textSecondary }]}>
+        {bookCount} {bookCount === 1 ? 'book' : 'books'}
+      </Text>
+    </TouchableOpacity>
   );
 });
 
@@ -269,6 +361,8 @@ export function MyLibraryScreen() {
   useScreenLoadTime('MyLibraryScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const { items: cachedItems, isLoaded, getSeries, getItem, loadCache, currentLibraryId } = useLibraryCache();
   const { downloads, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
   const { loadBook } = usePlayerStore();
@@ -280,8 +374,8 @@ export function MyLibraryScreen() {
   const favoriteNarrators = usePreferencesStore((state) => state.favoriteNarrators);
 
   // Reading history (marked as finished)
-  const markedBooks = useGalleryStore((state) => state.markedBooks);
-  const isMarkedFinished = useCallback((bookId: string) => markedBooks.has(bookId), [markedBooks]);
+  const finishedBookIds = useFinishedBookIds();
+  const isMarkedFinished = useCallback((bookId: string) => finishedBookIds.has(bookId), [finishedBookIds]);
 
   // Continue listening data
   const { items: continueListeningItems } = useContinueListening();
@@ -405,17 +499,16 @@ export function MyLibraryScreen() {
     return Array.from(bookMap.values());
   }, [enrichedBooks, favoritedBooks]);
 
-  // Get books marked as finished from galleryStore (includes non-downloaded books)
+  // Get books marked as finished from SQLite (includes non-downloaded books)
   const markedFinishedBooks = useMemo<EnrichedBook[]>(() => {
     if (!isLoaded) return [];
 
     const result: EnrichedBook[] = [];
-    const markedBookIds = Array.from(markedBooks.keys());
 
     // Create Set for O(1) lookup - prevent O(n²)
     const enrichedBookIds = new Set(enrichedBooks.map(b => b.id));
 
-    for (const bookId of markedBookIds) {
+    for (const bookId of finishedBookIds) {
       // Skip if already in enrichedBooks (downloaded) - O(1) lookup
       if (enrichedBookIds.has(bookId)) continue;
 
@@ -442,7 +535,7 @@ export function MyLibraryScreen() {
     }
 
     return result;
-  }, [isLoaded, markedBooks, enrichedBooks, getItem]);
+  }, [isLoaded, finishedBookIds, enrichedBooks, getItem]);
 
   // Calculate tab counts
   const tabCounts = useMemo(() => {
@@ -714,8 +807,8 @@ export function MyLibraryScreen() {
           </View>
           <Text style={styles.cardProgressText}>{progressPct}%</Text>
         </View>
-        <Text style={styles.horizontalCardTitle} numberOfLines={2}>{item.title}</Text>
-        <Text style={styles.horizontalCardSubtitle}>{formatTimeRemaining(timeRemaining)}</Text>
+        <Text style={[styles.horizontalCardTitle, { color: themeColors.text }]} numberOfLines={2}>{item.title}</Text>
+        <Text style={[styles.horizontalCardSubtitle, { color: themeColors.textSecondary }]}>{formatTimeRemaining(timeRemaining)}</Text>
       </TouchableOpacity>
     );
   }, [handleResumeBook, handleBookPress]);
@@ -746,50 +839,50 @@ export function MyLibraryScreen() {
           <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
           {/* Download/Stream indicator */}
           {showIndicator && (
-            <View style={[styles.statusBadge, isDownloaded ? styles.downloadedBadge : styles.streamBadge]}>
+            <View style={[styles.statusBadge, isDownloaded ? [styles.downloadedBadge, { backgroundColor: themeColors.text }] : styles.streamBadge]}>
               {isDownloaded ? (
-                <CheckCircle size={scale(10)} color="#FFFFFF" strokeWidth={2.5} />
+                <CheckCircle size={scale(10)} color={themeColors.background} strokeWidth={2.5} />
               ) : (
-                <Cloud size={scale(10)} color="#FFFFFF" strokeWidth={2} />
+                <Cloud size={scale(10)} color={themeColors.background} strokeWidth={2} />
               )}
             </View>
           )}
           {isCompleted && (
             <View style={styles.completedBadge}>
-              <CheckCircle size={14} color={COLORS.accent} strokeWidth={2} />
+              <CheckCircle size={14} color={themeColors.text} strokeWidth={2} />
             </View>
           )}
         </View>
 
         <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={1}>{book.title}</Text>
-          <Text style={styles.bookAuthor} numberOfLines={1}>{book.author}</Text>
+          <Text style={[styles.bookTitle, { color: themeColors.text }]} numberOfLines={1}>{book.title}</Text>
+          <Text style={[styles.bookAuthor, { color: themeColors.textSecondary }]} numberOfLines={1}>{book.author}</Text>
           <View style={styles.bookMetaRow}>
-            <Text style={styles.bookMeta}>{formatDuration(book.duration)}</Text>
+            <Text style={[styles.bookMeta, { color: themeColors.textSecondary }]}>{formatDuration(book.duration)}</Text>
             {book.progress > 0 && book.progress < 0.95 && (
-              <Text style={styles.bookProgress}>{Math.round(book.progress * 100)}%</Text>
+              <Text style={[styles.bookProgress, { color: themeColors.text }]}>{Math.round(book.progress * 100)}%</Text>
             )}
           </View>
           {/* Progress bar for in-progress books */}
           {book.progress > 0 && book.progress < 0.95 && (
-            <View style={styles.bookProgressBar}>
-              <View style={[styles.bookProgressFill, { width: `${book.progress * 100}%` }]} />
+            <View style={[styles.bookProgressBar, { backgroundColor: themeColors.border }]}>
+              <View style={[styles.bookProgressFill, { width: `${book.progress * 100}%`, backgroundColor: themeColors.text }]} />
             </View>
           )}
         </View>
 
         <TouchableOpacity
-          style={styles.playButton}
+          style={[styles.playButton, { backgroundColor: themeColors.text }]}
           onPress={() => handlePlayBook(book)}
           activeOpacity={0.7}
           accessibilityLabel={`Play ${book.title}`}
           accessibilityRole="button"
         >
-          <Play size={18} color="#000" fill="#000" strokeWidth={0} />
+          <Play size={18} color={themeColors.background} fill={themeColors.background} strokeWidth={0} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
-  }, [handleBookPress, handlePlayBook, isMarkedFinished]);
+  }, [handleBookPress, handlePlayBook, isMarkedFinished, themeColors]);
 
   // Render favorite author card
   const renderAuthorCard = useCallback((author: any) => {
@@ -806,18 +899,18 @@ export function MyLibraryScreen() {
         accessibilityRole="button"
         accessibilityHint="Double tap to view author"
       >
-        <View style={styles.personAvatar}>
+        <View style={[styles.personAvatar, { backgroundColor: themeColors.border }]}>
           {author.imageUrl ? (
             <Image source={author.imageUrl} style={styles.personImage} contentFit="cover" />
           ) : (
-            <User size={scale(24)} color={COLORS.textSecondary} strokeWidth={1.5} />
+            <User size={scale(24)} color={themeColors.textSecondary} strokeWidth={1.5} />
           )}
         </View>
-        <Text style={styles.personName} numberOfLines={1}>{author.name}</Text>
-        <Text style={styles.personMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+        <Text style={[styles.personName, { color: themeColors.text }]} numberOfLines={1}>{author.name}</Text>
+        <Text style={[styles.personMeta, { color: themeColors.textSecondary }]}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
       </TouchableOpacity>
     );
-  }, [navigation]);
+  }, [navigation, themeColors]);
 
   // Render favorite narrator card
   const renderNarratorCard = useCallback((narrator: any) => {
@@ -834,14 +927,14 @@ export function MyLibraryScreen() {
         accessibilityRole="button"
         accessibilityHint="Double tap to view narrator"
       >
-        <View style={styles.personAvatar}>
-          <Mic size={scale(24)} color={COLORS.textSecondary} strokeWidth={1.5} />
+        <View style={[styles.personAvatar, { backgroundColor: themeColors.border }]}>
+          <Mic size={scale(24)} color={themeColors.textSecondary} strokeWidth={1.5} />
         </View>
-        <Text style={styles.personName} numberOfLines={1}>{narrator.name}</Text>
-        <Text style={styles.personMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+        <Text style={[styles.personName, { color: themeColors.text }]} numberOfLines={1}>{narrator.name}</Text>
+        <Text style={[styles.personMeta, { color: themeColors.textSecondary }]}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
       </TouchableOpacity>
     );
-  }, [navigation]);
+  }, [navigation, themeColors]);
 
   // Render favorite series card - uses StackedCovers per design spec
   const renderFavoriteSeriesCard = useCallback((series: any) => {
@@ -855,7 +948,7 @@ export function MyLibraryScreen() {
     return (
       <TouchableOpacity
         key={series.name}
-        style={styles.favoriteSeriesCard}
+        style={[styles.favoriteSeriesCard, { backgroundColor: themeColors.border }]}
         onPress={() => handleSeriesPress(series.name)}
         activeOpacity={0.7}
         accessibilityLabel={`${series.name} series, ${bookCount} book${bookCount !== 1 ? 's' : ''}`}
@@ -871,13 +964,13 @@ export function MyLibraryScreen() {
           />
         </View>
         <View style={styles.favoriteSeriesInfo}>
-          <Text style={styles.favoriteSeriesName} numberOfLines={1}>{series.name}</Text>
-          <Text style={styles.favoriteSeriesMeta}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
+          <Text style={[styles.favoriteSeriesName, { color: themeColors.text }]} numberOfLines={1}>{series.name}</Text>
+          <Text style={[styles.favoriteSeriesMeta, { color: themeColors.textSecondary }]}>{bookCount} book{bookCount !== 1 ? 's' : ''}</Text>
         </View>
-        <ChevronRight size={scale(16)} color={COLORS.textSecondary} strokeWidth={2} />
+        <ChevronRight size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
       </TouchableOpacity>
     );
-  }, [handleSeriesPress]);
+  }, [handleSeriesPress, themeColors]);
 
   // Render series card
   const renderSeriesCard = useCallback((series: SeriesGroup) => {
@@ -899,7 +992,7 @@ export function MyLibraryScreen() {
     return (
       <TouchableOpacity
         key={series.name}
-        style={styles.seriesCard}
+        style={[styles.seriesCard, { backgroundColor: themeColors.border }]}
         onPress={() => handleSeriesPress(series.name)}
         activeOpacity={0.8}
         accessibilityLabel={`${series.name} series, ${progressText}`}
@@ -916,8 +1009,8 @@ export function MyLibraryScreen() {
         </View>
 
         <View style={styles.seriesInfo}>
-          <Text style={styles.seriesName} numberOfLines={1}>{series.name}</Text>
-          <Text style={styles.seriesStats}>
+          <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={1}>{series.name}</Text>
+          <Text style={[styles.seriesStats, { color: themeColors.textSecondary }]}>
             {series.downloadedCount} of {series.totalBooks} downloaded
           </Text>
 
@@ -931,7 +1024,7 @@ export function MyLibraryScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleSeriesPress]);
+  }, [handleSeriesPress, themeColors]);
 
   // Check if there's any content in the library (downloaded or favorited)
   const hasAnyContent = allLibraryBooks.length > 0 || activeDownloads.length > 0 ||
@@ -974,11 +1067,21 @@ export function MyLibraryScreen() {
           </View>
         )}
 
-        {/* Favorite Series */}
+        {/* Favorite Series - 2-column fanned cards */}
         {hasFavoriteSeries && (
           <View style={styles.section}>
             <SectionHeader title={`Favorite Series (${favoriteSeriesData.length})`} showViewAll={false} />
-            {favoriteSeriesData.map(series => renderFavoriteSeriesCard(series))}
+            <View style={styles.fannedSeriesGrid}>
+              {favoriteSeriesData.map((series: any) => (
+                <FannedSeriesCard
+                  key={series.name}
+                  series={series}
+                  onPress={() => handleSeriesPress(series.name)}
+                  themeColors={themeColors}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </View>
           </View>
         )}
 
@@ -1011,6 +1114,28 @@ export function MyLibraryScreen() {
     const sortedItems = [...inProgressItems].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
     const heroItem = sortedItems[0];
     const otherItems = sortedItems.slice(1);
+
+    // Group in-progress items by series
+    const inProgressSeriesMap = new Map<string, EnrichedBook[]>();
+    for (const book of inProgressItems) {
+      if (book.seriesName) {
+        const existing = inProgressSeriesMap.get(book.seriesName) || [];
+        existing.push(book);
+        inProgressSeriesMap.set(book.seriesName, existing);
+      }
+    }
+
+    // Convert to series data format for FannedSeriesCard
+    const inProgressSeriesData = Array.from(inProgressSeriesMap.entries())
+      .filter(([_, books]) => books.length >= 1)
+      .map(([name, books]) => {
+        const seriesInfo = getSeries(name);
+        return {
+          name,
+          books: books.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)),
+          bookCount: seriesInfo?.books?.length || books.length,
+        };
+      });
 
     return (
       <>
@@ -1045,10 +1170,10 @@ export function MyLibraryScreen() {
                 </View>
               </View>
               <TouchableOpacity
-                style={styles.heroPlayButton}
+                style={[styles.heroPlayButton, { backgroundColor: themeColors.background }]}
                 onPress={() => handleResumeBook(heroItem)}
               >
-                <Play size={scale(28)} color="#000" fill="#000" strokeWidth={0} />
+                <Play size={scale(28)} color={themeColors.text} fill={themeColors.text} strokeWidth={0} />
               </TouchableOpacity>
             </TouchableOpacity>
           </View>
@@ -1061,13 +1186,31 @@ export function MyLibraryScreen() {
             {otherItems.map(book => renderBookRow(book))}
           </View>
         )}
+
+        {/* In Progress Series - 2-column fanned cards */}
+        {inProgressSeriesData.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title={`Series In Progress (${inProgressSeriesData.length})`} showViewAll={false} />
+            <View style={styles.fannedSeriesGrid}>
+              {inProgressSeriesData.map((series) => (
+                <FannedSeriesCard
+                  key={series.name}
+                  series={series}
+                  onPress={() => handleSeriesPress(series.name)}
+                  themeColors={themeColors}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </View>
+          </View>
+        )}
       </>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
 
       {/* Content */}
       {!isLoaded ? (
@@ -1094,25 +1237,28 @@ export function MyLibraryScreen() {
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + TOP_NAV_HEIGHT + 16 }]}
           showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={() => fpsMonitor.start('libraryScroll')}
+          onScrollEndDrag={() => fpsMonitor.stop()}
+          onMomentumScrollEnd={() => fpsMonitor.stop()}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={COLORS.accent}
+              tintColor={themeColors.text}
             />
           }
         >
-          {/* Screen Title */}
-          <Text style={styles.screenTitle}>My Library</Text>
+          {/* Tab Bar - replaces screen title */}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} counts={tabCounts} themeColors={themeColors} />
 
-          {/* Search Bar */}
+          {/* Search Bar - under tabs */}
           <View style={styles.searchBarContainer}>
-            <View style={styles.searchBar}>
-              <Search size={scale(18)} color={COLORS.textSecondary} strokeWidth={2} />
+            <View style={[styles.searchBar, { backgroundColor: themeColors.border }]}>
+              <Search size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
               <TextInput
-                style={styles.searchInput}
+                style={[styles.searchInput, { color: themeColors.text }]}
                 placeholder="Search library..."
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={themeColors.textSecondary}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 returnKeyType="search"
@@ -1128,14 +1274,11 @@ export function MyLibraryScreen() {
                   accessibilityLabel="Clear search"
                   accessibilityRole="button"
                 >
-                  <XCircle size={scale(18)} color={COLORS.textSecondary} strokeWidth={2} />
+                  <XCircle size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               )}
             </View>
           </View>
-
-          {/* Tab Bar */}
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} counts={tabCounts} />
 
           {/* Sort Picker (not shown on Favorites tab) */}
           {activeTab !== 'favorites' && activeTab !== 'in-progress' && (
@@ -1185,17 +1328,17 @@ export function MyLibraryScreen() {
               {activeDownloads.length > 0 && (activeTab === 'all' || activeTab === 'downloaded') && (
                 <View style={styles.section}>
                   <View style={styles.sectionHeaderWithAction}>
-                    <Text style={styles.sectionTitle}>
+                    <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
                       Downloading ({activeDownloads.length})
                     </Text>
                     {hasDownloading && (
                       <TouchableOpacity onPress={handlePauseAll}>
-                        <Text style={styles.sectionAction}>Pause All</Text>
+                        <Text style={[styles.sectionAction, { color: themeColors.text }]}>Pause All</Text>
                       </TouchableOpacity>
                     )}
                     {!hasDownloading && hasPaused && (
                       <TouchableOpacity onPress={handleResumeAll}>
-                        <Text style={styles.sectionAction}>Resume All</Text>
+                        <Text style={[styles.sectionAction, { color: themeColors.text }]}>Resume All</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1231,14 +1374,24 @@ export function MyLibraryScreen() {
                 <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
               )}
 
-              {/* =============== 3. SERIES SECTION =============== */}
+              {/* =============== 3. SERIES SECTION - 2-column fanned cards =============== */}
               {activeTab === 'all' && favoriteSeriesData.length > 0 && (
                 <View style={styles.section}>
                   <SectionHeader
                     title={`Series (${favoriteSeriesData.length})`}
                     showViewAll={false}
                   />
-                  {favoriteSeriesData.map(series => renderFavoriteSeriesCard(series))}
+                  <View style={styles.fannedSeriesGrid}>
+                    {favoriteSeriesData.map((series: any) => (
+                      <FannedSeriesCard
+                        key={series.name}
+                        series={series}
+                        onPress={() => handleSeriesPress(series.name)}
+                        themeColors={themeColors}
+                        isDarkMode={isDarkMode}
+                      />
+                    ))}
+                  </View>
                 </View>
               )}
               {seriesGroups.length > 0 && activeTab === 'downloaded' && (
@@ -1247,7 +1400,17 @@ export function MyLibraryScreen() {
                     title={`Downloaded Series (${seriesGroups.length})`}
                     showViewAll={false}
                   />
-                  {seriesGroups.map(renderSeriesCard)}
+                  <View style={styles.fannedSeriesGrid}>
+                    {seriesGroups.map((series) => (
+                      <FannedSeriesCard
+                        key={series.name}
+                        series={series}
+                        onPress={() => handleSeriesPress(series.name)}
+                        themeColors={themeColors}
+                        isDarkMode={isDarkMode}
+                      />
+                    ))}
+                  </View>
                 </View>
               )}
 
@@ -1298,10 +1461,10 @@ export function MyLibraryScreen() {
 
           {/* =============== BROWSE CTA =============== */}
           <View style={styles.bottomCta}>
-            <Text style={styles.bottomCtaText}>Looking for more?</Text>
-            <TouchableOpacity style={styles.browseButtonOutline} onPress={handleBrowse}>
-              <BrowseIcon size={18} color={COLORS.accent} />
-              <Text style={styles.browseButtonOutlineText}>Browse Library</Text>
+            <Text style={[styles.bottomCtaText, { color: themeColors.textSecondary }]}>Looking for more?</Text>
+            <TouchableOpacity style={[styles.browseButtonOutline, { borderColor: themeColors.text }]} onPress={handleBrowse}>
+              <BrowseIcon size={18} color={themeColors.text} />
+              <Text style={[styles.browseButtonOutlineText, { color: themeColors.text }]}>Browse Library</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1313,7 +1476,7 @@ export function MyLibraryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    // backgroundColor set dynamically via themeColors
   },
 
   scrollView: {
@@ -1323,24 +1486,14 @@ const styles = StyleSheet.create({
     paddingBottom: SCREEN_BOTTOM_PADDING,
   },
 
-  // Screen title
-  screenTitle: {
-    fontSize: scale(28),
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    paddingHorizontal: scale(20),
-    marginBottom: scale(12),
-  },
-
-  // Search bar
+  // Search bar - now under tabs
   searchBarContainer: {
     paddingHorizontal: scale(20),
-    marginBottom: scale(12),
+    marginBottom: scale(16),
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: scale(12),
     paddingHorizontal: scale(14),
     paddingVertical: scale(10),
@@ -1350,58 +1503,25 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: scale(15),
-    color: COLORS.textPrimary,
     paddingVertical: scale(4),
   },
 
-  // Tab bar
+  // Tab bar - Home-style large text tabs
   tabBarContainer: {
-    marginBottom: scale(16),
+    marginBottom: scale(12),
   },
   tabBar: {
     paddingHorizontal: scale(20),
-    gap: scale(8),
+    gap: scale(14),
     flexDirection: 'row',
+    alignItems: 'baseline',
   },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(14),
-    paddingVertical: scale(10),
-    borderRadius: scale(20),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    gap: scale(6),
-  },
-  tabActive: {
-    backgroundColor: 'rgba(244, 182, 12, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(244, 182, 12, 0.3)',
-  },
-  tabText: {
-    fontSize: scale(13),
-    fontWeight: '500',
-    color: COLORS.textSecondary,
-  },
-  tabTextActive: {
-    color: COLORS.accent,
-    fontWeight: '600',
-  },
-  tabBadge: {
-    paddingHorizontal: scale(6),
+  textTab: {
     paddingVertical: scale(2),
-    borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  tabBadgeActive: {
-    backgroundColor: 'rgba(244, 182, 12, 0.2)',
-  },
-  tabBadgeText: {
-    fontSize: scale(10),
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  tabBadgeTextActive: {
-    color: COLORS.accent,
+  textTabLabel: {
+    fontSize: scale(26),
+    fontWeight: '400',
   },
 
   // Sections
@@ -1418,12 +1538,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: COLORS.textPrimary,
   },
   sectionAction: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.accent,
   },
 
   // Horizontal sections
@@ -1443,7 +1561,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: scale(8),
     position: 'relative',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
   horizontalCardCover: {
     width: '100%',
@@ -1462,11 +1580,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   horizontalCardProgressFill: {
     height: '100%',
-    backgroundColor: COLORS.accent,
+    backgroundColor: '#FFF',
   },
   cardProgressText: {
     position: 'absolute',
@@ -1482,12 +1600,12 @@ const styles = StyleSheet.create({
   horizontalCardTitle: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: '#fff',
+    // color set dynamically via themeColors.text
     lineHeight: scale(16),
   },
   horizontalCardSubtitle: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via themeColors.textSecondary
     marginTop: 2,
   },
 
@@ -1527,7 +1645,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   downloadedBadge: {
-    backgroundColor: COLORS.accent,
+    // backgroundColor set dynamically via themeColors.text
   },
   streamBadge: {
     backgroundColor: 'rgba(100, 150, 255, 0.9)',
@@ -1543,11 +1661,9 @@ const styles = StyleSheet.create({
   bookTitle: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: COLORS.textPrimary,
   },
   bookAuthor: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
     marginTop: scale(2),
   },
   bookMetaRow: {
@@ -1558,30 +1674,25 @@ const styles = StyleSheet.create({
   },
   bookMeta: {
     fontSize: scale(12),
-    color: COLORS.textSecondary,
   },
   bookProgress: {
     fontSize: scale(12),
-    color: COLORS.accent,
     fontWeight: '500',
   },
   bookProgressBar: {
     height: scale(3),
-    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: scale(2),
     marginTop: scale(6),
     overflow: 'hidden',
   },
   bookProgressFill: {
     height: '100%',
-    backgroundColor: COLORS.accent,
     borderRadius: scale(2),
   },
   playButton: {
     width: scale(40),
     height: scale(40),
     borderRadius: scale(20),
-    backgroundColor: COLORS.accent,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1593,7 +1704,6 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(20),
     marginBottom: scale(12),
     padding: scale(12),
-    backgroundColor: COLORS.cardBg,
     borderRadius: scale(12),
     gap: scale(12),
   },
@@ -1609,12 +1719,10 @@ const styles = StyleSheet.create({
   seriesName: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: COLORS.textPrimary,
     marginBottom: scale(4),
   },
   seriesStats: {
     fontSize: scale(12),
-    color: COLORS.textSecondary,
     marginBottom: scale(6),
   },
 
@@ -1634,14 +1742,12 @@ const styles = StyleSheet.create({
   },
   bottomCtaText: {
     fontSize: scale(14),
-    color: COLORS.textSecondary,
     marginBottom: scale(12),
   },
   browseButtonOutline: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.accent,
     paddingHorizontal: scale(20),
     paddingVertical: scale(10),
     borderRadius: scale(20),
@@ -1650,7 +1756,6 @@ const styles = StyleSheet.create({
   browseButtonOutlineText: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.accent,
   },
 
   // Hero section (In Progress tab)
@@ -1663,7 +1768,7 @@ const styles = StyleSheet.create({
     height: scale(200),
     borderRadius: scale(16),
     overflow: 'hidden',
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
   heroCover: {
     width: '100%',
@@ -1685,19 +1790,19 @@ const styles = StyleSheet.create({
   heroLabel: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: COLORS.accent,
+    color: '#000',
     letterSpacing: 0.5,
     marginBottom: scale(4),
   },
   heroTitle: {
     fontSize: scale(18),
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: '#FFF',
     marginBottom: scale(2),
   },
   heroAuthor: {
     fontSize: scale(13),
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     marginBottom: scale(8),
   },
   heroProgressContainer: {
@@ -1708,18 +1813,18 @@ const styles = StyleSheet.create({
   heroProgressBar: {
     flex: 1,
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: scale(2),
     overflow: 'hidden',
   },
   heroProgressFill: {
     height: '100%',
-    backgroundColor: COLORS.accent,
+    backgroundColor: '#FFF',
     borderRadius: scale(2),
   },
   heroProgressText: {
     fontSize: scale(11),
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
   },
   heroPlayButton: {
     position: 'absolute',
@@ -1728,7 +1833,7 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(24),
-    backgroundColor: COLORS.accent,
+    // backgroundColor set dynamically via themeColors.background
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1742,7 +1847,6 @@ const styles = StyleSheet.create({
     width: scale(70),
     height: scale(70),
     borderRadius: scale(35),
-    backgroundColor: COLORS.cardBg,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(8),
@@ -1755,12 +1859,10 @@ const styles = StyleSheet.create({
   personName: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: COLORS.textPrimary,
     textAlign: 'center',
   },
   personMeta: {
     fontSize: scale(10),
-    color: COLORS.textSecondary,
     marginTop: scale(2),
   },
 
@@ -1771,7 +1873,6 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(20),
     marginBottom: scale(10),
     padding: scale(12),
-    backgroundColor: COLORS.cardBg,
     borderRadius: scale(12),
     gap: scale(12),
   },
@@ -1781,12 +1882,62 @@ const styles = StyleSheet.create({
   favoriteSeriesName: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.textPrimary,
   },
   favoriteSeriesMeta: {
     fontSize: scale(12),
-    color: COLORS.textSecondary,
     marginTop: scale(2),
+  },
+
+  // Fanned series card styles (2-column grid)
+  fannedSeriesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: PADDING,
+    gap: GAP,
+  },
+  fannedSeriesCard: {
+    width: SERIES_CARD_WIDTH,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  fannedHeartButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+  },
+  fannedCoverFan: {
+    height: COVER_SIZE + 10,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fannedFanContainer: {
+    position: 'relative',
+    height: COVER_SIZE,
+  },
+  fannedCover: {
+    position: 'absolute',
+    width: COVER_SIZE,
+    height: COVER_SIZE,
+    borderRadius: 5,
+    backgroundColor: 'rgba(128,128,128,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  fannedSeriesName: {
+    fontSize: scale(13),
+    fontWeight: '600',
+    lineHeight: scale(17),
+    textAlign: 'center',
+  },
+  fannedBookCount: {
+    fontSize: scale(11),
+    textAlign: 'center',
+    marginTop: 2,
   },
 
   // Skeleton loading styles
@@ -1798,13 +1949,13 @@ const styles = StyleSheet.create({
     width: scale(140),
     height: scale(28),
     borderRadius: scale(6),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   skeletonSearchBar: {
     marginHorizontal: scale(20),
     height: scale(44),
     borderRadius: scale(12),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
     marginBottom: scale(16),
   },
 });

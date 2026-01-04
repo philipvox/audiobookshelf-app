@@ -5,7 +5,7 @@
  * Features drag-and-drop reordering, remove, and autoplay toggle.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, scale, spacing, radius, layout, hp } from '@/shared/theme';
+import { useTheme, scale, spacing, radius, layout, hp, lightColors } from '@/shared/theme';
 import {
   useQueueStore,
   useQueue,
@@ -90,7 +90,7 @@ function DraggableQueueItem({
         <Pressable style={styles.dragHandle} onLongPress={handleDrag}>
           <Menu
             size={scale(18)}
-            color={isActive ? colors.accent : 'rgba(255,255,255,0.4)'}
+            color={isActive ? lightColors.queue.text : lightColors.queue.subtext}
             strokeWidth={2}
           />
         </Pressable>
@@ -116,7 +116,7 @@ function DraggableQueueItem({
               onPress={handlePlayNext}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <ArrowUp size={scale(16)} color={colors.accent} strokeWidth={2.5} />
+              <ArrowUp size={scale(16)} color={lightColors.queue.text} strokeWidth={2.5} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -124,7 +124,7 @@ function DraggableQueueItem({
             onPress={handleRemove}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <X size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+            <X size={scale(18)} color={lightColors.queue.subtext} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>
@@ -225,13 +225,13 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Up Next</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X size={24} color={colors.textPrimary} strokeWidth={2} />
+            <X size={24} color={lightColors.queue.text} strokeWidth={2} />
           </TouchableOpacity>
         </View>
         <View style={styles.emptyContainer}>
           <Layers
             size={scale(48)}
-            color={colors.textMuted}
+            color={lightColors.icon.disabled}
             strokeWidth={1.5}
           />
           <Text style={styles.emptyText}>Your queue is empty</Text>
@@ -250,7 +250,7 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
           <View style={styles.autoplayInfo}>
             <SkipForward
               size={scale(18)}
-              color={colors.textSecondary}
+              color={lightColors.icon.secondary}
               strokeWidth={2}
             />
             <Text style={styles.autoplayLabel}>Autoplay series</Text>
@@ -258,8 +258,8 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
           <Switch
             value={autoplayEnabled}
             onValueChange={handleAutoplayToggle}
-            trackColor={{ false: colors.backgroundTertiary, true: colors.accentSubtle }}
-            thumbColor={autoplayEnabled ? colors.accent : colors.textMuted}
+            trackColor={{ false: lightColors.queue.itemActive, true: lightColors.queue.text }}
+            thumbColor={lightColors.queue.background}
           />
         </View>
       </View>
@@ -277,7 +277,7 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
           </View>
         </View>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <X size={24} color={colors.textPrimary} strokeWidth={2} />
+          <X size={24} color={lightColors.queue.text} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -310,7 +310,7 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
         <View style={styles.autoplayInfo}>
           <SkipForward
             size={scale(18)}
-            color={colors.textSecondary}
+            color={lightColors.icon.secondary}
             strokeWidth={2}
           />
           <View>
@@ -323,23 +323,46 @@ export function QueuePanel({ onClose, maxHeight = hp(50) }: QueuePanelProps) {
         <Switch
           value={autoplayEnabled}
           onValueChange={handleAutoplayToggle}
-          trackColor={{ false: colors.backgroundTertiary, true: colors.accentSubtle }}
-          thumbColor={autoplayEnabled ? colors.accent : colors.textMuted}
+          trackColor={{ false: lightColors.queue.itemActive, true: lightColors.queue.text }}
+          thumbColor={lightColors.queue.background}
         />
       </View>
     </View>
   );
 }
 
+// =============================================================================
+// QUEUE PANEL COLORS (always light-themed panel)
+// =============================================================================
+
+const QUEUE_COLORS = {
+  background: lightColors.queue.background,
+  text: lightColors.queue.text,
+  subtext: lightColors.queue.subtext,
+  badge: lightColors.queue.badge,
+  badgeText: lightColors.queue.background,
+  item: lightColors.queue.item,
+  itemActive: lightColors.queue.itemActive,
+  border: lightColors.queue.border,
+  danger: lightColors.semantic.error,
+  icon: '#888888',
+  iconMuted: '#999999',
+  iconEmpty: '#CCCCCC',
+};
+
+// Modernist white/black styles
 const styles = StyleSheet.create({
   container: {
     padding: spacing.lg,
+    backgroundColor: QUEUE_COLORS.background,
+    paddingTop: scale(20),
+    paddingBottom: scale(24),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: scale(16),
   },
   headerLeft: {
     flexDirection: 'row',
@@ -347,22 +370,23 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    fontSize: scale(20),
+    fontWeight: '600',
+    color: QUEUE_COLORS.text,
+    letterSpacing: -0.5,
   },
   badge: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    backgroundColor: QUEUE_COLORS.badge,
+    borderRadius: scale(10),
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(2),
     minWidth: scale(24),
     alignItems: 'center',
   },
   badgeText: {
     fontSize: scale(12),
     fontWeight: '700',
-    color: colors.backgroundPrimary,
+    color: QUEUE_COLORS.badgeText,
   },
   closeButton: {
     width: layout.minTouchTarget,
@@ -378,11 +402,11 @@ const styles = StyleSheet.create({
   },
   statsText: {
     fontSize: scale(13),
-    color: colors.textSecondary,
+    color: QUEUE_COLORS.subtext,
   },
   clearText: {
     fontSize: scale(13),
-    color: colors.error,
+    color: QUEUE_COLORS.danger,
     fontWeight: '500',
   },
   listContainer: {
@@ -391,15 +415,15 @@ const styles = StyleSheet.create({
   itemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: scale(10),
-    paddingHorizontal: scale(12),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(14),
+    backgroundColor: QUEUE_COLORS.item,
     borderRadius: scale(12),
     marginBottom: scale(8),
-    gap: scale(10),
+    gap: scale(12),
   },
   itemActive: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: QUEUE_COLORS.itemActive,
     transform: [{ scale: 1.02 }],
   },
   dragHandle: {
@@ -412,8 +436,8 @@ const styles = StyleSheet.create({
   cover: {
     width: scale(48),
     height: scale(48),
-    borderRadius: scale(6),
-    backgroundColor: '#262626',
+    borderRadius: scale(8),
+    backgroundColor: QUEUE_COLORS.itemActive,
   },
   info: {
     flex: 1,
@@ -421,12 +445,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: colors.textPrimary,
+    color: QUEUE_COLORS.text,
     marginBottom: scale(2),
   },
   subtitle: {
     fontSize: scale(12),
-    color: colors.textSecondary,
+    color: QUEUE_COLORS.subtext,
   },
   actions: {
     flexDirection: 'row',
@@ -437,7 +461,7 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(16),
-    backgroundColor: colors.accentSubtle,
+    backgroundColor: QUEUE_COLORS.itemActive,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -449,39 +473,39 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: spacing['3xl'],
+    paddingVertical: scale(48),
   },
   emptyText: {
-    fontSize: scale(16),
+    fontSize: scale(17),
     fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: spacing.md,
+    color: QUEUE_COLORS.text,
+    marginTop: scale(20),
   },
   emptySubtext: {
     fontSize: scale(14),
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    color: QUEUE_COLORS.subtext,
+    marginTop: scale(8),
+    marginBottom: scale(24),
   },
   browseButton: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.lg,
+    backgroundColor: QUEUE_COLORS.badge,
+    paddingHorizontal: scale(24),
+    paddingVertical: scale(12),
+    borderRadius: scale(24),
   },
   browseButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: colors.backgroundPrimary,
+    color: QUEUE_COLORS.badgeText,
   },
   autoplayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: spacing.md,
+    paddingTop: scale(16),
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: spacing.sm,
+    borderTopColor: QUEUE_COLORS.border,
+    marginTop: scale(12),
   },
   autoplayInfo: {
     flexDirection: 'row',
@@ -491,12 +515,12 @@ const styles = StyleSheet.create({
   },
   autoplayLabel: {
     fontSize: scale(14),
-    color: colors.textPrimary,
+    color: QUEUE_COLORS.text,
     fontWeight: '500',
   },
   autoplayHint: {
     fontSize: scale(11),
-    color: colors.textTertiary,
+    color: QUEUE_COLORS.iconMuted,
     marginTop: 2,
   },
 });

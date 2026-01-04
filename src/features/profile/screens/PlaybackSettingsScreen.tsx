@@ -25,22 +25,32 @@ import {
   SkipBack,
   Smartphone,
   RefreshCw,
-  Gamepad2,
-  Disc,
-  Image,
   CheckCircle,
   CheckSquare,
   Info,
   Check,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useReducedMotion } from 'react-native-reanimated';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
-import { useJoystickSeekStore } from '@/features/player/stores/joystickSeekStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale } from '@/shared/theme';
+import { accentColors, scale } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
+
+// Helper to create theme-aware colors
+function createColors(themeColors: ThemeColors) {
+  return {
+    accent: ACCENT,
+    background: themeColors.backgroundSecondary,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+    textTertiary: themeColors.textTertiary,
+    card: themeColors.border,
+    border: themeColors.border,
+    iconBg: themeColors.border,
+  };
+}
 
 // Playback speed options
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -65,36 +75,37 @@ interface SettingsRowProps {
   note?: string;
   disabled?: boolean;
   disabledReason?: string;
+  colors: ReturnType<typeof createColors>;
 }
 
-function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note, disabled, disabledReason }: SettingsRowProps) {
+function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note, disabled, disabledReason, colors }: SettingsRowProps) {
   // Show disabled reason instead of note when disabled
   const displayNote = disabled && disabledReason ? disabledReason : note;
 
   const content = (
-    <View style={[styles.settingsRow, disabled && styles.settingsRowDisabled]}>
+    <View style={[styles.settingsRow, { borderBottomColor: colors.border }, disabled && styles.settingsRowDisabled]}>
       <View style={styles.rowLeft}>
-        <View style={styles.iconContainer}>
-          <Icon size={scale(18)} color={disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
+        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
+          <Icon size={scale(18)} color={disabled ? colors.textTertiary : colors.textSecondary} strokeWidth={2} />
         </View>
         <View style={styles.rowContent}>
-          <Text style={[styles.rowLabel, disabled && styles.rowLabelDisabled]}>{label}</Text>
-          {displayNote ? <Text style={[styles.rowNote, disabled && styles.rowNoteDisabled]}>{displayNote}</Text> : null}
+          <Text style={[styles.rowLabel, { color: colors.text }, disabled && { color: colors.textTertiary }]}>{label}</Text>
+          {displayNote ? <Text style={[styles.rowNote, { color: colors.textTertiary }, disabled && styles.rowNoteDisabled]}>{displayNote}</Text> : null}
         </View>
       </View>
       <View style={styles.rowRight}>
-        {value ? <Text style={[styles.rowValue, disabled && styles.rowValueDisabled]}>{value}</Text> : null}
+        {value ? <Text style={[styles.rowValue, { color: colors.accent }, disabled && { color: colors.textTertiary }]}>{value}</Text> : null}
         {onSwitchChange !== undefined ? (
           <Switch
             value={switchValue}
             onValueChange={onSwitchChange}
-            trackColor={{ false: 'rgba(255,255,255,0.2)', true: ACCENT }}
+            trackColor={{ false: colors.border, true: ACCENT }}
             thumbColor="#fff"
             disabled={disabled}
           />
         ) : null}
         {onPress ? (
-          <ChevronRight size={scale(18)} color={disabled ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)'} strokeWidth={2} />
+          <ChevronRight size={scale(18)} color={disabled ? colors.textTertiary : colors.textSecondary} strokeWidth={2} />
         ) : null}
       </View>
     </View>
@@ -112,8 +123,8 @@ function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange,
 }
 
 // Section Header Component
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
+  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
 }
 
 // Option Picker Modal
@@ -126,6 +137,7 @@ interface OptionPickerProps<T> {
   formatOption: (option: T) => string;
   onSelect: (option: T) => void;
   onClose: () => void;
+  colors: ReturnType<typeof createColors>;
 }
 
 function OptionPicker<T>({
@@ -137,6 +149,7 @@ function OptionPicker<T>({
   formatOption,
   onSelect,
   onClose,
+  colors,
 }: OptionPickerProps<T>) {
   return (
     <Modal
@@ -150,9 +163,9 @@ function OptionPicker<T>({
         activeOpacity={1}
         onPress={onClose}
       >
-        <View style={styles.pickerContainer}>
-          <Text style={styles.pickerTitle}>{title}</Text>
-          {subtitle ? <Text style={styles.pickerSubtitle}>{subtitle}</Text> : null}
+        <View style={[styles.pickerContainer, { backgroundColor: colors.card }]}>
+          <Text style={[styles.pickerTitle, { color: colors.text }]}>{title}</Text>
+          {subtitle ? <Text style={[styles.pickerSubtitle, { color: colors.textTertiary }]}>{subtitle}</Text> : null}
           <View style={styles.pickerOptions}>
             {options.map((option, index) => (
               <TouchableOpacity
@@ -169,13 +182,14 @@ function OptionPicker<T>({
                 <Text
                   style={[
                     styles.pickerOptionText,
-                    selectedValue === option && styles.pickerOptionTextSelected,
+                    { color: colors.text },
+                    selectedValue === option && { color: colors.accent, fontWeight: '600' },
                   ]}
                 >
                   {formatOption(option)}
                 </Text>
                 {selectedValue === option ? (
-                  <Check size={scale(18)} color={ACCENT} strokeWidth={2.5} />
+                  <Check size={scale(18)} color={colors.accent} strokeWidth={2.5} />
                 ) : null}
               </TouchableOpacity>
             ))}
@@ -189,6 +203,8 @@ function OptionPicker<T>({
 export function PlaybackSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
+  const colors = createColors(themeColors);
 
   // Player settings from store
   const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
@@ -199,12 +215,6 @@ export function PlaybackSettingsScreen() {
   const setSkipBackInterval = usePlayerStore((s) => s.setSkipBackInterval);
   const shakeToExtendEnabled = usePlayerStore((s) => s.shakeToExtendEnabled);
   const setShakeToExtendEnabled = usePlayerStore((s) => s.setShakeToExtendEnabled);
-  const discAnimationEnabled = usePlayerStore((s) => s.discAnimationEnabled ?? true);
-  const setDiscAnimationEnabled = usePlayerStore((s) => s.setDiscAnimationEnabled);
-  const useStandardPlayer = usePlayerStore((s) => s.useStandardPlayer ?? false);
-  const setUseStandardPlayer = usePlayerStore((s) => s.setUseStandardPlayer);
-  const joystickEnabled = useJoystickSeekStore((s) => s.enabled);
-  const setJoystickEnabled = useJoystickSeekStore((s) => s.setEnabled);
   const smartRewindEnabled = usePlayerStore((s) => s.smartRewindEnabled ?? true);
   const setSmartRewindEnabled = usePlayerStore((s) => s.setSmartRewindEnabled);
   const smartRewindMaxSeconds = usePlayerStore((s) => s.smartRewindMaxSeconds ?? 30);
@@ -213,17 +223,6 @@ export function PlaybackSettingsScreen() {
   const setShowCompletionPrompt = usePlayerStore((s) => s.setShowCompletionPrompt);
   const autoMarkFinished = usePlayerStore((s) => s.autoMarkFinished ?? false);
   const setAutoMarkFinished = usePlayerStore((s) => s.setAutoMarkFinished);
-
-  // System accessibility preference
-  const systemReduceMotion = useReducedMotion();
-
-  // Computed disabled states per UX spec
-  const spinningDiscDisabled = useStandardPlayer || (systemReduceMotion ?? false);
-  const spinningDiscDisabledReason = useMemo(() => {
-    if (useStandardPlayer) return 'Standard Player is enabled';
-    if (systemReduceMotion) return 'Disabled by system settings';
-    return undefined;
-  }, [useStandardPlayer, systemReduceMotion]);
 
   // Modal states
   const [showSpeedPicker, setShowSpeedPicker] = useState(false);
@@ -243,8 +242,8 @@ export function PlaybackSettingsScreen() {
   }, [setSkipBackInterval]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -253,9 +252,9 @@ export function PlaybackSettingsScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Playback</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Playback</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -266,71 +265,77 @@ export function PlaybackSettingsScreen() {
       >
         {/* Speed Section */}
         <View style={styles.section}>
-          <SectionHeader title="Speed" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Speed" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Gauge}
               label="Default Speed"
               value={formatSpeed(globalDefaultRate)}
               onPress={() => setShowSpeedPicker(true)}
               note="Used for books without a saved preference"
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Skip Intervals Section */}
         <View style={styles.section}>
-          <SectionHeader title="Skip Intervals" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Skip Intervals" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={SkipForward}
               label="Skip Forward"
               value={`${skipForwardInterval}s`}
               onPress={() => setShowForwardPicker(true)}
+              colors={colors}
             />
             <SettingsRow
               Icon={SkipBack}
               label="Skip Back"
               value={`${skipBackInterval}s`}
               onPress={() => setShowBackPicker(true)}
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Sleep Timer Section */}
         <View style={styles.section}>
-          <SectionHeader title="Sleep Timer" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Sleep Timer" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={Smartphone}
               label="Shake to Extend"
               switchValue={shakeToExtendEnabled}
               onSwitchChange={setShakeToExtendEnabled}
               note="Shake to add 15 minutes when timer is low"
+              colors={colors}
             />
           </View>
         </View>
 
         {/* Smart Rewind Section */}
         <View style={styles.section}>
-          <SectionHeader title="Smart Rewind" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Smart Rewind" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={RefreshCw}
               label="Smart Rewind"
               switchValue={smartRewindEnabled}
               onSwitchChange={setSmartRewindEnabled}
               note="Automatically rewind after pausing"
+              colors={colors}
             />
             {smartRewindEnabled && (
-              <View style={styles.maxRewindContainer}>
-                <Text style={styles.maxRewindLabel}>Maximum Rewind</Text>
+              <View style={[styles.maxRewindContainer, { borderTopColor: colors.border }]}>
+                <Text style={[styles.maxRewindLabel, { color: colors.textSecondary }]}>Maximum Rewind</Text>
                 <View style={styles.maxRewindOptions}>
                   {SMART_REWIND_MAX_OPTIONS.map((seconds) => (
                     <TouchableOpacity
                       key={seconds}
                       style={[
                         styles.maxRewindOption,
+                        { backgroundColor: colors.iconBg },
                         smartRewindMaxSeconds === seconds && styles.maxRewindOptionSelected,
                       ]}
                       onPress={() => setSmartRewindMaxSeconds(seconds)}
@@ -339,6 +344,7 @@ export function PlaybackSettingsScreen() {
                       <Text
                         style={[
                           styles.maxRewindOptionText,
+                          { color: colors.textSecondary },
                           smartRewindMaxSeconds === seconds && styles.maxRewindOptionTextSelected,
                         ]}
                       >
@@ -347,7 +353,7 @@ export function PlaybackSettingsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-                <Text style={styles.maxRewindNote}>
+                <Text style={[styles.maxRewindNote, { color: colors.textTertiary }]}>
                   Rewind amount increases with pause duration
                 </Text>
               </View>
@@ -355,59 +361,17 @@ export function PlaybackSettingsScreen() {
           </View>
         </View>
 
-        {/* Joystick Seek Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Seeking" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={Gamepad2}
-              label="Joystick Seek Settings"
-              onPress={() => (navigation as any).navigate('JoystickSeekSettings')}
-              note="Customize drag-to-seek speed and curve"
-            />
-          </View>
-        </View>
-
-        {/* Player Appearance Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Player Appearance" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={Disc}
-              label="Spinning Disc"
-              switchValue={discAnimationEnabled}
-              onSwitchChange={setDiscAnimationEnabled}
-              note="Animate the CD rotation while playing"
-              disabled={spinningDiscDisabled}
-              disabledReason={spinningDiscDisabledReason}
-            />
-            <SettingsRow
-              Icon={Gamepad2}
-              label="Joystick Seek"
-              switchValue={joystickEnabled}
-              onSwitchChange={setJoystickEnabled}
-              note="Drag on cover to scrub through audio"
-            />
-            <SettingsRow
-              Icon={Image}
-              label="Standard Player"
-              switchValue={useStandardPlayer}
-              onSwitchChange={setUseStandardPlayer}
-              note="Show static album cover instead of disc"
-            />
-          </View>
-        </View>
-
         {/* Completion Section */}
         <View style={styles.section}>
-          <SectionHeader title="Book Completion" />
-          <View style={styles.sectionCard}>
+          <SectionHeader title="Book Completion" colors={colors} />
+          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
             <SettingsRow
               Icon={CheckCircle}
               label="Completion Prompt"
               switchValue={showCompletionPrompt}
               onSwitchChange={setShowCompletionPrompt}
               note="Ask what to do when a book ends"
+              colors={colors}
             />
             {!showCompletionPrompt && (
               <SettingsRow
@@ -416,6 +380,7 @@ export function PlaybackSettingsScreen() {
                 switchValue={autoMarkFinished}
                 onSwitchChange={setAutoMarkFinished}
                 note="Automatically mark books as finished"
+                colors={colors}
               />
             )}
           </View>
@@ -423,8 +388,8 @@ export function PlaybackSettingsScreen() {
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Info size={scale(16)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
-          <Text style={styles.infoText}>
+          <Info size={scale(16)} color={colors.textTertiary} strokeWidth={2} />
+          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
             Playback speed is remembered per book. The default speed is only used when playing a book for the first time.
           </Text>
         </View>
@@ -440,6 +405,7 @@ export function PlaybackSettingsScreen() {
         formatOption={formatSpeed}
         onSelect={handleSpeedSelect}
         onClose={() => setShowSpeedPicker(false)}
+        colors={colors}
       />
 
       {/* Skip Forward Picker Modal */}
@@ -451,6 +417,7 @@ export function PlaybackSettingsScreen() {
         formatOption={(s) => `${s} seconds`}
         onSelect={handleForwardSelect}
         onClose={() => setShowForwardPicker(false)}
+        colors={colors}
       />
 
       {/* Skip Back Picker Modal */}
@@ -462,6 +429,7 @@ export function PlaybackSettingsScreen() {
         formatOption={(s) => `${s} seconds`}
         onSelect={handleBackSelect}
         onClose={() => setShowBackPicker(false)}
+        colors={colors}
       />
     </View>
   );
@@ -470,7 +438,7 @@ export function PlaybackSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    // backgroundColor set via colors.background in JSX
   },
   header: {
     flexDirection: 'row',
@@ -488,7 +456,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   headerSpacer: {
     width: scale(40),
@@ -505,14 +473,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
     marginBottom: scale(8),
   },
   sectionCard: {
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(12),
     overflow: 'hidden',
   },
@@ -523,7 +491,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    // borderBottomColor set via colors.border in JSX
   },
   rowLeft: {
     flexDirection: 'row',
@@ -534,7 +502,7 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -545,11 +513,11 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: scale(15),
     fontWeight: '500',
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   rowNote: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
   rowRight: {
@@ -559,22 +527,15 @@ const styles = StyleSheet.create({
   },
   rowValue: {
     fontSize: scale(14),
-    color: ACCENT,
+    // color set via colors.accent in JSX
     fontWeight: '500',
   },
   // Disabled states
   settingsRowDisabled: {
     opacity: 0.5,
   },
-  rowLabelDisabled: {
-    color: 'rgba(255,255,255,0.5)',
-  },
   rowNoteDisabled: {
-    color: 'rgba(255,255,255,0.3)',
     fontStyle: 'italic',
-  },
-  rowValueDisabled: {
-    color: 'rgba(255,255,255,0.3)',
   },
   infoSection: {
     flexDirection: 'row',
@@ -586,7 +547,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
   // Smart Rewind max selector styles
@@ -595,12 +556,12 @@ const styles = StyleSheet.create({
     paddingTop: scale(8),
     paddingBottom: scale(16),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    // borderTopColor set via colors.border in JSX
   },
   maxRewindLabel: {
     fontSize: scale(13),
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.6)',
+    // color set via colors.textSecondary in JSX
     marginBottom: scale(12),
   },
   maxRewindOptions: {
@@ -611,7 +572,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: scale(10),
     paddingHorizontal: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via colors.iconBg in JSX
     borderRadius: scale(8),
     alignItems: 'center',
   },
@@ -621,26 +582,26 @@ const styles = StyleSheet.create({
   maxRewindOptionText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
+    // color set via colors.textSecondary in JSX
   },
   maxRewindOptionTextSelected: {
-    color: '#000',
+    color: '#000', // Black on gold accent - intentional
   },
   maxRewindNote: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via colors.textTertiary in JSX
     marginTop: scale(12),
     textAlign: 'center',
   },
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Dark overlay - intentional
     justifyContent: 'center',
     alignItems: 'center',
   },
   pickerContainer: {
-    backgroundColor: '#2a2a2a',
+    // backgroundColor set via colors.card in JSX
     borderRadius: scale(16),
     padding: scale(20),
     width: '80%',
@@ -649,13 +610,13 @@ const styles = StyleSheet.create({
   pickerTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via colors.text in JSX
     marginBottom: scale(4),
     textAlign: 'center',
   },
   pickerSubtitle: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via colors.textTertiary in JSX
     marginBottom: scale(16),
     textAlign: 'center',
   },
@@ -675,7 +636,7 @@ const styles = StyleSheet.create({
   },
   pickerOptionText: {
     fontSize: scale(15),
-    color: '#fff',
+    // color set via colors.text in JSX
   },
   pickerOptionTextSelected: {
     color: ACCENT,

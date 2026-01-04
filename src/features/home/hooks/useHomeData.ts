@@ -15,6 +15,7 @@ import { usePlayerStore } from '@/features/player';
 import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
 import { useLibraryCache } from '@/core/cache';
 import { useDownloads } from '@/core/hooks/useDownloads';
+import { preWarmTickCache, ChapterInput } from '@/features/player/services/tickCache';
 import {
   UseHomeDataReturn,
   PlaybackProgress,
@@ -209,6 +210,25 @@ export function useHomeData(): UseHomeDataReturn {
     // Fallback: show most recent from server
     return inProgressItems[0] || null;
   }, [playerCurrentBook, inProgressItems]);
+
+  // Pre-warm tick cache for current book (non-blocking)
+  useEffect(() => {
+    if (!currentBook) return;
+
+    const bookChapters = currentBook.media?.chapters || [];
+    const bookDuration = (currentBook.media as any)?.duration || 0;
+
+    if (bookDuration > 0 && bookChapters.length > 0) {
+      const chapterInputs: ChapterInput[] = bookChapters.map((ch: any, i: number) => ({
+        start: ch.start || 0,
+        end: ch.end || bookChapters[i + 1]?.start || bookDuration,
+        displayTitle: ch.title,
+      }));
+
+      // Pre-warm in background (non-blocking, non-persisting)
+      preWarmTickCache(currentBook.id, bookDuration, chapterInputs);
+    }
+  }, [currentBook?.id]); // Only re-run when book changes
 
   // Current progress
   const currentProgress: PlaybackProgress | null = useMemo(() => {

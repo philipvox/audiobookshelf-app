@@ -9,19 +9,1876 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.6.114] - 2026-01-03
+
+### Fixed - Playback Stability During Downloads
+
+Fixed critical race conditions causing playback failures when downloading while streaming.
+
+**Download Completion Fixes:**
+- Increased reload delay from 500ms to 1500ms for mobile data stability
+- Added `waitForSafeState()` - waits for seeking/loading to finish before reloading (up to 5s)
+- Gets fresh position from audio service instead of using potentially stale saved position
+- Clears smart rewind state before reload to prevent interference
+
+**Smart Rewind Fixes:**
+- Smart rewind now uses `isSeeking` state to block audio callbacks during seek
+- Properly awaits `clearSmartRewindState()` instead of fire-and-forget
+- Error handling ensures `isSeeking` is always cleared
+
+**Stuck Audio Detection:**
+- Added stuck detection in `play()` - if audio doesn't start after 3s, attempts recovery
+- If recovery fails, performs hard reset by reloading book at current position
+- Added `audioService.getIsPlaying()` method for verification
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` - Download reload guards, smart rewind fixes, stuck detection
+- `src/features/player/services/audioService.ts` - Added getIsPlaying() method
+
+---
+
+## [0.6.113] - 2026-01-03
+
+### Fixed - Search Pipeline Consistency
+
+Comprehensive search fixes to ensure consistent matching across all search entry points.
+
+**Bug Fixes:**
+1. **Space-insensitive gate removed** - Now works for single-word queries like "earthsea" (not just "earth sea")
+2. **Regex punctuation fix** - Fixed character class that was treating dots literally
+3. **Autocomplete consistency** - Now uses same fuzzyMatch logic as full search for authors/series/narrators
+4. **Multi-word significant words** - Filters short words like "a", "of", "the" in multi-word queries
+5. **Word prefix for all fields** - "sand" now matches "Sanderson" in author/narrator fields
+6. **Accent normalization** - "carre" now matches "Carré", "garcia" matches "García"
+
+**Files Modified:**
+- `src/features/search/utils/fuzzySearch.ts` - Added normalizeForSearch with accent stripping
+- `src/features/search/screens/SearchScreen.tsx` - Autocomplete now uses fuzzyMatch
+- `src/core/cache/libraryCache.ts` - All fixes applied to filterItems
+
+---
+
+## [0.6.112] - 2026-01-03
+
+### Fixed - Search Performance
+
+Fixed severe search lag caused by expensive fuzzy matching on every keystroke.
+
+**Optimizations:**
+- Removed Levenshtein distance calculations from real-time filtering
+- Simplified fuzzyMatch to use fast string operations only
+- Pre-compute normalized queries once per search, not per item
+- Levenshtein matching now only used for "Did you mean" suggestions
+
+**Search still supports:**
+- Substring matching ("earth" → "Earthsea")
+- Word prefix matching ("ear" → "Earthsea")
+- Space-insensitive matching ("earth sea" → "earthsea")
+- Multi-word matching ("long sun" → "Lake of the Long Sun")
+
+### Files Modified
+- `src/features/search/utils/fuzzySearch.ts` - Simplified fuzzyMatch for performance
+- `src/core/cache/libraryCache.ts` - Optimized filterItems text search
+
+---
+
+## [0.6.111] - 2026-01-03
+
+### Enhanced - Fuzzier Search
+
+Significantly improved search to handle more flexible queries:
+
+**Space-Insensitive Matching**
+- "earth sea" now matches "Earthsea" and vice versa
+- Spaces, hyphens, and punctuation are normalized for comparison
+
+**Word Reordering**
+- "sea eart" matches "Earthsea" (word permutations checked)
+- Words don't need to be in the correct order
+
+**Partial Phrase Matching**
+- "the quartet" matches "The Earthsea Quartet"
+- All query words are checked against the target (any order)
+
+**Enhanced Similarity Scoring**
+- New `enhancedSimilarityScore()` function considers multiple matching strategies
+- Better "Did you mean" suggestions using normalized comparisons
+
+### Files Modified
+- `src/features/search/utils/fuzzySearch.ts` - Added normalizeForComparison, word reordering, partial phrase matching
+- `src/core/cache/libraryCache.ts` - filterItems now uses fuzzy matching for all book searches
+
+---
+
+## [0.6.110] - 2026-01-03
+
+### Removed - Unused TopNav Component
+
+Removed the unused TopNav component that was no longer rendered in the app.
+
+### Files Removed
+- `src/navigation/components/TopNav.tsx`
+
+---
+
+## [0.6.109] - 2026-01-03
+
+### Simplified - Consistent Carousel Layout
+
+Simplified browse page to use consistent carousel layout for all rows except top recommendation.
+
+**Display Modes:**
+- **Top Recommendation**: `featured` - 2-column grid (only this row)
+- **All Other Rows**: `carousel` - horizontal scroll
+
+---
+
+## [0.6.108] - 2026-01-03
+
+### Enhanced - Browse Page Visual Hierarchy & Personalization
+
+Improved browse page with varied display modes and personalized sorting.
+
+**Display Mode Variations**
+- **Top Recommendation**: `featured` mode - large 2x2 grid for top picks
+- **All Other Rows**: `carousel` mode - horizontal scroll
+
+**Improved Row Titles**
+- "Short & Sweet" → "Quick Listens" (subtitle: "Finish in a day or two")
+- "Long Listens" → "Epic Journeys" (subtitle: "Settle in for the long haul")
+- "Not Started" → "Ready to Start" (subtitle: "Waiting in your library")
+- "Continue Series" → "Your Next Chapter" (subtitle: "Continue where you left off")
+- "Try Something Different" → subtitle: "Venture outside your usual genres"
+
+**Personalized Series & Authors**
+- Series section now titled "Your Series" when user has reading history
+- Series sorted by user progress (books finished in series) first
+- Authors section now titled "Your Authors" when user has reading history
+- Authors sorted by reading history (authors you've read most) first
+
+### Files Modified
+- `src/features/discover/hooks/useDiscoverData.ts` - Added displayMode to all rows, updated titles
+- `src/features/discover/components/ContentRowCarousel.tsx` - Added carousel/compact display modes
+- `src/features/discover/components/PopularSeriesSection.tsx` - Added history-based sorting
+- `src/features/discover/components/TopAuthorsSection.tsx` - Added history-based sorting
+- `src/features/discover/types.ts` - Added RowDisplayMode type
+
+---
+
+## [0.6.107] - 2026-01-03
+
+### Fixed - Re-enabled Browse Page Content Rows
+
+Re-enabled several content rows that were disabled in the Browse/Discover page:
+
+**Rows Now Showing:**
+- **Continue Series** (priority 4) - Next book in series you're reading
+- **Not Started** (priority 5) - Books you haven't started yet
+- **Short & Sweet** (priority 8) - Quick listens under 5 hours
+- **Long Listens** (priority 9) - Epic journeys over 10 hours
+
+These rows were defined but commented out. Now the full row order is:
+1. Personalized recommendations (priority 2.x)
+2. New This Week (priority 3)
+3. Continue Series (priority 4)
+4. Not Started (priority 5)
+5. Try Something Different / Serendipity (priority 6)
+6. Short & Sweet (priority 8)
+7. Long Listens (priority 9)
+
+### Files Modified
+- `src/features/discover/hooks/useDiscoverData.ts` - Re-enabled rows in staticRows array
+
+---
+
+## [0.6.106] - 2026-01-03
+
+### Enhanced - Comprehensive Tag-Based Recommendation Scoring
+
+Expanded tag mapping to cover actual user library tags for more effective mood recommendations.
+
+**New Tag Mappings Added**
+- ~200+ new tags mapped from actual library data
+- Duration tags: "under-5-hours", "5-10-hours", "10-15-hours", "15-20-hours", "over-20-hours"
+- Vibe tags: "cozy", "atmospheric", "slow-burn", "emotional", "found-family", etc.
+- Genre tags: "sapphic", "mm-romance", "romantasy", "cozy-mystery", etc.
+- Theme tags: "trauma", "redemption", "survival", "coming-of-age", etc.
+
+**Length Scoring Added**
+- New LENGTH_MATCH points (8 pts) for duration tag matching
+- TAG_LENGTH_MAP maps duration tags to length preferences
+- Score breakdown now includes `length` dimension
+- Supports both explicit duration tags and genre-implied lengths (epic, sagas)
+
+**Tag Categories Now Mapped**
+- Mood: 40+ tags covering emotional states and atmospheres
+- Pace: 25+ tags for energy/pacing preferences
+- Weight: 30+ tags for tone/depth preferences
+- World: 35+ tags for setting preferences
+- Length: 7 tags for duration preferences
+- Romance Tropes: 15+ tags for romance subgenre matching
+
+### Files Modified
+- `src/features/mood-discovery/constants/tagMoodMap.ts` - Comprehensive tag mapping rewrite
+- `src/features/mood-discovery/utils/tagScoring.ts` - Added length scoring logic
+
+---
+
+## [0.6.105] - 2026-01-03
+
+### Enhanced - Mood Discovery Questionnaire Redesign
+
+Major redesign of the mood discovery quiz with UX research-backed improvements:
+
+**Situational Questions (More Engaging)**
+- Step 1: "It's your perfect listening moment. Where are you?" (was "What kind of experience?")
+- Step 2: "What kind of energy fits right now?" (was "How should it feel to listen?")
+- Step 3: "What emotional territory feels right?" (was "How heavy do you want it?")
+- Step 4: "Where do you want the story to take you?" (was "What kind of world?")
+- Step 5: NEW - "How much time do you have?" (length preference)
+
+**New Option Labels (Concrete Imagery vs Abstract)**
+- Mood: "Curled up at home", "Edge of your seat", "Lost in another world", etc.
+- Energy: "Slow & savory", "Steady rhythm", "Can't put it down", "Surprise me"
+- Tone: "Light & bright", "Shade & light", "Deep & intense"
+- World: "Right here, right now", "Back in time", "Realms of magic", "Among the stars"
+- Length: "Quick listen", "Weekend companion", "Epic journey"
+
+**New Icons (Lucide React)**
+- Mood: Sofa, Zap, Sparkles, Smile, Heart, Lightbulb
+- Energy: Moon, Music, Flame, Shuffle
+- Tone: Sun, CloudSun, CircleDot, Shuffle
+- World: Building2, Castle, Wand2, Rocket, Globe
+- Length: Timer, Calendar, Map, Infinity
+
+**Match Attribution**
+- Book cards now show small icons indicating which dimensions matched
+- QuickTuneBar shows length filter chip when set
+
+### Files Modified
+- `src/features/mood-discovery/types.ts` - Updated all config arrays with new labels/icons, added LENGTHS, TOTAL_QUIZ_STEPS
+- `src/features/mood-discovery/screens/MoodDiscoveryScreen.tsx` - Updated to 5 steps, new questions
+- `src/features/mood-discovery/stores/moodSessionStore.ts` - Added setDraftLength, updated for 5 steps
+- `src/features/mood-discovery/components/MoodBookCard.tsx` - Added match attribution icons
+- `src/features/mood-discovery/components/QuickTuneBar.tsx` - Added length chip
+
+---
+
+## [0.6.104] - 2026-01-03
+
+### Fixed - Navigation Error in Preferences Onboarding
+
+Fixed "RESET action was not handled" error when completing preferences onboarding.
+
+**Problem:**
+`PreferencesOnboardingScreen` tried to navigate to `{ name: 'Browse' }` which doesn't
+exist in the navigator. The tab is actually named "DiscoverTab".
+
+**Solution:**
+Changed to `navigation.goBack()` to simply close the modal and return to the
+previous screen where the user's preferences are now active.
+
+### Files Modified
+- `src/features/recommendations/screens/PreferencesOnboardingScreen.tsx`
+  - Changed `navigation.reset()` to `navigation.goBack()`
+
+---
+
+## [0.6.103] - 2026-01-03
+
+### Fixed - Infinite Loop in Dismissed Items Store
+
+Fixed "Maximum update depth exceeded" error caused by Zustand selector hooks
+returning new array references on every render.
+
+**Problem:**
+`useDismissedIds()` and `useDismissedCount()` used `Object.keys()` directly
+in the selector, creating new arrays on each call. This triggered infinite
+re-renders.
+
+**Solution:**
+- Added `useShallow` from `zustand/shallow` for stable object references
+- Wrapped `Object.keys()` in `useMemo` to memoize the derived array
+- Only recalculates when `dismissedItems` actually changes
+
+### Files Modified
+- `src/features/recommendations/stores/dismissedItemsStore.ts`
+  - Added `useShallow` import from `zustand/shallow`
+  - Added `useMemo` import from React
+  - Fixed `useDismissedIds` to use `useShallow` + `useMemo`
+  - Fixed `useDismissedCount` to use `useShallow` + `useMemo`
+
+---
+
+## [0.6.102] - 2026-01-03
+
+### Added - Personalized Recommendation Enhancements (P0 Gaps)
+
+Implemented three major improvements to the recommendation system based on UX research:
+
+**Gap 1: "Because You Finished X" Attribution**
+- Row titles now show specific book attribution: "Because you finished The Blade Itself"
+- Book name in title is tappable - navigates to that book's detail page
+- SQLite now tracks most recent finished book and currently listening books
+- Title variations: "More like X", "Because you love [Genre]", "More by [Author]"
+
+**Gap 2: Serendipity Row ("Try Something Different")**
+- New row showing books OUTSIDE user's comfort zone
+- Deliberately selects books from genres user hasn't explored
+- Purple sparkle (✨) badge on cards for visual distinction
+- Helps users discover new genres and authors
+
+**Gap 3: "Not Interested" Feedback System**
+- Swipe left on any book card to dismiss from recommendations
+- Toast appears with "Undo" button for 5 seconds
+- Dismissed books stored in `dismissedItemsStore` (persisted)
+- New "Hidden Books" screen in Profile > Recommendations
+- Shows count badge, allows bulk restore
+
+**Also Added:**
+- New "Recommendations" section in Profile screen
+- "Preferences" link to tune recommendations
+- "Hidden Books" link with count badge
+
+### New Files
+- `src/features/recommendations/stores/dismissedItemsStore.ts`
+- `src/features/discover/components/SwipeableBookCard.tsx`
+- `src/features/discover/components/DismissToast.tsx`
+- `src/features/profile/screens/HiddenItemsScreen.tsx`
+
+### Files Modified
+- `src/core/services/sqliteCache.ts` - Added mostRecentFinished and currentlyListening to getReadHistoryStats
+- `src/features/discover/types.ts` - Added SourceAttribution interface and isSerendipity flags
+- `src/features/recommendations/hooks/useRecommendations.ts` - Added source attribution to groups, filter dismissed items
+- `src/features/discover/hooks/useDiscoverData.ts` - Generate specific row titles, added serendipity row
+- `src/features/discover/components/ContentRowCarousel.tsx` - Tappable source links, serendipity badge
+- `src/features/profile/screens/ProfileScreen.tsx` - Added Recommendations section with Preferences and Hidden Books links
+- `src/features/profile/index.ts` - Export HiddenItemsScreen
+- `src/navigation/AppNavigator.tsx` - Added HiddenItems route
+
+---
+
+## [0.6.101] - 2026-01-03
+
+### Fixed - Recommendations Now Show for All Users
+
+Removed the `hasPreferences` gate that was blocking recommendations for new users
+who hadn't completed onboarding or built any listening history.
+
+**Problem:**
+Recommendations only showed if `hasPreferences = true`, which required either:
+- Completing the onboarding questionnaire, OR
+- Having finished at least 1 book, OR
+- Having started listening to at least 1 book
+
+New users with none of these would only see "New This Week" and no recommendations.
+
+**Solution:**
+- Removed `hasPreferences` check from `recommendationRows` useMemo
+- Recommendations now show for ALL users based on random scoring
+- Users with history still get personalized recommendations (higher scores)
+- Users without history see "Recommended for You" fallback group with variety picks
+
+**Also fixed in previous session (0.6.100):**
+- Added fallback "Recommended for You" group for ungrouped items in `useRecommendations.ts`
+- Books with only random scores (no specific author/narrator/genre match) now appear in recommendations
+
+### Files Modified
+- `src/features/discover/hooks/useDiscoverData.ts`
+  - Removed `hasPreferences` from recommendationRows condition
+  - Removed `hasPreferences` from useMemo dependency array
+- `src/features/recommendations/hooks/useRecommendations.ts` (0.6.100)
+  - Added "Recommended for You" fallback group
+
+---
+
+## [0.6.100] - 2026-01-02
+
+### Fixed - Preferences Onboarding Genres Not Loading
+
+The "What genres do you enjoy?" screen (step 2 of 4) was showing empty options.
+
+**Problem:**
+Used `useAllLibraryItems()` + `extractGenres()` which depended on prefetch service,
+but the data wasn't loaded when navigating to onboarding.
+
+**Solution:**
+Changed to use `useLibraryCache()` + `getGenresByPopularity()` which uses the
+already-populated library cache.
+
+### Files Modified
+- `src/features/recommendations/screens/PreferencesOnboardingScreen.tsx`
+  - Replaced `useAllLibraryItems` + `useDefaultLibrary` with `useLibraryCache`
+  - Now uses `getGenresByPopularity()` for genres
+
+---
+
+## [0.6.99] - 2026-01-02
+
+### Fixed - Recommendations Now Working
+
+Two fixes to make recommendations actually appear on the Browse page:
+
+**Fix 1: Browse page only showed first content row**
+- Changed `rows.slice(0, 1)` to `rows.map()` to show all rows
+- Simplified to only show: Recommendations + "New This Week"
+- Removed: Not Started, Short & Sweet, Long Listens, Continue Series
+
+**Fix 2: Listening history metadata was empty**
+- `getListeningHistoryStats()` queried SQLite `user_books` table which didn't have metadata
+- Now builds listening stats directly from library items (`allItems`) using `useMemo`
+- Properly extracts author/narrator/genres from `userMediaProgress` on each item
+
+### Files Modified
+- `src/features/browse/screens/BrowseScreen.tsx` - Show all rows (removed slice)
+- `src/features/discover/hooks/useDiscoverData.ts` - Only include recommendations + New This Week
+- `src/features/recommendations/hooks/useRecommendations.ts` - Build listening stats from library cache
+
+---
+
+## [0.6.98] - 2026-01-02
+
+### Added - Recommendations from Listening History (In-Progress Books)
+
+Extended the recommendation engine to also factor in books currently being listened to,
+not just finished books.
+
+**What Changed:**
+
+1. **New SQLite Method:** Added `getListeningHistoryStats()` to query user_books for in-progress books
+   - Returns authors, narrators, and genres from books with 0-95% progress
+   - Ordered by count and progress (more progress = more relevant)
+
+2. **Dual Scoring System:**
+   - Finished books: Full weight (40-80 points for authors, 30-60 for narrators, up to 50 for genres)
+   - In-progress books: 60% weight (~25-50 for authors, ~18-36 for narrators, up to 30 for genres)
+   - Listening history only boosts when finished history doesn't already boost
+
+3. **New Recommendation Group:** "Based on what you're listening to"
+   - Appears after "Based on your reading history"
+   - Shows recommendations from currently-listening patterns
+
+4. **Updated hasPreferences Logic:**
+   - Now returns `true` if user has:
+     - Completed onboarding questionnaire, OR
+     - Finished at least 1 book, OR
+     - Started listening to at least 1 book
+
+**Example:**
+If a user starts listening to a Brandon Sanderson book, they'll immediately see
+recommendations for other Sanderson books, even with no finished books.
+
+### Fixed - Browse Page Content Rows Not Displaying
+
+Fixed a critical bug where only the first content row was displayed on the Browse page.
+
+**Problem:**
+`rows.slice(0, 1)` was limiting display to just ONE row, hiding:
+- All recommendation rows (priority 2.x)
+- Continue Series, Not Started, Short & Sweet, Long Listens rows
+
+**Solution:**
+Changed to `rows.map()` to display all content rows sorted by priority.
+
+### Files Modified
+- `src/core/services/sqliteCache.ts` - Added `getListeningHistoryStats()` method
+- `src/features/recommendations/hooks/useRecommendations.ts`:
+  - Added `ListeningHistoryStats` interface
+  - Fetch and use listening stats
+  - Added listening history scoring (60% weight of finished books)
+  - Added "Based on what you're listening to" group
+  - Updated `hasPreferences` to include in-progress books
+- `src/features/browse/screens/BrowseScreen.tsx` - Fixed `rows.slice(0, 1)` to show all rows
+
+---
+
+## [0.6.97] - 2026-01-02
+
+### Fixed - Unified "Finished" Threshold (Single Source of Truth)
+
+Standardized the threshold for considering a book "finished" across the entire app.
+
+**Problem:**
+Different parts of the codebase used different thresholds:
+- SQLite auto-finish: 99%
+- Reading history: 95%
+- Recommendations: 95%
+- Progress service: 99%
+
+**Solution:**
+Unified to **95%** everywhere with `FINISHED_THRESHOLD` exported from `useReadingHistory`.
+
+### Files Modified
+- `src/features/reading-history-wizard/hooks/useReadingHistory.ts` - Export `FINISHED_THRESHOLD`
+- `src/features/reading-history-wizard/index.ts` - Export constant
+- `src/core/services/sqliteCache.ts` - Changed from 99% to 95%
+- `src/core/services/finishedBooksSync.ts` - Changed from 99% to 95%
+- `src/features/player/stores/progressStore.ts` - Changed `COMPLETION_THRESHOLD` from 99% to 95%
+- `src/features/player/services/progressService.ts` - Changed from 99% to 95%
+- `src/features/player/utils/progressCalculator.ts` - Changed default from 99% to 95%
+- `src/features/player/stores/__tests__/progressStore.test.ts` - Updated tests
+
+---
+
+## [0.6.96] - 2026-01-02
+
+### Added - Preferences Promo Card on Browse Page
+
+Added a promo card at the bottom of the Browse page to encourage users to fill out
+the preferences questionnaire even if they don't have any finished books yet.
+
+**Features:**
+- Shows "Get Personalized Recommendations" card with sparkle icon
+- Only appears when user hasn't completed onboarding AND has no reading history
+- Tapping navigates to PreferencesOnboardingScreen
+- Card hidden once user has either completed onboarding or finished a book
+
+### Files Modified
+- `src/features/discover/components/PreferencesPromoCard.tsx` - New component
+- `src/features/discover/index.ts` - Export new component
+- `src/features/discover/hooks/useDiscoverData.ts` - Expose hasPreferences
+- `src/features/browse/screens/BrowseScreen.tsx` - Add promo card at bottom
+
+---
+
+## [0.6.95] - 2026-01-02
+
+### Changed - Browse Page Now Shows Recommendations Without Onboarding
+
+Enabled personalized recommendations on the Browse page for users with reading history,
+even if they haven't completed the preferences onboarding questionnaire.
+
+**Previously:**
+- Recommendations only appeared if `hasCompletedOnboarding=true`
+- Users without onboarding only saw static sections: "New This Week", "Short & Sweet", etc.
+
+**Now:**
+- Recommendations appear if user has completed onboarding OR has finished at least 1 book
+- The recommendation engine uses reading history (favorite authors, narrators, genres from completed books) to generate personalized suggestions
+- "New This Week" appears AFTER recommendations (priority 3 vs 2.x) as intended
+
+### Files Modified
+- `src/features/recommendations/hooks/useRecommendations.ts` - Added reading history check to `hasPreferences` return value
+
+---
+
+## [0.6.94] - 2026-01-02
+
+### Fixed - Repeated API Calls for Deleted Books During Scroll
+Fixed performance issue causing repeated failed API calls and scroll lag.
+
+**Root Cause:**
+When a book was deleted from the server but still had a download record locally,
+`downloadManager.getAllDownloads()` would try to fetch the library item metadata
+from the API every time it was called. Since this failed, it would retry on every
+notification cycle, causing repeated API calls and degraded scroll performance.
+
+**Fix Applied:**
+Added a failed fetch cache with 5-minute cooldown to prevent repeated API calls:
+- Failed API fetches are cached with timestamp
+- Subsequent calls skip the API request until cooldown expires
+- Successful fetches clear the item from the cache
+
+### Files Modified
+- `src/core/services/downloadManager.ts` - Added failedFetchCache with cooldown logic
+
+---
+
+## [0.6.93] - 2026-01-02
+
+### Changed - Browse "View More" Screen: 3-Column Layout & Scroll Fix
+Improved the FilteredBooksScreen (accessed via "View More" on browse sections).
+
+**Changes:**
+1. **3-column grid**: Changed from 2 columns to 3 columns for denser book display
+2. **Simplified cards**: Removed author/narrator text (too small for 3-column layout), now shows just cover + title
+3. **Fixed scroll lag**: Optimized FlatList rendering settings:
+   - `initialNumToRender`: 6 → 16 (4 rows pre-rendered)
+   - `maxToRenderPerBatch`: 6 → 12 (faster batch rendering)
+   - `windowSize`: 5 → 7 (larger buffer)
+   - `removeClippedSubviews`: true → false (fixes rendering glitches)
+4. **Fixed getItemLayout**: Now correctly calculates row offsets for 3-column layout
+5. **Tighter spacing**: Reduced gap and margins for compact 3-column grid
+
+### Files Modified
+- `src/features/library/screens/FilteredBooksScreen.tsx`
+
+---
+
+## [0.6.92] - 2026-01-02
+
+### Fixed - Streaming Playback for Completed Books
+Critical fix for playback breaking after streaming a book to completion.
+
+**Root Cause:**
+When a streaming book completed, the position was saved at the end (position = duration). On next play attempt:
+1. Player loaded at position = duration
+2. HLS stream immediately signaled completion
+3. Playback got stuck and couldn't recover, even after force closing app
+
+**Fixes Applied:**
+1. **BookDetailScreen**: When a completed book is played ("Play Again" button), now always starts from beginning
+   - `handlePlayPress()` now checks `isCompleted` before `isDownloaded`/streaming
+   - Uses `handlePlayFromBeginning()` which passes `startPosition: 0`
+
+2. **playerStore safeguard**: Added position clamp in `loadBook()`
+   - If resume position is within 5 seconds of total duration, resets to 0
+   - Prevents stream from immediately triggering completion
+   - Provides defense-in-depth even if UI doesn't handle it
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Fixed handlePlayPress to use handlePlayFromBeginning for completed books
+- `src/features/player/stores/playerStore.ts` - Added position clamp safeguard near end of book
+
+---
+
+## [0.6.80] - 2026-01-02
+
+### Fixed - Memory Leak and Re-render Optimization
+Dramatic performance improvements through optimized React subscriptions.
+
+**Performance Results:**
+- **Re-renders reduced 97%**: CDPlayerScreen renders dropped from 324+ to 9
+- **Memory usage reduced 57%**: From 1.3GB+ to ~560MB
+- **Memory growth rate**: From rapid accumulation to stable ~1MB per minute
+
+**Optimizations Applied:**
+- **Position subscription**: Floor position to whole seconds before comparison
+  - Previously triggered re-render on every position tick (~2x/sec)
+  - Now only re-renders when the second value actually changes (~1x/sec)
+- **Sleep timer subscription**: Round to coarse granularity based on remaining time
+  - >5 min: Round to nearest minute (reduces 60 re-renders/min to 1)
+  - ≤5 min: Round to nearest 10 seconds for countdown display
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Optimized store subscriptions
+
+---
+
+## [0.6.79] - 2026-01-02
+
+### Fixed - Playback Stability Improvements
+Additional fixes for track switching and position handling issues.
+
+**Critical Fixes:**
+- **Track cascade bug**: Added guard in `handleTrackEnd()` to ignore spurious `didJustFinish` events
+  - Pre-buffered tracks could report `didJustFinish=true` with `duration=0` or `position=0`
+  - This caused a cascade of track advances (skipping 30+ minutes forward)
+  - Now ignores events where `playerDuration <= 0 || currentPlayerPos < 1`
+- **Extended track switch timeout**: Changed from 500ms to 1500ms
+  - Gives slower network/track loads more time to complete
+- **Removed strict position validation**: Removed 60s position rejection that was blocking legitimate seeks
+  - The validation was too strict and prevented chapter jumps
+  - Kept logging only for debugging
+
+### Files Modified
+- `src/features/player/services/audioService.ts` - Track cascade guard, extended timeout, removed position rejection
+- `src/features/player/stores/playerStore.ts` - Removed strict position validation
+
+---
+
+## [0.6.78] - 2026-01-02
+
+### Fixed - Player Control Button Touch Targets
+- **Increased control bar height**: Changed from 64 to 72 scaled pixels for better touch area
+- **Added hitSlop to all control buttons**: Extended touch area by 12px vertically and 8px horizontally
+- **Added minHeight to control buttons**: Ensures minimum 48px touch target for accessibility
+- **Adjusted progress bar position**: Moved up to maintain proper spacing from larger control bar
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Control button touch improvements
+
+---
+
+## [0.6.77] - 2026-01-02
+
+### Fixed - Playback Position Stability
+Comprehensive audit and fixes for random position jumps during streaming playback.
+
+**Critical Fixes:**
+- **Track switch position race condition**: Set `lastKnownGoodPosition` BEFORE changing `currentTrackIndex`
+  - Previously, during track switches there was a 500ms window where position could be calculated from wrong track's startOffset
+  - Now pre-sets the target global position before any track index changes
+- **Background sync overwrites active playback**: Added protection check in conflict resolution
+  - Previously, server sync could overwrite local position even during active playback
+  - Now detects if audio is playing and protects local position from being overwritten
+- **Undefined server timestamp handling**: Use 0 instead of `Date.now()` when `updatedAt` is undefined
+  - Previously, undefined timestamps defaulted to current time, causing server position to falsely win conflicts
+  - Now treats missing timestamps as oldest (0), ensuring local position has priority
+- **Position validation layer**: Reject position updates > 60 seconds unless explicitly seeking
+  - Prevents unexpected large position jumps from reaching the UI
+  - Logs rejected jumps for debugging
+
+**Debug Instrumentation Added:**
+- Position jump detection in `audioService.ts:getGlobalPositionSync()` - logs jumps > 30 seconds
+- Position change logging in `playerStore.ts:updatePlaybackState()` - logs all significant position changes
+- Sync conflict logging in `backgroundSyncService.ts` - detailed conflict resolution logging
+
+### Files Modified
+- `src/features/player/services/audioService.ts` - Track switch timing fix, position jump detection
+- `src/features/player/stores/playerStore.ts` - Position validation layer, undefined timestamp fix, position logging
+- `src/features/player/services/backgroundSyncService.ts` - Active playback protection, conflict logging
+
+---
+
+## [0.6.76] - 2026-01-02
+
+### Fixed - Memory Leaks
+Comprehensive memory leak audit and fixes to prevent memory accumulation over time.
+
+**Critical Fixes:**
+- **AnalyticsService metrics array**: Added `MAX_METRICS = 500` bound to prevent unbounded growth
+  - Previously, `metrics` array grew indefinitely with each performance metric tracked
+  - Now trims to last 500 entries when exceeded
+- **AnalyticsService initialization error handling**: Added proper cleanup of resources on init failure
+  - Clears `flushInterval` and removes `appStateSubscription` if initialization fails after setup
+
+**Moderate Fixes:**
+- **WebSocket reconnect timer**: Clear pending reconnect timer at start of `connect()`
+  - Prevents edge case where manual `connect()` call could leave orphaned timer
+- **WebSocket reconnect callback**: Only increment attempts if still in reconnecting state
+  - Prevents inflated attempt counter if connection was established via other means
+
+### Files Modified
+- `src/core/analytics/analyticsService.ts` - Add metrics array bound, improve error handling
+- `src/core/services/websocketService.ts` - Improve timer cleanup edge cases
+
+---
+
+## [0.6.75] - 2026-01-01
+
+### Performance Improvements
+Comprehensive player performance audit and fixes to eliminate UI lag and unnecessary re-renders.
+
+**Critical Fixes:**
+- **enterDirectScrub callback**: Removed position from dependencies, uses `getState()` instead
+  - Previously recreated ~2x/sec during playback, now stable
+- **Timeline useEffect throttle**: Added 100ms throttle to position-based timeline updates
+  - Reduces unnecessary work during playback
+
+**Moderate Fixes:**
+- **Batched store subscriptions**: Combined 10 individual action subscriptions into single `useShallow` call
+- **Sheet handler callbacks**: Created stable `closeSheet`, `openChapters`, `openSettings`, `openQueue` callbacks
+  - Replaced 8 inline arrow functions in JSX
+- **ChapterListItem component**: Extracted memoized component for chapter list
+  - Prevents re-render of all chapters on position update
+
+**Polish:**
+- **Memoized insets styles**: `safeAreaStyles.topSpacer/bottomSpacer` instead of inline objects
+- **Memoized time formatting**: `formattedPosition/formattedDuration` only recalculate on whole second change
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - All performance fixes
+
+### Documentation
+- `docs/PLAYER_PERFORMANCE_AUDIT.md` - Comprehensive audit report with findings and fixes
+
+---
+
+## [0.6.74] - 2026-01-01
+
+### Fixed
+- **Play/pause button lag**: Replaced inline function with memoized callback
+  - Uses `getState()` to avoid callback recreation on position/isPlaying updates
+  - Eliminates lag when tapping play/pause during active playback
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Add memoized `handlePlayPause` callback
+
+---
+
+## [0.6.72] - 2026-01-01
+
+### Removed
+- **CD mode completely removed**: Removed all CD disc animation code from player
+  - Eliminates potential source of performance issues and memory leaks
+  - Reduces bundle size by removing CDDisc component, CDProgressBar, MaskedView
+  - Player now uses standard cover art mode exclusively
+
+### Simplified
+- **Player screen cleanup**: Removed conditional mode switching logic
+  - Simplified background blur and gradient code
+  - Removed unused disc rotation, scrub speed, and spin burst variables
+  - Removed CD-specific UI overlays (pills, spindle, disc ring)
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Remove all CD mode code, simplify player
+
+---
+
+## [0.6.63] - 2026-01-01
+
+### Added
+- **View More navigation**: "View More" buttons on Browse screen now navigate to filtered book lists
+  - New `FilteredBooksScreen` shows books matching each row's criteria
+  - Supports all filter types: new this week, short books, long listens, mood-matched, etc.
+  - Includes search functionality within filtered results
+
+- **Genres sorted by popularity**: Browse screen genre chips now show most popular genres first
+  - Genres sorted by book count instead of alphabetically
+  - Top 7 most popular genres shown in filter chips
+  - New `getGenresByPopularity()` cache function
+
+### Improved
+- **Mood-aware View More**: When mood session active, View More shows all mood-matched books
+  - Books sorted by mood match percentage
+  - Shows match percentage on each book card
+
+### Files Added
+- `src/features/library/screens/FilteredBooksScreen.tsx` - Filtered books list screen
+
+### Files Modified
+- `src/features/discover/types.ts` - Add FilterType, filterType/filterParams to ContentRow
+- `src/features/discover/hooks/useDiscoverData.ts` - Use getGenresByPopularity, add filterType to rows
+- `src/features/discover/components/ContentRowCarousel.tsx` - Navigate to FilteredBooks with params
+- `src/core/cache/libraryCache.ts` - Add getGenresByPopularity function
+- `src/core/cache/index.ts` - Export getGenresByPopularity
+- `src/navigation/AppNavigator.tsx` - Register FilteredBooksScreen
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.62] - 2026-01-01
+
+### Improved
+- **Tag-based mood scoring (Fix 1)**: Replaced regex-based theme/trope parsing with proper tag-based scoring
+  - Uses `item.media.tags` metadata instead of parsing description text
+  - More reliable mood matching with explicit tag→mood mappings
+  - Comprehensive tag maps for moods, pace, weight, world dimensions
+  - New tagScoring utility with partial match support
+
+- **Genre filtering accuracy (Fix 2)**: Fixed over-matching in genre filters
+  - "Romance" no longer matches "Romantic Comedy", "Dark Romance", etc.
+  - Uses word-boundary matching instead of naive `.includes()`
+  - Ensures exact genre matches in browse filters
+
+- **Mood session expiry validation (Fix 3)**: Sessions now properly expire after 24 hours
+  - Real-time check of `expiresAt` timestamp when rendering recommendations
+  - Prevents stale mood sessions from appearing in browse screen
+
+- **Recommendation group priority cap (Fix 4)**: Capped mood recommendation groups to 3
+  - Priority formula changed from `2 + index * 0.5` to `2 + index * 0.3`
+  - Prevents priority collision with other content rows (all < 3.0)
+
+- **Mood score map freshness (Fix 5)**: Added `libraryItems` dependency to moodScoreMap
+  - Scores now recalculate when library changes
+  - Prevents stale match percentages after library updates
+
+- **Omnibus series editions (Fix 6)**: Proper handling of multi-book omnibus editions
+  - Sequences like "1-3" now correctly parsed (start=1, end=3)
+  - Finished omnibus editions count as completing all contained books
+  - Omnibus appropriate for recommendations if user has reached its start
+
+### Files Added
+- `src/features/mood-discovery/constants/tagMoodMap.ts` - Tag→dimension mappings
+- `src/features/mood-discovery/utils/tagScoring.ts` - Tag scoring utility
+- `src/features/mood-discovery/constants/index.ts` - Barrel export
+- `src/features/mood-discovery/utils/index.ts` - Barrel export
+
+### Files Modified
+- `src/features/mood-discovery/hooks/useMoodRecommendations.ts` - Use tag-based scoring
+- `src/features/discover/hooks/useDiscoverData.ts` - Genre matching, expiry check, priority cap, dependencies
+- `src/shared/utils/seriesFilter.ts` - Omnibus edition handling
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.61] - 2026-01-01
+
+### Improved
+- **Fix 3 verification**: Added logging in sessionService to verify server returns `updatedAt` timestamp
+  - Logs "Updated At: NOT PRESENT" if server doesn't return it (will help debug)
+- **Fix 2 timeout tuning**: Enhanced timeout logging with analytics
+  - Tracks `session_timeout` event with timeout duration, local position, book ID
+  - Logs actual wait time and position comparison when session eventually connects
+  - Data helps tune the 2-second timeout value
+
+### Files Modified
+- `src/features/player/services/sessionService.ts` - Log updatedAt/startedAt
+- `src/features/player/stores/playerStore.ts` - Add timeout analytics, import trackEvent
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.60] - 2026-01-01
+
+### Fixed
+- **Cross-device sync: Timestamp-based position resolution (FIX 3)**
+  - Replaced `Math.max(local, server)` with timestamp-based resolution
+  - Now respects intentional rewinds on another device
+  - The more recently updated position wins, not the higher one
+  - New `positionResolver.ts` utility for unified resolution logic
+
+- **Offline playback: No more jarring seek (FIX 2)**
+  - Races session against 2-second timeout instead of fire-and-forget
+  - Position is resolved BEFORE playback starts
+  - If session arrives in time, uses timestamp-based resolution
+  - If timeout, uses local progress and connects session in background for sync only
+
+- **Background sync: Properly awaited before app suspension (FIX 1)**
+  - `forceSyncAll()` now awaited with 4-second timeout (iOS has ~5s before suspension)
+  - Prevents data loss when user backgrounds the app during playback
+  - Added tracking/warning when sync times out
+
+- **Queue debounce: Always save, process with debounce (FIX 4)**
+  - Removed 10-second position delta threshold for queueing
+  - Small rewinds (< 10 seconds) are now properly saved
+  - Queue processing happens after 5s of inactivity OR 30s max delay
+  - Prevents losing small position changes when closing app quickly
+
+- **Large seeks: Immediate sync (FIX 5)**
+  - Seeks > 1 minute trigger immediate server sync (fire-and-forget)
+  - Ensures server knows about significant position changes quickly
+  - Reduces risk of losing progress if app is closed immediately after seeking
+
+### Technical Details
+- Position resolver uses 30-second "same session" window for forward-progress (max)
+- Outside that window, compares `updatedAt` timestamps
+- Added `updatedAt` field to sessionService's PlaybackSession interface
+- Background sync uses debounced scheduler instead of threshold-based queueing
+
+### Files Modified
+- `src/features/player/utils/positionResolver.ts` - NEW: Unified position resolution
+- `src/features/player/utils/index.ts` - Export position resolver
+- `src/features/player/stores/playerStore.ts` - Use resolver, fix offline path, add immediate sync
+- `src/features/player/services/backgroundSyncService.ts` - Await with timeout, debounced queue
+- `src/features/player/services/sessionService.ts` - Add updatedAt to interface
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.59] - 2026-01-01
+
+### Fixed
+- **Cross-device playback position sync**
+  - Online playback now compares local AND server progress, uses the higher one
+  - Offline playback reconciles with server position when background session completes
+  - Fixes issue where position would not resume correctly across devices
+
+### Technical
+- `playerStore.loadBook()`: Compare `localProgress` vs `session.currentTime`, use `Math.max()`
+- Offline mode: After background session starts, seek to server position if 5+ seconds ahead
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` - Position reconciliation logic
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.58] - 2025-12-31
+
+### Fixed
+- **Browse screen crash on Android**
+  - Fixed `sqliteCache.getFinishedBooks is not a function` error
+  - Incorrect method name in `useRecommendations.ts` (should be `getFinishedUserBooks`)
+  - Added defensive guards in `seriesFilter.ts` for undefined function checks
+
+### Improved
+- **Audio playback debugging**
+  - Added better logging for media control pause events
+  - Added error handling for pause function failures
+  - Helps debug intermittent notification widget issues
+
+### Files Modified
+- `src/features/recommendations/hooks/useRecommendations.ts` - Fix method name
+- `src/shared/utils/seriesFilter.ts` - Add undefined guards
+- `src/features/player/services/audioService.ts` - Add pause logging
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.57] - 2025-12-31
+
+### Changed
+- **Book detail screen: Layout reorder**
+  - Genre tags moved above the cover image
+  - Stats (duration/chapters) moved above the title
+  - New order: Genres → Cover → Stats → Title → Credits → Progress → Buttons
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.56] - 2025-12-31
+
+### Changed
+- **Book detail screen: Credits width matches title**
+  - Author/narrator section now uses `paddingHorizontal: 20` instead of fixed cover width
+  - Consistent alignment with title and buttons
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.55] - 2025-12-31
+
+### Changed
+- **Book detail screen: Larger base title font**
+  - Increased title fontSize from 24px to 32px before auto-fit scaling
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.54] - 2025-12-31
+
+### Changed
+- **Book detail screen: Title width matches button section**
+  - Title now uses `paddingHorizontal: 20` instead of fixed cover width
+  - Aligns with buttons for consistent layout
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.53] - 2025-12-31
+
+### Changed
+- **Book detail screen: Added spacing below title**
+  - Increased title marginBottom from 4px to 16px
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.52] - 2025-12-31
+
+### Changed
+- **Book detail screen: Allow 2 lines for author/narrator names**
+  - Changed `numberOfLines` from 1 to 2 for credits
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.51] - 2025-12-31
+
+### Fixed
+- **Book detail screen: Author/narrator text overflow**
+  - Credit row now constrained to cover width (280px)
+  - Long names scale down with `adjustsFontSizeToFit` (min 70%)
+  - Each cell gets equal width (`flex: 1`) within the row
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Credit text scaling
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.50] - 2025-12-31
+
+### Changed
+- **Book detail screen: Equal button widths**
+  - Download and Stream/Play buttons now same size (both `flex: 1`)
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Button flex values
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.49] - 2025-12-31
+
+### Changed
+- **Book detail screen: Title constrained to cover width**
+  - Title container now matches cover width (280px)
+  - Long titles scale down to fit within cover width
+  - Reduced minimum font scale to 60% for longer titles
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Title container width
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.48] - 2025-12-31
+
+### Changed
+- **Book detail screen: Button order and title scaling**
+  - Moved Queue (+) button to the left: (+) → Download → Play/Stream
+  - Title now auto-scales to fit available space (`adjustsFontSizeToFit`)
+  - Minimum font scale of 70% to maintain readability
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Button order, title scaling
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.47] - 2025-12-31
+
+### Changed
+- **Book detail screen: Icon and layout fixes**
+  - Fixed finished badge icons to use Bookmark icons:
+    - Uncompleted: Bookmark outline with black stroke on white background
+    - Completed: BookmarkCheck (white) on gold background
+  - Centered author/narrator credits with headers above each name
+  - Centered the entire credits group on screen
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Icons, centered credits
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.46] - 2025-12-31
+
+### Changed
+- **Book detail screen: Button and layout refinements**
+  - Reordered buttons: Download → Play/Stream → Queue (+)
+  - Author/Narrator now side by side with "Written by" / "Narrated by" headers
+  - Improved finished badge icons:
+    - Uncompleted: Circle outline icon with white fill background
+    - Completed: Filled checkmark circle (CheckCircle2)
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Button order, credits layout, icons
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.45] - 2025-12-31
+
+### Changed
+- **Book detail screen: Cleaner typography and layout**
+  - Moved back button off cover to top-left of screen
+  - Removed divider lines for cleaner look
+  - Centered title with larger font (24px)
+  - Simplified author/narrator display (no labels, inline text)
+  - Combined duration & chapters into single line with icons: `(clock) 1h 6m · (list) 12 chapters`
+  - Removed tab container border
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Layout and typography cleanup
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.44] - 2025-12-31
+
+### Changed
+- **Book detail screen: UX improvements based on research**
+  - **"Continue X%" button**: Play button now shows progress percentage (e.g., "Continue 47%") instead of generic "Resume" - leverages Goal Gradient Effect (Kivetz et al.)
+  - **Genre tags in hero section**: Top 3 genres displayed above title for quick book categorization
+  - **Smaller cover size**: Reduced from 360px to 280px (~45% height) to show more content above the fold per NNGroup research (57% of viewing time above fold)
+
+### Technical Details
+- `getPlayButtonContent()` now returns `Continue ${progressPercent}%` for in-progress books
+- Added `heroGenreTags` view after cover section, before title
+- Added styles: `heroGenreTags`, `heroGenreTag`, `heroGenreTagText`
+- `COVER_SIZE` constant reduced from `scale(360)` to `scale(280)`
+
+### Already Implemented (verified)
+- Description truncation with "Read more" (OverviewTab - 200 char limit)
+- Per-chapter progress bars in ChaptersTab (current chapter shows progress + time remaining)
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Button text, genre tags, cover size
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.43] - 2025-12-31
+
+### Added
+- **Author detail screen: Research-backed UX improvements**
+  - **Continue Listening section** (Zeigarnik Effect): Shows in-progress books first, sorted by highest progress (Goal Gradient effect). Includes visual progress bars and "time remaining" text
+  - **Genre tags** in hero section: Top 3 genres aggregated from author's books
+  - **Sort controls** for All Books: Sort by Title, Recent, Duration, or Series
+  - **"Readers Also Enjoy" section**: Similar authors carousel based on genre overlap (at least 30% shared genres)
+
+### Technical Details
+- Added `continueListeningBooks` useMemo: filters in-progress books, sorts by highest progress
+- Added `authorGenres` useMemo: aggregates and ranks genres from all books
+- Added `similarAuthors` useMemo: calculates genre overlap scores with other authors
+- Added `sortOption` state with support for 'title', 'recent', 'duration', 'series' sorts
+- ListFooterComponent displays Similar Authors carousel
+- All new sections follow progressive disclosure pattern per NNGroup research
+
+### Research References
+- NNGroup: Hub-and-spoke model, content above the fold (57% viewing time), progressive disclosure
+- Baymard Institute: Social proof, series organization reduces abandonment
+- Psychology: Zeigarnik Effect (incomplete tasks), Goal Gradient Effect (motivation near completion)
+- Competitors: Audible author pages, Spotify artist pages, Netflix cast discovery
+
+### Files Modified
+- `src/features/author/screens/AuthorDetailScreen.tsx` - All new sections and features
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.42] - 2025-12-31
+
+### Fixed
+- **Author detail screen: Books not showing for authors with name variations**
+  - Issue: "Bill Martin" author page showed "No books found" even though book was authored by "Bill Martin Jr."
+  - Root cause: Cache indexed books by exact author name string, missing variations (Jr./Sr. suffixes, co-authors)
+  - Fix: Now fetches author's books directly from API using author ID, which has correct book-to-author mappings
+  - Falls back to cache-based matching if API fetch fails
+
+### Technical Details
+- Added `authorBooks` state to store API-fetched books
+- Added `useEffect` to call `getAuthor(id, { include: 'items' })` when author ID is available
+- `sortedBooks` now prefers API-fetched books over cache name-matching
+
+### Files Modified
+- `src/features/author/screens/AuthorDetailScreen.tsx` - API-based book fetching
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.41] - 2025-12-31
+
+### Changed
+- **Symmetric stacked covers on Author/Narrator detail screens**
+  - Header now shows max 5 cards total (author/narrator in center + up to 4 book covers)
+  - Books are always distributed evenly on each side for symmetric appearance
+  - If only 1 book exists, shows just the author/narrator image (no covers)
+  - If 3 books exist, shows 2 (1 on each side) to maintain symmetry
+  - If 4+ books exist, shows 4 (2 on each side)
+
+### Files Modified
+- `src/features/author/screens/AuthorDetailScreen.tsx` - Symmetric StackedCovers logic
+- `src/features/narrator/screens/NarratorDetailScreen.tsx` - Symmetric StackedCovers logic
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.40] - 2025-12-31
+
+### Changed
+- **Author/Narrator detail screens: Cover alignment and styling**
+  - Header image (author/narrator) is now a square with rounded corners, matching book cover style
+  - Previously was circular, now consistent with rest of UI
+
+- **Author detail screen: Narrator names are now clickable**
+  - Tapping narrator name in book list navigates to NarratorDetailScreen
+  - Displayed in accent color to indicate interactivity
+
+- **Narrator detail screen: Author cards now show author images**
+  - Author cards display actual author image when available
+  - Falls back to initials with color if no image
+
+- **Removed play buttons from book list items**
+  - Both Author and Narrator detail screens no longer show giant play buttons on book rows
+  - Cleaner UI - tap book row to go to detail, play from there
+
+### Files Modified
+- `src/features/author/screens/AuthorDetailScreen.tsx` - Square cover, narrator links, removed play button
+- `src/features/narrator/screens/NarratorDetailScreen.tsx` - Square cover, author images, removed play button
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.39] - 2025-12-31
+
+### Added
+- **Author detail screen: Series section**
+  - New horizontal scrollable series section above "All Books"
+  - Shows fanned book covers for each series with book count
+  - Tapping a series navigates to SeriesDetailScreen
+
+- **Author detail screen: Author image in stacked covers**
+  - Author's image (or initials fallback) now displays as center cover in the fanned stack
+  - Circular styling with white border distinguishes it from book covers
+  - Automatically generates avatar color based on author name
+
+- **Narrator detail screen: Authors section**
+  - New horizontal scrollable authors section above "All Books"
+  - Shows author avatar with initials and book count
+  - Tapping an author navigates to AuthorDetailScreen
+
+- **Narrator detail screen: Narrator initials in stacked covers**
+  - Narrator's initials now display as center cover in the fanned stack
+  - Circular styling with white border distinguishes it from book covers
+  - Automatically generates avatar color based on narrator name
+
+### Files Modified
+- `src/features/author/screens/AuthorDetailScreen.tsx` - Series section, author image in StackedCovers
+- `src/features/narrator/screens/NarratorDetailScreen.tsx` - Authors section, narrator initials in StackedCovers
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.38] - 2025-12-31
+
+### Fixed
+- **Critical playback position race conditions**
+  - Play button now works reliably after chapter ends
+  - Sleep timer: play resumes from correct position (not earlier position)
+  - Scrubbing/seeking no longer causes wrong chapter to play
+  - These fixes apply to both multi-file and single-file audiobooks, streaming and downloaded
+
+### Technical Details
+- **Event listener cleanup**: Prevent listener stacking on retry by tracking and removing old listeners
+- **Position sync in pause()**: Capture actual position from audioService BEFORE pausing to prevent stale position storage
+- **Track switch handling**: Increased waitForTrackReady timeout from 300ms to 500ms, update position cache after track switch
+- **Robust track end handling**: Set trackSwitchInProgress flag before changing track index to prevent race conditions
+- **Scrubbing debounce increased**: Changed from 50ms to 150ms to prevent pending track switches being overwritten
+- **Smart rewind validation**: Added safety check to detect stale position data (>60s difference) and use actual position instead
+- **ChaptersTab timing**: Added small delay between seekTo and play to ensure seek completes
+
+### Files Modified
+- `src/features/player/services/audioService.ts` - Event listener cleanup, track switch handling, debounce timing
+- `src/features/player/stores/playerStore.ts` - Position sync in pause(), smart rewind validation
+- `src/features/book-detail/components/ChaptersTab.tsx` - Timing fix for chapter tap
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.37] - 2025-12-30
+
+### Added
+- **Dark mode support for BookDetailScreen**
+  - Screen now respects the app's theme setting (light/dark mode)
+  - All colors dynamically adapt using `useColors()` and `useThemeMode()` hooks
+  - StatusBar adapts to light/dark content based on theme
+  - Gradient overlays and BlurView tint adapt to theme
+  - Badges (back button, series, finished) use theme surface colors
+  - OverviewTab and ChaptersTab components also updated for dark mode
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Full dark mode support
+- `src/features/book-detail/components/OverviewTab.tsx` - Dark mode colors
+- `src/features/book-detail/components/ChaptersTab.tsx` - Dark mode colors
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.36] - 2025-12-30
+
+### Fixed
+- **In Progress list not updating when starting a new book**
+  - Added event listener for `book:started` that invalidates in-progress queries
+  - When a new book starts playing, the home screen now refetches and re-sorts the list
+  - Most recently played book now correctly appears at the top
+
+---
+
+## [0.6.35] - 2025-12-30
+
+### Changed
+- **Player download indicator redesigned**
+  - Download button: black Download icon in white filled circle (no border)
+  - When downloading: circular progress indicator with percentage
+  - When downloaded: white checkmark (no circle)
+  - Fixed CloudDownload icon not found - using Download icon instead
+
+---
+
+## [0.6.33] - 2025-12-30
+
+### Fixed
+- **Player download button not responding to taps**
+  - Increased z-index of top-left and top-right overlays to 25 (above center close button at 20)
+  - Close button's full-width layout was intercepting touches on corner icons
+
+---
+
+## [0.6.32] - 2025-12-30
+
+### Changed
+- **Player download/streaming icons refined**
+  - Downloaded indicator: just a white checkmark (no circle)
+  - Not downloaded: CloudDownload icon inside white stroke circle
+  - Tapping the cloud icon starts downloading the book
+
+---
+
+## [0.6.31] - 2025-12-30
+
+### Changed
+- **Player download/streaming icons redesigned**
+  - Downloaded indicator: white stroke circle with checkmark (no solid background)
+  - Not downloaded: CloudDownload icon (cloud with arrow)
+  - Tapping the cloud icon starts downloading the book for offline use
+  - Added haptic feedback on download start
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Updated icons and added download functionality
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.30] - 2025-12-30
+
+### Changed
+- **Consolidated finished books sync**
+  - Player's `markBookFinished` now uses SQLite `user_books` as single source of truth
+  - Syncs to server in background via `finishedBooksSync.syncBook()`
+  - App initializer now runs `finishedBooksSync.fullSync()` on authenticated startup
+  - Imports finished books from server then syncs local unsynced changes
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` - Use SQLite-first approach for marking finished
+- `src/core/services/appInitializer.ts` - Add finished books sync on startup
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.29] - 2025-12-30
+
+### Changed
+- **BookDetailScreen cover overlays**
+  - Added series badge to top right corner of cover (clickable to navigate to series)
+  - Shows series name and book number (e.g., "Harry Potter #3")
+  - Moved mark as finished button to bottom left corner of cover
+  - Mark as finished button shows white checkmark, filled white when completed
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Added series and finished badges
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.28] - 2025-12-30
+
+### Changed
+- **CD Player header final polish**
+  - Down arrow now white and on top z-index
+  - Downloaded indicator now just a white stroke checkmark (no circle)
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Updated indicators
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.27] - 2025-12-30
+
+### Changed
+- **CD Player header icons refined**
+  - Settings icon now white filled circle with black gear
+  - Download/streaming arrows now white stroke style
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Updated icon styles
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.26] - 2025-12-30
+
+### Changed
+- **CD Player header redesigned**
+  - All icons now white with circle borders (settings, checkmark, cloud)
+  - Down arrow smaller and white
+  - Added dark gradient overlay at top for icon visibility
+  - Chapter title and time now centered (title above, time below)
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Header icons, gradient, centered info
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.25] - 2025-12-30
+
+### Changed
+- **CD Player header icons redesigned**
+  - Settings icon now uses circle style matching other icons
+  - Downloaded/Streaming indicator now icon-only (removed text labels)
+  - Cleaner, more consistent visual design
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Updated header icons
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.24] - 2025-12-30
+
+### Fixed
+- **Finished tab not updating after marking book as finished**
+  - Fixed `useFinishedBookIds` to use `useMemo` instead of `useState`+`useEffect` for synchronous cache updates
+  - Updated HomeScreen to fetch finished books from library cache when not in recently listened or downloaded lists
+  - Books marked as finished from BookDetailScreen now immediately appear in the Finished tab
+
+### Files Modified
+- `src/core/hooks/useUserBooks.ts` - Fixed useFinishedBookIds to use useMemo
+- `src/features/home/screens/HomeScreen.tsx` - Added library cache lookup for finished books
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.23] - 2025-12-30
+
+### Changed
+- **Single source of truth for finished books**
+  - Consolidated finished book tracking to SQLite `user_books` table
+  - Replaced in-memory galleryStore.markedBooks with persistent SQLite storage
+  - Auto-marks books as finished when reaching 99% progress
+  - Two-way sync with server (imports server state on startup, pushes local changes)
+  - Added undo support with 15-second timeout for all mark/unmark actions
+
+### Added
+- `src/core/services/finishedBooksSync.ts` - Bidirectional sync service for finished books
+- `useBulkMarkFinished` hook for marking multiple books at once (by author/series)
+- `useUndoableMarkFinished` hook with undo/redo support
+- `useFinishedBookIds` hook for efficient finished book lookup
+- Migration from galleryStore to SQLite on app startup
+
+### Technical
+- `UserBook.finishSource` now tracks how book was marked: 'manual', 'progress', 'bulk_author', 'bulk_series'
+- Auto-finish triggers at 99% progress in `updateUserBookProgress`
+- galleryStore.ts now only manages wizard UI state (processedAuthors/Series, filters)
+- All finished book queries go through React Query for caching
+
+### Files Modified
+- `src/core/services/sqliteCache.ts` - Added migration, bulk mark, auto-finish at 99%
+- `src/core/hooks/useUserBooks.ts` - Added bulk, undo, and convenience hooks
+- `src/core/services/appInitializer.ts` - Added migration call
+- `src/core/services/finishedBooksSync.ts` - NEW: Server sync service
+- `src/features/reading-history-wizard/stores/galleryStore.ts` - Removed book tracking
+- `src/features/reading-history-wizard/hooks/useReadingHistory.ts` - Uses SQLite
+- `src/features/reading-history-wizard/screens/MarkBooksScreen.tsx` - Uses new hooks
+- `src/features/reading-history-wizard/screens/ReadingHistoryScreen.tsx` - Uses new hooks
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Uses new hooks
+- `src/features/library/screens/MyLibraryScreen.tsx` - Uses useFinishedBookIds
+- `src/features/discover/hooks/useDiscoverData.ts` - Uses useReadingHistory
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.22] - 2025-12-30
+
+### Added
+- **Mark as Finished button in Book Details**
+  - Added checkmark button in top right corner of book detail screen
+  - When not finished: empty checkmark icon, tapping marks book as finished
+  - When finished: filled gold checkmark, tapping shows confirmation to remove from history
+  - Shows loading spinner during operation
+  - Includes undo snackbar after marking finished
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Added header button
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.21] - 2025-12-30
+
+### Changed
+- **Natural time format for "last played"**
+  - Now shows "30 sec ago", "5 min ago", "2 hours ago", "3 days ago", "1 week ago" etc.
+  - Much more readable than abbreviated format like "3d"
+
+- **Live-updating time display**
+  - Time since last played updates every 30 seconds
+  - No need to refresh the screen to see updated times
+
+- **Profile toggles converted to switches**
+  - Dark Mode and Hide Single-Book Series now use actual toggle switches
+  - More intuitive than tapping with badge indicators
+
+### Technical
+- **lastPlayed tracking**
+  - Uses server's `userMediaProgress.lastUpdate` timestamp (synced during playback)
+  - Also checks `progressLastUpdate` at top level for compatibility
+  - Server updates this when progress is synced (typically every 15-30 seconds during playback)
+
+### Files Modified
+- `src/features/home/components/TextListSection.tsx` - Updated time format, added live refresh
+- `src/features/home/components/ContinueListeningSection.tsx` - Updated time format
+- `src/features/profile/screens/ProfileScreen.tsx` - Added ProfileToggle component
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.20] - 2025-12-30
+
+### Changed
+- **Simplified Profile screen**
+  - Removed: Wishlist, Reading History, Reading Preferences options
+  - Removed: Haptic Feedback settings link
+  - Removed: Cassette Player Test from developer section
+
+- **Simplified Playback settings**
+  - Removed: Joystick Seek Settings
+  - Removed: Spinning Disc toggle
+  - Removed: Joystick Seek toggle
+  - Removed: Standard Player toggle
+
+### Fixed
+- **Sign Out button styling on light mode**
+  - Button now uses appropriate colors for both light and dark modes
+  - Dark mode: Bright red on dark background
+  - Light mode: Darker red on lighter background
+
+- **App logo in footer visibility**
+  - Increased logo size from 48px to 64px
+  - Added container with subtle background for light mode
+  - App name text now uses textSecondary for better visibility
+
+### Files Modified
+- `src/features/profile/screens/ProfileScreen.tsx` - Removed options, fixed styling
+- `src/features/profile/screens/PlaybackSettingsScreen.tsx` - Removed player appearance options
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.19] - 2025-12-30
+
+### Fixed
+- **"Time since last played" now shows on home screen book cards**
+  - Fixed data extraction to check both `progressLastUpdate` (top-level) and `userMediaProgress.lastUpdate`
+  - Fixed timestamp conversion from seconds to milliseconds
+  - Now shows "2h", "3d", etc. next to book titles in In Progress tab
+
+### Files Modified
+- `src/features/home/components/TextListSection.tsx` - Fixed lastUpdate field extraction
+- `src/features/home/components/ContinueListeningSection.tsx` - Fixed lastUpdate field and timestamp conversion
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.18] - 2025-12-30
+
+### Changed
+- **Timeline scrubbing now starts immediately on drag**
+  - Removed 300ms long-press requirement - scrubbing starts as soon as you start dragging
+  - Small 10px movement threshold to distinguish from accidental touches
+- **Disabled tap-to-seek on timeline**
+  - Timeline now only responds to drag gestures, not taps
+  - Prevents accidental position jumps when trying to scrub
+
+### Fixed
+- **Book title overlap with chapter row**
+  - Increased chapter row top position from scale(530) to scale(570)
+  - Long book titles now have room without overlapping chapter info
+- **Reading History "Property 'styles' doesn't exist" error**
+  - Added module-level COLORS and styles constants for helper components
+  - Helper components (ViewTabs, ProgressBar, etc.) now have access to styles
+- **Bookmark popup redesigned as pill**
+  - Replaced bottom toast with animated pill that grows from bookmark button
+  - Pill appears near the cover bookmark button
+  - "Add Note" option available directly in the pill
+
+### Changed
+- **Home screen book card interactions**
+  - Cover tap: Loads book to player (paused, ready to play)
+  - Cover long press: Opens book details
+  - Title/author tap: Opens book details
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Timeline gesture changes, bookmark pill, layout fix
+- `src/features/reading-history-wizard/screens/MarkBooksScreen.tsx` - Fixed styles error
+- `src/features/home/components/TextListSection.tsx` - Separated touch interactions
+- `src/features/home/screens/HomeScreen.tsx` - New cover/details handlers
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.17] - 2025-12-30
+
+### Added
+- **Hold-to-scrub on rewind/fast-forward buttons**
+  - Tap buttons to skip by configured interval (e.g., 15 seconds)
+  - Hold buttons to continuously seek - accelerates over time:
+    - First 1 second: 2 seconds per tick (20 sec/s)
+    - 1-2 seconds: 5 seconds per tick (50 sec/s)
+    - 2-4 seconds: 10 seconds per tick (100 sec/s)
+    - 4+ seconds: 15 seconds per tick (150 sec/s)
+  - Haptic feedback when seeking accelerates
+  - Works on both Standard Player and CD Player modes
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Added continuous seeking logic
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.16] - 2025-12-30
+
+### Fixed
+- **Android showing 1 column instead of 2 in "New This Week" grid**
+  - Issue was inconsistent use of scaled vs unscaled values in card width calculation
+  - Changed to use unscaled values consistently and added `Math.floor` to prevent overflow
+  - Grid now shows 2 columns on both iOS and Android
+
+### Files Modified
+- `src/features/discover/components/ContentRowCarousel.tsx` - Fixed grid layout calculation
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.15] - 2025-12-30
+
+### Added
+- **Android hardware back button support**
+  - Pressing back button now closes bottom sheets first, then closes the player
+  - Proper event handling to prevent exiting the app
+
+- **Improved swipe-down gesture to close player**
+  - Works on both iOS and Android
+  - Uses capture phase to grab gestures before child elements
+  - Smooth slide-out animation when closing
+  - Spring-back animation when cancelled
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Added BackHandler, improved panResponder
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.14] - 2025-12-30
+
+### Changed
+- **Standard Player layout now uses absolute positioning**
+  - Converted cover, title section, chapter row, progress bar, and controls bar to absolute positioning
+  - Layout no longer shifts when individual elements change size
+  - Controls bar properly accounts for safe area insets at bottom
+  - Progress bar positioned above controls with proper spacing
+
+### Technical Details
+- Cover: absolute at top scale(100)
+- Title section: absolute at top scale(430)
+- Chapter row: absolute at top scale(530)
+- Progress bar: absolute at bottom + insets.bottom + scale(80)
+- Controls bar: absolute at bottom + insets.bottom
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Converted Standard Player to absolute positioning
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.13] - 2025-12-30
+
+### Fixed
+- **Scrub position not persisting when paused**
+  - Timeline scrubbing while paused then hitting play would jump back to original position
+  - **Root cause**: Timeline scrubbing wasn't calling `audioService.setScrubbing()`, so SmartRewind would activate on play using the OLD pause position
+  - **Fix 1**: Added `audioService.setScrubbing(true/false)` calls to timeline scrub enter/exit
+  - **Fix 2**: `seekTo()` now updates playerStore.position immediately (not just waiting for slow 2000ms polling callback when paused)
+
+- **Jarring position jump when loading a book**
+  - Book would show stale position from previous book during loading, then jump to correct position
+  - **Fix**: Now fetches saved position early (from local SQLite) and sets it immediately before async loading begins
+  - Position is displayed correctly from the start of loading
+
+### Changed
+- **Standard Player cover now matches book detail page style**
+  - Centered square cover (320px) instead of full-width
+  - Rounded corners with drop shadow
+  - Blurred background with light tint (like book detail page)
+  - Queue/bookmark overlay buttons repositioned for smaller cover
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Added setScrubbing calls, updated Standard Player cover style
+- `src/features/player/stores/playerStore.ts` - seekTo updates position immediately, loadBook fetches early position
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.12] - 2025-12-30
+
+### Fixed
+- **Chapter markers appearing in wrong positions on timeline**
+  - **Root cause**: Tick positions were stored in pixels using a hardcoded TIMELINE_WIDTH (300), but rendered using device-dependent TIMELINE_WIDTH (SCREEN_WIDTH - scale(44))
+  - **Fix**: Tick positions now stored in seconds (time-based), converted to pixels at render time
+  - This ensures cached ticks work correctly across all device screen sizes
+  - Tick cache version bumped to v3 to invalidate old pixel-based caches
+
+### Technical Details
+- Changed `TimelineTick.x` (pixels) to `TimelineTick.time` (seconds)
+- Updated `getVisibleTicks()` to filter by time instead of pixels
+- CDPlayerScreen now converts `tick.time * PIXELS_PER_SECOND` when rendering
+
+### Files Modified
+- `src/features/player/utils/tickGenerator.ts` - Store tick positions in seconds
+- `src/features/player/services/tickCache.ts` - Bump cache version to v3
+- `src/features/player/screens/CDPlayerScreen.tsx` - Convert seconds to pixels at render
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.11] - 2025-12-30
+
+### Fixed
+- **Documentation error in PLAYER_DEEP_DIVE.md**
+  - Corrected seeking system documentation that incorrectly described timeline scrubbing
+  - Now clearly distinguishes between two seek mechanisms:
+    - **Timeline scrubbing**: Uses `isDirectScrubbing` (local UI state) + Reanimated shared values (60fps)
+    - **Continuous seeking** (FF/RW buttons): Uses `isSeeking` in playerStore
+  - Previous documentation incorrectly claimed timeline scrubbing sets `isSeeking = true`
+
+### Files Modified
+- `docs/PLAYER_DEEP_DIVE.md` - Fixed seeking system documentation
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.10] - 2025-12-30
+
+### Changed
+- **Standard Player layout reorganization**
+  - Cover image now appears above title/author metadata
+  - Timeline moved directly above player controls (skip/play/skip)
+  - Creates cleaner visual hierarchy: Cover → Title → Chapter Info → Timeline → Controls
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Reorganized Standard Player layout
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.9] - 2025-12-30
+
+### Added
+- **Timeline tick caching system** - Pre-generates and caches timeline ticks for better performance
+  - Downloaded books: Ticks are pre-generated and persisted to AsyncStorage after download completes
+  - Last played book: Ticks are pre-warmed in memory when home screen loads
+  - Falls back to on-demand generation if cache miss (still functional, just first load may be slower)
+
+### Changed
+- **ChapterTimelineProgressBar** - Now accepts `libraryItemId` prop for tick cache lookup
+- **Download flow** - Generates and caches ticks after download completes (non-blocking)
+- **Home screen** - Pre-warms tick cache for current/last played book on load
+
+### Technical Details
+- New files:
+  - `src/features/player/services/tickCache.ts` - Cache service with memory + AsyncStorage
+  - `src/features/player/utils/tickGenerator.ts` - Tick generation utilities
+- Tick generation happens once per book, cached indefinitely until book is deleted
+- Memory cache provides instant access, AsyncStorage provides persistence for downloaded books
+
+### Files Modified
+- `src/features/player/screens/CDPlayerScreen.tsx` - Pass libraryItemId to timeline
+- `src/features/player/services/tickCache.ts` - New tick caching service
+- `src/features/player/utils/tickGenerator.ts` - New tick generation utilities
+- `src/core/services/downloadManager.ts` - Generate ticks after download
+- `src/features/home/hooks/useHomeData.ts` - Pre-warm ticks for current book
+- `src/constants/version.ts` - Version bump
+
+---
+
 ## [0.6.8] - 2025-12-30
 
 ### Changed
 - **Enhanced timeline scrubbing** - Replaced joystick scrub with long-press + pan gesture
   - Long-press (300ms) on timeline activates direct scrub mode
   - Tap-to-seek remains instant (<150ms)
+  - **"DRAG TO SCRUB" tooltip** - Appears on long-press activation, disappears when dragging
   - Fine-scrub mode: Pull finger down for precision control
     - Normal: Full speed
     - Half speed: Finger 40px below start
     - Quarter speed: 80px below
     - Fine: 120px below
     - Fast (2x): Finger 40px above start
-  - Visual feedback: Timeline scale lift, speed mode indicator
+  - Visual feedback: Timeline scale lift, speed mode indicator, scrub tooltip
   - Haptic feedback: Chapter crossings (medium), minute markers (light), tap confirm, edge reached, mode changes
   - Snap-to-chapter: Auto-snaps when releasing within threshold of chapter boundary
   - New settings: `snapToChapterEnabled`, `snapToChapterThreshold` in settingsStore
