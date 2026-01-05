@@ -38,6 +38,9 @@ import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
 import { useTheme, wp, spacing, radius, accentColors } from '@/shared/theme';
 import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { useKidModeStore } from '@/shared/stores/kidModeStore';
+import { filterForKidMode } from '@/shared/utils/kidModeFilter';
+import { logger } from '@/shared/utils/logger';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = spacing.sm;
@@ -226,6 +229,9 @@ export function SearchScreen() {
   const [sortBy, setSortBy] = useState<SortOption>('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  // Kid Mode filter state
+  const kidModeEnabled = useKidModeStore((state) => state.enabled);
+
   // Get cached data
   const { filterItems, isLoaded } = useLibraryCache();
 
@@ -265,7 +271,7 @@ export function SearchScreen() {
         setPreviousSearches(JSON.parse(stored));
       }
     } catch (err) {
-      console.error('Failed to load search history:', err);
+      logger.error('Failed to load search history:', err);
     }
   };
 
@@ -276,7 +282,7 @@ export function SearchScreen() {
       setPreviousSearches(updated);
       await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to save search:', err);
+      logger.error('Failed to save search:', err);
     }
   };
 
@@ -285,7 +291,7 @@ export function SearchScreen() {
       setPreviousSearches([]);
       await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
     } catch (err) {
-      console.error('Failed to clear search history:', err);
+      logger.error('Failed to clear search history:', err);
     }
   };
 
@@ -295,7 +301,7 @@ export function SearchScreen() {
       setPreviousSearches(updated);
       await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to remove from history:', err);
+      logger.error('Failed to remove from history:', err);
     }
   };
 
@@ -338,8 +344,11 @@ export function SearchScreen() {
       }
     }
 
+    // Apply Kid Mode filter
+    results = filterForKidMode(results, kidModeEnabled);
+
     return results.slice(0, 100);
-  }, [filterItems, filters, hasActiveSearch, debouncedQuery]);
+  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled]);
 
   // Filter authors matching query (with fuzzy matching)
   const authorResults = useMemo(() => {
@@ -376,7 +385,9 @@ export function SearchScreen() {
     const lowerQuery = query.toLowerCase();
 
     // Books - simple text, max 2 (per research: 4-6 total suggestions)
-    const books = filterItems({ query: query.trim() })
+    // Apply Kid Mode filter to autocomplete results
+    const filteredBooks = filterForKidMode(filterItems({ query: query.trim() }), kidModeEnabled);
+    const books = filteredBooks
       .slice(0, 2)
       .map(book => {
         const metadata = book.media?.metadata as any;
@@ -420,7 +431,7 @@ export function SearchScreen() {
       .map(n => ({ name: n.name, bookCount: n.bookCount }));
 
     return { books, authors, series, narrators };
-  }, [query, filterItems, allAuthors, allSeries, allNarrators]);
+  }, [query, filterItems, allAuthors, allSeries, allNarrators, kidModeEnabled]);
 
   // "Did you mean" suggestions when no results
   const spellingSuggestions = useMemo(() => {

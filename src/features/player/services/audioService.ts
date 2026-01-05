@@ -25,7 +25,7 @@ try {
   MediaPlaybackState = mediaControlModule.PlaybackState;
   Command = mediaControlModule.Command;
 } catch (e) {
-  console.warn('[AudioService] expo-media-control not available (Expo Go mode)');
+  audioLog.warn('[AudioService] expo-media-control not available (Expo Go mode)');
 }
 
 // Remote command callback type for chapter navigation
@@ -1297,7 +1297,7 @@ class AudioService {
         this.setAudioSamplingEnabled(false);
       };
     } catch (e) {
-      console.warn('[AudioService] Audio sampling not supported:', e);
+      audioLog.warn('[AudioService] Audio sampling not supported:', e);
       return null;
     }
   }

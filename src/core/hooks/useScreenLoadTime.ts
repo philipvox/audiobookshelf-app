@@ -7,6 +7,7 @@
 
 import { useEffect, useRef } from 'react';
 import { PERFORMANCE_BUDGETS } from '../constants/performanceBudgets';
+import { logger } from '@/shared/utils/logger';
 
 // Only log in development
 const isDev = __DEV__;
@@ -48,15 +49,15 @@ export function useScreenLoadTime(
     const errorThreshold = options?.errorThreshold ?? PERFORMANCE_BUDGETS.screenLoad.error;
 
     if (duration >= errorThreshold) {
-      console.warn(
+      logger.warn(
         `[PERF] ${screenName} mounted in ${duration.toFixed(0)}ms (exceeds ${errorThreshold}ms budget)`
       );
     } else if (duration >= warnThreshold) {
-      console.warn(
+      logger.warn(
         `[PERF] ${screenName} mounted in ${duration.toFixed(0)}ms (exceeds ${warnThreshold}ms budget)`
       );
     } else if (options?.verbose) {
-      console.log(`[PERF] ${screenName} mounted in ${duration.toFixed(0)}ms`);
+      logger.debug(`[PERF] ${screenName} mounted in ${duration.toFixed(0)}ms`);
     }
   }, [screenName, options?.warnThreshold, options?.errorThreshold, options?.verbose]);
 }
@@ -94,15 +95,15 @@ export async function measureAsync<T>(
     const errorThreshold = options?.errorThreshold ?? 1000;
 
     if (duration >= errorThreshold) {
-      console.error(`[PERF] ${operationName} took ${duration.toFixed(0)}ms`);
+      logger.error(`[PERF] ${operationName} took ${duration.toFixed(0)}ms`);
     } else if (duration >= warnThreshold) {
-      console.warn(`[PERF] ${operationName} took ${duration.toFixed(0)}ms`);
+      logger.warn(`[PERF] ${operationName} took ${duration.toFixed(0)}ms`);
     }
 
     return result;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[PERF] ${operationName} failed after ${duration.toFixed(0)}ms`);
+    logger.error(`[PERF] ${operationName} failed after ${duration.toFixed(0)}ms`);
     throw error;
   }
 }
@@ -124,7 +125,7 @@ export function createPerfMarker(name: string) {
     end: () => {
       if (!isDev) return 0;
       const duration = performance.now() - startTime;
-      console.log(`[PERF] ${name}: ${duration.toFixed(0)}ms`);
+      logger.debug(`[PERF] ${name}: ${duration.toFixed(0)}ms`);
       return duration;
     },
     elapsed: () => performance.now() - startTime,

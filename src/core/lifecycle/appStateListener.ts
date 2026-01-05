@@ -12,6 +12,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { eventBus } from '@/core/events';
 import { queryClient, queryKeys } from '@/core/queryClient';
 import { backgroundSyncService } from '@/features/player/services/backgroundSyncService';
+import { logger } from '@/shared/utils/logger';
 
 // Minimum time in background before triggering refetch (5 seconds)
 const MIN_BACKGROUND_TIME = 5000;
@@ -28,19 +29,19 @@ let subscription: any = null;
  */
 export function initializeAppStateListener(): () => void {
   if (subscription) {
-    console.warn('[AppStateListener] Already initialized');
+    logger.warn('[AppStateListener] Already initialized');
     return () => {};
   }
 
   subscription = AppState.addEventListener('change', handleAppStateChange);
-  console.log('[AppStateListener] Initialized');
+  logger.debug('[AppStateListener] Initialized');
 
   return () => {
     if (subscription) {
       subscription.remove();
       subscription = null;
     }
-    console.log('[AppStateListener] Cleaned up');
+    logger.debug('[AppStateListener] Cleaned up');
   };
 }
 
@@ -55,7 +56,7 @@ function handleAppStateChange(nextState: AppStateStatus): void {
   if (nextState === 'background' || nextState === 'inactive') {
     if (!backgroundedAt) {
       backgroundedAt = Date.now();
-      console.log('[AppStateListener] App backgrounded');
+      logger.debug('[AppStateListener] App backgrounded');
       eventBus.emit('app:background', {});
     }
     return;
@@ -66,7 +67,7 @@ function handleAppStateChange(nextState: AppStateStatus): void {
     const timeInBackground = backgroundedAt ? Date.now() - backgroundedAt : 0;
     backgroundedAt = null;
 
-    console.log(`[AppStateListener] App foregrounded (was background for ${timeInBackground}ms)`);
+    logger.debug(`[AppStateListener] App foregrounded (was background for ${timeInBackground}ms)`);
     eventBus.emit('app:foreground', {});
 
     // Only refetch if we were in background long enough
@@ -80,7 +81,7 @@ function handleAppStateChange(nextState: AppStateStatus): void {
  * Handle foreground return - refetch stale data and process pending syncs
  */
 async function handleForegroundReturn(timeInBackground: number): Promise<void> {
-  console.log(`[AppStateListener] Refreshing data after ${Math.round(timeInBackground / 1000)}s in background`);
+  logger.debug(`[AppStateListener] Refreshing data after ${Math.round(timeInBackground / 1000)}s in background`);
 
   try {
     // Process any pending syncs first (they may have failed while backgrounded)
@@ -104,9 +105,9 @@ async function handleForegroundReturn(timeInBackground: number): Promise<void> {
     }
 
     await Promise.allSettled(invalidations);
-    console.log('[AppStateListener] Data refresh complete');
+    logger.debug('[AppStateListener] Data refresh complete');
   } catch (error) {
-    console.warn('[AppStateListener] Error refreshing data:', error);
+    logger.warn('[AppStateListener] Error refreshing data:', error);
   }
 }
 

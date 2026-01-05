@@ -26,6 +26,7 @@ import {
 } from './types';
 import { getUserMessage, getCategoryMessage } from './errorMessages';
 import { captureError } from '../monitoring';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Default retry configuration
@@ -216,7 +217,7 @@ class ErrorService {
 
         // Log retry
         if (__DEV__) {
-          console.log(
+          logger.debug(
             `[ErrorService] Retry ${attempt + 1}/${config.maxRetries} after ${delay}ms:`,
             lastError.code
           );
@@ -360,12 +361,12 @@ class ErrorService {
     const context = error.context ? ` (${error.context})` : '';
 
     if (__DEV__) {
-      console.error(`${prefix}${context} ${error.code}: ${error.message}`);
+      logger.error(`${prefix}${context} ${error.code}: ${error.message}`);
       if (error.details) {
-        console.error('Details:', error.details);
+        logger.error('Details:', error.details);
       }
       if (error.cause) {
-        console.error('Cause:', error.cause);
+        logger.error('Cause:', error.cause);
       }
     }
 
@@ -419,7 +420,7 @@ class ErrorService {
         handler(error);
       } catch (e) {
         if (__DEV__) {
-          console.error('[ErrorService] Handler threw:', e);
+          logger.error('[ErrorService] Handler threw:', e);
         }
       }
     });

@@ -6,6 +6,7 @@
  */
 
 import * as Haptics from 'expo-haptics';
+import { logger } from '@/shared/utils/logger';
 
 // Lazy import to avoid crashes in simulator
 let Accelerometer: typeof import('expo-sensors')['Accelerometer'] | null = null;
@@ -22,7 +23,7 @@ async function loadAccelerometer() {
     AccelerometerLoaded = true;
     return Accelerometer;
   } catch (error) {
-    console.warn('[ShakeDetector] expo-sensors Accelerometer not available:', error);
+    logger.warn('[ShakeDetector] expo-sensors Accelerometer not available:', error);
     AccelerometerLoaded = true; // Mark as loaded to prevent retries
     return null;
   }
@@ -47,7 +48,7 @@ class ShakeDetector {
    */
   async start(onShake: ShakeCallback): Promise<void> {
     if (this.isActive) {
-      console.log('[ShakeDetector] Already active, updating callback');
+      logger.debug('[ShakeDetector] Already active, updating callback');
       this.callback = onShake;
       return;
     }
@@ -60,7 +61,7 @@ class ShakeDetector {
       // Load accelerometer module
       const accel = await loadAccelerometer();
       if (!accel) {
-        console.warn('[ShakeDetector] Accelerometer module not available (simulator?)');
+        logger.warn('[ShakeDetector] Accelerometer module not available (simulator?)');
         this.isActive = false;
         return;
       }
@@ -68,7 +69,7 @@ class ShakeDetector {
       // Check if accelerometer hardware is available
       const isAvailable = await accel.isAvailableAsync();
       if (!isAvailable) {
-        console.warn('[ShakeDetector] Accelerometer hardware not available');
+        logger.warn('[ShakeDetector] Accelerometer hardware not available');
         this.isActive = false;
         return;
       }
@@ -78,9 +79,9 @@ class ShakeDetector {
 
       // Subscribe to accelerometer updates
       this.subscription = accel.addListener(this.handleAccelerometerData);
-      console.log('[ShakeDetector] Started listening for shakes');
+      logger.debug('[ShakeDetector] Started listening for shakes');
     } catch (error) {
-      console.warn('[ShakeDetector] Failed to start (likely simulator):', error);
+      logger.warn('[ShakeDetector] Failed to start (likely simulator):', error);
       this.isActive = false;
     }
   }
@@ -95,7 +96,7 @@ class ShakeDetector {
     }
     this.callback = null;
     this.isActive = false;
-    console.log('[ShakeDetector] Stopped');
+    logger.debug('[ShakeDetector] Stopped');
   }
 
   /**
@@ -125,7 +126,7 @@ class ShakeDetector {
 
       if (timeSinceLastShake >= SHAKE_COOLDOWN_MS) {
         this.lastShakeTime = now;
-        console.log('[ShakeDetector] Shake detected! Magnitude:', magnitude.toFixed(2));
+        logger.debug('[ShakeDetector] Shake detected! Magnitude:', magnitude.toFixed(2));
 
         // Trigger haptic feedback
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});

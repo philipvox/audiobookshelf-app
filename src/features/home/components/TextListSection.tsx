@@ -32,6 +32,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LibraryItem } from '@/core/types';
 import { getCoverUrl } from '@/core/cache';
 import { apiClient } from '@/core/api';
+import { logger } from '@/shared/utils/logger';
 import { colors, wp, hp, moderateScale, spacing, radius } from '@/shared/theme';
 import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { SeriesHeartButton } from '@/shared/components';
@@ -262,11 +263,11 @@ const BookRow = ({
 
   // Debug: log the book data to see what fields exist (only first book to reduce noise)
   if (__DEV__ && title === 'This Inevitable Ruin') {
-    console.log('[BookRow] Book:', title);
-    console.log('[BookRow] rawLastUpdate:', rawLastUpdate, 'type:', typeof rawLastUpdate);
-    console.log('[BookRow] progressLastUpdate:', bookAny.progressLastUpdate);
-    console.log('[BookRow] userMediaProgress:', JSON.stringify(bookAny.userMediaProgress, null, 2));
-    console.log('[BookRow] Available top-level fields:', Object.keys(bookAny));
+    logger.debug('[BookRow] Book:', title);
+    logger.debug('[BookRow] rawLastUpdate:', rawLastUpdate, 'type:', typeof rawLastUpdate);
+    logger.debug('[BookRow] progressLastUpdate:', bookAny.progressLastUpdate);
+    logger.debug('[BookRow] userMediaProgress:', JSON.stringify(bookAny.userMediaProgress, null, 2));
+    logger.debug('[BookRow] Available top-level fields:', Object.keys(bookAny));
   }
 
   // Convert to milliseconds if needed

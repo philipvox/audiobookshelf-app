@@ -7,6 +7,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateTicksForBook, TimelineTick, ChapterInput } from '../utils/tickGenerator';
+import { logger } from '@/shared/utils/logger';
 
 // Re-export types for consumers
 export type { TimelineTick, ChapterInput };
@@ -36,7 +37,7 @@ export async function getCachedTicks(libraryItemId: string): Promise<TimelineTic
       return ticks;
     }
   } catch (error) {
-    console.warn('[TickCache] Error reading cache:', error);
+    logger.warn('[TickCache] Error reading cache:', error);
   }
 
   return null;
@@ -61,7 +62,7 @@ export async function cacheTicks(
         JSON.stringify(ticks)
       );
     } catch (error) {
-      console.warn('[TickCache] Error persisting cache:', error);
+      logger.warn('[TickCache] Error persisting cache:', error);
     }
   }
 }
@@ -83,10 +84,10 @@ export async function generateAndCacheTicks(
   }
 
   // Generate ticks
-  console.log(`[TickCache] Generating ticks for ${libraryItemId} (${Math.round(duration / 60)} min)`);
+  logger.debug(`[TickCache] Generating ticks for ${libraryItemId} (${Math.round(duration / 60)} min)`);
   const startTime = Date.now();
   const ticks = generateTicksForBook(duration, chapters);
-  console.log(`[TickCache] Generated ${ticks.length} ticks in ${Date.now() - startTime}ms`);
+  logger.debug(`[TickCache] Generated ${ticks.length} ticks in ${Date.now() - startTime}ms`);
 
   // Cache them
   await cacheTicks(libraryItemId, ticks, persist);
@@ -103,7 +104,7 @@ export async function clearCachedTicks(libraryItemId: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(`${CACHE_KEY_PREFIX}${libraryItemId}`);
   } catch (error) {
-    console.warn('[TickCache] Error clearing cache:', error);
+    logger.warn('[TickCache] Error clearing cache:', error);
   }
 }
 
@@ -119,7 +120,7 @@ export async function clearAllTickCaches(): Promise<void> {
       await AsyncStorage.multiRemove(tickKeys);
     }
   } catch (error) {
-    console.warn('[TickCache] Error clearing all caches:', error);
+    logger.warn('[TickCache] Error clearing all caches:', error);
   }
 }
 
@@ -134,6 +135,6 @@ export function preWarmTickCache(
 ): void {
   // Run in background, don't await
   generateAndCacheTicks(libraryItemId, duration, chapters, false).catch(err => {
-    console.warn('[TickCache] Pre-warm failed:', err);
+    logger.warn('[TickCache] Pre-warm failed:', err);
   });
 }

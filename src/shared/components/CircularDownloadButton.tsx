@@ -26,6 +26,7 @@ import { LibraryItem } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { formatBytes } from '@/shared/utils/format';
 import { scale } from '@/shared/theme';
+import { logger } from '@/shared/utils/logger';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -118,12 +119,12 @@ export function CircularDownloadButton({
 
   const handlePress = async () => {
     const title = (book.media?.metadata as any)?.title || 'Unknown';
-    console.log(`[CircularDownloadButton] Pressed for: "${title}" (${book.id})`);
-    console.log(`[CircularDownloadButton] Current state: isDownloaded=${isDownloaded}, isDownloading=${isDownloading}, isPending=${isPending}, isPaused=${isPaused}, hasError=${hasError}, progress=${(progress * 100).toFixed(1)}%`);
+    logger.debug(`[CircularDownloadButton] Pressed for: "${title}" (${book.id})`);
+    logger.debug(`[CircularDownloadButton] Current state: isDownloaded=${isDownloaded}, isDownloading=${isDownloading}, isPending=${isPending}, isPaused=${isPaused}, hasError=${hasError}, progress=${(progress * 100).toFixed(1)}%`);
 
     // If already downloaded, do nothing (delete only allowed in Settings)
     if (isDownloaded) {
-      console.log(`[CircularDownloadButton] Already downloaded - no action (delete only in Settings)`);
+      logger.debug(`[CircularDownloadButton] Already downloaded - no action (delete only in Settings)`);
       return;
     }
 
@@ -132,7 +133,7 @@ export function CircularDownloadButton({
 
     // If downloading, pause it
     if (isDownloading) {
-      console.log(`[CircularDownloadButton] Action: Pause download`);
+      logger.debug(`[CircularDownloadButton] Action: Pause download`);
       haptics.toggle(); // Medium haptic for pause
       await downloadManager.pauseDownload(book.id);
       return;
@@ -140,7 +141,7 @@ export function CircularDownloadButton({
 
     // If paused, resume it
     if (isPaused) {
-      console.log(`[CircularDownloadButton] Action: Resume download`);
+      logger.debug(`[CircularDownloadButton] Action: Resume download`);
       haptics.toggle(); // Medium haptic for resume
       await downloadManager.resumeDownload(book.id);
       return;
@@ -148,7 +149,7 @@ export function CircularDownloadButton({
 
     // If pending (queued), cancel it
     if (isPending) {
-      console.log(`[CircularDownloadButton] Action: Cancel pending download`);
+      logger.debug(`[CircularDownloadButton] Action: Cancel pending download`);
       haptics.warning(); // Warning haptic for cancel
       await downloadManager.cancelDownload(book.id);
       return;
@@ -156,13 +157,13 @@ export function CircularDownloadButton({
 
     // If error, retry
     if (hasError) {
-      console.log(`[CircularDownloadButton] Action: Retry download (priority 10)`);
+      logger.debug(`[CircularDownloadButton] Action: Retry download (priority 10)`);
       await downloadManager.queueDownload(book, 10);
       return;
     }
 
     // Not downloaded - queue it
-    console.log(`[CircularDownloadButton] Action: Queue new download`);
+    logger.debug(`[CircularDownloadButton] Action: Queue new download`);
     haptics.success(); // Success haptic for starting download
     await downloadManager.queueDownload(book);
   };
