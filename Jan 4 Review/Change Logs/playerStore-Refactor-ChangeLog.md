@@ -370,7 +370,7 @@
 - [x] Expo export build succeeds
 
 ### Commit
-- [ ] Committed with message: `refactor(player): phase 9 - create facade`
+- [x] Committed: `3b01210` - `refactor(player): phase 9 - create facade`
 
 ---
 
