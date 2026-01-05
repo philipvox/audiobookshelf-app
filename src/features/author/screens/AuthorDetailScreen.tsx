@@ -47,6 +47,7 @@ import { useWishlistStore, useIsAuthorFollowed } from '@/features/wishlist';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, wp, radius } from '@/shared/theme';
 import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { logger } from '@/shared/utils/logger';
 
 type AuthorDetailRouteParams = {
   AuthorDetail: { authorName: string } | { name: string };
@@ -368,8 +369,8 @@ export function AuthorDetailScreen() {
           setAuthorBooks(authorData.libraryItems as LibraryItem[]);
         }
       } catch (error) {
-        console.warn('[AuthorDetail] Failed to fetch author books from API:', error);
-        // Will fall back to cache-based books
+        logger.warn('[AuthorDetail] Failed to fetch author books from API:', error);
+        // Will fall back to cache-based books - no user notification needed
       } finally {
         setIsLoadingBooks(false);
       }

@@ -27,6 +27,8 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { apiClient } from '@/core/api';
 import { haptics } from '@/core/native/haptics';
 import { HeroRecommendation } from '../types';
+import { logger } from '@/shared/utils/logger';
+import { useToast } from '@/shared/hooks/useToast';
 
 // Large centered cover
 const COVER_SIZE = scale(300);
@@ -59,6 +61,9 @@ export function HeroSection({ hero }: HeroSectionProps) {
 
   // Use cached cover URL
   const coverUrl = useCoverUrl(hero.book.id);
+
+  // Toast for error feedback
+  const { showError } = useToast();
 
   // Check if this book is currently loaded and playing
   const isCurrentBook = currentBook?.id === hero.book.id;
@@ -106,8 +111,9 @@ export function HeroSection({ hero }: HeroSectionProps) {
       const fullBook = await apiClient.getItem(hero.book.id);
       haptics.success();
       await downloadManager.queueDownload(fullBook);
-    } catch {
-      console.warn('[HeroSection] Failed to queue download');
+    } catch (error) {
+      logger.warn('[HeroSection] Failed to queue download:', error);
+      showError('Failed to start download. Please try again.');
     }
   }, [hero.book.id, isDownloaded, isDownloading, isPaused, isPending]);
 

@@ -35,7 +35,8 @@ import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { accentColors, scale } from '@/shared/theme';
-import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
+import { useThemeColors, ThemeColors } from '@/shared/theme';
+import { logger } from '@/shared/utils/logger';
 
 const ACCENT = accentColors.gold;
 
@@ -230,7 +231,7 @@ export function StorageSettingsScreen() {
               await downloadManager.clearAllDownloads();
               Alert.alert('Success', 'All downloads have been cleared.');
             } catch (error) {
-              console.error('[StorageSettings] Failed to clear downloads:', error);
+              logger.error('[StorageSettings] Failed to clear downloads:', error);
               Alert.alert('Error', 'Failed to clear downloads. Please try again.');
             } finally {
               setIsClearingDownloads(false);
