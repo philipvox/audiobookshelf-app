@@ -81,6 +81,8 @@ import { getVisibleTicks } from '../utils/tickGenerator';
 import { audioService } from '../services/audioService';
 import { colors, spacing, radius, scale, wp, hp, layout } from '@/shared/theme';
 import { useThemeStore } from '@/shared/theme/themeStore';
+import { logger } from '@/shared/utils/logger';
+import { useToast } from '@/shared/hooks/useToast';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 
 // =============================================================================
@@ -1559,6 +1561,7 @@ export function CDPlayerScreen() {
   const { isDownloading, progress: downloadProgress } = useDownloadStatus(currentBook?.id || '');
   const queueCount = useQueueCount();
   const clearQueue = useQueueStore((s) => s.clearQueue);
+  const { showError } = useToast();
 
   // Handle starting download for current book
   const handleStartDownload = useCallback(async () => {
@@ -1567,7 +1570,8 @@ export function CDPlayerScreen() {
       await queueDownload(currentBook);
       haptics.success();
     } catch (err) {
-      console.warn('[CDPlayerScreen] Failed to start download:', err);
+      logger.warn('[CDPlayerScreen] Failed to start download:', err);
+      showError('Failed to start download. Please try again.');
     }
   }, [currentBook, isDownloaded, queueDownload]);
 

@@ -41,6 +41,7 @@ import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
 import { filterForKidMode } from '@/shared/utils/kidModeFilter';
 import { logger } from '@/shared/utils/logger';
+import { useToast } from '@/shared/hooks/useToast';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = spacing.sm;
@@ -232,6 +233,9 @@ export function SearchScreen() {
   // Kid Mode filter state
   const kidModeEnabled = useKidModeStore((state) => state.enabled);
 
+  // Toast for error feedback
+  const { showError } = useToast();
+
   // Get cached data
   const { filterItems, isLoaded } = useLibraryCache();
 
@@ -292,6 +296,7 @@ export function SearchScreen() {
       await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
     } catch (err) {
       logger.error('Failed to clear search history:', err);
+      showError('Failed to clear search history. Please try again.');
     }
   };
 
@@ -302,6 +307,7 @@ export function SearchScreen() {
       await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
     } catch (err) {
       logger.error('Failed to remove from history:', err);
+      showError('Failed to remove search item. Please try again.');
     }
   };
 

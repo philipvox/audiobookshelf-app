@@ -49,6 +49,8 @@ import { useLibraryCache } from '@/core/cache/libraryCache';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { useTheme, accentColors, wp, hp, moderateScale, spacing } from '@/shared/theme';
+import { logger } from '@/shared/utils/logger';
+import { useToast } from '@/shared/hooks/useToast';
 
 // =============================================================================
 // THEME COLORS INTERFACE (for createStyles)
@@ -636,6 +638,7 @@ export function ReadingHistoryScreen() {
   const clearFilters = useGalleryStore((s) => s.clearFilters);
   const getActiveFilterCount = useGalleryStore((s) => s.getActiveFilterCount);
   const items = useLibraryCache((s) => s.items);
+  const { showError } = useToast();
 
   // Build a map of finished books for quick lookup
   const finishedBooksMap = useMemo(() => {
@@ -898,8 +901,9 @@ export function ReadingHistoryScreen() {
       await refetchFinishedBooks();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.warn('[ReadingHistory] Sync failed:', error);
+      logger.warn('[ReadingHistory] Sync failed:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showError('Sync failed. Please try again.');
     } finally {
       setIsSyncing(false);
     }
@@ -954,8 +958,9 @@ export function ReadingHistoryScreen() {
       await refetchFinishedBooks();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.warn('[ReadingHistory] Sync selected failed:', error);
+      logger.warn('[ReadingHistory] Sync selected failed:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showError('Sync failed. Please try again.');
     } finally {
       setIsSyncing(false);
       setSelectedIds(new Set());

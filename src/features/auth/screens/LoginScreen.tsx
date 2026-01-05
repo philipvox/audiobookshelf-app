@@ -18,6 +18,7 @@ import { Check, X, AlertCircle, Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
 import { Button } from '@/shared/components';
 import { colors, spacing, radius, scale } from '@/shared/theme';
+import { logger } from '@/shared/utils/logger';
 
 // App logo (horizontal version with text)
 const APP_LOGO = require('../../../../assets/login-logo.png');
@@ -155,7 +156,7 @@ export function LoginScreen() {
         setServerUrl(lastUrl);
       }
     } catch (err) {
-      console.error('Failed to load last server URL:', err);
+      logger.error('[Login] Failed to load last server URL:', err);
     }
   };
 
