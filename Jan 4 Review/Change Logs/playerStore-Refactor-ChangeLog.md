@@ -123,13 +123,52 @@
 - [ ] Bookmarks load on book open
 
 ### Commit
-- [ ] Committed with message: `refactor(player): phase 3 - extract bookmarks store`
+- [x] Committed: `c646b19` - `refactor(player): phase 3 - extract bookmarks store`
 
 ---
 
 ## Phase 4: Extract Sleep Timer Store
 
-**Status:** Pending
+**Status:** Complete ✓
+**Started:** January 5, 2026
+**Completed:** January 5, 2026
+
+### Files Created
+- [x] `src/features/player/stores/sleepTimerStore.ts` - Sleep timer store (~240 lines)
+
+### Features Extracted
+- `sleepTimer` - Remaining seconds (null if inactive)
+- `sleepTimerInterval` - Timer interval handle
+- `shakeToExtendEnabled` - User preference
+- `isShakeDetectionActive` - Currently detecting shakes
+- `setSleepTimer()` - Start timer with onExpire callback (pauses playback)
+- `extendSleepTimer()` - Add minutes to existing timer
+- `clearSleepTimer()` - Stop and reset timer
+- `setShakeToExtendEnabled()` - Toggle shake feature
+- Helper selectors: useSleepTimer, useIsSleepTimerActive, useSleepTimerState
+
+### Changes to playerStore.ts
+- [x] Import sleepTimerStore (line 102)
+- [x] Updated cleanup to call sleepTimerStore.clearSleepTimer() (line 1107)
+- [x] Updated all sleep timer actions to delegate (lines 1642-1687)
+- [x] Updated loadPlayerSettings to load from sleepTimerStore (lines 1745-1747)
+- [x] Local state sync for backward compatibility
+
+### Cross-Store Communication
+- sleepTimerStore calls playerStore.pause() via callback when timer expires
+
+### TypeScript Verification
+- [x] No new TypeScript errors introduced
+- [x] Expo export build succeeds
+
+### Tests (to be verified manually)
+- [ ] Set sleep timer works
+- [ ] Timer pauses playback on expiry
+- [ ] Shake to extend works when timer < 60s
+- [ ] Clear timer works
+
+### Commit
+- [ ] Committed with message: `refactor(player): phase 4 - extract sleep timer store`
 
 ---
 
