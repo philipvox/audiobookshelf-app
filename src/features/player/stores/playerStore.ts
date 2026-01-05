@@ -98,6 +98,9 @@ import { usePlayerSettingsStore } from './playerSettingsStore';
 // Import bookmarks store (Phase 3 refactor)
 import { useBookmarksStore } from './bookmarksStore';
 
+// Import sleep timer store (Phase 4 refactor)
+import { useSleepTimerStore } from './sleepTimerStore';
+
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
 const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
@@ -1100,10 +1103,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         seekInterval = null;
       }
 
-      // Clear sleep timer
-      if (sleepTimerInterval) {
-        clearInterval(sleepTimerInterval);
-      }
+      // Clear sleep timer (Phase 4)
+      useSleepTimerStore.getState().clearSleepTimer();
 
       // End any active listening session
       await endListeningSession(position);
@@ -1638,124 +1639,51 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       return bookSpeedMap[bookId] ?? globalDefaultRate;
     },
 
+    // =========================================================================
+    // SLEEP TIMER (delegated to sleepTimerStore - Phase 4 refactor)
+    // =========================================================================
+
     setSleepTimer: (minutes: number) => {
-      const { sleepTimerInterval, shakeToExtendEnabled } = get();
+      // Delegate to sleepTimerStore with pause callback
+      useSleepTimerStore.getState().setSleepTimer(minutes, () => {
+        get().pause();
+      });
 
-      // Import shake detector lazily to avoid circular deps
-      import('../services/shakeDetector').then(({ shakeDetector }) => {
-        // Stop any existing shake detection
-        shakeDetector.stop();
-        set({ isShakeDetectionActive: false });
-      }).catch(() => {});
-
-      if (sleepTimerInterval) {
-        clearInterval(sleepTimerInterval);
-      }
-
-      let endTime = Date.now() + minutes * 60 * 1000;
-
-      // Track last remaining for warning detection
-      let lastRemaining = minutes * 60;
-
-      const interval = setInterval(async () => {
-        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-
-        if (remaining <= 0) {
-          clearInterval(interval);
-
-          // Haptic feedback for timer expiration
-          haptics.sleepTimerExpired();
-
-          get().pause();
-
-          // Stop shake detection
-          try {
-            const { shakeDetector } = await import('../services/shakeDetector');
-            shakeDetector.stop();
-          } catch {}
-
-          set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
-        } else {
-          // Trigger warning haptic when crossing 60 second threshold
-          if (lastRemaining > 60 && remaining <= 60) {
-            haptics.sleepTimerWarning();
-          }
-          lastRemaining = remaining;
-
-          set({ sleepTimer: remaining });
-
-          // Start shake detection when timer is low and feature is enabled
-          const { shakeToExtendEnabled: enabled, isShakeDetectionActive } = get();
-          if (enabled && remaining <= SLEEP_TIMER_SHAKE_THRESHOLD && !isShakeDetectionActive) {
-            try {
-              const { shakeDetector } = await import('../services/shakeDetector');
-              shakeDetector.start(() => {
-                // On shake, extend the timer
-                const { extendSleepTimer } = get();
-                extendSleepTimer(SLEEP_TIMER_EXTEND_MINUTES);
-              });
-              set({ isShakeDetectionActive: true });
-              log('Shake detection started - timer low');
-            } catch (err) {
-              logError('Failed to start shake detection:', err);
-            }
-          }
-        }
-      }, 1000);
-
-      set({ sleepTimer: minutes * 60, sleepTimerInterval: interval });
+      // Sync to local state for backward compatibility
+      const timerState = useSleepTimerStore.getState();
+      set({
+        sleepTimer: timerState.sleepTimer,
+        sleepTimerInterval: timerState.sleepTimerInterval,
+        isShakeDetectionActive: timerState.isShakeDetectionActive,
+      });
     },
 
     extendSleepTimer: (minutes: number) => {
-      const { sleepTimer, sleepTimerInterval } = get();
+      useSleepTimerStore.getState().extendSleepTimer(minutes);
 
-      if (!sleepTimer || !sleepTimerInterval) {
-        log('extendSleepTimer: No active timer');
-        return;
-      }
-
-      // Add time to current remaining
-      const newRemaining = sleepTimer + (minutes * 60);
-      log(`Sleep timer extended by ${minutes} minutes. New remaining: ${newRemaining}s`);
-
-      // Stop shake detection after extension (will restart when < 60s again)
-      import('../services/shakeDetector').then(({ shakeDetector }) => {
-        shakeDetector.stop();
-        set({ isShakeDetectionActive: false });
-      }).catch(() => {});
-
-      // Update the timer - the interval will continue with the new value
-      set({ sleepTimer: newRemaining });
+      // Sync to local state for backward compatibility
+      const timerState = useSleepTimerStore.getState();
+      set({
+        sleepTimer: timerState.sleepTimer,
+        isShakeDetectionActive: timerState.isShakeDetectionActive,
+      });
     },
 
     clearSleepTimer: () => {
-      const { sleepTimerInterval } = get();
-      if (sleepTimerInterval) {
-        clearInterval(sleepTimerInterval);
-      }
+      useSleepTimerStore.getState().clearSleepTimer();
 
-      // Stop shake detection
-      import('../services/shakeDetector').then(({ shakeDetector }) => {
-        shakeDetector.stop();
-      }).catch(() => {});
-
+      // Sync to local state for backward compatibility
       set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
     },
 
     setShakeToExtendEnabled: async (enabled: boolean) => {
-      set({ shakeToExtendEnabled: enabled });
-      try {
-        await AsyncStorage.setItem(SHAKE_TO_EXTEND_KEY, enabled.toString());
-      } catch {}
+      await useSleepTimerStore.getState().setShakeToExtendEnabled(enabled);
 
-      // If disabling and currently active, stop detection
-      if (!enabled) {
-        try {
-          const { shakeDetector } = await import('../services/shakeDetector');
-          shakeDetector.stop();
-          set({ isShakeDetectionActive: false });
-        } catch {}
-      }
+      // Sync to local state for backward compatibility
+      set({
+        shakeToExtendEnabled: enabled,
+        isShakeDetectionActive: useSleepTimerStore.getState().isShakeDetectionActive,
+      });
     },
 
     // =========================================================================
@@ -1814,11 +1742,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         await usePlayerSettingsStore.getState().loadSettings();
         const settingsState = usePlayerSettingsStore.getState();
 
+        // Phase 4: Load sleep timer settings
+        await useSleepTimerStore.getState().loadShakeToExtendSetting();
+        const sleepTimerState = useSleepTimerStore.getState();
+
         // Load remaining settings not yet extracted to separate stores
         const [
           bookSpeedMapStr,
           globalDefaultRateStr,
-          shakeToExtendStr,
           lastPlayedBookIdStr,
           activePlaybackRateStr,
           showCompletionPromptStr,
@@ -1826,7 +1757,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         ] = await Promise.all([
           AsyncStorage.getItem(BOOK_SPEED_MAP_KEY),
           AsyncStorage.getItem(GLOBAL_DEFAULT_RATE_KEY),
-          AsyncStorage.getItem(SHAKE_TO_EXTEND_KEY),
           AsyncStorage.getItem(LAST_PLAYED_BOOK_ID_KEY),
           AsyncStorage.getItem(ACTIVE_PLAYBACK_RATE_KEY),
           AsyncStorage.getItem(SHOW_COMPLETION_PROMPT_KEY),
@@ -1835,7 +1765,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
         const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
         const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
-        const shakeToExtendEnabled = shakeToExtendStr !== 'false'; // Default true
         const lastPlayedBookId = lastPlayedBookIdStr || null;
         const showCompletionPrompt = showCompletionPromptStr !== 'false'; // Default true
         const autoMarkFinished = autoMarkFinishedStr === 'true'; // Default false
@@ -1872,11 +1801,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           useStandardPlayer: settingsState.useStandardPlayer,
           smartRewindEnabled: settingsState.smartRewindEnabled,
           smartRewindMaxSeconds: settingsState.smartRewindMaxSeconds,
+          // Settings from sleepTimerStore (Phase 4)
+          shakeToExtendEnabled: sleepTimerState.shakeToExtendEnabled,
           // Settings still managed locally (to be extracted in later phases)
           playbackRate,
           bookSpeedMap,
           globalDefaultRate,
-          shakeToExtendEnabled,
           lastPlayedBookId,
           showCompletionPrompt,
           autoMarkFinished,
