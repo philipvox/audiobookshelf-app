@@ -44,13 +44,47 @@
 - [ ] Listening session recorded
 
 ### Commit
-- [ ] Committed with message: `refactor(player): phase 1 - extract utilities`
+- [x] Committed: `d892c1d` - `refactor(player): phase 1 - extract utilities`
 
 ---
 
 ## Phase 2: Extract Settings Store
 
-**Status:** Pending
+**Status:** Complete ✓
+**Started:** January 5, 2026
+**Completed:** January 5, 2026
+
+### Files Created
+- [x] `src/features/player/stores/playerSettingsStore.ts` - Player UI/behavior settings store (~220 lines)
+
+### Settings Extracted
+- `controlMode` - Skip buttons mode (rewind vs chapter)
+- `progressMode` - Progress display (bar vs chapters)
+- `skipForwardInterval` - Forward skip seconds
+- `skipBackInterval` - Back skip seconds
+- `discAnimationEnabled` - CD spin animation toggle
+- `useStandardPlayer` - Static cover vs disc UI
+- `smartRewindEnabled` - Auto-rewind on resume
+- `smartRewindMaxSeconds` - Max rewind amount
+
+### Changes to playerStore.ts
+- [x] Import playerSettingsStore (line 96)
+- [x] Updated setters to delegate to playerSettingsStore (lines 1755-1797)
+- [x] Updated loadPlayerSettings to call playerSettingsStore.loadSettings() first (line 1808)
+- [x] Sync settings state from playerSettingsStore to playerStore for backward compatibility
+
+### TypeScript Verification
+- [x] No new TypeScript errors introduced
+- [x] Expo export build succeeds (4258ms bundle time)
+
+### Tests (to be verified manually)
+- [ ] Skip intervals persist correctly
+- [ ] Control mode persists correctly
+- [ ] Progress mode persists correctly
+- [ ] Smart rewind settings persist correctly
+
+### Commit
+- [ ] Committed with message: `refactor(player): phase 2 - extract settings store`
 
 ---
 

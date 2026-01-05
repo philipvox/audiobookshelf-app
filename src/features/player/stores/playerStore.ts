@@ -92,6 +92,9 @@ import {
   checkAutoDownloadNextInSeries,
 } from '../utils/bookLoadingHelpers';
 
+// Import settings store (Phase 2 refactor)
+import { usePlayerSettingsStore } from './playerSettingsStore';
+
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
 const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
@@ -1749,56 +1752,48 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       }
     },
 
+    // =========================================================================
+    // SETTINGS (delegated to playerSettingsStore - Phase 2 refactor)
+    // =========================================================================
+
     setSkipForwardInterval: async (seconds: number) => {
-      set({ skipForwardInterval: seconds });
-      try {
-        await AsyncStorage.setItem(SKIP_FORWARD_INTERVAL_KEY, seconds.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setSkipForwardInterval(seconds);
+      set({ skipForwardInterval: seconds }); // Keep local state in sync
     },
 
     setSkipBackInterval: async (seconds: number) => {
-      set({ skipBackInterval: seconds });
-      try {
-        await AsyncStorage.setItem(SKIP_BACK_INTERVAL_KEY, seconds.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setSkipBackInterval(seconds);
+      set({ skipBackInterval: seconds }); // Keep local state in sync
     },
 
     setControlMode: (mode: 'rewind' | 'chapter') => {
-      set({ controlMode: mode });
-      AsyncStorage.setItem('playerControlMode', mode).catch(() => {});
+      usePlayerSettingsStore.getState().setControlMode(mode);
+      set({ controlMode: mode }); // Keep local state in sync
     },
 
     setProgressMode: (mode: 'bar' | 'chapters') => {
-      set({ progressMode: mode });
-      AsyncStorage.setItem('playerProgressMode', mode).catch(() => {});
+      usePlayerSettingsStore.getState().setProgressMode(mode);
+      set({ progressMode: mode }); // Keep local state in sync
     },
 
     setDiscAnimationEnabled: async (enabled: boolean) => {
-      set({ discAnimationEnabled: enabled });
-      try {
-        await AsyncStorage.setItem(DISC_ANIMATION_KEY, enabled.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setDiscAnimationEnabled(enabled);
+      set({ discAnimationEnabled: enabled }); // Keep local state in sync
     },
 
     setUseStandardPlayer: async (enabled: boolean) => {
-      set({ useStandardPlayer: enabled });
-      try {
-        await AsyncStorage.setItem(STANDARD_PLAYER_KEY, enabled.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setUseStandardPlayer(enabled);
+      set({ useStandardPlayer: enabled }); // Keep local state in sync
     },
 
     setSmartRewindEnabled: async (enabled: boolean) => {
-      set({ smartRewindEnabled: enabled });
-      try {
-        await AsyncStorage.setItem(SMART_REWIND_ENABLED_KEY, enabled.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setSmartRewindEnabled(enabled);
+      set({ smartRewindEnabled: enabled }); // Keep local state in sync
     },
 
     setSmartRewindMaxSeconds: async (seconds: number) => {
-      set({ smartRewindMaxSeconds: seconds });
-      try {
-        await AsyncStorage.setItem(SMART_REWIND_MAX_SECONDS_KEY, seconds.toString());
-      } catch {}
+      await usePlayerSettingsStore.getState().setSmartRewindMaxSeconds(seconds);
+      set({ smartRewindMaxSeconds: seconds }); // Keep local state in sync
     },
 
     clearSmartRewind: () => {
@@ -1809,34 +1804,23 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     loadPlayerSettings: async () => {
       try {
+        // Phase 2: Load settings from dedicated settings store first
+        await usePlayerSettingsStore.getState().loadSettings();
+        const settingsState = usePlayerSettingsStore.getState();
+
+        // Load remaining settings not yet extracted to separate stores
         const [
-          controlMode,
-          progressMode,
           bookSpeedMapStr,
           globalDefaultRateStr,
           shakeToExtendStr,
-          skipForwardStr,
-          skipBackStr,
-          discAnimationStr,
-          standardPlayerStr,
-          smartRewindEnabledStr,
-          smartRewindMaxSecondsStr,
           lastPlayedBookIdStr,
           activePlaybackRateStr,
           showCompletionPromptStr,
           autoMarkFinishedStr,
         ] = await Promise.all([
-          AsyncStorage.getItem('playerControlMode'),
-          AsyncStorage.getItem('playerProgressMode'),
           AsyncStorage.getItem(BOOK_SPEED_MAP_KEY),
           AsyncStorage.getItem(GLOBAL_DEFAULT_RATE_KEY),
           AsyncStorage.getItem(SHAKE_TO_EXTEND_KEY),
-          AsyncStorage.getItem(SKIP_FORWARD_INTERVAL_KEY),
-          AsyncStorage.getItem(SKIP_BACK_INTERVAL_KEY),
-          AsyncStorage.getItem(DISC_ANIMATION_KEY),
-          AsyncStorage.getItem(STANDARD_PLAYER_KEY),
-          AsyncStorage.getItem(SMART_REWIND_ENABLED_KEY),
-          AsyncStorage.getItem(SMART_REWIND_MAX_SECONDS_KEY),
           AsyncStorage.getItem(LAST_PLAYED_BOOK_ID_KEY),
           AsyncStorage.getItem(ACTIVE_PLAYBACK_RATE_KEY),
           AsyncStorage.getItem(SHOW_COMPLETION_PROMPT_KEY),
@@ -1846,12 +1830,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
         const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
         const shakeToExtendEnabled = shakeToExtendStr !== 'false'; // Default true
-        const skipForwardInterval = skipForwardStr ? parseInt(skipForwardStr, 10) : 30;
-        const skipBackInterval = skipBackStr ? parseInt(skipBackStr, 10) : 15;
-        const discAnimationEnabled = discAnimationStr !== 'false'; // Default true
-        const useStandardPlayer = standardPlayerStr !== 'false'; // Default true
-        const smartRewindEnabled = smartRewindEnabledStr !== 'false'; // Default true
-        const smartRewindMaxSeconds = smartRewindMaxSecondsStr ? parseInt(smartRewindMaxSecondsStr, 10) : 30;
         const lastPlayedBookId = lastPlayedBookIdStr || null;
         const showCompletionPrompt = showCompletionPromptStr !== 'false'; // Default true
         const autoMarkFinished = autoMarkFinishedStr === 'true'; // Default false
@@ -1879,18 +1857,20 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         }
 
         set({
-          controlMode: (controlMode as 'rewind' | 'chapter') || 'rewind',
-          progressMode: (progressMode as 'bar' | 'chapters') || 'bar',
+          // Settings from playerSettingsStore (keep local state in sync)
+          controlMode: settingsState.controlMode,
+          progressMode: settingsState.progressMode,
+          skipForwardInterval: settingsState.skipForwardInterval,
+          skipBackInterval: settingsState.skipBackInterval,
+          discAnimationEnabled: settingsState.discAnimationEnabled,
+          useStandardPlayer: settingsState.useStandardPlayer,
+          smartRewindEnabled: settingsState.smartRewindEnabled,
+          smartRewindMaxSeconds: settingsState.smartRewindMaxSeconds,
+          // Settings still managed locally (to be extracted in later phases)
           playbackRate,
           bookSpeedMap,
           globalDefaultRate,
           shakeToExtendEnabled,
-          skipForwardInterval,
-          skipBackInterval,
-          discAnimationEnabled,
-          useStandardPlayer,
-          smartRewindEnabled,
-          smartRewindMaxSeconds,
           lastPlayedBookId,
           showCompletionPrompt,
           autoMarkFinished,
