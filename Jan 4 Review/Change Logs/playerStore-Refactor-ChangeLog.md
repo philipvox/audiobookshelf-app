@@ -84,13 +84,46 @@
 - [ ] Smart rewind settings persist correctly
 
 ### Commit
-- [ ] Committed with message: `refactor(player): phase 2 - extract settings store`
+- [x] Committed: `668ad1b` - `refactor(player): phase 2 - extract settings store`
 
 ---
 
 ## Phase 3: Extract Bookmarks Store
 
-**Status:** Pending
+**Status:** Complete ✓
+**Started:** January 5, 2026
+**Completed:** January 5, 2026
+
+### Files Created
+- [x] `src/features/player/stores/bookmarksStore.ts` - Bookmark management store (~210 lines)
+
+### Features Extracted
+- `bookmarks` state array
+- `addBookmark()` - Create bookmark with haptic feedback
+- `updateBookmark()` - Update bookmark title/note
+- `removeBookmark()` - Delete bookmark with haptic feedback
+- `loadBookmarks()` - Load bookmarks from SQLite for a book
+- Helper selectors: useBookmarks, useBookmarkCount, useBookmarkById, useBookmarksSortedByTime
+
+### Changes to playerStore.ts
+- [x] Import bookmarksStore (line 99)
+- [x] Updated loadBook to call bookmarksStore.loadBookmarks(book.id) (line 633)
+- [x] Updated cleanup to call bookmarksStore.clearBookmarks() (line 1132)
+- [x] Updated all bookmark actions to delegate to bookmarksStore (lines 2111-2154)
+- [x] Local state sync for backward compatibility
+
+### TypeScript Verification
+- [x] No new TypeScript errors introduced
+- [x] Expo export build succeeds
+
+### Tests (to be verified manually)
+- [ ] Create bookmark works
+- [ ] Edit bookmark works
+- [ ] Delete bookmark works
+- [ ] Bookmarks load on book open
+
+### Commit
+- [ ] Committed with message: `refactor(player): phase 3 - extract bookmarks store`
 
 ---
 

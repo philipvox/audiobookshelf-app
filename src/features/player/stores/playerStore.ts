@@ -95,6 +95,9 @@ import {
 // Import settings store (Phase 2 refactor)
 import { usePlayerSettingsStore } from './playerSettingsStore';
 
+// Import bookmarks store (Phase 3 refactor)
+import { useBookmarksStore } from './bookmarksStore';
+
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
 const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
@@ -627,7 +630,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         let audioTrackInfos: AudioTrackInfo[] = [];
 
         // Load bookmarks early (non-blocking) - ready when user needs them
-        get().loadBookmarks().catch(() => {});
+        useBookmarksStore.getState().loadBookmarks(book.id).catch(() => {});
 
         if (isOffline && localPath) {
           // =================================================================
@@ -1125,6 +1128,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Release audio
       await audioService.unloadAudio();
 
+      // Clear bookmarks via bookmarks store (Phase 3)
+      useBookmarksStore.getState().clearBookmarks();
+
       set({
         currentBook: null,
         viewingBook: null,
@@ -1136,7 +1142,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isPlayerVisible: false,
         sleepTimer: null,
         sleepTimerInterval: null,
-        bookmarks: [],
+        bookmarks: [], // Keep for backward compatibility (will be synced from bookmarksStore)
         // Reset seeking state
         isSeeking: false,
         seekPosition: 0,
@@ -2103,103 +2109,48 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     },
 
     // =========================================================================
-    // BOOKMARKS
+    // BOOKMARKS (delegated to bookmarksStore - Phase 3 refactor)
     // =========================================================================
 
     addBookmark: async (bookmarkData: Omit<Bookmark, 'id' | 'createdAt'>) => {
-      const { currentBook, bookmarks } = get();
+      const { currentBook } = get();
       if (!currentBook) return;
 
-      const now = Date.now();
-      const bookmark: Bookmark = {
-        id: `${currentBook.id}_${now}`,
-        ...bookmarkData,
-        createdAt: now,
-      };
+      // Ensure bookmarksStore knows the current book
+      useBookmarksStore.getState().setCurrentBookId(currentBook.id);
 
-      // Update local state immediately
-      const updated = [...bookmarks, bookmark];
-      set({ bookmarks: updated });
+      // Delegate to bookmarksStore
+      await useBookmarksStore.getState().addBookmark(bookmarkData);
 
-      // Haptic feedback for bookmark created
-      haptics.bookmarkCreated();
-
-      // Persist to SQLite
-      try {
-        await sqliteCache.addBookmark({
-          id: bookmark.id,
-          bookId: currentBook.id,
-          title: bookmark.title,
-          note: bookmark.note,
-          time: bookmark.time,
-          chapterTitle: bookmark.chapterTitle,
-          createdAt: bookmark.createdAt,
-        });
-        log('Bookmark added:', bookmark.title);
-      } catch (err) {
-        logError('Failed to save bookmark:', err);
-      }
+      // Sync to local state for backward compatibility
+      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     updateBookmark: async (bookmarkId: string, updates: { title?: string; note?: string | null }) => {
-      const { bookmarks } = get();
+      // Delegate to bookmarksStore
+      await useBookmarksStore.getState().updateBookmark(bookmarkId, updates);
 
-      // Update local state
-      const updated = bookmarks.map((b) =>
-        b.id === bookmarkId
-          ? { ...b, title: updates.title ?? b.title, note: updates.note ?? b.note }
-          : b
-      );
-      set({ bookmarks: updated });
-
-      // Persist to SQLite
-      try {
-        await sqliteCache.updateBookmark(bookmarkId, updates);
-        log('Bookmark updated:', bookmarkId);
-      } catch (err) {
-        logError('Failed to update bookmark:', err);
-      }
+      // Sync to local state for backward compatibility
+      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     removeBookmark: async (bookmarkId: string) => {
-      const { bookmarks } = get();
+      // Delegate to bookmarksStore
+      await useBookmarksStore.getState().removeBookmark(bookmarkId);
 
-      // Update local state
-      const updated = bookmarks.filter((b) => b.id !== bookmarkId);
-      set({ bookmarks: updated });
-
-      // Haptic feedback for bookmark deleted
-      haptics.bookmarkDeleted();
-
-      // Persist to SQLite
-      try {
-        await sqliteCache.removeBookmark(bookmarkId);
-        log('Bookmark removed:', bookmarkId);
-      } catch (err) {
-        logError('Failed to remove bookmark:', err);
-      }
+      // Sync to local state for backward compatibility
+      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     loadBookmarks: async () => {
       const { currentBook } = get();
       if (!currentBook) return;
 
-      try {
-        const records = await sqliteCache.getBookmarks(currentBook.id);
-        const bookmarks: Bookmark[] = records.map((r) => ({
-          id: r.id,
-          title: r.title,
-          note: r.note,
-          time: r.time,
-          chapterTitle: r.chapterTitle,
-          createdAt: r.createdAt,
-        }));
-        set({ bookmarks });
-        log('Loaded', bookmarks.length, 'bookmarks for book:', currentBook.id);
-      } catch (err) {
-        logError('Failed to load bookmarks:', err);
-        set({ bookmarks: [] });
-      }
+      // Delegate to bookmarksStore
+      await useBookmarksStore.getState().loadBookmarks(currentBook.id);
+
+      // Sync to local state for backward compatibility
+      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     // =========================================================================
