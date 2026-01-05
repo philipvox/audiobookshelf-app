@@ -101,6 +101,9 @@ import { useBookmarksStore } from './bookmarksStore';
 // Import sleep timer store (Phase 4 refactor)
 import { useSleepTimerStore } from './sleepTimerStore';
 
+// Import speed store (Phase 5 refactor)
+import { useSpeedStore } from './speedStore';
+
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
 const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
@@ -1603,40 +1606,32 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     },
 
     // =========================================================================
-    // SETTINGS
+    // SPEED (delegated to speedStore - Phase 5 refactor)
     // =========================================================================
 
     setPlaybackRate: async (rate: number) => {
-      const { currentBook, bookSpeedMap } = get();
-      await audioService.setPlaybackRate(rate);
-      set({ playbackRate: rate });
+      const { currentBook } = get();
 
-      // Always persist the active playback rate for app restart recovery
-      try {
-        await AsyncStorage.setItem(ACTIVE_PLAYBACK_RATE_KEY, rate.toString());
-      } catch {}
+      // Delegate to speedStore
+      await useSpeedStore.getState().setPlaybackRate(rate, currentBook?.id);
 
-      // Save per-book speed if a book is loaded
-      if (currentBook) {
-        const updatedMap = { ...bookSpeedMap, [currentBook.id]: rate };
-        set({ bookSpeedMap: updatedMap });
-
-        try {
-          await AsyncStorage.setItem(BOOK_SPEED_MAP_KEY, JSON.stringify(updatedMap));
-        } catch {}
-      }
+      // Sync to local state for backward compatibility
+      const speedState = useSpeedStore.getState();
+      set({
+        playbackRate: speedState.playbackRate,
+        bookSpeedMap: speedState.bookSpeedMap,
+      });
     },
 
     setGlobalDefaultRate: async (rate: number) => {
+      await useSpeedStore.getState().setGlobalDefaultRate(rate);
+
+      // Sync to local state for backward compatibility
       set({ globalDefaultRate: rate });
-      try {
-        await AsyncStorage.setItem(GLOBAL_DEFAULT_RATE_KEY, rate.toString());
-      } catch {}
     },
 
     getBookSpeed: (bookId: string) => {
-      const { bookSpeedMap, globalDefaultRate } = get();
-      return bookSpeedMap[bookId] ?? globalDefaultRate;
+      return useSpeedStore.getState().getBookSpeed(bookId);
     },
 
     // =========================================================================
@@ -1746,50 +1741,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         await useSleepTimerStore.getState().loadShakeToExtendSetting();
         const sleepTimerState = useSleepTimerStore.getState();
 
+        // Phase 5: Load speed settings
+        await useSpeedStore.getState().loadSpeedSettings();
+        const speedState = useSpeedStore.getState();
+
         // Load remaining settings not yet extracted to separate stores
         const [
-          bookSpeedMapStr,
-          globalDefaultRateStr,
           lastPlayedBookIdStr,
-          activePlaybackRateStr,
           showCompletionPromptStr,
           autoMarkFinishedStr,
         ] = await Promise.all([
-          AsyncStorage.getItem(BOOK_SPEED_MAP_KEY),
-          AsyncStorage.getItem(GLOBAL_DEFAULT_RATE_KEY),
           AsyncStorage.getItem(LAST_PLAYED_BOOK_ID_KEY),
-          AsyncStorage.getItem(ACTIVE_PLAYBACK_RATE_KEY),
           AsyncStorage.getItem(SHOW_COMPLETION_PROMPT_KEY),
           AsyncStorage.getItem(AUTO_MARK_FINISHED_KEY),
         ]);
 
-        const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
-        const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
         const lastPlayedBookId = lastPlayedBookIdStr || null;
         const showCompletionPrompt = showCompletionPromptStr !== 'false'; // Default true
         const autoMarkFinished = autoMarkFinishedStr === 'true'; // Default false
-
-        // Restore playback rate:
-        // 1. If we have an active rate saved, use it (syncs UI with potentially running audio)
-        // 2. Otherwise, if we have a last played book, use its book-specific speed
-        // 3. Fall back to global default
-        let playbackRate = globalDefaultRate;
-        if (activePlaybackRateStr) {
-          playbackRate = parseFloat(activePlaybackRateStr);
-          log(`[loadPlayerSettings] Restored active playback rate: ${playbackRate}x`);
-        } else if (lastPlayedBookId && bookSpeedMap[lastPlayedBookId]) {
-          playbackRate = bookSpeedMap[lastPlayedBookId];
-          log(`[loadPlayerSettings] Using book-specific speed for ${lastPlayedBookId}: ${playbackRate}x`);
-        }
-
-        // Apply the restored rate to audioService immediately
-        // This ensures lock screen and background playback have the correct rate
-        if (playbackRate !== 1.0) {
-          log(`[loadPlayerSettings] Applying restored playback rate to audioService: ${playbackRate}x`);
-          audioService.setPlaybackRate(playbackRate).catch(() => {
-            // Audio service may not be loaded yet - rate will be applied when book loads
-          });
-        }
 
         set({
           // Settings from playerSettingsStore (keep local state in sync)
@@ -1803,10 +1772,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           smartRewindMaxSeconds: settingsState.smartRewindMaxSeconds,
           // Settings from sleepTimerStore (Phase 4)
           shakeToExtendEnabled: sleepTimerState.shakeToExtendEnabled,
+          // Settings from speedStore (Phase 5)
+          playbackRate: speedState.playbackRate,
+          bookSpeedMap: speedState.bookSpeedMap,
+          globalDefaultRate: speedState.globalDefaultRate,
           // Settings still managed locally (to be extracted in later phases)
-          playbackRate,
-          bookSpeedMap,
-          globalDefaultRate,
           lastPlayedBookId,
           showCompletionPrompt,
           autoMarkFinished,

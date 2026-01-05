@@ -168,13 +168,47 @@
 - [ ] Clear timer works
 
 ### Commit
-- [ ] Committed with message: `refactor(player): phase 4 - extract sleep timer store`
+- [x] Committed: `4dc85ed` - `refactor(player): phase 4 - extract sleep timer store`
 
 ---
 
 ## Phase 5: Extract Speed Store
 
-**Status:** Pending
+**Status:** Complete ✓
+**Started:** January 5, 2026
+**Completed:** January 5, 2026
+
+### Files Created
+- [x] `src/features/player/stores/speedStore.ts` - Playback speed store (~200 lines)
+
+### Features Extracted
+- `playbackRate` - Current playback speed
+- `bookSpeedMap` - Per-book speed memory
+- `globalDefaultRate` - Default speed for new books
+- `setPlaybackRate()` - Set rate and persist per-book
+- `setGlobalDefaultRate()` - Set default rate
+- `getBookSpeed()` - Get speed for a book
+- `applyBookSpeed()` - Apply speed when loading book
+- `loadSpeedSettings()` - Load from AsyncStorage
+- Helper selectors: usePlaybackRate, useGlobalDefaultRate, useBookSpeed
+
+### Changes to playerStore.ts
+- [x] Import speedStore (line 105)
+- [x] Updated speed actions to delegate (lines 1608-1635)
+- [x] Updated loadPlayerSettings to load from speedStore (lines 1744-1746)
+- [x] Local state sync for backward compatibility
+
+### TypeScript Verification
+- [x] No new TypeScript errors introduced
+- [x] Expo export build succeeds
+
+### Tests (to be verified manually)
+- [ ] Change speed persists per book
+- [ ] New books use global default
+- [ ] Speed restored on book reload
+
+### Commit
+- [ ] Committed with message: `refactor(player): phase 5 - extract speed store`
 
 ---
 
