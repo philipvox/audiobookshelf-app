@@ -16,6 +16,7 @@ import { trackEvent } from '@/core/monitoring';
 import { eventBus } from '@/core/events';
 import { generateAndCacheTicks } from '@/features/player/services/tickCache';
 import { ChapterInput } from '@/features/player/utils/tickGenerator';
+import { logger } from '@/shared/utils/logger';
 
 // =============================================================================
 // LOGGING
@@ -25,21 +26,21 @@ const LOG_PREFIX = '[DownloadManager]';
 const VERBOSE = true; // Set to false to reduce logging
 
 function log(...args: any[]) {
-  console.log(LOG_PREFIX, ...args);
+  logger.debug(LOG_PREFIX, ...args);
 }
 
 function logVerbose(...args: any[]) {
   if (VERBOSE) {
-    console.log(LOG_PREFIX, '[VERBOSE]', ...args);
+    logger.debug(LOG_PREFIX, '[VERBOSE]', ...args);
   }
 }
 
 function logError(...args: any[]) {
-  console.error(LOG_PREFIX, '[ERROR]', ...args);
+  logger.error(LOG_PREFIX, '[ERROR]', ...args);
 }
 
 function logWarn(...args: any[]) {
-  console.warn(LOG_PREFIX, '[WARN]', ...args);
+  logger.warn(LOG_PREFIX, '[WARN]', ...args);
 }
 
 // =============================================================================

@@ -6,6 +6,7 @@
  */
 
 import { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Request middleware context
@@ -160,14 +161,14 @@ export const middlewareManager = new MiddlewareManager();
 export const loggingMiddleware = {
   request: ((context: RequestContext) => {
     if (__DEV__) {
-      console.log(`[API] → ${context.method} ${context.url}`);
+      logger.debug(`[API] → ${context.method} ${context.url}`);
     }
     return context;
   }) as RequestMiddleware,
 
   response: (<T>(context: ResponseContext<T>) => {
     if (__DEV__) {
-      console.log(
+      logger.debug(
         `[API] ← ${context.request.method} ${context.request.url} (${context.duration}ms)`
       );
     }
@@ -176,7 +177,7 @@ export const loggingMiddleware = {
 
   error: ((context: ErrorContext) => {
     if (__DEV__) {
-      console.error(
+      logger.error(
         `[API] ✗ ${context.request.method} ${context.request.url} (${context.duration}ms)`,
         context.error.message
       );

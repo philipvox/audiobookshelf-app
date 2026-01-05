@@ -8,6 +8,7 @@
 import { sqliteCache } from './sqliteCache';
 // Import directly to avoid circular dependency with @/core/api
 import { apiClient } from '@/core/api/apiClient';
+import { logger } from '@/shared/utils/logger';
 
 // Safe NetInfo import - may not be available in Expo Go
 let NetInfo: typeof import('@react-native-community/netinfo').default | null = null;
@@ -71,14 +72,14 @@ class SyncQueue {
           await this.processItem(item);
           await sqliteCache.removeSyncQueueItem(item.id);
         } catch (error) {
-          console.warn('[SyncQueue] Failed to process item:', item.action, error);
+          logger.warn('[SyncQueue] Failed to process item:', item.action, error);
 
           // Increment retry count
           if (item.retryCount < this.maxRetries) {
             await sqliteCache.updateSyncQueueRetry(item.id, item.retryCount + 1);
           } else {
             // Max retries reached, remove and log
-            console.error('[SyncQueue] Max retries reached, removing:', item);
+            logger.error('[SyncQueue] Max retries reached, removing:', item);
             await sqliteCache.removeSyncQueueItem(item.id);
           }
         }
@@ -95,11 +96,11 @@ class SyncQueue {
       case 'favorite':
         // AudiobookShelf doesn't have a native favorites API, so we use myLibrary store
         // For server sync, we could use a custom collection named "Favorites"
-        console.log('[SyncQueue] Processing favorite:', payload.itemId);
+        logger.debug('[SyncQueue] Processing favorite:', payload.itemId);
         break;
 
       case 'unfavorite':
-        console.log('[SyncQueue] Processing unfavorite:', payload.itemId);
+        logger.debug('[SyncQueue] Processing unfavorite:', payload.itemId);
         break;
 
       case 'progress':
@@ -126,7 +127,7 @@ class SyncQueue {
         break;
 
       default:
-        console.warn('[SyncQueue] Unknown action:', item.action);
+        logger.warn('[SyncQueue] Unknown action:', item.action);
     }
   }
 
@@ -139,7 +140,7 @@ class SyncQueue {
     if (NetInfo) {
       this.unsubscribe = NetInfo.addEventListener((state) => {
         if (state.isConnected) {
-          console.log('[SyncQueue] Network connected, processing queue...');
+          logger.debug('[SyncQueue] Network connected, processing queue...');
           this.processQueue();
         }
       });

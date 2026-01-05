@@ -14,6 +14,7 @@ import { queryKeys } from '@/core/queryClient';
 import { prefetchService } from '@/core/services/prefetchService';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { LibraryItem } from '@/core/types';
+import { logger } from '@/shared/utils/logger';
 
 interface BootstrapResult {
   isReady: boolean;
@@ -35,7 +36,7 @@ export function useAppBootstrap(libraryId: string | undefined): BootstrapResult 
 
     const bootstrap = async () => {
       try {
-        console.log('[Bootstrap] Starting...');
+        logger.debug('[Bootstrap] Starting...');
         const startTime = Date.now();
 
         // ====================================================================
@@ -47,7 +48,7 @@ export function useAppBootstrap(libraryId: string | undefined): BootstrapResult 
           // We have cached data - show UI immediately!
           setIsHydrated(true);
           setIsReady(true);
-          console.log(`[Bootstrap] Hydrated from cache in ${Date.now() - startTime}ms`);
+          logger.debug(`[Bootstrap] Hydrated from cache in ${Date.now() - startTime}ms`);
         }
 
         // ====================================================================
@@ -129,9 +130,9 @@ export function useAppBootstrap(libraryId: string | undefined): BootstrapResult 
           }
         });
 
-        console.log(`[Bootstrap] Complete in ${Date.now() - startTime}ms`);
+        logger.debug(`[Bootstrap] Complete in ${Date.now() - startTime}ms`);
       } catch (err) {
-        console.error('[Bootstrap] Failed:', err);
+        logger.error('[Bootstrap] Failed:', err);
         setError(err as Error);
 
         // Even on error, try to show cached data if available

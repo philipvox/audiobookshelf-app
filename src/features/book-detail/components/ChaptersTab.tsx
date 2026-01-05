@@ -16,6 +16,7 @@ import { BookChapter, LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 import { useColors, scale, spacing, radius } from '@/shared/theme';
 import { useNormalizedChapters } from '@/shared/hooks';
+import { logger } from '@/shared/utils/logger';
 
 interface ChaptersTabProps {
   chapters: BookChapter[];
@@ -95,16 +96,16 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
 
   const handleChapterPress = async (chapter: BookChapter) => {
     try {
-      console.log('[ChaptersTab] Chapter press:', chapter.title, 'start:', chapter.start);
+      logger.debug('[ChaptersTab] Chapter press:', chapter.title, 'start:', chapter.start);
       if (currentBook?.id === bookId) {
-        console.log('[ChaptersTab] Same book loaded, seeking to:', chapter.start);
+        logger.debug('[ChaptersTab] Same book loaded, seeking to:', chapter.start);
         await seekTo(chapter.start);
         // Small delay to ensure seek completes before playing
         // This prevents race conditions where play() is called before audio is ready
         await new Promise(resolve => setTimeout(resolve, 50));
         await play();
       } else if (book) {
-        console.log('[ChaptersTab] Different/no book loaded, loading with startPosition:', chapter.start);
+        logger.debug('[ChaptersTab] Different/no book loaded, loading with startPosition:', chapter.start);
         await loadBook(book, {
           startPosition: chapter.start,
           autoPlay: true,
@@ -112,7 +113,7 @@ export function ChaptersTab({ chapters, currentPosition = 0, bookId, book }: Cha
         });
       }
     } catch (error) {
-      console.error('[ChaptersTab] Failed to play chapter:', error);
+      logger.error('[ChaptersTab] Failed to play chapter:', error);
     }
   };
 

@@ -9,6 +9,7 @@ import { eventBus } from './eventBus';
 import { trackEvent } from '@/core/monitoring';
 import { queryClient, queryKeys } from '@/core/queryClient';
 import { websocketService } from '@/core/services/websocketService';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Initialize app-wide event listeners.
@@ -21,7 +22,7 @@ export function initializeEventListeners(): () => void {
   // When a new book starts playing, invalidate in-progress queries so the list re-sorts
   unsubscribers.push(
     eventBus.on('book:started', async ({ bookId }) => {
-      console.log('[EventListeners] Book started, invalidating in-progress queries:', bookId);
+      logger.debug('[EventListeners] Book started, invalidating in-progress queries:', bookId);
 
       // Invalidate user progress lists so the newly started book appears at top
       queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
@@ -37,7 +38,7 @@ export function initializeEventListeners(): () => void {
 
       // Invalidate queries so series progress updates immediately
       // This ensures SeriesDetailScreen shows updated progress
-      console.log('[EventListeners] Book finished, invalidating queries:', { bookId, seriesId });
+      logger.debug('[EventListeners] Book finished, invalidating queries:', { bookId, seriesId });
 
       // Invalidate book progress
       queryClient.invalidateQueries({ queryKey: queryKeys.user.progress(bookId) });
@@ -59,7 +60,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -85,7 +86,7 @@ export function initializeEventListeners(): () => void {
       });
 
       // When server wins a conflict, invalidate the book and refresh UI
-      console.log('[EventListeners] Conflict resolved (server wins), refreshing:', bookId);
+      logger.debug('[EventListeners] Conflict resolved (server wins), refreshing:', bookId);
 
       queryClient.invalidateQueries({ queryKey: queryKeys.user.progress(bookId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.book.progress(bookId) });
@@ -97,7 +98,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -143,7 +144,7 @@ export function initializeEventListeners(): () => void {
   // === WEBSOCKET: PROGRESS UPDATES FROM OTHER DEVICES ===
   unsubscribers.push(
     eventBus.on('websocket:progress_updated', async ({ libraryItemId, currentTime, progress, isFinished }) => {
-      console.log('[EventListeners] WebSocket progress update:', libraryItemId);
+      logger.debug('[EventListeners] WebSocket progress update:', libraryItemId);
 
       // Track for analytics
       trackEvent('websocket_progress_received', { libraryItemId, isFinished });
@@ -162,7 +163,7 @@ export function initializeEventListeners(): () => void {
           const { useLibraryCache } = await import('@/core/cache/libraryCache');
           useLibraryCache.getState().refreshCache();
         } catch (err) {
-          console.warn('[EventListeners] Failed to refresh library cache:', err);
+          logger.warn('[EventListeners] Failed to refresh library cache:', err);
         }
       }
     })
@@ -171,7 +172,7 @@ export function initializeEventListeners(): () => void {
   // === WEBSOCKET: ITEM ADDED ===
   unsubscribers.push(
     eventBus.on('websocket:item_added', async ({ libraryItemId, libraryId }) => {
-      console.log('[EventListeners] WebSocket item added:', libraryItemId);
+      logger.debug('[EventListeners] WebSocket item added:', libraryItemId);
 
       trackEvent('websocket_item_added', { libraryItemId, libraryId });
 
@@ -184,7 +185,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -192,7 +193,7 @@ export function initializeEventListeners(): () => void {
   // === WEBSOCKET: ITEM UPDATED ===
   unsubscribers.push(
     eventBus.on('websocket:item_updated', async ({ libraryItemId, libraryId }) => {
-      console.log('[EventListeners] WebSocket item updated:', libraryItemId);
+      logger.debug('[EventListeners] WebSocket item updated:', libraryItemId);
 
       trackEvent('websocket_item_updated', { libraryItemId, libraryId });
 
@@ -208,7 +209,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -216,7 +217,7 @@ export function initializeEventListeners(): () => void {
   // === WEBSOCKET: ITEM REMOVED ===
   unsubscribers.push(
     eventBus.on('websocket:item_removed', async ({ libraryItemId, libraryId }) => {
-      console.log('[EventListeners] WebSocket item removed:', libraryItemId);
+      logger.debug('[EventListeners] WebSocket item removed:', libraryItemId);
 
       trackEvent('websocket_item_removed', { libraryItemId, libraryId });
 
@@ -236,7 +237,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -244,7 +245,7 @@ export function initializeEventListeners(): () => void {
   // === WEBSOCKET: LIBRARY SCAN COMPLETE ===
   unsubscribers.push(
     eventBus.on('websocket:library_scan_complete', async ({ libraryId, itemsAdded, itemsUpdated }) => {
-      console.log('[EventListeners] WebSocket library scan complete:', libraryId);
+      logger.debug('[EventListeners] WebSocket library scan complete:', libraryId);
 
       trackEvent('websocket_library_scan_complete', { libraryId, itemsAdded, itemsUpdated });
 
@@ -259,7 +260,7 @@ export function initializeEventListeners(): () => void {
         const { useLibraryCache } = await import('@/core/cache/libraryCache');
         useLibraryCache.getState().refreshCache();
       } catch (err) {
-        console.warn('[EventListeners] Failed to refresh library cache:', err);
+        logger.warn('[EventListeners] Failed to refresh library cache:', err);
       }
     })
   );
@@ -280,7 +281,7 @@ export function initializeEventListeners(): () => void {
   // Connect WebSocket when network comes online
   unsubscribers.push(
     eventBus.on('network:online', () => {
-      console.log('[EventListeners] Network online - reconnecting WebSocket');
+      logger.debug('[EventListeners] Network online - reconnecting WebSocket');
       websocketService.reconnect();
     })
   );
@@ -288,17 +289,17 @@ export function initializeEventListeners(): () => void {
   // Disconnect WebSocket when going offline
   unsubscribers.push(
     eventBus.on('network:offline', () => {
-      console.log('[EventListeners] Network offline - disconnecting WebSocket');
+      logger.debug('[EventListeners] Network offline - disconnecting WebSocket');
       websocketService.disconnect('network');
     })
   );
 
-  console.log('[EventListeners] Initialized');
+  logger.debug('[EventListeners] Initialized');
 
   // Return cleanup function
   return () => {
     unsubscribers.forEach((unsub) => unsub());
     websocketService.disconnect('manual');
-    console.log('[EventListeners] Cleaned up');
+    logger.debug('[EventListeners] Cleaned up');
   };
 }

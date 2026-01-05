@@ -21,6 +21,7 @@ import { GenresListScreen } from '@/features/library/screens/GenresListScreen';
 import { GenreDetailScreen } from '@/features/library/screens/GenreDetailScreen';
 import { FilteredBooksScreen } from '@/features/library/screens/FilteredBooksScreen';
 import { HomeScreen } from '@/features/home';
+import { MyLibraryScreen } from '@/features/library';
 import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
 import { SearchScreen } from '@/features/search';
 import { BrowseScreen } from '@/features/browse';
@@ -29,7 +30,7 @@ import { AuthorDetailScreen } from '@/features/author';
 import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { BookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen } from '@/features/profile';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MoodDiscoveryScreen, MoodResultsScreen } from '@/features/mood-discovery';
 import { CDPlayerScreen, BookCompletionSheet } from '@/features/player';
@@ -44,10 +45,86 @@ import { networkMonitor } from '@/core/services/networkMonitor';
 import { navigationMonitor } from '@/utils/runtimeMonitor';
 import { NavigationBar } from './components/NavigationBar';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
-import { NetworkStatusBar } from '@/shared/components';
+import { NetworkStatusBar, ToastContainer } from '@/shared/components';
+import { ErrorBoundary } from '@/core/errors/ErrorBoundary';
+import { logger } from '@/shared/utils/logger';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Wrap main tab screens with error boundaries for crash prevention
+function HomeScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="HomeScreen" level="screen">
+      <HomeScreen />
+    </ErrorBoundary>
+  );
+}
+
+function LibraryScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="MyLibraryScreen" level="screen">
+      <MyLibraryScreen />
+    </ErrorBoundary>
+  );
+}
+
+function BrowseScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="BrowseScreen" level="screen">
+      <BrowseScreen />
+    </ErrorBoundary>
+  );
+}
+
+function ProfileScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="ProfileScreen" level="screen">
+      <ProfileScreen />
+    </ErrorBoundary>
+  );
+}
+
+// Wrap critical detail/search screens with error boundaries
+function SearchScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="SearchScreen" level="screen">
+      <SearchScreen />
+    </ErrorBoundary>
+  );
+}
+
+function BookDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="BookDetailScreen" level="screen">
+      <BookDetailScreen />
+    </ErrorBoundary>
+  );
+}
+
+function SeriesDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="SeriesDetailScreen" level="screen">
+      <SeriesDetailScreen />
+    </ErrorBoundary>
+  );
+}
+
+function AuthorDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="AuthorDetailScreen" level="screen">
+      <AuthorDetailScreen />
+    </ErrorBoundary>
+  );
+}
+
+function NarratorDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="NarratorDetailScreen" level="screen">
+      <NarratorDetailScreen />
+    </ErrorBoundary>
+  );
+}
 
 function MainTabs() {
   return (
@@ -59,9 +136,10 @@ function MainTabs() {
       }}
       initialRouteName="HomeTab"
     >
-      <Tab.Screen name="HomeTab" component={HomeScreen} />
-      <Tab.Screen name="DiscoverTab" component={BrowseScreen} />
-      <Tab.Screen name="ProfileTab" component={ProfileScreen} />
+      <Tab.Screen name="HomeTab" component={HomeScreenWithBoundary} />
+      <Tab.Screen name="LibraryTab" component={LibraryScreenWithBoundary} />
+      <Tab.Screen name="DiscoverTab" component={BrowseScreenWithBoundary} />
+      <Tab.Screen name="ProfileTab" component={ProfileScreenWithBoundary} />
     </Tab.Navigator>
   );
 }
@@ -94,13 +172,13 @@ function AuthenticatedApp() {
       // Lazy import to avoid circular dependency
       const { audioService } = require('@/features/player/services/audioService');
       audioService?.ensureSetup?.().catch((err: any) => {
-        console.warn('[AppNavigator] Audio service pre-init failed:', err);
+        logger.warn('[AppNavigator] Audio service pre-init failed:', err);
       });
 
       // Load player settings (control mode, progress mode, playback rate)
       const { usePlayerStore } = require('@/features/player/stores/playerStore');
       usePlayerStore.getState().loadPlayerSettings?.().catch((err: any) => {
-        console.warn('[AppNavigator] Player settings load failed:', err);
+        logger.warn('[AppNavigator] Player settings load failed:', err);
       });
     });
     return () => task.cancel();
@@ -110,7 +188,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       initQueue().catch((err: any) => {
-        console.warn('[AppNavigator] Queue init failed:', err);
+        logger.warn('[AppNavigator] Queue init failed:', err);
       });
     });
     return () => task.cancel();
@@ -120,7 +198,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       networkMonitor.init().catch((err: any) => {
-        console.warn('[AppNavigator] Network monitor init failed:', err);
+        logger.warn('[AppNavigator] Network monitor init failed:', err);
       });
     });
     return () => task.cancel();
@@ -132,7 +210,7 @@ function AuthenticatedApp() {
     const task = InteractionManager.runAfterInteractions(() => {
       const timer = setTimeout(() => {
         downloadManager.init().catch((err: any) => {
-          console.warn('[AppNavigator] Download manager init failed:', err);
+          logger.warn('[AppNavigator] Download manager init failed:', err);
         });
       }, 100);
       return () => clearTimeout(timer);
@@ -144,7 +222,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (library?.id) {
       loadCache(library.id).catch((err) => {
-        console.warn('[AppNavigator] Background cache load failed:', err);
+        logger.warn('[AppNavigator] Background cache load failed:', err);
       });
     }
   }, [library?.id, loadCache]);
@@ -157,18 +235,18 @@ function AuthenticatedApp() {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
-        <Stack.Screen name="Search" component={SearchScreen} />
+        <Stack.Screen name="Search" component={SearchScreenWithBoundary} />
         <Stack.Screen name="SeriesList" component={SeriesListScreen} />
         <Stack.Screen name="AuthorsList" component={AuthorsListScreen} />
         <Stack.Screen name="NarratorsList" component={NarratorsListScreen} />
         <Stack.Screen name="GenresList" component={GenresListScreen} />
         <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
         <Stack.Screen name="FilteredBooks" component={FilteredBooksScreen} />
-        <Stack.Screen name="SeriesDetail" component={SeriesDetailScreen} />
-        <Stack.Screen name="AuthorDetail" component={AuthorDetailScreen} />
-        <Stack.Screen name="NarratorDetail" component={NarratorDetailScreen} />
+        <Stack.Screen name="SeriesDetail" component={SeriesDetailScreenWithBoundary} />
+        <Stack.Screen name="AuthorDetail" component={AuthorDetailScreenWithBoundary} />
+        <Stack.Screen name="NarratorDetail" component={NarratorDetailScreenWithBoundary} />
         <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
-        <Stack.Screen name="BookDetail" component={BookDetailScreen} />
+        <Stack.Screen name="BookDetail" component={BookDetailScreenWithBoundary} />
         <Stack.Screen name="Preferences" component={PreferencesScreen} />
         <Stack.Screen name="QueueScreen" component={QueueScreen} />
         <Stack.Screen name="Downloads" component={DownloadsScreen} />
@@ -181,6 +259,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="HapticSettings" component={HapticSettingsScreen} />
         <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
         <Stack.Screen name="HiddenItems" component={HiddenItemsScreen} />
+        <Stack.Screen name="KidModeSettings" component={KidModeSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         {__DEV__ && (
           <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
@@ -216,6 +295,7 @@ function AuthenticatedApp() {
       <NavigationBar />
       <NetworkStatusBar />
       <BookCompletionSheet />
+      <ToastContainer />
     </NavigationContainer>
   );
 }

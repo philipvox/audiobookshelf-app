@@ -10,6 +10,7 @@
  */
 
 import * as ExpoHaptics from 'expo-haptics';
+import { logger } from '@/shared/utils/logger';
 
 // Lazy import of settings store to avoid circular dependencies
 let getHapticSettings: (() => {
@@ -81,7 +82,7 @@ class HapticService {
   isCategoryEnabled(category: HapticCategory): boolean {
     const settings = loadSettingsStore();
     const result = settings.enabled && settings[category];
-    console.log('[Haptics] isCategoryEnabled:', { category, enabled: settings.enabled, categoryValue: settings[category], result });
+    logger.debug('[Haptics] isCategoryEnabled:', { category, enabled: settings.enabled, categoryValue: settings[category], result });
     return result;
   }
 
@@ -102,21 +103,21 @@ class HapticService {
    */
   impact(style: ImpactStyle = 'medium'): void {
     const settings = loadSettingsStore();
-    console.log('[Haptics] impact called:', { style, enabled: settings.enabled });
+    logger.debug('[Haptics] impact called:', { style, enabled: settings.enabled });
 
     if (!settings.enabled) {
-      console.log('[Haptics] Blocked - haptics disabled in settings');
+      logger.debug('[Haptics] Blocked - haptics disabled in settings');
       return;
     }
 
     try {
       const impactStyle = this.getImpactStyle(style);
-      console.log('[Haptics] Firing impactAsync with style:', impactStyle);
+      logger.debug('[Haptics] Firing impactAsync with style:', impactStyle);
       ExpoHaptics.impactAsync(impactStyle).catch((e) => {
-        console.warn('[Haptics] impactAsync failed:', e);
+        logger.warn('[Haptics] impactAsync failed:', e);
       });
     } catch (e) {
-      console.warn('[Haptics] impact error:', e);
+      logger.warn('[Haptics] impact error:', e);
     }
   }
 
@@ -139,20 +140,20 @@ class HapticService {
    */
   selection(): void {
     const settings = loadSettingsStore();
-    console.log('[Haptics] selection called:', { enabled: settings.enabled });
+    logger.debug('[Haptics] selection called:', { enabled: settings.enabled });
 
     if (!settings.enabled) {
-      console.log('[Haptics] Blocked - haptics disabled in settings');
+      logger.debug('[Haptics] Blocked - haptics disabled in settings');
       return;
     }
 
     try {
-      console.log('[Haptics] Firing selectionAsync');
+      logger.debug('[Haptics] Firing selectionAsync');
       ExpoHaptics.selectionAsync().catch((e) => {
-        console.warn('[Haptics] selectionAsync failed:', e);
+        logger.warn('[Haptics] selectionAsync failed:', e);
       });
     } catch (e) {
-      console.warn('[Haptics] selection error:', e);
+      logger.warn('[Haptics] selection error:', e);
     }
   }
 
@@ -374,7 +375,7 @@ class HapticService {
    * Light tap for button press
    */
   buttonPress(): void {
-    console.log('[Haptics] buttonPress called, uiInteractions enabled:', this.isCategoryEnabled('uiInteractions'));
+    logger.debug('[Haptics] buttonPress called, uiInteractions enabled:', this.isCategoryEnabled('uiInteractions'));
     if (!this.isCategoryEnabled('uiInteractions')) return;
     this.impact('light');
   }

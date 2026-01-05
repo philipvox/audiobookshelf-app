@@ -6,6 +6,7 @@
  */
 
 import { EventMap, EventPayload } from './types';
+import { logger } from '@/shared/utils/logger';
 
 type Listener<K extends keyof EventMap> = (payload: EventPayload<K>) => void;
 
@@ -42,7 +43,7 @@ class TypedEventBus {
 
     // Warn if too many listeners (potential memory leak)
     if (eventListeners.size > this.options.maxListeners!) {
-      console.warn(
+      logger.warn(
         `[EventBus] Event "${String(event)}" has ${eventListeners.size} listeners. ` +
           `Possible memory leak?`
       );
@@ -73,7 +74,7 @@ class TypedEventBus {
    */
   emit<K extends keyof EventMap>(event: K, payload: EventPayload<K>): void {
     if (this.options.debug) {
-      console.log(`[EventBus] ${String(event)}`, payload);
+      logger.debug(`[EventBus] ${String(event)}`, payload);
     }
 
     const eventListeners = this.listeners.get(event);
@@ -86,7 +87,7 @@ class TypedEventBus {
       try {
         listener(payload);
       } catch (error) {
-        console.error(`[EventBus] Error in listener for "${String(event)}":`, error);
+        logger.error(`[EventBus] Error in listener for "${String(event)}":`, error);
         // Don't re-throw - one bad listener shouldn't break others
       }
     }

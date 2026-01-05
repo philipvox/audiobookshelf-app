@@ -36,12 +36,16 @@ import {
   Library,
   Sparkles,
   EyeOff,
+  Baby,
+  Heart,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useThemeStore, useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
+import { useKidModeStore } from '@/shared/stores/kidModeStore';
+import { useWishlistStore } from '@/features/wishlist/stores/wishlistStore';
 import { useDismissedCount } from '@/features/recommendations/stores/dismissedItemsStore';
 import { haptics } from '@/core/native/haptics';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
@@ -49,6 +53,7 @@ import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
 import { accentColors, scale } from '@/shared/theme';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 import { generateErrorReport, exportErrorReportJSON } from '@/utils/runtimeMonitor';
+import { logger } from '@/shared/utils/logger';
 
 const ACCENT = accentColors.red;  // Red accent for primary interactive
 
@@ -180,8 +185,15 @@ export function ProfileScreen() {
   // Library preferences
   const { hideSingleBookSeries, setHideSingleBookSeries } = useMyLibraryStore();
 
+  // Kid Mode
+  const kidModeEnabled = useKidModeStore((s) => s.enabled);
+
   // Hidden items count for badge
   const hiddenItemsCount = useDismissedCount();
+
+  // Wishlist count
+  const wishlistItems = useWishlistStore((s) => s.items);
+  const wishlistCount = wishlistItems.length;
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -267,6 +279,16 @@ export function ProfileScreen() {
             themeColors={themeColors}
             isDarkMode={isDarkMode}
           />
+          <ProfileLink
+            Icon={Heart}
+            label="Wishlist"
+            subtitle={wishlistCount > 0 ? `${wishlistCount} item${wishlistCount !== 1 ? 's' : ''}` : 'Track books you want'}
+            badge={wishlistCount > 0 ? String(wishlistCount) : undefined}
+            badgeColor={accentColors.gold}
+            onPress={() => navigation.navigate('Wishlist')}
+            themeColors={themeColors}
+            isDarkMode={isDarkMode}
+          />
         </SectionGroup>
 
         {/* Settings Section */}
@@ -313,6 +335,17 @@ export function ProfileScreen() {
             themeColors={themeColors}
             isDarkMode={isDarkMode}
           />
+          <ProfileLink
+            Icon={Baby}
+            label="Kid Mode"
+            subtitle={kidModeEnabled ? 'Active - filtering content' : 'Off - showing all content'}
+            badge={kidModeEnabled ? 'ON' : undefined}
+            badgeColor={kidModeEnabled ? '#34C759' : undefined}
+            onPress={() => navigation.navigate('KidModeSettings' as never)}
+            themeColors={themeColors}
+            iconBgColor={kidModeEnabled ? accentColors.gold : undefined}
+            isDarkMode={isDarkMode}
+          />
         </SectionGroup>
 
         {/* Recommendations Section */}
@@ -355,9 +388,9 @@ export function ProfileScreen() {
               onPress={async () => {
                 try {
                   const report = await exportErrorReportJSON();
-                  console.log('\n=== PERFORMANCE REPORT ===');
-                  console.log(report);
-                  console.log('=== END REPORT ===\n');
+                  logger.info('\n=== PERFORMANCE REPORT ===');
+                  logger.info(report);
+                  logger.info('=== END REPORT ===\n');
                   haptics.selection();
                   Alert.alert('Report Exported', 'Performance report logged to console. Check your terminal.');
                 } catch (e) {

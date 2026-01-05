@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { sqliteCache } from './sqliteCache';
+import { logger } from '@/shared/utils/logger';
 
 class PrefetchService {
   private queryClient: QueryClient | null = null;
@@ -49,7 +50,7 @@ class PrefetchService {
         }
 
         const elapsed = Date.now() - startTime;
-        console.log(`[Prefetch] Hydrated ${cachedItems.length} items from SQLite in ${elapsed}ms`);
+        logger.debug(`[Prefetch] Hydrated ${cachedItems.length} items from SQLite in ${elapsed}ms`);
 
         // Prefetch covers for cached items
         this.prefetchCovers(cachedItems.slice(0, 50));
@@ -57,7 +58,7 @@ class PrefetchService {
 
       return cachedItems;
     } catch (err) {
-      console.warn('[Prefetch] Hydration failed:', err);
+      logger.warn('[Prefetch] Hydration failed:', err);
       return [];
     }
   }
@@ -96,7 +97,7 @@ class PrefetchService {
     this.lastLibraryId = libraryId;
 
     try {
-      console.log('[Prefetch] Starting background load...');
+      logger.debug('[Prefetch] Starting background load...');
       const startTime = Date.now();
 
       // Initialize SQLite
@@ -131,7 +132,7 @@ class PrefetchService {
       await sqliteCache.setLibraryItems(libraryId, allItems);
 
       const elapsed = Date.now() - startTime;
-      console.log(`[Prefetch] Loaded ${allItems.length} items in ${elapsed}ms (saved to SQLite)`);
+      logger.debug(`[Prefetch] Loaded ${allItems.length} items in ${elapsed}ms (saved to SQLite)`);
 
       // Prefetch cover images (first 100) - expo-image handles this efficiently
       this.prefetchCovers(allItems.slice(0, 100));
@@ -139,12 +140,12 @@ class PrefetchService {
       return allItems;
 
     } catch (err) {
-      console.warn('[Prefetch] Failed:', err);
+      logger.warn('[Prefetch] Failed:', err);
       // If network fetch fails, try to return cached data
       if (this.cachedItems.length === 0) {
         const cached = await sqliteCache.getLibraryItems(libraryId);
         if (cached.length > 0) {
-          console.log('[Prefetch] Falling back to SQLite cache');
+          logger.debug('[Prefetch] Falling back to SQLite cache');
           this.cachedItems = cached;
           return cached;
         }
@@ -166,9 +167,9 @@ class PrefetchService {
     try {
       // expo-image prefetch uses native caching (disk + memory LRU)
       await Image.prefetch(coverUrls);
-      console.log(`[Prefetch] Cached ${coverUrls.length} cover images`);
+      logger.debug(`[Prefetch] Cached ${coverUrls.length} cover images`);
     } catch (err) {
-      console.warn('[Prefetch] Cover prefetch error:', err);
+      logger.warn('[Prefetch] Cover prefetch error:', err);
     }
   }
 
@@ -190,9 +191,9 @@ class PrefetchService {
     try {
       await Image.prefetch(criticalUrls);
       const elapsed = Date.now() - startTime;
-      console.log(`[Prefetch] Critical covers ready: ${criticalUrls.length} in ${elapsed}ms`);
+      logger.debug(`[Prefetch] Critical covers ready: ${criticalUrls.length} in ${elapsed}ms`);
     } catch (err) {
-      console.warn('[Prefetch] Critical cover prefetch error:', err);
+      logger.warn('[Prefetch] Critical cover prefetch error:', err);
     }
   }
 

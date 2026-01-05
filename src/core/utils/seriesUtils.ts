@@ -6,6 +6,7 @@
  */
 
 import { LibraryItem } from '@/core/types';
+import { logger } from '@/shared/utils/logger';
 
 // =============================================================================
 // TYPES
@@ -56,7 +57,7 @@ export function getSeriesInfo(item: LibraryItem): SeriesInfo | null {
       sequence,
     };
   } catch (err) {
-    console.warn('[seriesUtils] Error extracting series info:', err);
+    logger.warn('[seriesUtils] Error extracting series info:', err);
     return null;
   }
 }
@@ -81,11 +82,11 @@ export function findNextInSeries(
 
   if (currentSeriesInfo.sequence === null) {
     // Book has no sequence number, can't determine next
-    console.log('[seriesUtils] Current book has no sequence number');
+    logger.debug('[seriesUtils] Current book has no sequence number');
     return null;
   }
 
-  console.log(`[seriesUtils] Looking for next book in series "${currentSeriesInfo.name}" after sequence ${currentSeriesInfo.sequence}`);
+  logger.debug(`[seriesUtils] Looking for next book in series "${currentSeriesInfo.name}" after sequence ${currentSeriesInfo.sequence}`);
 
   // Find all books in the same series with sequence numbers
   const seriesBooks: Array<{ item: LibraryItem; sequence: number }> = [];
@@ -105,7 +106,7 @@ export function findNextInSeries(
   }
 
   if (seriesBooks.length === 0) {
-    console.log('[seriesUtils] No other books found in series');
+    logger.debug('[seriesUtils] No other books found in series');
     return null;
   }
 
@@ -116,12 +117,12 @@ export function findNextInSeries(
   for (const book of seriesBooks) {
     if (book.sequence > currentSeriesInfo.sequence) {
       const title = (book.item.media?.metadata as any)?.title || 'Unknown';
-      console.log(`[seriesUtils] Found next book: "${title}" (sequence ${book.sequence})`);
+      logger.debug(`[seriesUtils] Found next book: "${title}" (sequence ${book.sequence})`);
       return book.item;
     }
   }
 
-  console.log('[seriesUtils] Current book is the last in series');
+  logger.debug('[seriesUtils] Current book is the last in series');
   return null;
 }
 

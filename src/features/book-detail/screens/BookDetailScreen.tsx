@@ -57,6 +57,7 @@ import { finishedBooksSync } from '@/core/services/finishedBooksSync';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useColors, useThemeMode, accentColors, scale, wp, hp, spacing, radius, layout } from '@/shared/theme';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
+import { logger } from '@/shared/utils/logger';
 
 // Design constants
 const SCREEN_WIDTH = wp(100);
@@ -133,6 +134,9 @@ export function BookDetailScreen() {
   const removeFromQueue = useQueueStore((s) => s.removeFromQueue);
   const reorderQueue = useQueueStore((s) => s.reorderQueue);
 
+  // Snackbar for feedback - must be before handlers that use showError
+  const { snackbarProps, showUndo, showSuccess, showError } = useSnackbar();
+
   // Get queue position (1-indexed)
   const queuePosition = useMemo(() => {
     const index = queue.findIndex(item => item.bookId === bookId);
@@ -155,9 +159,10 @@ export function BookDetailScreen() {
     try {
       await loadBook(book, { showPlayer: false });
     } catch (err) {
-      console.error('Failed to start playback:', err);
+      logger.error('Failed to start playback:', err);
+      showError('Failed to start playback');
     }
-  }, [book, loadBook]);
+  }, [book, loadBook, showError]);
 
   const handlePause = useCallback(async () => {
     await pause();
@@ -169,7 +174,7 @@ export function BookDetailScreen() {
       // Stream without downloading
       await loadBook(book, { showPlayer: false });
     } catch (err) {
-      console.error('Failed to stream:', err);
+      logger.error('Failed to stream:', err);
       Alert.alert('Streaming Error', 'Could not start streaming. Check your connection.');
     }
   }, [book, loadBook]);
@@ -179,9 +184,10 @@ export function BookDetailScreen() {
     try {
       await loadBook(book, { showPlayer: false, startPosition: 0 });
     } catch (err) {
-      console.error('Failed to restart playback:', err);
+      logger.error('Failed to restart playback:', err);
+      showError('Failed to restart playback');
     }
-  }, [book, loadBook]);
+  }, [book, loadBook, showError]);
 
   // Download handlers
   const handleDownload = useCallback(() => {
@@ -242,9 +248,6 @@ export function BookDetailScreen() {
   const { isFinished: isMarkedFinished } = useIsFinished(bookId);
   const markFinished = useMarkFinished();
 
-  // Snackbar for feedback
-  const { snackbarProps, showUndo, showSuccess, showError } = useSnackbar();
-
   const handleMarkAsFinished = useCallback(async () => {
     if (isMarkingFinished || !book) return;
     setIsMarkingFinished(true);
@@ -265,13 +268,13 @@ export function BookDetailScreen() {
 
       // Sync to server in background
       finishedBooksSync.syncBook(bookId, true, bookDuration).catch((err) => {
-        console.warn('Server sync failed:', err);
+        logger.warn('Server sync failed:', err);
       });
 
       // Refetch to update progress display
       refetch();
     } catch (err) {
-      console.error('Failed to mark as finished:', err);
+      logger.error('Failed to mark as finished:', err);
       showError('Failed to mark as finished');
     } finally {
       setIsMarkingFinished(false);
@@ -301,12 +304,12 @@ export function BookDetailScreen() {
 
               // Sync to server in background
               finishedBooksSync.syncBook(bookId, false).catch((err) => {
-                console.warn('Server sync failed:', err);
+                logger.warn('Server sync failed:', err);
               });
 
               refetch();
             } catch (err) {
-              console.error('Failed to reset progress:', err);
+              logger.error('Failed to reset progress:', err);
               showError('Failed to remove from history');
             } finally {
               setIsMarkingFinished(false);
@@ -402,8 +405,8 @@ export function BookDetailScreen() {
     if (isThisBookLoaded && isThisBookPlaying) {
       return { text: 'Pause', icon: 'pause' as const };
     }
-    if (!isDownloaded) {
-      return { text: 'Stream', icon: 'play' as const };
+    if (isDownloaded) {
+      return { text: 'Play', icon: 'play' as const };
     }
     if (isCompleted) {
       return { text: 'Play Again', icon: 'play' as const };
@@ -411,7 +414,7 @@ export function BookDetailScreen() {
     if (hasProgress) {
       return { text: `Continue ${progressPercent}%`, icon: 'play' as const };
     }
-    return { text: 'Play', icon: 'play' as const };
+    return { text: 'Stream', icon: 'play' as const };
   };
 
   const getDownloadButtonContent = () => {

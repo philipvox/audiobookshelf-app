@@ -8,6 +8,7 @@
 import { Share, Platform } from 'react-native';
 import { LibraryItem } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
+import { logger } from '@/shared/utils/logger';
 
 // Optional capture (only if react-native-view-shot is installed)
 let captureRef: ((viewRef: any, options?: any) => Promise<string>) | null = null;
@@ -175,7 +176,7 @@ export function generateMilestoneShareText(totalHours: number): string {
  */
 export async function captureShareImage(viewRef: React.RefObject<any>): Promise<string | null> {
   if (!captureRef) {
-    console.warn('[ShareService] react-native-view-shot not installed, skipping image capture');
+    logger.warn('[ShareService] react-native-view-shot not installed, skipping image capture');
     return null;
   }
 
@@ -187,7 +188,7 @@ export async function captureShareImage(viewRef: React.RefObject<any>): Promise<
     });
     return uri;
   } catch (error) {
-    console.error('[ShareService] Failed to capture share image:', error);
+    logger.error('[ShareService] Failed to capture share image:', error);
     return null;
   }
 }
@@ -213,16 +214,16 @@ export async function shareContent(
     const result = await Share.share(shareOptions);
 
     if (result.action === Share.sharedAction) {
-      console.log('[ShareService] Shared successfully');
+      logger.debug('[ShareService] Shared successfully');
       return true;
     } else if (result.action === Share.dismissedAction) {
-      console.log('[ShareService] Share dismissed');
+      logger.debug('[ShareService] Share dismissed');
       return false;
     }
 
     return false;
   } catch (error) {
-    console.error('[ShareService] Share failed:', error);
+    logger.error('[ShareService] Share failed:', error);
     return false;
   }
 }
@@ -299,7 +300,7 @@ export async function checkForMilestones(): Promise<{
 
     return { type: null, value: 0 };
   } catch (error) {
-    console.error('[ShareService] Error checking milestones:', error);
+    logger.error('[ShareService] Error checking milestones:', error);
     return { type: null, value: 0 };
   }
 }
