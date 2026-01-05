@@ -66,32 +66,6 @@ import { haptics } from '@/core/native/haptics';
 // Import event bus for cross-store communication
 import { eventBus } from '@/core/events';
 
-// Import extracted utilities (Phase 1 refactor)
-import {
-  persistSmartRewindState,
-  restoreSmartRewindState,
-  clearSmartRewindState,
-  getChapterStartForPosition,
-} from '../utils/smartRewind';
-import {
-  startListeningSession,
-  endListeningSession,
-  hasActiveSession,
-} from '../utils/listeningSession';
-import {
-  setupDownloadCompletionListener,
-  cleanupDownloadCompletionListener,
-  PlayerStateSnapshot,
-} from '../utils/downloadListener';
-import {
-  mapSessionChapters,
-  extractChaptersFromBook,
-  findChapterIndex,
-  getBookDuration,
-  getDownloadPath,
-  checkAutoDownloadNextInSeries,
-} from '../utils/bookLoadingHelpers';
-
 const DEBUG = __DEV__;
 const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
 const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
@@ -397,16 +371,468 @@ const TRANSITION_GUARD_MS = 500; // Prevent queue races during book transitions
 // Track books we've already checked for auto-download to prevent repeated triggers
 const autoDownloadCheckedBooks = new Set<string>();
 
-// NOTE: Smart rewind state moved to ../utils/smartRewind.ts
-// NOTE: Download listener state moved to ../utils/downloadListener.ts
+// Download completion listener - to switch from streaming to local when download completes
+let downloadListenerUnsubscribe: (() => void) | null = null;
+let currentStreamingBookId: string | null = null; // Track which book is currently streaming (not offline)
 
 // =============================================================================
-// NOTE: The following functions have been extracted to utility files (Phase 1):
-//   - Smart rewind: ../utils/smartRewind.ts
-//   - Listening session: ../utils/listeningSession.ts
-//   - Download listener: ../utils/downloadListener.ts
-//   - Book loading helpers: ../utils/bookLoadingHelpers.ts
+// SMART REWIND STATE
 // =============================================================================
+
+// In-memory tracking for smart rewind (also persisted for app restart)
+let smartRewindPauseTimestamp: number | null = null;
+let smartRewindPauseBookId: string | null = null;
+let smartRewindPausePosition: number | null = null;
+
+/**
+ * Get chapter start time for a position to prevent rewinding past chapter boundary
+ */
+function getChapterStartForPosition(chapters: Chapter[], position: number): number {
+  if (!chapters || chapters.length === 0) return 0;
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    if (chapters[i].start <= position) {
+      return chapters[i].start;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Persist smart rewind state for app restart scenarios
+ */
+async function persistSmartRewindState(bookId: string, position: number): Promise<void> {
+  const now = Date.now();
+  smartRewindPauseTimestamp = now;
+  smartRewindPauseBookId = bookId;
+  smartRewindPausePosition = position;
+
+  try {
+    await Promise.all([
+      AsyncStorage.setItem(SMART_REWIND_PAUSE_TIMESTAMP_KEY, now.toString()),
+      AsyncStorage.setItem(SMART_REWIND_PAUSE_BOOK_ID_KEY, bookId),
+      AsyncStorage.setItem(SMART_REWIND_PAUSE_POSITION_KEY, position.toString()),
+    ]);
+  } catch (err) {
+    log('[SmartRewind] Failed to persist pause state');
+  }
+}
+
+/**
+ * Restore smart rewind state from storage (for app restart)
+ */
+async function restoreSmartRewindState(currentBookId: string): Promise<{
+  timestamp: number | null;
+  position: number | null;
+}> {
+  // First check in-memory state
+  if (smartRewindPauseTimestamp && smartRewindPauseBookId === currentBookId) {
+    return {
+      timestamp: smartRewindPauseTimestamp,
+      position: smartRewindPausePosition,
+    };
+  }
+
+  // Try to restore from storage
+  try {
+    const [storedTimestamp, storedBookId, storedPosition] = await Promise.all([
+      AsyncStorage.getItem(SMART_REWIND_PAUSE_TIMESTAMP_KEY),
+      AsyncStorage.getItem(SMART_REWIND_PAUSE_BOOK_ID_KEY),
+      AsyncStorage.getItem(SMART_REWIND_PAUSE_POSITION_KEY),
+    ]);
+
+    if (storedTimestamp && storedBookId === currentBookId) {
+      return {
+        timestamp: parseInt(storedTimestamp, 10),
+        position: storedPosition ? parseFloat(storedPosition) : null,
+      };
+    }
+  } catch (err) {
+    log('[SmartRewind] Failed to restore pause state');
+  }
+
+  return { timestamp: null, position: null };
+}
+
+/**
+ * Clear smart rewind state
+ */
+async function clearSmartRewindState(): Promise<void> {
+  smartRewindPauseTimestamp = null;
+  smartRewindPauseBookId = null;
+  smartRewindPausePosition = null;
+
+  try {
+    await Promise.all([
+      AsyncStorage.removeItem(SMART_REWIND_PAUSE_TIMESTAMP_KEY),
+      AsyncStorage.removeItem(SMART_REWIND_PAUSE_BOOK_ID_KEY),
+      AsyncStorage.removeItem(SMART_REWIND_PAUSE_POSITION_KEY),
+    ]);
+  } catch {
+    // Ignore cleanup errors
+  }
+}
+
+// =============================================================================
+// LISTENING SESSION TRACKING
+// =============================================================================
+const MIN_SESSION_DURATION = 10; // Minimum 10 seconds to record a session
+
+// Track active listening session
+let activeSession: {
+  bookId: string;
+  bookTitle: string;
+  startTimestamp: number;
+  startPosition: number;
+} | null = null;
+
+/**
+ * Start tracking a new listening session
+ */
+function startListeningSession(book: LibraryItem, position: number) {
+  const title = (book.media?.metadata as any)?.title || 'Unknown Title';
+  activeSession = {
+    bookId: book.id,
+    bookTitle: title,
+    startTimestamp: Date.now(),
+    startPosition: position,
+  };
+  log(`[ListeningStats] Session started for "${title}" at ${position.toFixed(1)}s`);
+}
+
+/**
+ * End the current listening session and record it to SQLite
+ */
+async function endListeningSession(endPosition: number) {
+  if (!activeSession) return;
+
+  const endTimestamp = Date.now();
+  const durationSeconds = Math.round((endTimestamp - activeSession.startTimestamp) / 1000);
+
+  // Only record sessions >= minimum duration
+  if (durationSeconds < MIN_SESSION_DURATION) {
+    log(`[ListeningStats] Session too short (${durationSeconds}s < ${MIN_SESSION_DURATION}s), not recording`);
+    activeSession = null;
+    return;
+  }
+
+  try {
+    await sqliteCache.recordListeningSession({
+      bookId: activeSession.bookId,
+      bookTitle: activeSession.bookTitle,
+      startTimestamp: activeSession.startTimestamp,
+      endTimestamp,
+      durationSeconds,
+      startPosition: activeSession.startPosition,
+      endPosition,
+    });
+    log(`[ListeningStats] Session recorded: ${durationSeconds}s for "${activeSession.bookTitle}"`);
+  } catch (err) {
+    logError('[ListeningStats] Failed to record session:', err);
+  }
+
+  activeSession = null;
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Sets up a listener for download completion of the currently streaming book.
+ * When the download completes, automatically switches to local playback.
+ */
+async function setupDownloadCompletionListener(bookId: string): Promise<void> {
+  // Clean up any existing listener
+  if (downloadListenerUnsubscribe) {
+    downloadListenerUnsubscribe();
+    downloadListenerUnsubscribe = null;
+  }
+
+  currentStreamingBookId = bookId;
+
+  const { downloadManager } = await import('@/core/services/downloadManager');
+
+  downloadListenerUnsubscribe = downloadManager.subscribe((tasks) => {
+    // Find the task for our currently streaming book
+    const task = tasks.find((t) => t.itemId === currentStreamingBookId);
+
+    if (task?.status === 'complete' && currentStreamingBookId) {
+      log(`[DOWNLOAD] Completed for streaming book: ${currentStreamingBookId}`);
+      log('[DOWNLOAD] Switching to local playback...');
+
+      // Get current state
+      const state = usePlayerStore.getState();
+      const { currentBook, position, isPlaying, isLoading } = state;
+      log(`[DOWNLOAD] Current state: currentBook=${currentBook?.id}, isPlaying=${isPlaying}, isLoading=${isLoading}`);
+
+      // Verify we're still playing the same book
+      if (currentBook?.id === currentStreamingBookId) {
+        // Clear the streaming book tracker
+        const bookToReload = currentBook;
+        const savedPosition = position;
+        const wasPlaying = isPlaying;
+        currentStreamingBookId = null;
+
+        // Clean up the listener since we're about to reload
+        if (downloadListenerUnsubscribe) {
+          downloadListenerUnsubscribe();
+          downloadListenerUnsubscribe = null;
+        }
+
+        // Delay before reloading to ensure download is fully finalized
+        // Capture the book ID for cancellation check
+        const capturedBookId = bookToReload.id;
+
+        // Helper to wait for safe state (not seeking/loading)
+        const waitForSafeState = async (maxWaitMs: number): Promise<boolean> => {
+          const startTime = Date.now();
+          while (Date.now() - startTime < maxWaitMs) {
+            const state = usePlayerStore.getState();
+            // Abort if book changed
+            if (state.currentBook?.id !== capturedBookId) {
+              return false;
+            }
+            // Wait if seeking or loading
+            if (state.isSeeking || state.isLoading) {
+              log(`[DOWNLOAD] Waiting for safe state (isSeeking=${state.isSeeking}, isLoading=${state.isLoading})`);
+              await new Promise(resolve => setTimeout(resolve, 200));
+              continue;
+            }
+            return true;
+          }
+          return false; // Timeout
+        };
+
+        // Use longer delay for network stability (especially mobile data)
+        setTimeout(async () => {
+          try {
+            // Wait for user to finish seeking/loading (max 5 seconds)
+            const isSafe = await waitForSafeState(5000);
+            if (!isSafe) {
+              log(`[DOWNLOAD] Aborting switch - state not safe or book changed`);
+              return;
+            }
+
+            // RACE CONDITION FIX: Final check if user switched books
+            const currentState = usePlayerStore.getState();
+            if (currentState.currentBook?.id !== capturedBookId) {
+              log(`[DOWNLOAD] Book changed during reload delay (${capturedBookId} -> ${currentState.currentBook?.id}), aborting switch`);
+              return;
+            }
+
+            // Get fresh position from audio service (more accurate than saved)
+            const freshPosition = await audioService.getPosition();
+            const positionToUse = Math.abs(freshPosition - savedPosition) < 5 ? freshPosition : savedPosition;
+            log(`Reloading book at position ${positionToUse.toFixed(1)}s to use local files (saved=${savedPosition.toFixed(1)}s, fresh=${freshPosition.toFixed(1)}s)`);
+
+            // Show a toast notification
+            try {
+              const ToastModule = await import('react-native-toast-message');
+              ToastModule.default.show({
+                type: 'success',
+                text1: 'Download Complete',
+                text2: 'Switched to offline playback',
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            } catch {
+              // Toast not available
+            }
+
+            // Clear smart rewind state to prevent interference
+            await clearSmartRewindState();
+
+            // Reload the book from local files
+            await currentState.loadBook(bookToReload, {
+              startPosition: positionToUse,
+              autoPlay: wasPlaying,
+              showPlayer: currentState.isPlayerVisible,
+            });
+          } catch (err) {
+            logError('Failed to switch to local playback:', err);
+          }
+        }, 1500); // Increased from 500ms to 1500ms for mobile data stability
+      }
+    }
+  });
+
+  log(`Download completion listener set up for book: ${bookId}`);
+}
+
+/**
+ * Cleans up the download completion listener.
+ */
+function cleanupDownloadCompletionListener(): void {
+  if (downloadListenerUnsubscribe) {
+    downloadListenerUnsubscribe();
+    downloadListenerUnsubscribe = null;
+  }
+  currentStreamingBookId = null;
+}
+
+/**
+ * Get download path for a book.
+ * Returns path if book is fully downloaded OR if partial download is available.
+ * For partial downloads, playback will use available files and wait/stream for rest.
+ */
+async function getDownloadPath(bookId: string): Promise<string | null> {
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const { downloadManager } = await import('@/core/services/downloadManager');
+
+    // Check if book is fully downloaded
+    const isDownloaded = await downloadManager.isDownloaded(bookId);
+
+    // If not fully downloaded, check for partial download (at least first file ready)
+    if (!isDownloaded) {
+      const canPlayPartially = await downloadManager.canPlayPartially(bookId);
+      if (!canPlayPartially) {
+        log('Book not downloaded and no partial files ready');
+        return null;
+      }
+      log('Partial download available - enabling partial playback mode');
+    }
+
+    const localPath = downloadManager.getLocalPath(bookId);
+    // downloadManager stores files in a directory, check for any audio files
+    const dirInfo = await FileSystem.getInfoAsync(localPath);
+    if (dirInfo.exists && dirInfo.isDirectory) {
+      const status = isDownloaded ? 'complete' : 'partial';
+      log(`Found offline directory via downloadManager (${status})`);
+      // Update last played timestamp
+      await downloadManager.updateLastPlayed(bookId);
+      return localPath;
+    }
+
+    log('Download directory not found or invalid');
+    return null;
+  } catch (error) {
+    logError('Failed to verify download:', error);
+    return null;
+  }
+}
+
+function mapSessionChapters(sessionChapters: SessionChapter[]): Chapter[] {
+  return sessionChapters.map((ch, i) => ({
+    id: i,
+    start: ch.start,
+    end: ch.end,
+    title: ch.title || `Chapter ${i + 1}`,
+  }));
+}
+
+function extractChaptersFromBook(book: LibraryItem): Chapter[] {
+  const bookChapters = book.media?.chapters;
+  if (!bookChapters?.length) return [];
+
+  return bookChapters.map((ch, i) => ({
+    id: i,
+    start: ch.start || 0,
+    end: ch.end || bookChapters[i + 1]?.start || book.media?.duration || 0,
+    title: ch.title || `Chapter ${i + 1}`,
+  }));
+}
+
+function getBookDuration(book: LibraryItem): number {
+  if (book.media?.duration && book.media.duration > 0) {
+    return book.media.duration;
+  }
+
+  if (book.media?.audioFiles?.length) {
+    const sum = book.media.audioFiles.reduce((acc, f) => acc + (f.duration || 0), 0);
+    if (sum > 0) return sum;
+  }
+
+  const chapters = book.media?.chapters;
+  if (chapters?.length) {
+    const last = chapters[chapters.length - 1];
+    if (last.end && last.end > 0) return last.end;
+  }
+
+  return 0;
+}
+
+function findChapterIndex(chapters: Chapter[], position: number): number {
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    if (position >= chapters[i].start) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Check and trigger auto-download of next book in series.
+ * Called when playback reaches 80% progress.
+ */
+async function checkAutoDownloadNextInSeries(currentBook: LibraryItem): Promise<void> {
+  try {
+    // Check if feature is enabled
+    const { networkMonitor } = await import('@/core/services/networkMonitor');
+    if (!networkMonitor.isAutoDownloadSeriesEnabled()) {
+      log('Auto-download series disabled');
+      return;
+    }
+
+    // Check if network allows download
+    if (!networkMonitor.canDownload()) {
+      log('Auto-download: Network does not allow downloads');
+      return;
+    }
+
+    // Import series utils and find next book
+    const { findNextInSeries } = await import('@/core/utils/seriesUtils');
+    const { useLibraryCache } = await import('@/core/cache/libraryCache');
+    const { downloadManager } = await import('@/core/services/downloadManager');
+
+    const libraryItems = useLibraryCache.getState().items;
+    const nextBook = findNextInSeries(currentBook, libraryItems);
+
+    if (!nextBook) {
+      log('Auto-download: No next book in series');
+      return;
+    }
+
+    const nextTitle = (nextBook.media?.metadata as any)?.title || 'Unknown';
+
+    // Check if already downloaded
+    const isDownloaded = await downloadManager.isDownloaded(nextBook.id);
+    if (isDownloaded) {
+      log(`Auto-download: "${nextTitle}" already downloaded`);
+      return;
+    }
+
+    // Check if already in download queue
+    const status = await downloadManager.getDownloadStatus(nextBook.id);
+    if (status && ['pending', 'downloading', 'waiting_wifi'].includes(status.status)) {
+      log(`Auto-download: "${nextTitle}" already in queue`);
+      return;
+    }
+
+    // Queue the download with low priority
+    log(`Auto-download: Queueing "${nextTitle}"`);
+    const result = await downloadManager.queueDownload(nextBook, -1); // Low priority
+
+    if (result.success) {
+      // Show toast notification (import lazily to avoid dependency issues)
+      try {
+        const ToastModule = await import('react-native-toast-message');
+        ToastModule.default.show({
+          type: 'info',
+          text1: 'Auto-downloading next book',
+          text2: nextTitle,
+          position: 'bottom',
+          visibilityTime: 3000,
+        });
+      } catch {
+        // Toast not available, log instead
+        log(`Auto-download started: "${nextTitle}"`);
+      }
+    }
+  } catch (err) {
+    logError('Auto-download check failed:', err);
+  }
+}
 
 // =============================================================================
 // STORE
@@ -872,21 +1298,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
           // Set up listener to detect when this book's download completes
           // so we can seamlessly switch to local playback
-          setupDownloadCompletionListener(
-            book.id,
-            () => ({
-              currentBook: get().currentBook,
-              position: get().position,
-              isPlaying: get().isPlaying,
-              isLoading: get().isLoading,
-              isSeeking: get().isSeeking,
-              isPlayerVisible: get().isPlayerVisible,
-            }),
-            get().loadBook,
-            audioService,
-            log,
-            logError
-          );
+          setupDownloadCompletionListener(book.id);
         }
 
         // Initialize and start background sync service (NON-BLOCKING)
@@ -1266,7 +1678,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       }
 
       // Start listening session tracking
-      if (currentBook && !hasActiveSession()) {
+      if (currentBook && !activeSession) {
         startListeningSession(currentBook, position);
       }
 
