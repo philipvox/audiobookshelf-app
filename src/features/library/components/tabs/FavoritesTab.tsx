@@ -53,7 +53,7 @@ export function FavoritesTab({
   }
 
   return (
-    <>
+    <View>
       {/* Favorite Books */}
       {hasFavoriteBooks && (
         <View style={styles.section}>
@@ -131,7 +131,7 @@ export function FavoritesTab({
           </ScrollView>
         </View>
       )}
-    </>
+    </View>
   );
 }
 

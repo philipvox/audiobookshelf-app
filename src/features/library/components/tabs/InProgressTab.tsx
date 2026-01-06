@@ -80,7 +80,7 @@ export function InProgressTab({
   }, [inProgressItems, getSeries]);
 
   return (
-    <>
+    <View>
       {/* Hero Continue Listening Card */}
       {heroItem && (
         <View style={styles.heroSection}>
@@ -153,7 +153,7 @@ export function InProgressTab({
           </View>
         </View>
       )}
-    </>
+    </View>
   );
 }
 

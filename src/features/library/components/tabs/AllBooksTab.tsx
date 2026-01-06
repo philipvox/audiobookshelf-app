@@ -81,7 +81,7 @@ export function AllBooksTab({
   const showHero = heroBook && heroProgress > 0 && heroProgress < 0.95;
 
   return (
-    <>
+    <View>
       {/* Continue Listening Hero */}
       {showHero && (
         <ContinueListeningHero
@@ -191,7 +191,7 @@ export function AllBooksTab({
           </ScrollView>
         </View>
       )}
-    </>
+    </View>
   );
 }
 

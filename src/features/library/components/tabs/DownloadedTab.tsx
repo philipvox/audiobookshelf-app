@@ -62,7 +62,7 @@ export function DownloadedTab({
   }
 
   return (
-    <>
+    <View>
       {/* Downloading Section */}
       {activeDownloads.length > 0 && (
         <View style={styles.section}>
@@ -123,7 +123,7 @@ export function DownloadedTab({
         bookCount={books.length}
         onManagePress={onManageStorage}
       />
-    </>
+    </View>
   );
 }
 
