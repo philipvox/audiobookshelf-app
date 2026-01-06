@@ -163,6 +163,7 @@ export const lightColors = {
     sleepTimer: '#FF6B6B',
     downloaded: '#34C759',
     downloading: '#000000',
+    streaming: '#6496FF',  // Cloud/streaming badge
     bookmark: '#0146F5',
     bookmarkStem: '#64B5F6',
   },
@@ -334,6 +335,7 @@ export const darkColors = {
     sleepTimer: '#FF6B6B',
     downloaded: '#34C759',
     downloading: '#FFFFFF',
+    streaming: '#6496FF',  // Cloud/streaming badge
     bookmark: '#0146F5',
     bookmarkStem: '#64B5F6',
   },

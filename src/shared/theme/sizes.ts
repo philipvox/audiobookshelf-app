@@ -27,12 +27,13 @@ export const coverSizes = {
 
 /** Icon size scale */
 export const iconSizes = {
-  xs: 16,
-  sm: 20,
-  md: 24,
-  lg: 28,
-  xl: 32,
-  xxl: 40,
+  xs: 12,   // Badges, indicators
+  sm: 16,   // Inline icons, secondary
+  md: 20,   // Default, buttons, list items
+  lg: 24,   // Headers, primary actions
+  xl: 32,   // Feature icons
+  xxl: 48,  // Empty states
+  xxxl: 64, // Hero empty states
 } as const;
 
 // =============================================================================
@@ -79,6 +80,7 @@ export const sizes = {
   iconLg: iconSizes.lg,
   iconXl: iconSizes.xl,
   iconXxl: iconSizes.xxl,
+  iconXxxl: iconSizes.xxxl,
 
   // Buttons
   buttonSm: buttonSizes.sm,
@@ -104,7 +106,7 @@ export const sizes = {
 export const cardTokens = {
   /** Cover sizes by context */
   cover: {
-    listRow: 56,     // Compact list rows
+    listRow: 64,     // BookCard covers (was 56)
     preview: 100,    // Card previews with info
     grid: 120,       // Grid view cards
     hero: 200,       // Featured/hero cards
@@ -112,18 +114,19 @@ export const cardTokens = {
 
   /** Avatar sizes by context */
   avatar: {
-    listRow: 48,
-    preview: 64,
-    hero: 96,
+    listRow: 48,     // Inline rows
+    grid: 80,        // Grid cards (EntityCard)
+    detail: 120,     // Detail screens
   },
 
   /** Stacked covers for series/collections */
   stackedCovers: {
-    count: 3,         // Max covers to show
-    offset: 12,       // Pixel offset between covers
-    size: 40,         // Size of each cover in stack
-    sizeSmall: 32,    // Compact variant
+    size: 60,         // Fanned cover base size
+    sizeSmall: 32,    // Compact variant (rows)
     sizeLarge: 56,    // Large variant
+    maxCount: 5,      // Max visible covers
+    offset: 18,       // Horizontal offset between covers
+    rotation: 8,      // Fan rotation in degrees
   },
 
   /** Progress dots */
@@ -136,8 +139,10 @@ export const cardTokens = {
   /** Row heights */
   rowHeight: {
     compact: 64,      // Single line with cover
-    standard: 80,     // Two lines with cover
+    standard: 80,     // Two lines with cover (BookCard)
     expanded: 100,    // Three lines or extra info
+    settings: 56,     // Settings rows
+    chapter: 48,      // Chapter rows
   },
 
   /** Card aspect ratios (width:height) */
