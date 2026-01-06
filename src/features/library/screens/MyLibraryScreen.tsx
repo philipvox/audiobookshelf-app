@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.xs, // Reduced from scale(16) - tab bar already has marginBottom
+    // No top padding - content starts immediately after tab bar
   },
   skeletonContainer: {
     paddingHorizontal: spacing.lg,
