@@ -34,7 +34,7 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale } from '@/shared/theme';
+import { accentColors, scale, typography, fontWeight } from '@/shared/theme';
 import { useThemeColors, ThemeColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
 
@@ -363,8 +363,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
+    ...typography.headlineLarge,
+    fontWeight: fontWeight.semibold,
     // color set via colors.text in JSX
   },
   headerSpacer: {
@@ -400,12 +400,12 @@ const styles = StyleSheet.create({
     marginLeft: scale(16),
   },
   storageValue: {
-    fontSize: scale(24),
-    fontWeight: '700',
+    ...typography.displayMedium,
+    fontWeight: fontWeight.bold,
     // color set via colors.text in JSX
   },
   storageLabel: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
     // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
@@ -414,8 +414,8 @@ const styles = StyleSheet.create({
     marginBottom: scale(24),
   },
   sectionHeader: {
-    fontSize: scale(13),
-    fontWeight: '600',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.semibold,
     // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
@@ -455,12 +455,12 @@ const styles = StyleSheet.create({
     marginLeft: scale(12),
   },
   rowLabel: {
-    fontSize: scale(15),
-    fontWeight: '500',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.medium,
     // color set via colors.text in JSX
   },
   rowNote: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
@@ -470,9 +470,9 @@ const styles = StyleSheet.create({
     gap: scale(8),
   },
   rowValue: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.medium,
     // color set via colors.accent in JSX
-    fontWeight: '500',
   },
   // Info Section
   infoSection: {
@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     flex: 1,
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
