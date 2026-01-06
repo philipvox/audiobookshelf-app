@@ -1,7 +1,8 @@
 /**
  * src/features/author/components/AuthorCard.tsx
- * 
+ *
  * Card displaying author information with book count.
+ * Uses theme colors and typography tokens for consistency.
  */
 
 import React, { memo } from 'react';
@@ -10,7 +11,16 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { Author } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { colors, spacing, radius, elevation } from '@/shared/theme';
+import {
+  spacing,
+  radius,
+  elevation,
+  typography,
+  scale,
+  interactiveStates,
+  cardTokens,
+} from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 interface AuthorInfo {
   id: string;
@@ -24,8 +34,18 @@ interface AuthorCardProps {
   author: AuthorInfo | Author;
 }
 
+// Avatar color palette for initials
+const AVATAR_COLORS = [
+  '#E53935', // Accent red
+  '#4CAF50', // Green
+  '#FF9800', // Orange
+  '#2196F3', // Blue
+  '#9C27B0', // Purple
+];
+
 function AuthorCardComponent({ author }: AuthorCardProps) {
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
 
   const handlePress = () => {
     (navigation as any).navigate('AuthorDetail', { authorName: author.name });
@@ -44,38 +64,54 @@ function AuthorCardComponent({ author }: AuthorCardProps) {
     .toUpperCase();
 
   // Generate a consistent color based on name
-  const colorIndex = author.name.charCodeAt(0) % 5;
-  const avatarColors = [
-    colors.accent,
-    '#4CAF50',
-    '#FF9800',
-    '#2196F3',
-    colors.progressTrack,
-  ];
+  const colorIndex = author.name.charCodeAt(0) % AVATAR_COLORS.length;
+  const avatarColor = AVATAR_COLORS[colorIndex];
 
   const bookCount = (author as AuthorInfo).bookCount;
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.container,
+        pressed && { opacity: interactiveStates.press.opacity },
+      ]}
       onPress={handlePress}
     >
-      <View style={styles.avatarContainer}>
+      <View
+        style={[
+          styles.avatarContainer,
+          { backgroundColor: themeColors.backgroundSecondary },
+        ]}
+      >
         {imageUrl ? (
-          <Image source={imageUrl} style={styles.avatar} contentFit="cover" transition={200} />
+          <Image
+            source={imageUrl}
+            style={styles.avatar}
+            contentFit="cover"
+            transition={200}
+          />
         ) : (
-          <View style={[styles.avatar, styles.initialsAvatar, { backgroundColor: avatarColors[colorIndex] }]}>
+          <View
+            style={[
+              styles.avatar,
+              styles.initialsAvatar,
+              { backgroundColor: avatarColor },
+            ]}
+          >
             <Text style={styles.initials}>{initials}</Text>
           </View>
         )}
       </View>
 
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>
+        <Text
+          style={[styles.name, { color: themeColors.text }]}
+          numberOfLines={2}
+        >
           {author.name}
         </Text>
         {bookCount !== undefined && bookCount > 0 && (
-          <Text style={styles.bookCount}>
+          <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
             {bookCount} {bookCount === 1 ? 'book' : 'books'}
           </Text>
         )}
@@ -92,14 +128,10 @@ const styles = StyleSheet.create({
     width: '48%',
     marginBottom: spacing.md,
   },
-  pressed: {
-    opacity: 0.7,
-  },
   avatarContainer: {
     aspectRatio: 1,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: colors.progressTrack,
     ...elevation.small,
   },
   avatar: {
@@ -111,22 +143,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   initials: {
-    fontSize: 36,
+    fontSize: scale(36),
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#FFFFFF', // Always white on colored background
   },
   info: {
     marginTop: spacing.xs,
   },
   name: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 4,
-    lineHeight: 20,
+    ...typography.headlineMedium,
+    marginBottom: spacing.xxs,
   },
   bookCount: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...typography.bodySmall,
   },
 });
