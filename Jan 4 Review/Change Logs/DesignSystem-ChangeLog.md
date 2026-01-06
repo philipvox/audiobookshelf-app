@@ -310,12 +310,41 @@ Replaced all 13 hardcoded `fontSize: scale()` values with typography tokens:
 
 ---
 
-### C.3 - Other Settings Screens Typography (Pending)
+### C.3 - PlaybackSettingsScreen Typography
+**Status:** Complete
+**Files Modified:**
+- `src/features/profile/screens/PlaybackSettingsScreen.tsx`
+
+**Changes:**
+Replaced all 12 hardcoded `fontSize: scale()` values with typography tokens:
+
+**Headline text:**
+- [x] `headerTitle` → `typography.headlineLarge`
+- [x] `rowLabel` → `typography.headlineMedium`
+- [x] `pickerTitle` → `typography.headlineLarge`
+- [x] `pickerOptionText` → `typography.headlineMedium`
+
+**Body text:**
+- [x] `sectionHeader` → `typography.bodyMedium`
+- [x] `rowNote` → `typography.bodySmall`
+- [x] `rowValue` → `typography.bodyLarge`
+- [x] `infoText` → `typography.bodySmall`
+- [x] `maxRewindLabel` → `typography.bodyMedium`
+- [x] `maxRewindOptionText` → `typography.bodyLarge`
+- [x] `pickerSubtitle` → `typography.bodyMedium`
+
+**Label text:**
+- [x] `maxRewindNote` → `typography.labelMedium`
+
+---
+
+### C.4 - Other Settings Screens Typography (Pending)
 
 **Remaining screens:**
-- `PlaybackSettingsScreen.tsx`: 20+ hardcoded font sizes
 - `KidModeSettingsScreen.tsx`: 40+ hardcoded font sizes
 - `JoystickSeekSettingsScreen.tsx`: 30+ hardcoded font sizes
+- `HapticSettingsScreen.tsx`
+- `ChapterCleaningSettingsScreen.tsx`
 - Various other settings screens
 
 ---
