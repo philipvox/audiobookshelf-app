@@ -119,7 +119,27 @@ const ProfileIcon: React.FC<{ size?: number; color?: string }> = ({
   </Svg>
 );
 
-type TabKey = 'browse' | 'search' | 'profile' | 'home';
+// Library icon (books/bookshelf) - stack of books
+const LibraryIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = ICON_SIZE,
+  color = ICON_COLOR_INACTIVE
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <Path
+      d="M2 1.5V14.5M6 1.5V14.5M10 1.5V14.5M14 1.5V14.5"
+      stroke={color}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Rect x="0.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
+    <Rect x="4.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
+    <Rect x="8.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
+    <Rect x="12.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
+  </Svg>
+);
+
+type TabKey = 'browse' | 'search' | 'profile' | 'home' | 'library';
 
 interface TabConfig {
   key: TabKey;
@@ -130,10 +150,11 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
+  { key: 'home', label: 'Home', icon: HomeIcon, route: 'Main', screen: 'HomeTab' },
+  { key: 'library', label: 'Library', icon: LibraryIcon, route: 'Main', screen: 'LibraryTab' },
   { key: 'browse', label: 'Browse', icon: BrowseIcon, route: 'Main', screen: 'DiscoverTab' },
   { key: 'search', label: 'Search', icon: SearchIcon, route: 'Search' },
   { key: 'profile', label: 'Profile', icon: ProfileIcon, route: 'Main', screen: 'ProfileTab' },
-  { key: 'home', label: 'Home', icon: HomeIcon, route: 'Main', screen: 'HomeTab' },
 ];
 
 function FloatingTabBarInner() {
@@ -178,6 +199,9 @@ function FloatingTabBarInner() {
         return 'search';
       case 'ProfileTab':
         return 'profile';
+      case 'LibraryTab':
+      case 'MyLibraryScreen':
+        return 'library';
       case 'HomeTab':
       case 'Main':
       default:

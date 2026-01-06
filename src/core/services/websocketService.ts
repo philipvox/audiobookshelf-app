@@ -16,6 +16,9 @@ import { io, Socket } from 'socket.io-client';
 import { AppState, AppStateStatus } from 'react-native';
 import { eventBus } from '../events';
 import { authService } from '../auth/authService';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('WebSocket');
 
 // =============================================================================
 // Types
@@ -107,7 +110,7 @@ class WebSocketService {
    */
   async connect(): Promise<void> {
     if (this.state === 'connected' || this.state === 'connecting') {
-      console.log('[WebSocket] Already connected or connecting');
+      log.debug('Already connected or connecting');
       return;
     }
 
@@ -125,7 +128,7 @@ class WebSocketService {
       ]);
 
       if (!token || !serverUrl) {
-        console.log('[WebSocket] No auth credentials - cannot connect');
+        log.debug('No auth credentials - cannot connect');
         this.setState('disconnected');
         return;
       }
@@ -133,7 +136,7 @@ class WebSocketService {
       this.serverUrl = serverUrl;
       this.currentUserId = user?.id ?? null;
 
-      console.log(`[WebSocket] Connecting to ${serverUrl}...`);
+      log.info(`Connecting to ${serverUrl}...`);
 
       // Create socket.io connection
       // AudiobookShelf uses the /socket.io path by default
@@ -149,7 +152,7 @@ class WebSocketService {
       this.setupEventHandlers();
       this.setupAppStateListener();
     } catch (error) {
-      console.error('[WebSocket] Connection error:', error);
+      log.error('Connection error:', error);
       this.setState('disconnected');
       this.scheduleReconnect();
     }
@@ -159,7 +162,7 @@ class WebSocketService {
    * Disconnect from the server.
    */
   disconnect(reason: 'manual' | 'error' | 'network' | 'auth' = 'manual'): void {
-    console.log(`[WebSocket] Disconnecting (reason: ${reason})`);
+    log.info(`Disconnecting (reason: ${reason})`);
 
     this.clearReconnectTimer();
     this.reconnectAttempts = 0;
@@ -195,7 +198,7 @@ class WebSocketService {
 
   private setState(state: ConnectionState): void {
     if (this.state !== state) {
-      console.log(`[WebSocket] State: ${this.state} -> ${state}`);
+      log.debug(`State: ${this.state} -> ${state}`);
       this.state = state;
     }
   }
@@ -205,7 +208,7 @@ class WebSocketService {
 
     // Connection events
     this.socket.on('connect', () => {
-      console.log('[WebSocket] Connected');
+      log.info('Connected');
       this.setState('connected');
       this.reconnectAttempts = 0;
 
@@ -216,7 +219,7 @@ class WebSocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log(`[WebSocket] Disconnected: ${reason}`);
+      log.info(`Disconnected: ${reason}`);
 
       // socket.io disconnect reasons:
       // - 'io server disconnect': Server forcefully disconnected
@@ -236,7 +239,7 @@ class WebSocketService {
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[WebSocket] Connection error:', error.message);
+      log.error('Connection error:', error.message);
       this.setState('disconnected');
       this.scheduleReconnect();
     });
@@ -246,7 +249,7 @@ class WebSocketService {
 
     // Progress updates from other devices/web UI
     this.socket.on('user_item_progress_updated', (payload: ProgressUpdatePayload) => {
-      console.log('[WebSocket] Progress updated:', payload.id);
+      log.debug('Progress updated:', payload.id);
 
       eventBus.emit('websocket:progress_updated', {
         libraryItemId: payload.id,
@@ -261,7 +264,7 @@ class WebSocketService {
 
     // Library item added
     this.socket.on('item_added', (payload: ItemChangePayload) => {
-      console.log('[WebSocket] Item added:', payload.id);
+      log.debug('Item added:', payload.id);
 
       eventBus.emit('websocket:item_added', {
         libraryItemId: payload.id,
@@ -271,7 +274,7 @@ class WebSocketService {
 
     // Library item updated
     this.socket.on('item_updated', (payload: ItemChangePayload) => {
-      console.log('[WebSocket] Item updated:', payload.id);
+      log.debug('Item updated:', payload.id);
 
       eventBus.emit('websocket:item_updated', {
         libraryItemId: payload.id,
@@ -281,7 +284,7 @@ class WebSocketService {
 
     // Library item removed
     this.socket.on('item_removed', (payload: ItemChangePayload) => {
-      console.log('[WebSocket] Item removed:', payload.id);
+      log.debug('Item removed:', payload.id);
 
       eventBus.emit('websocket:item_removed', {
         libraryItemId: payload.id,
@@ -291,7 +294,7 @@ class WebSocketService {
 
     // Library scan complete
     this.socket.on('scan_complete', (payload: LibraryScanPayload) => {
-      console.log('[WebSocket] Library scan complete:', payload.id);
+      log.info('Library scan complete:', payload.id);
 
       eventBus.emit('websocket:library_scan_complete', {
         libraryId: payload.id,
@@ -314,19 +317,19 @@ class WebSocketService {
     if (state === 'active') {
       // App came to foreground - reconnect if needed
       if (this.state === 'disconnected' && this.serverUrl) {
-        console.log('[WebSocket] App foregrounded - reconnecting');
+        log.debug('App foregrounded - reconnecting');
         this.connect();
       }
     } else if (state === 'background' && this.options.disconnectOnBackground) {
       // App went to background - disconnect to save battery
-      console.log('[WebSocket] App backgrounded - disconnecting');
+      log.debug('App backgrounded - disconnecting');
       this.disconnect('manual');
     }
   };
 
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      console.log('[WebSocket] Max reconnection attempts reached');
+      log.warn('Max reconnection attempts reached');
       this.setState('disconnected');
       return;
     }
@@ -341,8 +344,8 @@ class WebSocketService {
     const jitter = Math.random() * 0.3 * baseDelay; // 0-30% jitter
     const delay = baseDelay + jitter;
 
-    console.log(
-      `[WebSocket] Scheduling reconnect in ${Math.round(delay)}ms ` +
+    log.debug(
+      `Scheduling reconnect in ${Math.round(delay)}ms ` +
         `(attempt ${this.reconnectAttempts + 1}/${this.options.maxReconnectAttempts})`
     );
 

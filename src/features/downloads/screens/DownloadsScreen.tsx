@@ -38,8 +38,11 @@ import { LibraryItem } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { accentColors, scale, wp } from '@/shared/theme';
-import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
-import { Snackbar, useSnackbar } from '@/shared/components';
+import { useThemeColors } from '@/shared/theme/themeStore';
+
+// Type for the flat theme colors returned by useThemeColors()
+type FlatThemeColors = ReturnType<typeof useThemeColors>;
+import { Snackbar, useSnackbar, EmptyState } from '@/shared/components';
 
 // ============================================================================
 // DESIGN TOKENS - Base values, theme-specific colors passed via props/context
@@ -57,7 +60,7 @@ const STATIC_COLORS = {
 };
 
 // Helper to create theme-aware COLORS object
-function createColors(themeColors: ThemeColors) {
+function createColors(themeColors: FlatThemeColors) {
   return {
     ...STATIC_COLORS,
     background: themeColors.background,
@@ -91,12 +94,6 @@ const BackIcon = ({ size = 24, color = '#fff' }: { size?: number; color?: string
   </Svg>
 );
 
-const DownloadIcon = ({ size = 64, color = COLORS.textTertiary }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
-
 const PauseIcon = ({ size = 24, color = '#fff' }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M10 4H6v16h4V4zM18 4h-4v16h4V4z" fill={color} />
@@ -121,7 +118,7 @@ const TrashIcon = ({ size = 24, color = '#fff' }: { size?: number; color?: strin
   </Svg>
 );
 
-const ChevronIcon = ({ size = 20, color = COLORS.textTertiary }: { size?: number; color?: string }) => (
+const ChevronIcon = ({ size = 20, color = '#666' }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 18l6-6-6-6" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -386,30 +383,6 @@ function SectionHeader({ title, count, actionLabel, onAction, actionColor, color
 }
 
 // ============================================================================
-// EMPTY STATE COMPONENT
-// ============================================================================
-
-interface EmptyStateProps {
-  onBrowse: () => void;
-  colors: ReturnType<typeof createColors>;
-}
-
-function EmptyState({ onBrowse, colors }: EmptyStateProps) {
-  return (
-    <View style={styles.emptyState}>
-      <DownloadIcon size={scale(64)} color={colors.textTertiary} />
-      <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No Downloads Yet</Text>
-      <Text style={[styles.emptyDescription, { color: colors.textSecondary }]}>
-        Download audiobooks to listen offline.{'\n'}They'll appear here.
-      </Text>
-      <TouchableOpacity style={[styles.browseButton, { borderColor: colors.accent }]} onPress={onBrowse} activeOpacity={0.7}>
-        <Text style={[styles.browseButtonText, { color: colors.accent }]}>Browse Library</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ============================================================================
 // MAIN SCREEN COMPONENT
 // ============================================================================
 
@@ -586,7 +559,13 @@ export function DownloadsScreen() {
       </View>
 
       {!hasDownloads ? (
-        <EmptyState onBrowse={handleBrowse} colors={colors} />
+        <EmptyState
+          icon="download"
+          title="No Downloads Yet"
+          description="Download audiobooks to listen offline. They'll appear here."
+          actionTitle="Browse Library"
+          onAction={handleBrowse}
+        />
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -913,39 +892,5 @@ const styles = StyleSheet.create({
     fontSize: scale(13),
     // color set via colors.textSecondary in JSX
     marginTop: 2,
-  },
-
-  // Empty state
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(40),
-  },
-  emptyTitle: {
-    fontSize: scale(17),
-    fontWeight: '600',
-    // color set via colors.textPrimary in JSX
-    marginTop: scale(16),
-    marginBottom: scale(8),
-  },
-  emptyDescription: {
-    fontSize: scale(14),
-    // color set via colors.textSecondary in JSX
-    textAlign: 'center',
-    lineHeight: scale(20),
-    marginBottom: scale(24),
-  },
-  browseButton: {
-    paddingHorizontal: scale(24),
-    paddingVertical: scale(12),
-    borderWidth: 1,
-    // borderColor set via colors.accent in JSX
-    borderRadius: scale(24),
-  },
-  browseButtonText: {
-    fontSize: scale(15),
-    fontWeight: '600',
-    // color set via colors.accent in JSX
   },
 });

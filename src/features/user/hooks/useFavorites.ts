@@ -8,7 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/core/queryClient';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { FavoriteItem } from '../types';
 
 /**

@@ -27,7 +27,7 @@ import { useReadingHistory } from '@/features/reading-history-wizard';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { useMoodRecommendations } from '@/features/mood-discovery/hooks/useMoodRecommendations';
 import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
-import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, spacing, radius, wp, accentColors } from '@/shared/theme';

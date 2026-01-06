@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllSeries } from '@/core/cache';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { SeriesHeartButton } from '@/shared/components';

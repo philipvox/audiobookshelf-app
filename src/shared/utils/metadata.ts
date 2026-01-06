@@ -241,3 +241,16 @@ export function getGenres(item: LibraryItem | null | undefined): string[] {
   const metadata = (item?.media?.metadata as any) || {};
   return metadata.genres || [];
 }
+
+/**
+ * Alias for extractBookMetadata - get all book metadata in a normalized format
+ *
+ * This is the recommended function for getting book metadata.
+ * It handles all the `as any` casting internally and returns
+ * a typed BookMetadataExtracted object.
+ *
+ * @example
+ * const meta = getBookMetadata(book);
+ * console.log(meta.title, meta.authorName, meta.duration);
+ */
+export const getBookMetadata = extractBookMetadata;

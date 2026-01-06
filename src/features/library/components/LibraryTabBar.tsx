@@ -58,10 +58,10 @@ export const LibraryTabBar = React.memo(function LibraryTabBar({
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    marginBottom: scale(12),
+    marginBottom: spacing.sm, // Reduced from scale(12) for tighter layout
   },
   tabBar: {
-    paddingHorizontal: scale(20),
+    paddingHorizontal: spacing.xl,
     gap: scale(14),
     flexDirection: 'row',
     alignItems: 'baseline',

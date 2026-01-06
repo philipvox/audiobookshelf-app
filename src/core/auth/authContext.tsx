@@ -11,6 +11,7 @@ import { apiClient } from '../api/apiClient';
 import { User } from '../types';
 import { prefetchMainTabData } from '../queryClient';
 import { appInitializer } from '../services/appInitializer';
+import { authLogger as log } from '@/shared/utils/logger';
 
 /**
  * Authentication context state and operations
@@ -71,7 +72,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
    * Triggers automatic logout
    */
   const handleAuthFailure = useCallback(async () => {
-    console.log('[AuthContext] Auth failure detected - logging out');
+    log.warn('Auth failure detected - logging out');
     try {
       // Clear auth state without calling server (token is already invalid)
       apiClient.clearAuthToken();
@@ -80,7 +81,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       setServerUrl(null);
       setError('Your session has expired. Please log in again.');
     } catch (err) {
-      console.error('[AuthContext] Error during auth failure logout:', err);
+      log.error('Error during auth failure logout:', err);
     }
   }, []);
 
@@ -113,7 +114,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
         prefetchMainTabData();
       }
     } catch (err) {
-      console.error('Failed to restore session:', err);
+      log.error('Failed to restore session:', err);
       setError('Failed to restore session');
     } finally {
       setIsLoading(false);
@@ -144,7 +145,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       // Connect WebSocket for real-time sync
       appInitializer.connectWebSocket();
     } catch (err: any) {
-      console.error('Login failed:', err);
+      log.error('Login failed:', err);
       const errorMessage = err.message || 'Login failed. Please try again.';
       setError(errorMessage);
       throw err; // Re-throw so UI can handle it
@@ -169,7 +170,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       setUser(null);
       setServerUrl(null);
     } catch (err: any) {
-      console.error('Logout failed:', err);
+      log.error('Logout failed:', err);
       const errorMessage = err.message || 'Logout failed. Please try again.';
       setError(errorMessage);
       throw err;

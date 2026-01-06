@@ -5,6 +5,7 @@ export { JoystickSeekSettingsScreen } from './screens/JoystickSeekSettingsScreen
 export { HapticSettingsScreen } from './screens/HapticSettingsScreen';
 export { ChapterCleaningSettingsScreen } from './screens/ChapterCleaningSettingsScreen';
 export { HiddenItemsScreen } from './screens/HiddenItemsScreen';
+export { KidModeSettingsScreen } from './screens/KidModeSettingsScreen';
 
 // Stores
 export { useHapticSettingsStore, useHapticSettings, isHapticEnabled } from './stores/hapticSettingsStore';

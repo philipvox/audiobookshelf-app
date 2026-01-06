@@ -7,7 +7,7 @@
 import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 
 const VIBRANT_RED = '#E53935';
 const GRAY = 'rgba(128,128,128,0.6)';

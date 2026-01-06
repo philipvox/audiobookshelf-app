@@ -12,7 +12,7 @@ import { apiClient } from '@/core/api';
 import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useLibraryCache } from '@/core/cache';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { preWarmTickCache, ChapterInput } from '@/features/player/services/tickCache';
@@ -21,7 +21,17 @@ import {
   PlaybackProgress,
   SeriesWithBooks,
   PlaylistDisplay,
+  HeroBookData,
+  HeroBookState,
+  EnhancedSeriesData,
+  BookStatus,
 } from '../types';
+import { useKidModeStore } from '@/shared/stores/kidModeStore';
+import { filterForKidMode } from '@/shared/utils/kidModeFilter';
+import { calculateTimeRemaining, isBookComplete } from '@/features/player/utils/progressCalculator';
+import { findChapterForPosition } from '@/features/player/utils/chapterNavigator';
+import { getNarratorName, getTitle } from '@/shared/utils/metadata';
+import { Chapter } from '@/features/player/utils/types';
 
 /**
  * Main hook for home screen data
@@ -40,6 +50,9 @@ export function useHomeData(): UseHomeDataReturn {
   // Get library IDs and favorite series from store (reactive)
   const libraryIds = useMyLibraryStore((state) => state.libraryIds);
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
+
+  // Kid Mode filter state
+  const kidModeEnabled = useKidModeStore((state) => state.enabled);
 
   // Get series data from library cache
   const { getSeries, getItem, isLoaded: isCacheLoaded } = useLibraryCache();
@@ -262,16 +275,20 @@ export function useHomeData(): UseHomeDataReturn {
 
   // Recently listened - all in-progress books for Continue Listening section
   const recentlyListened = useMemo(() => {
-    // Return all in-progress items (up to 20)
-    return inProgressItems.slice(0, 20);
-  }, [inProgressItems]);
+    // Apply Kid Mode filter first, then take up to 20
+    const filtered = filterForKidMode(inProgressItems, kidModeEnabled);
+    return filtered.slice(0, 20);
+  }, [inProgressItems, kidModeEnabled]);
 
   // Your Books - from library store (live updates when adding/removing)
-  // Exclude current book from the list
+  // Exclude current book from the list, apply Kid Mode filter
   const recentBooks = useMemo(() => {
-    if (!currentBook) return libraryBooks;
-    return libraryBooks.filter((item) => item.id !== currentBook.id);
-  }, [libraryBooks, currentBook]);
+    let books = libraryBooks;
+    if (currentBook) {
+      books = books.filter((item) => item.id !== currentBook.id);
+    }
+    return filterForKidMode(books, kidModeEnabled);
+  }, [libraryBooks, currentBook, kidModeEnabled]);
 
   // Extract series from downloaded books + in-progress books + favorites
   const userSeries: SeriesWithBooks[] = useMemo(() => {
@@ -400,6 +417,178 @@ export function useHomeData(): UseHomeDataReturn {
     }));
   }, [playlists]);
 
+  // =============================================================================
+  // HOMEPAGE REDESIGN - Hero Card & Progress Data
+  // =============================================================================
+
+  /**
+   * Hero Book - Primary resume target with enhanced chapter info
+   * Uses the most recently played in-progress book
+   */
+  const heroBook: HeroBookData | null = useMemo(() => {
+    if (recentlyListened.length === 0) return null;
+
+    const book = recentlyListened[0];
+    const userProgress = (book as any).userMediaProgress;
+    const bookDuration = (book.media as any)?.duration || 0;
+
+    // Get progress - use player state if this is the current book
+    let progress = userProgress?.progress || 0;
+    let currentPosition = userProgress?.currentTime || 0;
+
+    if (playerCurrentBook?.id === book.id) {
+      currentPosition = position;
+      progress = bookDuration > 0 ? position / bookDuration : 0;
+    }
+
+    // Calculate chapter info using existing utility
+    const chapters: Chapter[] = (book.media?.chapters || []).map((ch: any, idx: number) => ({
+      id: ch.id || idx,
+      start: ch.start || 0,
+      end: ch.end || bookDuration,
+      title: ch.title || '',
+    }));
+
+    const totalChapters = chapters.length;
+    let currentChapter = 1;
+
+    if (chapters.length > 0) {
+      const chapterInfo = findChapterForPosition(chapters, currentPosition);
+      currentChapter = chapterInfo ? chapterInfo.index + 1 : 1;
+    }
+
+    // Calculate time remaining using existing utility
+    const timeRemainingSeconds = calculateTimeRemaining(currentPosition, bookDuration);
+
+    // Get narrator using existing utility
+    const narratorName = getNarratorName(book);
+
+    // Determine visual state based on progress
+    let state: HeroBookState = 'in-progress';
+    if (progress >= 0.95) {
+      state = 'final-chapter';
+    } else if (progress >= 0.75) {
+      state = 'almost-done';
+    }
+
+    // Check if just finished (using existing utility)
+    if (isBookComplete(currentPosition, bookDuration)) {
+      state = 'just-finished';
+    }
+
+    return {
+      book,
+      progress,
+      currentChapter,
+      totalChapters,
+      timeRemainingSeconds,
+      narratorName,
+      state,
+    };
+  }, [recentlyListened, playerCurrentBook, position]);
+
+  /**
+   * Continue Listening Grid - Other in-progress books excluding hero book
+   */
+  const continueListeningGrid: LibraryItem[] = useMemo(() => {
+    if (recentlyListened.length <= 1) return [];
+    // Exclude the first book (hero book) and take up to 6 more
+    return recentlyListened.slice(1, 7);
+  }, [recentlyListened]);
+
+  /**
+   * Series In Progress - Enhanced series data with per-book completion status
+   * Derived from Continue Listening books, ordered by most recently listened
+   */
+  const seriesInProgress: EnhancedSeriesData[] = useMemo(() => {
+    // Build a map of series -> most recent lastUpdate timestamp from in-progress books
+    const seriesLastListened = new Map<string, number>();
+
+    inProgressItems.forEach((item) => {
+      const seriesInfo = (item.media?.metadata as any)?.series;
+      if (seriesInfo?.length > 0) {
+        const seriesName = typeof seriesInfo[0] === 'object' ? seriesInfo[0].name : seriesInfo[0];
+        if (seriesName) {
+          const lastUpdate = (item as any).userMediaProgress?.lastUpdate || 0;
+          const existing = seriesLastListened.get(seriesName) || 0;
+          if (lastUpdate > existing) {
+            seriesLastListened.set(seriesName, lastUpdate);
+          }
+        }
+      }
+    });
+
+    return userSeries
+      .filter((series) => seriesLastListened.has(series.name) || series.booksInProgress > 0)
+      .map((series): EnhancedSeriesData & { lastListened: number } => {
+        // Calculate per-book status
+        const bookStatuses: BookStatus[] = series.books.map((book) => {
+          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          if (bookProgress >= 0.95) return 'done';
+          if (bookProgress > 0) return 'current';
+          return 'not-started';
+        });
+
+        // Find current book (first in-progress)
+        const currentBookIndex = bookStatuses.findIndex((s) => s === 'current');
+        const currentBook = currentBookIndex >= 0 ? series.books[currentBookIndex] : series.books[0];
+
+        // Calculate series progress
+        let totalDuration = 0;
+        let listenedDuration = 0;
+        series.books.forEach((book) => {
+          const bookDuration = (book.media as any)?.duration || 0;
+          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          totalDuration += bookDuration;
+          listenedDuration += bookDuration * bookProgress;
+        });
+        const seriesProgressPercent = totalDuration > 0 ? (listenedDuration / totalDuration) * 100 : 0;
+
+        // Calculate time remaining for series
+        let seriesTimeRemainingSeconds = 0;
+        series.books.forEach((book) => {
+          const bookDuration = (book.media as any)?.duration || 0;
+          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          seriesTimeRemainingSeconds += bookDuration * (1 - bookProgress);
+        });
+
+        return {
+          ...series,
+          bookStatuses,
+          seriesProgressPercent,
+          seriesTimeRemainingSeconds,
+          currentBookTitle: getTitle(currentBook),
+          currentBookIndex: currentBookIndex >= 0 ? currentBookIndex : 0,
+          lastListened: seriesLastListened.get(series.name) || 0,
+        };
+      })
+      // Sort by most recently listened (descending)
+      .sort((a, b) => b.lastListened - a.lastListened)
+      .slice(0, 5); // Limit to 5 series
+  }, [userSeries, inProgressItems]);
+
+  /**
+   * Recently Added - Books with 0% progress for discovery
+   * Sorted by when they were added to the library
+   */
+  const recentlyAdded: LibraryItem[] = useMemo(() => {
+    // Get books with no progress (not started)
+    const notStarted = libraryBooks.filter((book) => {
+      const progress = (book as any).userMediaProgress?.progress || 0;
+      return progress === 0;
+    });
+
+    // Sort by addedAt (most recent first)
+    const sorted = notStarted.sort((a, b) => {
+      const aAdded = (a as any).addedAt || 0;
+      const bAdded = (b as any).addedAt || 0;
+      return bAdded - aAdded;
+    });
+
+    // Apply Kid Mode filter and limit
+    return filterForKidMode(sorted, kidModeEnabled).slice(0, 20);
+  }, [libraryBooks, kidModeEnabled]);
+
   // Combined loading state (library books load instantly from cache, no loading state needed)
   const isLoading = isLoadingProgress || isLoadingPlaylists;
 
@@ -424,6 +613,12 @@ export function useHomeData(): UseHomeDataReturn {
     recentBooks,
     userSeries,
     userPlaylists,
+    // Homepage Redesign
+    heroBook,
+    continueListeningGrid,
+    seriesInProgress,
+    recentlyAdded,
+    // State
     isLoading,
     isRefreshing,
     refresh,

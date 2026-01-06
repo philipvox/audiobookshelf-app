@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useMyLibraryStore } from '../stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { Icon } from '@/shared/components/Icon';
 import { colors, spacing, radius } from '@/shared/theme';
 

@@ -25,7 +25,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllGenres } from '@/core/cache';
-import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import {

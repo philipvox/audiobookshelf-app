@@ -227,14 +227,53 @@ class AutomotiveService {
         break;
 
       case 'play':
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          await usePlayerStore.getState().resume();
+          log('Play command executed');
+        }
+        break;
+
       case 'pause':
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          await usePlayerStore.getState().pause();
+          log('Pause command executed');
+        }
+        break;
+
       case 'skipNext':
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          await usePlayerStore.getState().nextChapter();
+          log('Skip next (next chapter) executed');
+        }
+        break;
+
       case 'skipPrevious':
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          await usePlayerStore.getState().previousChapter();
+          log('Skip previous (previous chapter) executed');
+        }
+        break;
+
       case 'fastForward':
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          const state = usePlayerStore.getState();
+          await state.seekTo(state.position + 30); // Skip forward 30 seconds
+          log('Fast forward 30s executed');
+        }
+        break;
+
       case 'rewind':
-        // These are handled by expo-media-control's MediaSession
-        // No need to handle here - the native module just logs them
-        log('Transport command handled by expo-media-control:', event.command);
+        {
+          const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+          const state = usePlayerStore.getState();
+          await state.seekTo(Math.max(0, state.position - 30)); // Rewind 30 seconds
+          log('Rewind 30s executed');
+        }
         break;
 
       case 'seekTo':

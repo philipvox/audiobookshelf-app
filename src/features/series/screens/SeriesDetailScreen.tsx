@@ -38,7 +38,7 @@ import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { usePlayerStore } from '@/features/player';
 import { useWishlistStore, useIsSeriesTracked } from '@/features/wishlist';
 import { useDownloads } from '@/core/hooks/useDownloads';

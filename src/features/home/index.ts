@@ -17,7 +17,7 @@ export { SeriesCard } from './components/SeriesCard';
 
 // Hooks
 export { useHomeData } from './hooks/useHomeData';
-export { useContinueListening } from './hooks/useContinueListening';
+export { useContinueListening } from '@/shared/hooks/useContinueListening';
 
 // Types
 export * from './types';
