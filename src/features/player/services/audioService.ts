@@ -475,11 +475,23 @@ class AudioService {
       } else {
         // Fallback: load directly (may have brief gap)
         if (this.player) {
+          log('[Audio] Loading next track directly (no preload available)');
           this.player.replace({ uri: nextTrack.url });
           this.player.play();
 
-          // Wait briefly for track to be ready
-          await this.waitForTrackReady(500);
+          // Wait for track to be ready with retry logic
+          let trackReady = await this.waitForTrackReady(2000);
+          if (!trackReady) {
+            // Retry once on timeout
+            log('[Audio] Track load timeout - retrying...');
+            this.player.replace({ uri: nextTrack.url });
+            this.player.play();
+            trackReady = await this.waitForTrackReady(3000);
+            if (!trackReady) {
+              audioLog.error('[Audio] Track load failed after retry - chapter may be stuck');
+              // Note: User will need to tap play or seek to recover
+            }
+          }
 
           // Update lastKnownGoodPosition to new track start
           this.lastKnownGoodPosition = this.tracks[this.currentTrackIndex].startOffset;
@@ -518,14 +530,28 @@ class AudioService {
           log(`⏯️ Player state before resume: playing=${this.player.playing}, currentTime=${this.player.currentTime.toFixed(1)}, duration=${this.player.duration?.toFixed(1) || 'unknown'}`);
           this.player.play();
 
-          // Log state after play() call
-          setTimeout(() => {
-            if (this.player) {
-              log(`⏯️ Player state 100ms after resume: playing=${this.player.playing}, currentTime=${this.player.currentTime.toFixed(1)}`);
+          // Verify playback resumed with retry logic
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.player && !this.player.playing && !this.player.isBuffering) {
+            audioLog.warn('[Audio] Resume failed on first try - retrying...');
+            this.player.play();
+
+            // Second verification
+            await new Promise(resolve => setTimeout(resolve, 300));
+            if (this.player && !this.player.playing && !this.player.isBuffering) {
+              audioLog.error('[Audio] Resume failed after retry - playback may be stuck');
+              // Notify via status callback so UI can show error state
+              this.statusCallback?.({
+                isPlaying: false,
+                position: currentPos,
+                duration: this.totalDuration,
+                isBuffering: false,
+                didJustFinish: false,
+              });
             }
-          }, 100);
+          }
         } else {
-          log(`⚠️ Cannot resume - player is null!`);
+          audioLog.error('[Audio] Cannot resume - player is null!');
         }
       }
     } else {
@@ -1097,18 +1123,20 @@ class AudioService {
   /**
    * Wait for the current track to be ready for seeking
    * Polls player.duration until it's available (indicates track is loaded)
-   * Increased from 300ms to 500ms to give more time for network latency
+   * Returns true if track is ready, false if timeout occurred
+   * Increased default timeout to 2000ms for slower networks
    */
-  private async waitForTrackReady(maxWaitMs: number = 500): Promise<void> {
+  private async waitForTrackReady(maxWaitMs: number = 2000): Promise<boolean> {
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
       if (this.player && this.player.duration > 0) {
         log(`Track ready after ${Date.now() - startTime}ms, duration: ${this.player.duration.toFixed(1)}s`);
-        return;
+        return true;
       }
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
-    log(`Warning: Track ready timeout after ${maxWaitMs}ms`);
+    audioLog.warn(`[Audio] Track ready timeout after ${maxWaitMs}ms - may need retry`);
+    return false;
   }
 
   /**
@@ -1164,8 +1192,33 @@ class AudioService {
 
   async play(): Promise<void> {
     log('▶ Play');
-    this.player?.play();
-    this.updateMediaControlPlaybackState(true);
+    if (!this.player) {
+      audioLog.error('Play called but player is null');
+      throw new Error('Player not initialized');
+    }
+
+    try {
+      this.player.play();
+
+      // Verify playback started within 500ms
+      const startTime = Date.now();
+      while (Date.now() - startTime < 500) {
+        if (this.player.playing || this.player.isBuffering) {
+          // Playback started or buffering - success
+          await this.updateMediaControlPlaybackState(true);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      // If still not playing after 500ms, log warning but don't throw
+      // (could be slow network, will be caught by stuck detection)
+      audioLog.warn('Play: Playback not started after 500ms, may be slow network');
+      await this.updateMediaControlPlaybackState(true);
+    } catch (error: any) {
+      audioLog.error('Play failed:', error.message);
+      throw error;
+    }
   }
 
   async pause(): Promise<void> {
