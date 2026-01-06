@@ -11,7 +11,7 @@
 import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { useMyLibraryStore } from '@/features/library/stores/myLibraryStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { haptics } from '@/core/native/haptics';
 
 // Default colors

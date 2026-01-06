@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 // Import directly to avoid circular dependency with ../api
 import { apiClient } from '../api/apiClient';
 import { User } from '../types/user';
+import { authLogger as log } from '@/shared/utils/logger';
 
 // Storage keys
 const TOKEN_KEY = 'auth_token';
@@ -103,7 +104,7 @@ class AuthService {
     try {
       await storage.setSecureItem(TOKEN_KEY, token);
     } catch (error) {
-      console.error('Failed to store token:', error);
+      log.error('Failed to store token:', error);
       throw new Error('Failed to store authentication token');
     }
   }
@@ -115,7 +116,7 @@ class AuthService {
     try {
       return await storage.getSecureItem(TOKEN_KEY);
     } catch (error) {
-      console.error('Failed to get stored token:', error);
+      log.error('Failed to get stored token:', error);
       return null;
     }
   }
@@ -127,7 +128,7 @@ class AuthService {
     try {
       await storage.setSecureItem(SERVER_URL_KEY, url);
     } catch (error) {
-      console.error('Failed to store server URL:', error);
+      log.error('Failed to store server URL:', error);
       throw new Error('Failed to store server URL');
     }
   }
@@ -139,7 +140,7 @@ class AuthService {
     try {
       return await storage.getSecureItem(SERVER_URL_KEY);
     } catch (error) {
-      console.error('Failed to get stored server URL:', error);
+      log.error('Failed to get stored server URL:', error);
       return null;
     }
   }
@@ -151,7 +152,7 @@ class AuthService {
     try {
       await storage.setItem(USER_KEY, JSON.stringify(user));
     } catch (error) {
-      console.error('Failed to store user:', error);
+      log.error('Failed to store user:', error);
       throw new Error('Failed to store user data');
     }
   }
@@ -164,7 +165,7 @@ class AuthService {
       const userJson = await storage.getItem(USER_KEY);
       return userJson ? JSON.parse(userJson) : null;
     } catch (error) {
-      console.error('Failed to get stored user:', error);
+      log.error('Failed to get stored user:', error);
       return null;
     }
   }
@@ -180,7 +181,7 @@ class AuthService {
       // Clear AsyncStorage items
       await storage.deleteItem(USER_KEY);
     } catch (error) {
-      console.error('Failed to clear storage:', error);
+      log.error('Failed to clear storage:', error);
     }
   }
 
@@ -212,7 +213,7 @@ class AuthService {
 
       return user;
     } catch (error: any) {
-      console.error('Login failed:', error);
+      log.error('Login failed:', error);
 
       // Provide user-friendly error messages based on the error type
       const errorMessage = error.message?.toLowerCase() || '';
@@ -273,7 +274,7 @@ class AuthService {
 
       return { user: null, serverUrl: null };
     } catch (error) {
-      console.error('Failed to restore session:', error);
+      log.error('Failed to restore session:', error);
       return { user: null, serverUrl: null };
     }
   }
@@ -294,7 +295,7 @@ class AuthService {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        console.log(`[AuthService] Restoring session (attempt ${attempt}/${MAX_RETRIES})...`);
+        log.debug(`Restoring session (attempt ${attempt}/${MAX_RETRIES})...`);
 
         // Read all three values in parallel (token/serverUrl from SecureStore, user from AsyncStorage)
         const [token, serverUrl, userJson] = await Promise.all([
@@ -303,7 +304,7 @@ class AuthService {
           storage.getItem(USER_KEY),
         ]);
 
-        console.log(`[AuthService] Storage read complete:`, {
+        log.debug('Storage read complete:', {
           hasToken: !!token,
           hasServerUrl: !!serverUrl,
           hasUserJson: !!userJson,
@@ -318,18 +319,18 @@ class AuthService {
             token: token,
           });
 
-          console.log(`[AuthService] Session restored for user: ${user.username}`);
+          log.info(`Session restored for user: ${user.username}`);
           return { user, serverUrl };
         }
 
         // Values missing - this is not a failure, user may not be logged in
         if (!token && !serverUrl && !userJson) {
-          console.log('[AuthService] No stored session found (user not logged in)');
+          log.debug('No stored session found (user not logged in)');
           return { user: null, serverUrl: null };
         }
 
         // Partial values - something might be corrupted
-        console.warn('[AuthService] Partial session data found, clearing:', {
+        log.warn('Partial session data found, clearing:', {
           hasToken: !!token,
           hasServerUrl: !!serverUrl,
           hasUserJson: !!userJson,
@@ -339,13 +340,13 @@ class AuthService {
         await this.clearStorage();
         return { user: null, serverUrl: null };
       } catch (error: any) {
-        console.error(`[AuthService] Session restore attempt ${attempt} failed:`, error.message);
+        log.error(`Session restore attempt ${attempt} failed:`, error.message);
 
         if (attempt < MAX_RETRIES) {
           // Wait before retry with exponential backoff
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
         } else {
-          console.error('[AuthService] All session restore attempts failed');
+          log.error('All session restore attempts failed');
           return { user: null, serverUrl: null };
         }
       }
@@ -363,7 +364,7 @@ class AuthService {
       try {
         await apiClient.logout();
       } catch (err) {
-        console.warn('Failed to notify server of logout:', err);
+        log.warn('Failed to notify server of logout:', err);
       }
 
       // Clear API client token
@@ -372,7 +373,7 @@ class AuthService {
       // Clear stored data
       await this.clearStorage();
     } catch (error) {
-      console.error('Logout failed:', error);
+      log.error('Logout failed:', error);
       throw error;
     }
   }
@@ -391,7 +392,7 @@ class AuthService {
       await apiClient.getCurrentUser();
       return true;
     } catch (error) {
-      console.error('Token verification failed:', error);
+      log.error('Token verification failed:', error);
       return false;
     }
   }

@@ -11,6 +11,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LibraryItem } from '@/core/types';
 import { sqliteCache, QueueItem } from '@/core/services/sqliteCache';
 import { getNextBookInSeries } from '@/core/cache/libraryCache';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('QueueStore');
 
 const AUTOPLAY_KEY = 'queue_autoplay_enabled';
 
@@ -83,9 +86,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       }));
 
       set({ queue, isInitialized: true, isLoading: false, autoplayEnabled });
-      console.log(`[QueueStore] Initialized with ${queue.length} items, autoplay: ${autoplayEnabled}`);
+      log.info(`Initialized with ${queue.length} items, autoplay: ${autoplayEnabled}`);
     } catch (err) {
-      console.error('[QueueStore] Init error:', err);
+      log.error('Init error:', err);
       set({ isInitialized: true, isLoading: false });
     }
   },
@@ -96,14 +99,14 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
     // Don't add duplicates
     if (isInQueue(book.id)) {
-      console.log(`[QueueStore] Book already in queue: ${book.id}`);
+      log.debug(`Book already in queue: ${book.id}`);
       return;
     }
 
     try {
       // If there's an auto-added series book, remove it first (user queue takes priority)
       if (autoSeriesBookId) {
-        console.log(`[QueueStore] Clearing auto-series book: ${autoSeriesBookId}`);
+        log.debug(`Clearing auto-series book: ${autoSeriesBookId}`);
         await sqliteCache.removeFromQueue(autoSeriesBookId);
         const filteredQueue = queue.filter((item) => item.bookId !== autoSeriesBookId);
         set({ queue: filteredQueue, autoSeriesBookId: null });
@@ -122,9 +125,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       };
 
       set({ queue: [...currentQueue, newItem] });
-      console.log(`[QueueStore] Added to queue: ${book.id}`);
+      log.debug(`Added to queue: ${book.id}`);
     } catch (err) {
-      console.error('[QueueStore] addToQueue error:', err);
+      log.error('addToQueue error:', err);
     }
   },
 
@@ -135,14 +138,14 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     // Filter out duplicates
     const newBooks = books.filter((book) => !isInQueue(book.id));
     if (newBooks.length === 0) {
-      console.log('[QueueStore] All books already in queue');
+      log.debug('All books already in queue');
       return;
     }
 
     try {
       // If there's an auto-added series book, remove it first (user queue takes priority)
       if (autoSeriesBookId) {
-        console.log(`[QueueStore] Clearing auto-series book: ${autoSeriesBookId}`);
+        log.debug(`Clearing auto-series book: ${autoSeriesBookId}`);
         await sqliteCache.removeFromQueue(autoSeriesBookId);
         const filteredQueue = queue.filter((item) => item.bookId !== autoSeriesBookId);
         set({ queue: filteredQueue, autoSeriesBookId: null });
@@ -167,9 +170,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       }
 
       set({ queue: [...currentQueue, ...newItems] });
-      console.log(`[QueueStore] Added ${newItems.length} books to queue`);
+      log.debug(`Added ${newItems.length} books to queue`);
     } catch (err) {
-      console.error('[QueueStore] addBooksToQueue error:', err);
+      log.error('addBooksToQueue error:', err);
     }
   },
 
@@ -186,9 +189,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         .map((item, index) => ({ ...item, position: index }));
 
       set({ queue: newQueue });
-      console.log(`[QueueStore] Removed from queue: ${bookId}`);
+      log.debug(`Removed from queue: ${bookId}`);
     } catch (err) {
-      console.error('[QueueStore] removeFromQueue error:', err);
+      log.error('removeFromQueue error:', err);
     }
   },
 
@@ -197,9 +200,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     try {
       await sqliteCache.clearQueue();
       set({ queue: [], autoSeriesBookId: null });
-      console.log('[QueueStore] Queue cleared');
+      log.debug('Queue cleared');
     } catch (err) {
-      console.error('[QueueStore] clearQueue error:', err);
+      log.error('clearQueue error:', err);
     }
   },
 
@@ -227,9 +230,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       }));
 
       set({ queue: reindexedQueue });
-      console.log(`[QueueStore] Reordered: ${fromIndex} -> ${toIndex}`);
+      log.debug(`Reordered: ${fromIndex} -> ${toIndex}`);
     } catch (err) {
-      console.error('[QueueStore] reorderQueue error:', err);
+      log.error('reorderQueue error:', err);
     }
   },
 
@@ -238,9 +241,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     try {
       await AsyncStorage.setItem(AUTOPLAY_KEY, enabled ? 'true' : 'false');
       set({ autoplayEnabled: enabled });
-      console.log(`[QueueStore] Autoplay set to: ${enabled}`);
+      log.debug(`Autoplay set to: ${enabled}`);
     } catch (err) {
-      console.error('[QueueStore] setAutoplayEnabled error:', err);
+      log.error('setAutoplayEnabled error:', err);
     }
   },
 
@@ -249,28 +252,28 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     const { queue, autoplayEnabled, isInQueue } = get();
 
     const metadata = (currentBook.media?.metadata as any) || {};
-    console.log('[QueueStore] checkAndAddSeriesBook called');
-    console.log('[QueueStore] Current book:', metadata.title);
-    console.log('[QueueStore] Series name:', metadata.seriesName);
-    console.log('[QueueStore] Autoplay:', autoplayEnabled, 'Queue length:', queue.length);
+    log.debug('checkAndAddSeriesBook called');
+    log.debug('Current book:', metadata.title);
+    log.debug('Series name:', metadata.seriesName);
+    log.debug(`Autoplay: ${autoplayEnabled}, Queue length: ${queue.length}`);
 
     // Only auto-add if autoplay is enabled and queue is empty
     if (!autoplayEnabled || queue.length > 0) {
-      console.log('[QueueStore] Skipping series check - autoplay off or queue not empty');
+      log.debug('Skipping series check - autoplay off or queue not empty');
       return;
     }
 
     try {
       const nextBook = getNextBookInSeries(currentBook);
-      console.log('[QueueStore] getNextBookInSeries result:', nextBook ? (nextBook.media?.metadata as any)?.title : 'null');
+      log.debug('getNextBookInSeries result:', nextBook ? (nextBook.media?.metadata as any)?.title : 'null');
       if (!nextBook) {
-        console.log('[QueueStore] No next book in series found');
+        log.debug('No next book in series found');
         return;
       }
 
       // Don't add if already in queue
       if (isInQueue(nextBook.id)) {
-        console.log('[QueueStore] Next series book already in queue');
+        log.debug('Next series book already in queue');
         return;
       }
 
@@ -287,10 +290,10 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       };
 
       set({ queue: [newItem], autoSeriesBookId: nextBook.id });
-      const metadata = (nextBook.media?.metadata as any) || {};
-      console.log(`[QueueStore] Auto-added next series book: ${metadata.title || nextBook.id}`);
+      const nextMetadata = (nextBook.media?.metadata as any) || {};
+      log.info(`Auto-added next series book: ${nextMetadata.title || nextBook.id}`);
     } catch (err) {
-      console.error('[QueueStore] checkAndAddSeriesBook error:', err);
+      log.error('checkAndAddSeriesBook error:', err);
     }
   },
 
@@ -302,7 +305,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     const nextItem = queue[0];
     await get().removeFromQueue(nextItem.bookId);
 
-    console.log(`[QueueStore] Playing next: ${nextItem.book.id}`);
+    log.debug(`Playing next: ${nextItem.book.id}`);
     return nextItem.book;
   },
 

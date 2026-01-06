@@ -45,6 +45,58 @@ export interface SeriesWithBooks {
 }
 
 // =============================================================================
+// HERO CARD (Homepage Redesign)
+// =============================================================================
+
+/**
+ * Hero book state for visual treatment
+ */
+export type HeroBookState = 'in-progress' | 'almost-done' | 'final-chapter' | 'just-finished';
+
+/**
+ * Enhanced book data for the Hero Card component
+ * Used to display the primary resume target on the home screen
+ */
+export interface HeroBookData {
+  /** The underlying library item */
+  book: LibraryItem;
+  /** Progress as 0-1 */
+  progress: number;
+  /** Current chapter number (1-indexed) */
+  currentChapter: number;
+  /** Total number of chapters */
+  totalChapters: number;
+  /** Time remaining in seconds */
+  timeRemainingSeconds: number;
+  /** Primary narrator name */
+  narratorName: string;
+  /** Visual state for badges/styling */
+  state: HeroBookState;
+}
+
+/**
+ * Book completion status for series progress display
+ */
+export type BookStatus = 'done' | 'current' | 'not-started';
+
+/**
+ * Enhanced series data with detailed progress information
+ * Extends SeriesWithBooks with per-book status and series-level progress
+ */
+export interface EnhancedSeriesData extends SeriesWithBooks {
+  /** Status of each book in order: 'done' | 'current' | 'not-started' */
+  bookStatuses: BookStatus[];
+  /** Overall series progress as percentage (0-100) */
+  seriesProgressPercent: number;
+  /** Total time remaining for series in seconds */
+  seriesTimeRemainingSeconds: number;
+  /** Title of the current book being listened to */
+  currentBookTitle: string;
+  /** Index of current book (0-indexed) */
+  currentBookIndex: number;
+}
+
+// =============================================================================
 // PLAYLIST (Extended)
 // =============================================================================
 
@@ -76,6 +128,16 @@ export interface UseHomeDataReturn {
   recentBooks: LibraryItem[];
   userSeries: SeriesWithBooks[];
   userPlaylists: PlaylistDisplay[];
+
+  // Homepage Redesign - Hero & Progress
+  /** Primary resume target with chapter info (most recent in-progress book) */
+  heroBook: HeroBookData | null;
+  /** In-progress books excluding the hero book */
+  continueListeningGrid: LibraryItem[];
+  /** Series with enhanced progress data */
+  seriesInProgress: EnhancedSeriesData[];
+  /** Books with 0% progress, sorted by dateAdded */
+  recentlyAdded: LibraryItem[];
 
   // Loading states
   isLoading: boolean;

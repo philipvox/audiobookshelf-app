@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   Pressable,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -28,6 +29,10 @@ import Animated, {
   FadeIn,
   FadeOut,
 } from 'react-native-reanimated';
+
+// Layout animations can crash on Android in ScrollViews - disable on Android
+const enteringAnimation = Platform.OS === 'ios' ? FadeIn.duration(150) : undefined;
+const exitingAnimation = Platform.OS === 'ios' ? FadeOut.duration(100) : undefined;
 
 import { Icon } from '@/shared/components/Icon';
 import { haptics } from '@/core/native/haptics';
@@ -276,8 +281,8 @@ export function MoodDiscoveryScreen() {
       case 1:
         return (
           <Animated.View
-            entering={FadeIn.duration(150)}
-            exiting={FadeOut.duration(100)}
+            entering={enteringAnimation}
+            exiting={exitingAnimation}
             style={styles.optionsGrid}
           >
             {MOODS.map((mood) => (
@@ -295,8 +300,8 @@ export function MoodDiscoveryScreen() {
       case 2:
         return (
           <Animated.View
-            entering={FadeIn.duration(150)}
-            exiting={FadeOut.duration(100)}
+            entering={enteringAnimation}
+            exiting={exitingAnimation}
             style={styles.optionsList}
           >
             {PACES.map((pace) => (
@@ -313,8 +318,8 @@ export function MoodDiscoveryScreen() {
       case 3:
         return (
           <Animated.View
-            entering={FadeIn.duration(150)}
-            exiting={FadeOut.duration(100)}
+            entering={enteringAnimation}
+            exiting={exitingAnimation}
             style={styles.optionsList}
           >
             {WEIGHTS.map((weight) => (
@@ -331,8 +336,8 @@ export function MoodDiscoveryScreen() {
       case 4:
         return (
           <Animated.View
-            entering={FadeIn.duration(150)}
-            exiting={FadeOut.duration(100)}
+            entering={enteringAnimation}
+            exiting={exitingAnimation}
             style={styles.optionsGrid}
           >
             {WORLDS.map((world) => (
@@ -350,8 +355,8 @@ export function MoodDiscoveryScreen() {
       case 5:
         return (
           <Animated.View
-            entering={FadeIn.duration(150)}
-            exiting={FadeOut.duration(100)}
+            entering={enteringAnimation}
+            exiting={exitingAnimation}
             style={styles.optionsList}
           >
             {LENGTHS.map((length) => (

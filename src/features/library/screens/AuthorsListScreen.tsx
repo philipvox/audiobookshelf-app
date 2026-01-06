@@ -24,7 +24,7 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllAuthors } from '@/core/cache';
-import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';

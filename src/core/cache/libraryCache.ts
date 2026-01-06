@@ -11,11 +11,13 @@ import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { searchIndex } from './searchIndex';
 import { normalizeForSearch } from '@/features/search/utils/fuzzySearch';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('LibraryCache');
 
 const CACHE_KEY = 'library_cache_v1';
 const CACHE_TTL_DAYS = 30;
 const CACHE_TTL_MS = CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
-const DEBUG = __DEV__;
 
 interface CachedLibrary {
   items: LibraryItem[];
@@ -229,7 +231,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
           cached = await AsyncStorage.getItem(CACHE_KEY);
         } catch (cacheReadError: any) {
           // Handle "Row too big" error on Android - cache is corrupted/too large
-          console.warn('[LibraryCache] Cache read failed (likely too large), clearing:', cacheReadError.message);
+          log.warn('Cache read failed (likely too large), clearing:', cacheReadError.message);
           try {
             await AsyncStorage.removeItem(CACHE_KEY);
           } catch {}
@@ -241,13 +243,13 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
           // Check if cache is still valid (same library, not expired)
           if (parsed.libraryId === libraryId && age < CACHE_TTL_MS) {
-            DEBUG && console.log(`[LibraryCache] Using cached data (${Math.round(age / 1000 / 60)} min old)`);
+            log.debug(`Using cached data (${Math.round(age / 1000 / 60)} min old)`);
             const indexes = buildIndexes(parsed.items);
 
             // Fetch authors from API in background to get accurate book counts
             apiClient.getLibraryAuthors(libraryId).then((apiAuthors) => {
               if (apiAuthors && apiAuthors.length > 0) {
-                DEBUG && console.log(`[LibraryCache] Merging ${apiAuthors.length} authors from API (background)`);
+                log.debug(`Merging ${apiAuthors.length} authors from API (background)`);
                 for (const apiAuthor of apiAuthors) {
                   const key = apiAuthor.name.toLowerCase();
                   const existing = indexes.authors.get(key);
@@ -291,7 +293,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       }
 
       // Fetch fresh data from API - items and authors in parallel
-      DEBUG && console.log('[LibraryCache] Fetching fresh library data for library:', libraryId);
+      log.debug('Fetching fresh library data for library:', libraryId);
       const [itemsResponse, apiAuthors] = await Promise.all([
         apiClient.getLibraryItems(libraryId, { limit: 100000 }),  // Large limit to fetch all books
         apiClient.getLibraryAuthors(libraryId).catch(() => [] as any[]),
@@ -303,7 +305,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
       // Merge API author data (which has accurate book counts) with local data
       if (apiAuthors && apiAuthors.length > 0) {
-        DEBUG && console.log(`[LibraryCache] Merging ${apiAuthors.length} authors from API`);
+        log.debug(`Merging ${apiAuthors.length} authors from API`);
         for (const apiAuthor of apiAuthors) {
           const key = apiAuthor.name.toLowerCase();
           const existing = indexes.authors.get(key);
@@ -339,13 +341,13 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         try {
           await AsyncStorage.setItem(CACHE_KEY, cacheJson);
         } catch (writeError: any) {
-          console.warn('[LibraryCache] Failed to save cache (too large?):', writeError.message);
+          log.warn('Failed to save cache (too large?):', writeError.message);
         }
       } else {
-        console.warn(`[LibraryCache] Cache too large to persist (${(cacheJson.length / 1024 / 1024).toFixed(1)}MB), using in-memory only`);
+        log.warn(`Cache too large to persist (${(cacheJson.length / 1024 / 1024).toFixed(1)}MB), using in-memory only`);
       }
 
-      DEBUG && console.log(`[LibraryCache] Cached ${items.length} items, ${indexes.authors.size} authors`);
+      log.debug(`Cached ${items.length} items, ${indexes.authors.size} authors`);
 
       // Build search index
       searchIndex.build(items);
@@ -359,7 +361,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         ...indexes,
       });
     } catch (error: any) {
-      console.error('[LibraryCache] Failed to load:', error);
+      log.error('Failed to load:', error);
       set({
         isLoading: false,
         error: error.message || 'Failed to load library',
@@ -373,14 +375,14 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       // Silently ignore - this can happen during startup before library is selected
       return;
     }
-    DEBUG && console.log('[LibraryCache] Refreshing cache for library:', id);
+    log.debug('Refreshing cache for library:', id);
     await get().loadCache(id, true);
     // Set lastRefreshed to bust image caches
     const now = Date.now();
     set({ lastRefreshed: now });
     // Also bump apiClient's cache version so all cover URLs get new version
     apiClient.bumpCoverCacheVersion();
-    DEBUG && console.log('[LibraryCache] Cache refresh complete, image caches will be busted');
+    log.debug('Cache refresh complete, image caches will be busted');
   },
 
   getItem: (id: string) => {
@@ -438,7 +440,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
   filterItems: (filters: FilterOptions) => {
     let { items, isLoaded } = get();
-    DEBUG && console.log(`[LibraryCache] filterItems called. Items: ${items.length}, isLoaded: ${isLoaded}`);
+    log.debug(`filterItems called. Items: ${items.length}, isLoaded: ${isLoaded}`);
 
     // Text search - optimized for performance
     if (filters.query?.trim()) {
@@ -516,7 +518,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
         return false;
       });
-      DEBUG && console.log(`[LibraryCache] Text search "${filters.query}": ${beforeCount} -> ${items.length} items`);
+      log.debug(`Text search "${filters.query}": ${beforeCount} -> ${items.length} items`);
     }
 
     // Genre filter
@@ -713,42 +715,42 @@ export function getNextBookInSeries(currentBook: LibraryItem): LibraryItem | nul
   const metadata = (currentBook.media?.metadata as any) || {};
   const seriesName = metadata.seriesName || '';
 
-  DEBUG && console.log('[getNextBookInSeries] Input seriesName:', seriesName);
+  log.debug('[getNextBookInSeries] Input seriesName:', seriesName);
 
   if (!seriesName) {
-    DEBUG && console.log('[getNextBookInSeries] No series name, returning null');
+    log.debug('[getNextBookInSeries] No series name, returning null');
     return null;
   }
 
   // Extract current sequence number
   const seqMatch = seriesName.match(/#([\d.]+)/);
   if (!seqMatch) {
-    DEBUG && console.log('[getNextBookInSeries] No sequence number found in:', seriesName);
+    log.debug('[getNextBookInSeries] No sequence number found in:', seriesName);
     return null;
   }
   const currentSeq = parseFloat(seqMatch[1]);
-  DEBUG && console.log('[getNextBookInSeries] Current sequence:', currentSeq);
+  log.debug('[getNextBookInSeries] Current sequence:', currentSeq);
 
   // Get the series from cache
   const cleanSeriesName = seriesName.replace(/\s*#[\d.]+$/, '').trim();
-  DEBUG && console.log('[getNextBookInSeries] Clean series name:', cleanSeriesName);
+  log.debug('[getNextBookInSeries] Clean series name:', cleanSeriesName);
 
   const seriesInfo = useLibraryCache.getState().getSeries(cleanSeriesName);
-  DEBUG && console.log('[getNextBookInSeries] Series info:', seriesInfo ? `${seriesInfo.books.length} books` : 'null');
+  log.debug('[getNextBookInSeries] Series info:', seriesInfo ? `${seriesInfo.books.length} books` : 'null');
 
   if (!seriesInfo || seriesInfo.books.length === 0) {
-    DEBUG && console.log('[getNextBookInSeries] No series info found');
+    log.debug('[getNextBookInSeries] No series info found');
     return null;
   }
 
   // Find the current book's index in the sorted series
   const currentIndex = seriesInfo.books.findIndex(book => book.id === currentBook.id);
-  DEBUG && console.log('[getNextBookInSeries] Current index:', currentIndex, 'of', seriesInfo.books.length);
+  log.debug('[getNextBookInSeries] Current index:', currentIndex, 'of', seriesInfo.books.length);
 
   // Return the next book if it exists
   if (currentIndex >= 0 && currentIndex < seriesInfo.books.length - 1) {
     const nextBook = seriesInfo.books[currentIndex + 1];
-    DEBUG && console.log('[getNextBookInSeries] Found next book by index:', (nextBook.media?.metadata as any)?.title);
+    log.debug('[getNextBookInSeries] Found next book by index:', (nextBook.media?.metadata as any)?.title);
     return nextBook;
   }
 
@@ -760,12 +762,12 @@ export function getNextBookInSeries(currentBook: LibraryItem): LibraryItem | nul
     if (bookSeqMatch) {
       const bookSeq = parseFloat(bookSeqMatch[1]);
       if (bookSeq > currentSeq) {
-        DEBUG && console.log('[getNextBookInSeries] Found next book by sequence:', bookMetadata.title);
+        log.debug('[getNextBookInSeries] Found next book by sequence:', bookMetadata.title);
         return book;
       }
     }
   }
 
-  DEBUG && console.log('[getNextBookInSeries] No next book found');
+  log.debug('[getNextBookInSeries] No next book found');
   return null;
 }

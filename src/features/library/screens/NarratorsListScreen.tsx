@@ -23,7 +23,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllNarrators } from '@/core/cache';
-import { useContinueListening } from '@/features/home/hooks/useContinueListening';
+import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
 import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';

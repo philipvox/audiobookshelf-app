@@ -7,6 +7,9 @@
 
 import * as SQLite from 'expo-sqlite';
 import { LibraryItem, Collection, Author } from '@/core/types';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('SQLiteCache');
 
 // Types for cached data
 interface CachedAuthor {
@@ -235,7 +238,7 @@ class SQLiteCache {
 
   private async _init(): Promise<void> {
     try {
-      console.log('[SQLiteCache] Initializing database...');
+      log.info('Initializing database...');
       this.db = await SQLite.openDatabaseAsync('abs_cache.db');
 
       // Create tables
@@ -495,15 +498,15 @@ class SQLiteCache {
       // Migration: Add last_played_at column if it doesn't exist
       try {
         await this.db.execAsync(`ALTER TABLE downloads ADD COLUMN last_played_at TEXT`);
-        console.log('[SQLiteCache] Added last_played_at column to downloads');
+        log.info('Added last_played_at column to downloads');
       } catch {
         // Column already exists, ignore
       }
 
       this.isInitialized = true;
-      console.log('[SQLiteCache] Database initialized successfully');
+      log.info('Database initialized successfully');
     } catch (err) {
-      console.error('[SQLiteCache] Failed to initialize:', err);
+      log.error('Failed to initialize:', err);
       throw err;
     }
   }
@@ -568,7 +571,7 @@ class SQLiteCache {
       );
       return rows.map(r => JSON.parse(r.data));
     } catch (err) {
-      console.warn('[SQLiteCache] getLibraryItems error:', err);
+      log.warn('getLibraryItems error:', err);
       return [];
     }
   }
@@ -594,9 +597,9 @@ class SQLiteCache {
 
       // Update last sync time
       await this.setSyncMetadata(`items_${libraryId}`, now.toString());
-      console.log(`[SQLiteCache] Cached ${items.length} library items`);
+      log.debug(`Cached ${items.length} library items`);
     } catch (err) {
-      console.error('[SQLiteCache] setLibraryItems error:', err);
+      log.error('setLibraryItems error:', err);
     }
   }
 
@@ -609,7 +612,7 @@ class SQLiteCache {
       );
       return row ? JSON.parse(row.data) : null;
     } catch (err) {
-      console.warn('[SQLiteCache] getLibraryItem error:', err);
+      log.warn('getLibraryItem error:', err);
       return null;
     }
   }
@@ -640,7 +643,7 @@ class SQLiteCache {
       );
       return rows.map(r => JSON.parse(r.data));
     } catch (err) {
-      console.warn('[SQLiteCache] getAuthors error:', err);
+      log.warn('getAuthors error:', err);
       return [];
     }
   }
@@ -656,9 +659,9 @@ class SQLiteCache {
         const rows = authors.map(author => [author.id, libraryId, JSON.stringify(author), now]);
         await this.batchInsert(db, 'authors', ['id', 'library_id', 'data', 'updated_at'], rows);
       });
-      console.log(`[SQLiteCache] Cached ${authors.length} authors`);
+      log.debug(`Cached ${authors.length} authors`);
     } catch (err) {
-      console.error('[SQLiteCache] setAuthors error:', err);
+      log.error('setAuthors error:', err);
     }
   }
 
@@ -675,7 +678,7 @@ class SQLiteCache {
       );
       return rows.map(r => JSON.parse(r.data));
     } catch (err) {
-      console.warn('[SQLiteCache] getSeries error:', err);
+      log.warn('getSeries error:', err);
       return [];
     }
   }
@@ -691,9 +694,9 @@ class SQLiteCache {
         const rows = series.map(s => [s.id, libraryId, JSON.stringify(s), now]);
         await this.batchInsert(db, 'series', ['id', 'library_id', 'data', 'updated_at'], rows);
       });
-      console.log(`[SQLiteCache] Cached ${series.length} series`);
+      log.debug(`Cached ${series.length} series`);
     } catch (err) {
-      console.error('[SQLiteCache] setSeries error:', err);
+      log.error('setSeries error:', err);
     }
   }
 
@@ -710,7 +713,7 @@ class SQLiteCache {
       );
       return rows.map(r => JSON.parse(r.data));
     } catch (err) {
-      console.warn('[SQLiteCache] getNarrators error:', err);
+      log.warn('getNarrators error:', err);
       return [];
     }
   }
@@ -726,9 +729,9 @@ class SQLiteCache {
         const rows = narrators.map(n => [n.id, libraryId, JSON.stringify(n), now]);
         await this.batchInsert(db, 'narrators', ['id', 'library_id', 'data', 'updated_at'], rows);
       });
-      console.log(`[SQLiteCache] Cached ${narrators.length} narrators`);
+      log.debug(`Cached ${narrators.length} narrators`);
     } catch (err) {
-      console.error('[SQLiteCache] setNarrators error:', err);
+      log.error('setNarrators error:', err);
     }
   }
 
@@ -744,7 +747,7 @@ class SQLiteCache {
       );
       return rows.map(r => JSON.parse(r.data));
     } catch (err) {
-      console.warn('[SQLiteCache] getCollections error:', err);
+      log.warn('getCollections error:', err);
       return [];
     }
   }
@@ -760,9 +763,9 @@ class SQLiteCache {
         const rows = collections.map(c => [c.id, JSON.stringify(c), now]);
         await this.batchInsert(db, 'collections', ['id', 'data', 'updated_at'], rows);
       });
-      console.log(`[SQLiteCache] Cached ${collections.length} collections`);
+      log.debug(`Cached ${collections.length} collections`);
     } catch (err) {
-      console.error('[SQLiteCache] setCollections error:', err);
+      log.error('setCollections error:', err);
     }
   }
 
@@ -799,7 +802,7 @@ class SQLiteCache {
         [itemId, position, duration, now, synced ? 1 : 0]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] setPlaybackProgress error:', err);
+      log.warn('setPlaybackProgress error:', err);
     }
   }
 
@@ -822,7 +825,7 @@ class SQLiteCache {
         [itemId]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] markProgressSynced error:', err);
+      log.warn('markProgressSynced error:', err);
     }
   }
 
@@ -861,7 +864,7 @@ class SQLiteCache {
         [key, value, now]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] setSyncMetadata error:', err);
+      log.warn('setSyncMetadata error:', err);
     }
   }
 
@@ -899,7 +902,7 @@ class SQLiteCache {
         rating: r.rating || undefined,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getReadHistory error:', err);
+      log.warn('getReadHistory error:', err);
       return [];
     }
   }
@@ -929,9 +932,9 @@ class SQLiteCache {
           [entry.itemId, entry.title, entry.authorName, entry.narratorName || null, JSON.stringify(entry.genres), now, entry.rating || null]
         );
       }
-      console.log(`[SQLiteCache] Added to read history: ${entry.title}`);
+      log.debug(`Added to read history: ${entry.title}`);
     } catch (err) {
-      console.error('[SQLiteCache] addToReadHistory error:', err);
+      log.error('addToReadHistory error:', err);
     }
   }
 
@@ -943,7 +946,7 @@ class SQLiteCache {
         [rating, itemId]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] updateReadHistoryRating error:', err);
+      log.warn('updateReadHistoryRating error:', err);
     }
   }
 
@@ -952,7 +955,7 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM read_history WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] removeFromReadHistory error:', err);
+      log.warn('removeFromReadHistory error:', err);
     }
   }
 
@@ -1073,7 +1076,7 @@ class SQLiteCache {
         currentlyListening: currentlyListening.length > 0 ? currentlyListening : undefined,
       };
     } catch (err) {
-      console.warn('[SQLiteCache] getReadHistoryStats error:', err);
+      log.warn('getReadHistoryStats error:', err);
       return { totalBooksRead: 0, favoriteAuthors: [], favoriteNarrators: [], favoriteGenres: [] };
     }
   }
@@ -1145,7 +1148,7 @@ class SQLiteCache {
 
       return { totalBooksInProgress, listeningAuthors, listeningNarrators, listeningGenres };
     } catch (err) {
-      console.warn('[SQLiteCache] getListeningHistoryStats error:', err);
+      log.warn('getListeningHistoryStats error:', err);
       return { totalBooksInProgress: 0, listeningAuthors: [], listeningNarrators: [], listeningGenres: [] };
     }
   }
@@ -1169,7 +1172,7 @@ class SQLiteCache {
         synced: r.synced === 1,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getFavorites error:', err);
+      log.warn('getFavorites error:', err);
       return [];
     }
   }
@@ -1181,9 +1184,9 @@ class SQLiteCache {
         'INSERT OR REPLACE INTO favorites (item_id, added_at, synced) VALUES (?, ?, 0)',
         [itemId, new Date().toISOString()]
       );
-      console.log(`[SQLiteCache] Added favorite: ${itemId}`);
+      log.debug(`Added favorite: ${itemId}`);
     } catch (err) {
-      console.warn('[SQLiteCache] addFavorite error:', err);
+      log.warn('addFavorite error:', err);
     }
   }
 
@@ -1191,9 +1194,9 @@ class SQLiteCache {
     const db = await this.ensureReady();
     try {
       await db.runAsync('DELETE FROM favorites WHERE item_id = ?', [itemId]);
-      console.log(`[SQLiteCache] Removed favorite: ${itemId}`);
+      log.debug(`Removed favorite: ${itemId}`);
     } catch (err) {
-      console.warn('[SQLiteCache] removeFavorite error:', err);
+      log.warn('removeFavorite error:', err);
     }
   }
 
@@ -1222,9 +1225,9 @@ class SQLiteCache {
           );
         }
       });
-      console.log(`[SQLiteCache] Cached ${favorites.length} favorites`);
+      log.debug(`Cached ${favorites.length} favorites`);
     } catch (err) {
-      console.error('[SQLiteCache] cacheFavorites error:', err);
+      log.error('cacheFavorites error:', err);
     }
   }
 
@@ -1252,7 +1255,7 @@ class SQLiteCache {
     try {
       await db.runAsync('UPDATE favorites SET synced = 1 WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] markFavoriteSynced error:', err);
+      log.warn('markFavoriteSynced error:', err);
     }
   }
 
@@ -1267,9 +1270,9 @@ class SQLiteCache {
         'INSERT INTO sync_queue (action, payload, created_at, retry_count) VALUES (?, ?, ?, ?)',
         [item.action, item.payload, item.createdAt, item.retryCount]
       );
-      console.log(`[SQLiteCache] Added to sync queue: ${item.action}`);
+      log.debug(`Added to sync queue: ${item.action}`);
     } catch (err) {
-      console.warn('[SQLiteCache] addToSyncQueue error:', err);
+      log.warn('addToSyncQueue error:', err);
     }
   }
 
@@ -1280,7 +1283,7 @@ class SQLiteCache {
         'SELECT id, action, payload, created_at as createdAt, retry_count as retryCount FROM sync_queue ORDER BY id ASC'
       );
     } catch (err) {
-      console.warn('[SQLiteCache] getSyncQueue error:', err);
+      log.warn('getSyncQueue error:', err);
       return [];
     }
   }
@@ -1290,7 +1293,7 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM sync_queue WHERE id = ?', [id]);
     } catch (err) {
-      console.warn('[SQLiteCache] removeSyncQueueItem error:', err);
+      log.warn('removeSyncQueueItem error:', err);
     }
   }
 
@@ -1299,7 +1302,7 @@ class SQLiteCache {
     try {
       await db.runAsync('UPDATE sync_queue SET retry_count = ? WHERE id = ?', [retryCount, id]);
     } catch (err) {
-      console.warn('[SQLiteCache] updateSyncQueueRetry error:', err);
+      log.warn('updateSyncQueueRetry error:', err);
     }
   }
 
@@ -1307,9 +1310,9 @@ class SQLiteCache {
     const db = await this.ensureReady();
     try {
       await db.runAsync('DELETE FROM sync_queue');
-      console.log('[SQLiteCache] Cleared sync queue');
+      log.debug('Cleared sync queue');
     } catch (err) {
-      console.warn('[SQLiteCache] clearSyncQueue error:', err);
+      log.warn('clearSyncQueue error:', err);
     }
   }
 
@@ -1327,9 +1330,9 @@ class SQLiteCache {
         await db.runAsync('DELETE FROM narrators WHERE library_id = ?', [libraryId]);
         await db.runAsync('DELETE FROM sync_metadata WHERE key LIKE ?', [`%${libraryId}%`]);
       });
-      console.log(`[SQLiteCache] Cleared cache for library: ${libraryId}`);
+      log.debug(`Cleared cache for library: ${libraryId}`);
     } catch (err) {
-      console.error('[SQLiteCache] clearLibraryCache error:', err);
+      log.error('clearLibraryCache error:', err);
     }
   }
 
@@ -1345,9 +1348,9 @@ class SQLiteCache {
         await db.runAsync('DELETE FROM sync_metadata');
         // Keep playback_progress for offline use
       });
-      console.log('[SQLiteCache] Cleared all cache');
+      log.debug('Cleared all cache');
     } catch (err) {
-      console.error('[SQLiteCache] clearAllCache error:', err);
+      log.error('clearAllCache error:', err);
     }
   }
 
@@ -1483,7 +1486,7 @@ class SQLiteCache {
         ]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] setDownload error:', err);
+      log.warn('setDownload error:', err);
     }
   }
 
@@ -1496,7 +1499,7 @@ class SQLiteCache {
         itemId,
       ]);
     } catch (err) {
-      console.warn('[SQLiteCache] updateDownloadProgress error:', err);
+      log.warn('updateDownloadProgress error:', err);
     }
   }
 
@@ -1509,7 +1512,7 @@ class SQLiteCache {
         [filePath, fileSize, new Date().toISOString(), itemId]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] completeDownload error:', err);
+      log.warn('completeDownload error:', err);
     }
   }
 
@@ -1521,7 +1524,7 @@ class SQLiteCache {
         itemId,
       ]);
     } catch (err) {
-      console.warn('[SQLiteCache] failDownload error:', err);
+      log.warn('failDownload error:', err);
     }
   }
 
@@ -1533,7 +1536,7 @@ class SQLiteCache {
         itemId,
       ]);
     } catch (err) {
-      console.warn('[SQLiteCache] updateDownloadLastPlayed error:', err);
+      log.warn('updateDownloadLastPlayed error:', err);
     }
   }
 
@@ -1543,7 +1546,7 @@ class SQLiteCache {
       await db.runAsync('DELETE FROM downloads WHERE item_id = ?', [itemId]);
       await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] deleteDownload error:', err);
+      log.warn('deleteDownload error:', err);
     }
   }
 
@@ -1561,7 +1564,7 @@ class SQLiteCache {
         [itemId, priority, new Date().toISOString()]
       );
     } catch (err) {
-      console.warn('[SQLiteCache] addToDownloadQueue error:', err);
+      log.warn('addToDownloadQueue error:', err);
     }
   }
 
@@ -1582,7 +1585,7 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] removeFromDownloadQueue error:', err);
+      log.warn('removeFromDownloadQueue error:', err);
     }
   }
 
@@ -1602,9 +1605,9 @@ class SQLiteCache {
     const db = await this.ensureReady();
     try {
       await db.runAsync('DELETE FROM download_queue');
-      console.log('[SQLiteCache] Cleared download queue');
+      log.debug('Cleared download queue');
     } catch (err) {
-      console.warn('[SQLiteCache] clearDownloadQueue error:', err);
+      log.warn('clearDownloadQueue error:', err);
     }
   }
 
@@ -1634,7 +1637,7 @@ class SQLiteCache {
         )`
       );
     } catch (err) {
-      console.warn('[SQLiteCache] logSync error:', err);
+      log.warn('logSync error:', err);
     }
   }
 
@@ -1656,7 +1659,7 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM sync_log');
     } catch (err) {
-      console.warn('[SQLiteCache] clearSyncLog error:', err);
+      log.warn('clearSyncLog error:', err);
     }
   }
 
@@ -1683,7 +1686,7 @@ class SQLiteCache {
         addedAt: r.added_at,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getQueue error:', err);
+      log.warn('getQueue error:', err);
       return [];
     }
   }
@@ -1704,10 +1707,10 @@ class SQLiteCache {
         'INSERT INTO playback_queue (id, book_id, book_data, position, added_at) VALUES (?, ?, ?, ?, ?)',
         [id, bookId, bookData, nextPosition, now]
       );
-      console.log(`[SQLiteCache] Added to queue: ${bookId} at position ${nextPosition}`);
+      log.debug(`Added to queue: ${bookId} at position ${nextPosition}`);
       return id;
     } catch (err) {
-      console.warn('[SQLiteCache] addToQueue error:', err);
+      log.warn('addToQueue error:', err);
       throw err;
     }
   }
@@ -1730,10 +1733,10 @@ class SQLiteCache {
           'UPDATE playback_queue SET position = position - 1 WHERE position > ?',
           [item.position]
         );
-        console.log(`[SQLiteCache] Removed from queue: ${bookId}`);
+        log.debug(`Removed from queue: ${bookId}`);
       }
     } catch (err) {
-      console.warn('[SQLiteCache] removeFromQueue error:', err);
+      log.warn('removeFromQueue error:', err);
     }
   }
 
@@ -1778,9 +1781,9 @@ class SQLiteCache {
     const db = await this.ensureReady();
     try {
       await db.runAsync('DELETE FROM playback_queue');
-      console.log('[SQLiteCache] Cleared playback queue');
+      log.debug('Cleared playback queue');
     } catch (err) {
-      console.warn('[SQLiteCache] clearQueue error:', err);
+      log.warn('clearQueue error:', err);
     }
   }
 
@@ -1816,9 +1819,9 @@ class SQLiteCache {
           [toPosition, item.id]
         );
       });
-      console.log(`[SQLiteCache] Reordered queue: ${fromPosition} -> ${toPosition}`);
+      log.debug(`Reordered queue: ${fromPosition} -> ${toPosition}`);
     } catch (err) {
-      console.warn('[SQLiteCache] reorderQueue error:', err);
+      log.warn('reorderQueue error:', err);
     }
   }
 
@@ -1863,7 +1866,7 @@ class SQLiteCache {
         updatedAt: r.updated_at,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getBookmarks error:', err);
+      log.warn('getBookmarks error:', err);
       return [];
     }
   }
@@ -1886,9 +1889,9 @@ class SQLiteCache {
           now,
         ]
       );
-      console.log(`[SQLiteCache] Added bookmark: ${bookmark.title}`);
+      log.debug(`Added bookmark: ${bookmark.title}`);
     } catch (err) {
-      console.warn('[SQLiteCache] addBookmark error:', err);
+      log.warn('addBookmark error:', err);
     }
   }
 
@@ -1917,9 +1920,9 @@ class SQLiteCache {
         `UPDATE bookmarks SET ${setClauses.join(', ')} WHERE id = ?`,
         values
       );
-      console.log(`[SQLiteCache] Updated bookmark: ${bookmarkId}`);
+      log.debug(`Updated bookmark: ${bookmarkId}`);
     } catch (err) {
-      console.warn('[SQLiteCache] updateBookmark error:', err);
+      log.warn('updateBookmark error:', err);
     }
   }
 
@@ -1927,9 +1930,9 @@ class SQLiteCache {
     const db = await this.ensureReady();
     try {
       await db.runAsync('DELETE FROM bookmarks WHERE id = ?', [bookmarkId]);
-      console.log(`[SQLiteCache] Removed bookmark: ${bookmarkId}`);
+      log.debug(`Removed bookmark: ${bookmarkId}`);
     } catch (err) {
-      console.warn('[SQLiteCache] removeBookmark error:', err);
+      log.warn('removeBookmark error:', err);
     }
   }
 
@@ -1958,7 +1961,7 @@ class SQLiteCache {
         updatedAt: r.updated_at,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getAllBookmarks error:', err);
+      log.warn('getAllBookmarks error:', err);
       return [];
     }
   }
@@ -2038,10 +2041,10 @@ class SQLiteCache {
         });
       });
 
-      console.log(`[SQLiteCache] Recorded listening session: ${session.durationSeconds}s for ${session.bookTitle}`);
+      log.debug(`Recorded listening session: ${session.durationSeconds}s for ${session.bookTitle}`);
       return id;
     } catch (err) {
-      console.error('[SQLiteCache] recordListeningSession error:', err);
+      log.error('recordListeningSession error:', err);
       throw err;
     }
   }
@@ -2077,7 +2080,7 @@ class SQLiteCache {
         endPosition: r.end_position,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getBookSessions error:', err);
+      log.warn('getBookSessions error:', err);
       return [];
     }
   }
@@ -2113,7 +2116,7 @@ class SQLiteCache {
         endPosition: r.end_position,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getRecentSessions error:', err);
+      log.warn('getRecentSessions error:', err);
       return [];
     }
   }
@@ -2141,7 +2144,7 @@ class SQLiteCache {
         booksTouched: JSON.parse(r.books_touched),
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getDailyStats error:', err);
+      log.warn('getDailyStats error:', err);
       return [];
     }
   }
@@ -2206,7 +2209,7 @@ class SQLiteCache {
         dailyBreakdown: dailyStats,
       };
     } catch (err) {
-      console.warn('[SQLiteCache] getWeeklyStats error:', err);
+      log.warn('getWeeklyStats error:', err);
       return { totalSeconds: 0, sessionCount: 0, uniqueBooks: 0, dailyBreakdown: [] };
     }
   }
@@ -2248,7 +2251,7 @@ class SQLiteCache {
         averageSessionLength: sessionCount > 0 ? Math.round(totalSeconds / sessionCount) : 0,
       };
     } catch (err) {
-      console.warn('[SQLiteCache] getMonthlyStats error:', err);
+      log.warn('getMonthlyStats error:', err);
       return { month: monthStr, totalSeconds: 0, sessionCount: 0, uniqueBooks: 0, averageSessionLength: 0 };
     }
   }
@@ -2309,7 +2312,7 @@ class SQLiteCache {
 
       return { currentStreak, longestStreak, lastListenDate };
     } catch (err) {
-      console.warn('[SQLiteCache] getListeningStreak error:', err);
+      log.warn('getListeningStreak error:', err);
       return { currentStreak: 0, longestStreak: 0, lastListenDate: null };
     }
   }
@@ -2358,7 +2361,7 @@ class SQLiteCache {
         firstListenDate: firstDate?.date || null,
       };
     } catch (err) {
-      console.warn('[SQLiteCache] getAllTimeStats error:', err);
+      log.warn('getAllTimeStats error:', err);
       return {
         totalSeconds: 0,
         totalSessions: 0,
@@ -2395,7 +2398,7 @@ class SQLiteCache {
         totalSeconds: r.total,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getTopBooks error:', err);
+      log.warn('getTopBooks error:', err);
       return [];
     }
   }
@@ -2432,7 +2435,7 @@ class SQLiteCache {
         totalSeconds,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getListeningByHour error:', err);
+      log.warn('getListeningByHour error:', err);
       return [];
     }
   }
@@ -2447,9 +2450,9 @@ class SQLiteCache {
         await db.runAsync('DELETE FROM listening_sessions');
         await db.runAsync('DELETE FROM daily_stats');
       });
-      console.log('[SQLiteCache] Cleared all listening stats');
+      log.debug('Cleared all listening stats');
     } catch (err) {
-      console.warn('[SQLiteCache] clearListeningStats error:', err);
+      log.warn('clearListeningStats error:', err);
     }
   }
 
@@ -2470,9 +2473,9 @@ class SQLiteCache {
          VALUES (?, ?, ?, 0)`,
         [itemId, isComplete ? 1 : 0, now]
       );
-      console.log(`[SQLiteCache] Marked ${itemId} as ${isComplete ? 'complete' : 'incomplete'}`);
+      log.debug(`Marked ${itemId} as ${isComplete ? 'complete' : 'incomplete'}`);
     } catch (err) {
-      console.warn('[SQLiteCache] setMarkedComplete error:', err);
+      log.warn('setMarkedComplete error:', err);
     }
   }
 
@@ -2510,7 +2513,7 @@ class SQLiteCache {
         markedAt: r.marked_at,
       }));
     } catch (err) {
-      console.warn('[SQLiteCache] getMarkedCompleteBooks error:', err);
+      log.warn('getMarkedCompleteBooks error:', err);
       return [];
     }
   }
@@ -2543,7 +2546,7 @@ class SQLiteCache {
     try {
       await db.runAsync('UPDATE marked_complete SET synced = 1 WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] markCompleteSynced error:', err);
+      log.warn('markCompleteSynced error:', err);
     }
   }
 
@@ -2555,7 +2558,7 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM marked_complete WHERE item_id = ?', [itemId]);
     } catch (err) {
-      console.warn('[SQLiteCache] removeMarkedComplete error:', err);
+      log.warn('removeMarkedComplete error:', err);
     }
   }
 
@@ -2630,7 +2633,7 @@ class SQLiteCache {
         playbackSpeed: row.playback_speed,
       };
     } catch (err) {
-      console.warn('[SQLiteCache] getUserBook error:', err);
+      log.warn('getUserBook error:', err);
       return null;
     }
   }
@@ -2796,7 +2799,7 @@ class SQLiteCache {
         );
       }
     } catch (err) {
-      console.warn('[SQLiteCache] setUserBook error:', err);
+      log.warn('setUserBook error:', err);
     }
   }
 
@@ -2908,7 +2911,7 @@ class SQLiteCache {
         }
       });
     } catch (err) {
-      console.warn('[SQLiteCache] markUserBooksFinished error:', err);
+      log.warn('markUserBooksFinished error:', err);
       throw err;
     }
   }
@@ -2945,10 +2948,10 @@ class SQLiteCache {
         migrated++;
       }
 
-      console.log(`[SQLiteCache] Migration complete: ${migrated} migrated, ${skipped} skipped`);
+      log.info(`Migration complete: ${migrated} migrated, ${skipped} skipped`);
       return { migrated, skipped };
     } catch (err) {
-      console.error('[SQLiteCache] migrateGalleryStoreToUserBooks error:', err);
+      log.error('migrateGalleryStoreToUserBooks error:', err);
       return { migrated, skipped };
     }
   }
@@ -2979,7 +2982,7 @@ class SQLiteCache {
       );
       return rows.map(this.mapUserBookRow);
     } catch (err) {
-      console.warn('[SQLiteCache] getFavoriteUserBooks error:', err);
+      log.warn('getFavoriteUserBooks error:', err);
       return [];
     }
   }
@@ -2995,7 +2998,7 @@ class SQLiteCache {
       );
       return rows.map(this.mapUserBookRow);
     } catch (err) {
-      console.warn('[SQLiteCache] getFinishedUserBooks error:', err);
+      log.warn('getFinishedUserBooks error:', err);
       return [];
     }
   }
@@ -3011,7 +3014,7 @@ class SQLiteCache {
       );
       return rows.map(this.mapUserBookRow);
     } catch (err) {
-      console.warn('[SQLiteCache] getInProgressUserBooks error:', err);
+      log.warn('getInProgressUserBooks error:', err);
       return [];
     }
   }
@@ -3027,7 +3030,7 @@ class SQLiteCache {
       );
       return rows.map(this.mapUserBookRow);
     } catch (err) {
-      console.warn('[SQLiteCache] getUnsyncedUserBooks error:', err);
+      log.warn('getUnsyncedUserBooks error:', err);
       return [];
     }
   }
@@ -3062,7 +3065,7 @@ class SQLiteCache {
         values
       );
     } catch (err) {
-      console.warn('[SQLiteCache] markUserBookSynced error:', err);
+      log.warn('markUserBookSynced error:', err);
     }
   }
 
@@ -3115,11 +3118,11 @@ class SQLiteCache {
     const migrationKey = 'user_books_migration_v1';
     const migrationDone = await this.getSyncMetadata(migrationKey);
     if (migrationDone === 'done') {
-      console.log('[SQLiteCache] user_books migration already completed');
+      log.debug('user_books migration already completed');
       return { migrated: 0, skipped: 0 };
     }
 
-    console.log('[SQLiteCache] Starting user_books migration...');
+    log.info('Starting user_books migration...');
     let migrated = 0;
     let skipped = 0;
 
@@ -3161,7 +3164,7 @@ class SQLiteCache {
           );
           migrated++;
         }
-        console.log(`[SQLiteCache] Migrated ${progressRows.length} playback_progress records`);
+        log.info(`Migrated ${progressRows.length} playback_progress records`);
 
         // Step 2: Migrate favorites
         const favoriteRows = await db.getAllAsync<{
@@ -3188,7 +3191,7 @@ class SQLiteCache {
           );
           migrated++;
         }
-        console.log(`[SQLiteCache] Migrated ${favoriteRows.length} favorites records`);
+        log.info(`Migrated ${favoriteRows.length} favorites records`);
 
         // Step 3: Migrate marked_complete
         const completeRows = await db.getAllAsync<{
@@ -3218,7 +3221,7 @@ class SQLiteCache {
           );
           migrated++;
         }
-        console.log(`[SQLiteCache] Migrated ${completeRows.length} marked_complete records`);
+        log.info(`Migrated ${completeRows.length} marked_complete records`);
 
         // Step 4: Migrate read_history (for analytics & metadata)
         const historyRows = await db.getAllAsync<{
@@ -3262,16 +3265,16 @@ class SQLiteCache {
           );
           migrated++;
         }
-        console.log(`[SQLiteCache] Migrated ${historyRows.length} read_history records`);
+        log.info(`Migrated ${historyRows.length} read_history records`);
       });
 
       // Mark migration as complete
       await this.setSyncMetadata(migrationKey, 'done');
-      console.log(`[SQLiteCache] user_books migration complete. Migrated: ${migrated}, Skipped: ${skipped}`);
+      log.info(`user_books migration complete. Migrated: ${migrated}, Skipped: ${skipped}`);
 
       return { migrated, skipped };
     } catch (err) {
-      console.error('[SQLiteCache] migrateToUserBooks error:', err);
+      log.error('migrateToUserBooks error:', err);
       throw err;
     }
   }
@@ -3299,9 +3302,9 @@ class SQLiteCache {
     try {
       await db.runAsync('DELETE FROM user_books');
       await db.runAsync('DELETE FROM sync_metadata WHERE key = ?', ['user_books_migration_v1']);
-      console.log('[SQLiteCache] Cleared all user_books data');
+      log.debug('Cleared all user_books data');
     } catch (err) {
-      console.warn('[SQLiteCache] clearUserBooks error:', err);
+      log.warn('clearUserBooks error:', err);
     }
   }
 }

@@ -8,6 +8,7 @@
 import { sqliteCache } from './sqliteCache';
 import { userApi } from '@/core/api/endpoints/user';
 import { apiClient } from '@/core/api';
+import { syncLogger as log } from '@/shared/utils/logger';
 
 /**
  * Sync finished books between local SQLite and server.
@@ -35,16 +36,16 @@ export const finishedBooksSync = {
           await sqliteCache.markUserBookSynced(book.bookId, { finished: true });
           synced++;
         } catch (err) {
-          console.warn(`[FinishedBooksSync] Failed to sync ${book.bookId}:`, err);
+          log.warn(`Failed to sync ${book.bookId}:`, err);
           failed++;
         }
       }
 
       if (synced > 0 || failed > 0) {
-        console.log(`[FinishedBooksSync] Synced ${synced}, failed ${failed}`);
+        log.info(`Synced ${synced}, failed ${failed}`);
       }
     } catch (err) {
-      console.error('[FinishedBooksSync] syncToServer error:', err);
+      log.error('syncToServer error:', err);
     }
 
     return { synced, failed };
@@ -79,10 +80,10 @@ export const finishedBooksSync = {
       }
 
       if (imported > 0) {
-        console.log(`[FinishedBooksSync] Imported ${imported} finished books from server`);
+        log.info(`Imported ${imported} finished books from server`);
       }
     } catch (err) {
-      console.warn('[FinishedBooksSync] importFromServer error:', err);
+      log.warn('importFromServer error:', err);
     }
 
     return imported;
@@ -115,7 +116,7 @@ export const finishedBooksSync = {
       await sqliteCache.markUserBookSynced(bookId, { finished: true });
       return true;
     } catch (err) {
-      console.warn(`[FinishedBooksSync] Failed to sync book ${bookId}:`, err);
+      log.warn(`Failed to sync book ${bookId}:`, err);
       return false;
     }
   },

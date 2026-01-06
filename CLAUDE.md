@@ -319,6 +319,120 @@ After making changes:
 
 ---
 
+## Architecture Decisions
+
+### Favorites Storage (Intentional Split)
+
+Favorites are stored in three places by design:
+
+| Type | Storage | Location | Syncs to Server |
+|------|---------|----------|-----------------|
+| **Books** | SQLite | `user_books.isFavorite` | ✅ Yes |
+| **Series** | AsyncStorage | `myLibraryStore.favoriteSeriesNames` | ❌ No (local) |
+| **Authors** | AsyncStorage | `preferencesStore.favoriteAuthors` | ❌ No (local) |
+| **Narrators** | AsyncStorage | `preferencesStore.favoriteNarrators` | ❌ No (local) |
+| **Genres** | AsyncStorage | `preferencesStore.favoriteGenres` | ❌ No (local) |
+
+**Rationale:**
+- **Books**: Core library content, syncs with AudiobookShelf server
+- **Series**: Library organization feature, server doesn't support series favorites
+- **Authors/Narrators/Genres**: Discovery preferences, used for recommendations
+
+### Progress Storage Architecture
+
+Progress is stored in the unified `user_books` SQLite table:
+
+```typescript
+interface UserBook {
+  bookId: string;
+  currentTime: number;     // Position in seconds
+  duration: number;        // Total duration
+  progress: number;        // currentTime / duration (0.0 - 1.0)
+  currentTrackIndex: number;
+  isFinished: boolean;     // True when progress >= 0.95
+  progressSynced: boolean; // False = needs sync to server
+  lastPlayedAt: string;
+  // ... other fields
+}
+```
+
+**Sync Flow:**
+1. Player updates `currentTime` locally → `progressSynced = false`
+2. `backgroundSyncService` detects unsynced progress
+3. Sends to server via `progressService.updateProgress()`
+4. On success: `progressSynced = true`
+5. On app startup: `finishedBooksSync.fullSync()` reconciles with server
+
+**Finished Books:**
+- Automatically marked finished when `progress >= 0.95`
+- Can be manually marked via "Mark as Finished" action
+- `finishSource` tracks how it was marked: `'progress' | 'manual' | 'bulk_author' | 'bulk_series'`
+
+### Player Store Architecture
+
+The player feature uses a modular store architecture (refactored January 2026):
+
+```
+features/player/stores/
+├── playerStore.ts        # Main orchestrator (2,156 lines)
+├── playerSettingsStore.ts # Persisted settings
+├── sleepTimerStore.ts     # Sleep timer state
+├── speedStore.ts          # Per-book playback speed
+├── bookmarksStore.ts      # Bookmark CRUD
+├── completionStore.ts     # Book completion
+├── seekingStore.ts        # Seeking operations (CRITICAL)
+├── playerSelectors.ts     # Derived state selectors
+└── index.ts               # Facade exports
+```
+
+**Store Ownership:**
+
+| Store | Owns | Persisted |
+|-------|------|-----------|
+| `playerStore` | Book state, position, chapters, playback | No |
+| `playerSettingsStore` | showTimeRemaining, sleepAtChapterEnd, etc. | Yes |
+| `sleepTimerStore` | sleepTimer, shakeToExtend, fade duration | No |
+| `speedStore` | bookSpeedMap (per-book rates) | Yes |
+| `bookmarksStore` | Bookmarks list and CRUD | No |
+| `completionStore` | Completion prompt prefs, completion sheet | Partial |
+| `seekingStore` | isSeeking, seekPosition (blocks position updates) | No |
+
+**Cross-Store Communication:**
+- Use `getState()` for reads (never subscribe for writes)
+- Callback pattern for events (e.g., `sleepTimer.onExpire → playerStore.pause`)
+- `seekingStore.isSeeking` checked by playerStore to block position updates during seeking
+
+**Usage:**
+```typescript
+// Import from facade
+import { usePlayerStore, useSpeedStore, useSeekingStore } from '@/features/player/stores';
+
+// Or import selectors directly
+import { useDisplayPosition, useBookProgress } from '@/features/player/stores/playerSelectors';
+```
+
+### HomeScreen Hero Design
+
+The HomeScreen uses a `HeroSection` component (not a CD disc):
+
+```
+┌─────────────────────────────────────────┐
+│  HeroSection (Continue Listening)       │
+│  ┌─────────┐                           │
+│  │  Cover  │  Book Title               │
+│  │  Image  │  Author Name              │
+│  │         │  Progress Bar  ▶ Play     │
+│  └─────────┘                           │
+└─────────────────────────────────────────┘
+```
+
+**Rationale:**
+- CD disc design is exclusive to `CDPlayerScreen` (full-screen player)
+- HomeScreen prioritizes quick access and information density
+- Hero card shows continue listening with large tap target for resume
+
+---
+
 ## Documentation
 
 - [CHANGELOG.md](CHANGELOG.md) - Version history

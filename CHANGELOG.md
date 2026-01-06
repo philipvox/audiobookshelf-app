@@ -9,6 +9,158 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.6.121] - 2026-01-04
+
+### Fixed - Android Auto Player Controls
+
+Fixed Android Auto transport controls (play, pause, skip, seek) which were not being forwarded to the player.
+
+**Changes:**
+- Transport commands from MediaPlaybackService are now properly handled in automotiveService.ts
+- `play` → calls `playerStore.resume()`
+- `pause` → calls `playerStore.pause()`
+- `skipNext` → calls `playerStore.nextChapter()`
+- `skipPrevious` → calls `playerStore.previousChapter()`
+- `fastForward` → seeks forward 30 seconds
+- `rewind` → seeks backward 30 seconds
+- `seekTo` → seeks to specified position (already working)
+- `playFromMediaId` → loads and plays book (already working)
+
+**Files Modified:**
+- `src/features/automotive/automotiveService.ts` - Added proper transport command handlers
+
+---
+
+## [0.6.120] - 2026-01-04
+
+### Fixed - MyLibraryScreen Sources of Truth
+
+Updated MyLibraryScreen to use correct and consistent sources of truth for all data.
+
+**In-Progress Logic:**
+- Now uses `useContinueListening()` (server API `/api/me/items-in-progress`) as the source of truth
+- Previously only filtered downloaded books; now includes ALL in-progress books from server
+- Added `serverInProgressBooks` computed value derived from `continueListeningItems`
+
+**Completed/Finished Logic:**
+- Combined `useFinishedBookIds()` (SQLite user_books) with `useCompletionStore.isComplete()` (manual marks)
+- Both sources now checked for finished status
+
+**All Tab Logic:**
+- Now includes: downloaded books + server in-progress books + favorited books
+- Previously only included downloaded + favorited
+
+**Other Fixes:**
+- Added `refetchContinueListening()` to refresh handler
+- Fixed refresh to update both library cache and continue listening data
+
+**Files Modified:**
+- `src/features/library/screens/MyLibraryScreen.tsx` - Major data source fixes
+
+---
+
+## [0.6.119] - 2026-01-04
+
+### Added - Library Tab in Bottom Navigation
+
+Added My Library as a dedicated tab in the bottom navigation bar.
+
+**Changes:**
+- Added LibraryTab to MainTabs navigator (between Home and Browse)
+- Created LibraryIcon component (bookshelf/books design)
+- Updated FloatingTabBar with new tab order: Home → Library → Browse → Search → Profile
+- Library tab links to MyLibraryScreen with all downloaded/favorited content
+
+**Files Modified:**
+- `src/navigation/AppNavigator.tsx` - Added LibraryTab to MainTabs
+- `src/navigation/components/FloatingTabBar.tsx` - Added Library icon and tab config
+
+---
+
+## [0.6.118] - 2026-01-04
+
+### Improved - Series Section Ordering
+
+Updated Series In Progress section on Home page to be ordered by most recently listened.
+
+**Changes:**
+- Series are now derived from Continue Listening books (in-progress items)
+- Sorted by the most recently played book in each series
+- Uses `userMediaProgress.lastUpdate` timestamp for ordering
+
+**Files Modified:**
+- `src/features/home/hooks/useHomeData.ts` - Updated seriesInProgress sorting logic
+
+---
+
+## [0.6.117] - 2026-01-04
+
+### Changed - Home Page Redesign to Match Browse Page
+
+Redesigned the Home screen to match the Browse/Discover page's visual design with blurred hero background and consistent section styling.
+
+**Design Changes:**
+- Added scrolling blurred background behind hero section (matches Browse page)
+- Replaced custom HeroCard with Browse page's HeroSection component
+- Replaced ContinueListeningGrid with ContentRowCarousel (2x2 grid layout)
+- Replaced RecentlyAddedSection with ContentRowCarousel (2x2 grid layout)
+- Consistent "Written by" / "Read by" credits on book cards
+
+**Component Reuse:**
+- Now imports HeroSection and ContentRowCarousel from `@/features/discover`
+- Uses libraryItemToBookSummary adapter to convert home data to discover types
+- Series section retains custom SeriesCard with progress indicators
+
+**Removed Components (no longer needed):**
+- `src/features/home/components/HeroCard.tsx`
+- `src/features/home/components/ContinueListeningGrid.tsx`
+- `src/features/home/components/RecentlyAddedSection.tsx`
+
+**Files Modified:**
+- `src/features/home/screens/HomeScreen.tsx` - Complete redesign with discover components
+
+---
+
+## [0.6.116] - 2026-01-04
+
+### Enhanced - Homepage Redesign
+
+Complete redesign of the Home screen from a tab-filtered library view to a resume-focused listening dashboard.
+
+**New Components:**
+- **HeroCard** - Primary resume target with blurred cover background, chapter info, progress bar, and Resume button
+- **ContinueListeningGrid** - 3-column grid of other in-progress books with circular progress rings
+- **CircularProgressRing** - SVG-based circular progress indicator for book covers
+- **Enhanced SeriesCard** - Now supports `showProgress` prop to display ProgressDots and SeriesProgressBadge
+
+**Home Screen Layout:**
+1. HeroCard - Most recent in-progress book with chapter/time info
+2. Continue Listening Grid - Other books in progress (tap to play, long press for details)
+3. Series In Progress - Enhanced series cards with progress indicators
+4. Recently Added - New books for discovery
+
+**Data Layer Enhancements:**
+- Extended `useHomeData` hook with `heroBook`, `continueListeningGrid`, `seriesInProgress`, `recentlyAdded`
+- Added `HeroBookData` and `EnhancedSeriesData` types
+- Hero book state detection: in-progress, almost-done (75%+), final-chapter (95%+), just-finished
+
+**Tab Migration:**
+- Old Home tabs (In Progress, Downloaded, Finished, Favorites) now live in Library tab
+- Library tab already has: All, Downloaded, In Progress, Completed, Favorites
+
+**Files Created:**
+- `src/shared/components/CircularProgressRing.tsx`
+- `src/features/home/components/HeroCard.tsx`
+- `src/features/home/components/ContinueListeningGrid.tsx`
+
+**Files Modified:**
+- `src/features/home/types.ts` - Added HeroBookData, EnhancedSeriesData, BookStatus types
+- `src/features/home/hooks/useHomeData.ts` - Extended with new data computations
+- `src/features/home/components/SeriesCard.tsx` - Added showProgress and enhancedData props
+- `src/features/home/screens/HomeScreen.tsx` - Complete redesign with new layout
+
+---
+
 ## [0.6.114] - 2026-01-03
 
 ### Fixed - Playback Stability During Downloads

@@ -9,6 +9,9 @@
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { User } from '@/core/types';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('AppInit');
 
 // Prevent native splash auto-hide - we control when it hides
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -38,7 +41,7 @@ class AppInitializer {
 
   private async _initialize(): Promise<InitResult> {
     const startTime = Date.now();
-    console.log('[AppInitializer] Starting parallel initialization...');
+    log.info('Starting parallel initialization...');
 
     // Import auth service lazily to avoid circular dependencies
     const { authService } = await import('@/core/auth/authService');
@@ -65,7 +68,7 @@ class AppInitializer {
     };
 
     const elapsed = Date.now() - startTime;
-    console.log(`[AppInitializer] Ready in ${elapsed}ms`, {
+    log.info(`Ready in ${elapsed}ms`, {
       fontsLoaded: result.fontsLoaded,
       hasUser: !!result.user,
     });
@@ -98,7 +101,7 @@ class AppInitializer {
       });
       return true;
     } catch (err) {
-      console.warn('[AppInitializer] Font loading failed:', err);
+      log.warn('Font loading failed:', err);
       return false;
     }
   }
@@ -114,7 +117,7 @@ class AppInitializer {
       }
       return await authService.restoreSession();
     } catch (err) {
-      console.warn('[AppInitializer] Session restoration failed:', err);
+      log.warn('Session restoration failed:', err);
       return { user: null, serverUrl: null };
     }
   }
@@ -123,9 +126,9 @@ class AppInitializer {
     try {
       const { useCompletionStore } = await import('@/features/completion');
       await useCompletionStore.getState().hydrate();
-      console.log('[AppInitializer] Completion store hydrated');
+      log.debug('Completion store hydrated');
     } catch (err) {
-      console.warn('[AppInitializer] Completion store hydration failed:', err);
+      log.warn('Completion store hydration failed:', err);
     }
   }
 
@@ -134,13 +137,13 @@ class AppInitializer {
       const { sqliteCache } = await import('@/core/services/sqliteCache');
       const result = await sqliteCache.migrateToUserBooks();
       if (result.migrated > 0) {
-        console.log(`[AppInitializer] Migrated ${result.migrated} records to user_books`);
+        log.info(`Migrated ${result.migrated} records to user_books`);
       }
 
       // One-time migration from galleryStore.markedBooks to user_books
       await this.migrateGalleryStoreToUserBooks();
     } catch (err) {
-      console.warn('[AppInitializer] user_books migration failed:', err);
+      log.warn('user_books migration failed:', err);
     }
   }
 
@@ -172,16 +175,16 @@ class AppInitializer {
         if (Array.isArray(legacyMarkedBooks) && legacyMarkedBooks.length > 0) {
           // Convert array format back to Map for migration
           const markedBooksMap = new Map(legacyMarkedBooks);
-          console.log(`[AppInitializer] Migrating ${markedBooksMap.size} books from legacy galleryStore...`);
+          log.info(`Migrating ${markedBooksMap.size} books from legacy galleryStore...`);
           const result = await sqliteCache.migrateGalleryStoreToUserBooks(markedBooksMap);
-          console.log(`[AppInitializer] Gallery migration: ${result.migrated} migrated, ${result.skipped} skipped`);
+          log.info(`Gallery migration: ${result.migrated} migrated, ${result.skipped} skipped`);
         }
       }
 
       // Mark migration as complete
       await sqliteCache.setSyncMetadata(migrationKey, 'done');
     } catch (err) {
-      console.warn('[AppInitializer] galleryStore migration failed:', err);
+      log.warn('galleryStore migration failed:', err);
     }
   }
 
@@ -193,9 +196,9 @@ class AppInitializer {
         enableCarPlay: true,
         enableAndroidAuto: true,
       });
-      console.log('[AppInitializer] Automotive service initialized');
+      log.debug('Automotive service initialized');
     } catch (err) {
-      console.warn('[AppInitializer] Automotive initialization failed:', err);
+      log.warn('Automotive initialization failed:', err);
     }
   }
 
@@ -209,9 +212,9 @@ class AppInitializer {
       const { initializeAppStateListener } = await import('@/core/lifecycle');
       initializeAppStateListener();
 
-      console.log('[AppInitializer] Event system initialized');
+      log.debug('Event system initialized');
     } catch (err) {
-      console.warn('[AppInitializer] Event system initialization failed:', err);
+      log.warn('Event system initialization failed:', err);
     }
   }
 
@@ -223,9 +226,9 @@ class AppInitializer {
     try {
       const { websocketService } = await import('@/core/services/websocketService');
       await websocketService.connect();
-      console.log('[AppInitializer] WebSocket connected');
+      log.debug('WebSocket connected');
     } catch (err) {
-      console.warn('[AppInitializer] WebSocket connection failed:', err);
+      log.warn('WebSocket connection failed:', err);
     }
   }
 
@@ -239,12 +242,10 @@ class AppInitializer {
       const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
       const result = await finishedBooksSync.fullSync();
       if (result.imported > 0 || result.synced > 0) {
-        console.log(
-          `[AppInitializer] Finished books sync: ${result.imported} imported, ${result.synced} synced`
-        );
+        log.info(`Finished books sync: ${result.imported} imported, ${result.synced} synced`);
       }
     } catch (err) {
-      console.warn('[AppInitializer] Finished books sync failed:', err);
+      log.warn('Finished books sync failed:', err);
     }
   }
 
@@ -255,9 +256,9 @@ class AppInitializer {
     try {
       const { websocketService } = await import('@/core/services/websocketService');
       websocketService.disconnect('manual');
-      console.log('[AppInitializer] WebSocket disconnected');
+      log.debug('WebSocket disconnected');
     } catch (err) {
-      console.warn('[AppInitializer] WebSocket disconnect failed:', err);
+      log.warn('WebSocket disconnect failed:', err);
     }
   }
 
