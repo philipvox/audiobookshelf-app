@@ -50,7 +50,7 @@ import { useDismissedCount } from '@/features/recommendations/stores/dismissedIt
 import { haptics } from '@/core/native/haptics';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
-import { accentColors, scale } from '@/shared/theme';
+import { accentColors, scale, typography, fontWeight } from '@/shared/theme';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 import { generateErrorReport, exportErrorReportJSON } from '@/utils/runtimeMonitor';
 import { logger } from '@/shared/utils/logger';
@@ -460,8 +460,8 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
   },
   headerTitle: {
-    fontSize: scale(32),
-    fontWeight: '700',
+    ...typography.displayLarge,
+    fontWeight: fontWeight.bold,
     // color set via themeColors.text in JSX
     letterSpacing: -0.5,
   },
@@ -485,8 +485,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: scale(24),
-    fontWeight: '700',
+    ...typography.displayMedium,
+    fontWeight: fontWeight.bold,
     color: '#000', // Black on gold accent (intentional)
   },
   userInfo: {
@@ -494,13 +494,13 @@ const styles = StyleSheet.create({
     marginLeft: scale(16),
   },
   username: {
-    fontSize: scale(20),
-    fontWeight: '700',
+    ...typography.displaySmall,
+    fontWeight: fontWeight.bold,
     // color set via themeColors.text in JSX
     marginBottom: scale(2),
   },
   userRole: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
     // color set via themeColors.textSecondary in JSX
     marginBottom: scale(6),
   },
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
     gap: scale(4),
   },
   serverText: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via themeColors.textTertiary in JSX
     flex: 1,
   },
@@ -531,8 +531,8 @@ const styles = StyleSheet.create({
     marginBottom: scale(24),
   },
   sectionTitle: {
-    fontSize: scale(13),
-    fontWeight: '600',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.semibold,
     // color set via themeColors.textSecondary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
@@ -566,13 +566,13 @@ const styles = StyleSheet.create({
     marginLeft: scale(12),
   },
   linkLabel: {
-    fontSize: scale(15),
-    fontWeight: '500',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.medium,
     // color set via themeColors.text in JSX
     marginBottom: scale(2),
   },
   linkSubtitle: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via themeColors.textSecondary in JSX
   },
   badge: {
@@ -585,8 +585,8 @@ const styles = StyleSheet.create({
     borderColor: ACCENT,
   },
   badgeText: {
-    fontSize: scale(11),
-    fontWeight: '600',
+    ...typography.labelMedium,
+    fontWeight: fontWeight.semibold,
     color: ACCENT,
   },
   // Sign Out
@@ -610,8 +610,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   signOutText: {
-    fontSize: scale(15),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
     color: '#ff4b4b', // Red (intentional for destructive action)
   },
   // Footer
@@ -633,17 +633,17 @@ const styles = StyleSheet.create({
     borderRadius: scale(14),
   },
   appName: {
-    fontSize: scale(16),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
     // color set via themeColors.textSecondary in JSX
     marginBottom: scale(4),
   },
   versionText: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via themeColors.textTertiary in JSX
   },
   buildDate: {
-    fontSize: scale(10),
+    ...typography.labelSmall,
     // color set via themeColors.textTertiary in JSX
     marginTop: scale(2),
   },

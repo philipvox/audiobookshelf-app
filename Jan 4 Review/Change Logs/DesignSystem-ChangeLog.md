@@ -279,10 +279,40 @@ Replaced all 40+ hardcoded `fontSize: scale()` values with typography tokens:
 
 ---
 
-### C.2 - Other Screens Typography (Pending)
+### C.2 - ProfileScreen Typography
+**Status:** Complete
+**Files Modified:**
+- `src/features/profile/screens/ProfileScreen.tsx`
+
+**Changes:**
+Replaced all 13 hardcoded `fontSize: scale()` values with typography tokens:
+
+**Display text:**
+- [x] `headerTitle` → `typography.displayLarge`
+- [x] `avatarText` → `typography.displayMedium`
+- [x] `username` → `typography.displaySmall`
+
+**Headline text:**
+- [x] `linkLabel` → `typography.headlineMedium`
+- [x] `signOutText` → `typography.headlineMedium`
+- [x] `appName` → `typography.headlineMedium`
+
+**Body text:**
+- [x] `userRole` → `typography.bodyLarge`
+- [x] `sectionTitle` → `typography.bodyMedium`
+- [x] `serverText` → `typography.bodySmall`
+- [x] `linkSubtitle` → `typography.bodySmall`
+- [x] `versionText` → `typography.bodySmall`
+
+**Label text:**
+- [x] `badgeText` → `typography.labelMedium`
+- [x] `buildDate` → `typography.labelSmall`
+
+---
+
+### C.3 - Other Settings Screens Typography (Pending)
 
 **Remaining screens:**
-- `ProfileScreen.tsx`: 20+ hardcoded font sizes
 - `PlaybackSettingsScreen.tsx`: 20+ hardcoded font sizes
 - `KidModeSettingsScreen.tsx`: 40+ hardcoded font sizes
 - `JoystickSeekSettingsScreen.tsx`: 30+ hardcoded font sizes
