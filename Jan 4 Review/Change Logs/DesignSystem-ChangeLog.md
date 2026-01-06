@@ -338,10 +338,56 @@ Replaced all 12 hardcoded `fontSize: scale()` values with typography tokens:
 
 ---
 
-### C.4 - Other Settings Screens Typography (Pending)
+### C.4 - KidModeSettingsScreen Typography
+**Status:** Complete
+**Files Modified:**
+- `src/features/profile/screens/KidModeSettingsScreen.tsx`
+
+**Changes:**
+Replaced all 29 hardcoded `fontSize: scale()` values with typography tokens:
+
+**Display text:**
+- [x] `modalTitle` → `typography.displaySmall`
+
+**Headline text:**
+- [x] `headerTitle` → `typography.headlineLarge`
+- [x] `masterToggleLabel` → `typography.headlineMedium`
+- [x] `sectionHeader` → `typography.headlineMedium`
+- [x] `ageToggleLabel` → `typography.headlineMedium`
+- [x] `pinRowLabel` → `typography.headlineMedium`
+- [x] `modalButtonText` → `typography.headlineMedium`
+
+**Body text:**
+- [x] `masterToggleNote` → `typography.bodyMedium`
+- [x] `infoText` → `typography.bodyMedium`
+- [x] `chipText` → `typography.bodyMedium`
+- [x] `addButtonText` → `typography.bodyMedium`
+- [x] `addInput` → `typography.bodyMedium`
+- [x] `subSectionLabel` → `typography.bodyMedium`
+- [x] `pinActionButtonText` → `typography.bodyMedium`
+- [x] `confirmHint` → `typography.bodyMedium`
+- [x] `tipsTitle` → `typography.bodyLarge`
+- [x] `categoryPickerLabel` → `typography.bodyLarge`
+- [x] `categoryOptionLabel` → `typography.bodyLarge`
+- [x] `ratingPickerLabel` → `typography.bodyLarge`
+- [x] `ratingOptionLabel` → `typography.bodyLarge`
+- [x] `modalSubtitle` → `typography.bodyLarge`
+- [x] `pinErrorText` → `typography.bodyLarge`
+- [x] `sectionSubtitle` → `typography.bodySmall`
+- [x] `tipText` → `typography.bodySmall`
+- [x] `ageToggleNote` → `typography.bodySmall`
+- [x] `categoryPickerHint` → `typography.bodySmall`
+- [x] `ratingPickerHint` → `typography.bodySmall`
+- [x] `pinRowNote` → `typography.bodySmall`
+
+**Label text:**
+- [x] `ratingOptionAge` → `typography.labelSmall`
+
+---
+
+### C.5 - Other Settings Screens Typography (Pending)
 
 **Remaining screens:**
-- `KidModeSettingsScreen.tsx`: 40+ hardcoded font sizes
 - `JoystickSeekSettingsScreen.tsx`: 30+ hardcoded font sizes
 - `HapticSettingsScreen.tsx`
 - `ChapterCleaningSettingsScreen.tsx`

@@ -36,7 +36,7 @@ import {
   KeyRound,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, spacing } from '@/shared/theme';
+import { accentColors, scale, spacing, typography, fontWeight } from '@/shared/theme';
 import { useThemeColors, ThemeColors } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { PinInput } from '@/shared/components/PinInput';
@@ -1060,9 +1060,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
+    ...typography.headlineLarge,
     flex: 1,
-    fontSize: scale(18),
-    fontWeight: '700',
+    fontWeight: fontWeight.bold,
     marginLeft: spacing.xs,
   },
   resetButton: {
@@ -1096,11 +1096,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   masterToggleLabel: {
-    fontSize: scale(16),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
   },
   masterToggleNote: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
     marginTop: 2,
   },
   infoCard: {
@@ -1113,8 +1113,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   infoText: {
+    ...typography.bodyMedium,
     flex: 1,
-    fontSize: scale(13),
     lineHeight: scale(18),
   },
   sectionHeaderContainer: {
@@ -1126,11 +1126,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionHeader: {
-    fontSize: scale(15),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
   },
   sectionSubtitle: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     marginTop: 2,
   },
   chipGrid: {
@@ -1149,7 +1149,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   chipText: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
   },
   addButton: {
     flexDirection: 'row',
@@ -1162,8 +1162,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   addButtonText: {
-    fontSize: scale(13),
-    fontWeight: '500',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.medium,
   },
   addInputContainer: {
     flexDirection: 'row',
@@ -1174,8 +1174,8 @@ const styles = StyleSheet.create({
     minWidth: scale(150),
   },
   addInput: {
+    ...typography.bodyMedium,
     flex: 1,
-    fontSize: scale(13),
     paddingVertical: spacing.xs,
   },
   addInputButton: {
@@ -1189,12 +1189,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   tipsTitle: {
-    fontSize: scale(14),
-    fontWeight: '600',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.semibold,
     marginBottom: spacing.sm,
   },
   tipText: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     lineHeight: scale(18),
     marginBottom: 4,
   },
@@ -1207,11 +1207,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   ageToggleLabel: {
-    fontSize: scale(15),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
   },
   ageToggleNote: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     marginTop: 2,
   },
   // Category picker styles
@@ -1222,12 +1222,12 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.1)',
   },
   categoryPickerLabel: {
-    fontSize: scale(14),
-    fontWeight: '500',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.medium,
     marginBottom: spacing.xs,
   },
   categoryPickerHint: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     marginBottom: spacing.sm,
   },
   categoryOptions: {
@@ -1245,8 +1245,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryOptionLabel: {
-    fontSize: scale(14),
-    fontWeight: '600',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.semibold,
   },
   // Rating picker styles
   ratingPickerContainer: {
@@ -1256,12 +1256,12 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.1)',
   },
   ratingPickerLabel: {
-    fontSize: scale(14),
-    fontWeight: '500',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.medium,
     marginBottom: spacing.xs,
   },
   ratingPickerHint: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     marginBottom: spacing.sm,
   },
   ratingOptions: {
@@ -1277,17 +1277,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ratingOptionLabel: {
-    fontSize: scale(14),
-    fontWeight: '600',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.semibold,
   },
   ratingOptionAge: {
-    fontSize: scale(10),
+    ...typography.labelSmall,
     marginTop: 2,
   },
   // Sub-section label
   subSectionLabel: {
-    fontSize: scale(13),
-    fontWeight: '600',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.semibold,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
     marginLeft: spacing.xs,
@@ -1310,11 +1310,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pinRowLabel: {
-    fontSize: scale(15),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
   },
   pinRowNote: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     marginTop: 2,
   },
   pinStatusRow: {
@@ -1341,8 +1341,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   pinActionButtonText: {
-    fontSize: scale(13),
-    fontWeight: '600',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.semibold,
   },
   // PIN Modal styles
   modalOverlay: {
@@ -1380,27 +1380,27 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   modalTitle: {
-    fontSize: scale(22),
-    fontWeight: '700',
+    ...typography.displaySmall,
+    fontWeight: fontWeight.bold,
     textAlign: 'center',
     marginBottom: spacing.xs,
     letterSpacing: -0.3,
   },
   modalSubtitle: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
     textAlign: 'center',
     lineHeight: scale(20),
     opacity: 0.7,
   },
   pinErrorText: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.medium,
     color: DANGER,
     textAlign: 'center',
     marginTop: spacing.sm,
-    fontWeight: '500',
   },
   confirmHint: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
     textAlign: 'center',
     marginTop: spacing.sm,
     opacity: 0.6,
@@ -1426,8 +1426,8 @@ const styles = StyleSheet.create({
     // backgroundColor set inline (ACCENT)
   },
   modalButtonText: {
-    fontSize: scale(16),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
   },
   modalButtonDisabled: {
     opacity: 0.4,
