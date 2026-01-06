@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Undo2, Trash2 } from 'lucide-react-native';
 import { useThemeColors } from '@/shared/theme/themeStore';
-import { scale, spacing, radius, layout } from '@/shared/theme';
+import { scale, spacing, radius, layout, typography, fontWeight } from '@/shared/theme';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useDismissedItemsStore } from '@/features/recommendations/stores/dismissedItemsStore';
 import { useLibraryCache, useCoverUrl } from '@/core/cache';
@@ -184,8 +184,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   title: {
-    fontSize: scale(24),
-    fontWeight: '700',
+    ...typography.displayMedium,
+    fontWeight: fontWeight.bold,
     letterSpacing: -0.3,
   },
   clearButton: {
@@ -197,11 +197,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   clearButtonText: {
-    fontSize: scale(13),
-    fontWeight: '500',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.medium,
   },
   description: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
     paddingHorizontal: layout.screenPaddingH,
     marginBottom: spacing.lg,
   },
@@ -225,12 +225,12 @@ const styles = StyleSheet.create({
     marginLeft: spacing.md,
   },
   bookTitle: {
-    fontSize: scale(15),
-    fontWeight: '600',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.semibold,
     marginBottom: scale(2),
   },
   bookAuthor: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
   },
   restoreButton: {
     width: scale(40),
@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   emptyTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
+    ...typography.headlineLarge,
+    fontWeight: fontWeight.semibold,
     marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
     textAlign: 'center',
     lineHeight: scale(20),
   },

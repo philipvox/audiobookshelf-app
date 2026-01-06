@@ -470,10 +470,67 @@ Replaced all 14 hardcoded `fontSize: scale()` values with typography tokens:
 
 ---
 
-### C.8 - Remaining Settings Screens (Pending)
+### C.8 - HiddenItemsScreen Typography
+**Status:** Complete
+**Files Modified:**
+- `src/features/profile/screens/HiddenItemsScreen.tsx`
 
-**Screens to check:**
-- Various other profile settings screens
+**Changes:**
+Replaced all 7 hardcoded `fontSize: scale()` values with typography tokens:
+
+**Display text:**
+- [x] `title` → `typography.displayMedium`
+
+**Headline text:**
+- [x] `bookTitle` → `typography.headlineMedium`
+- [x] `emptyTitle` → `typography.headlineLarge`
+
+**Body text:**
+- [x] `clearButtonText` → `typography.bodyMedium`
+- [x] `description` → `typography.bodyLarge`
+- [x] `bookAuthor` → `typography.bodyMedium`
+- [x] `emptyText` → `typography.bodyLarge`
+
+---
+
+### C.9 - StorageSettingsScreen Typography
+**Status:** Complete
+**Files Modified:**
+- `src/features/profile/screens/StorageSettingsScreen.tsx`
+
+**Changes:**
+Replaced all 8 hardcoded `fontSize: scale()` values with typography tokens:
+
+**Display text:**
+- [x] `storageValue` → `typography.displayMedium`
+
+**Headline text:**
+- [x] `headerTitle` → `typography.headlineLarge`
+- [x] `rowLabel` → `typography.headlineMedium`
+
+**Body text:**
+- [x] `storageLabel` → `typography.bodyMedium`
+- [x] `sectionHeader` → `typography.bodyMedium`
+- [x] `rowNote` → `typography.bodySmall`
+- [x] `rowValue` → `typography.bodyLarge`
+- [x] `infoText` → `typography.bodySmall`
+
+---
+
+## Phase C Complete!
+
+All profile settings screens have been migrated to typography tokens:
+- CDPlayerScreen (40+)
+- ProfileScreen (13)
+- PlaybackSettingsScreen (12)
+- KidModeSettingsScreen (29)
+- JoystickSeekSettingsScreen (20)
+- HapticSettingsScreen (5)
+- ChapterCleaningSettingsScreen (14)
+- HiddenItemsScreen (7)
+- StorageSettingsScreen (8)
+
+**Total:** 148+ font size replacements across 9 screens.
 
 ---
 
