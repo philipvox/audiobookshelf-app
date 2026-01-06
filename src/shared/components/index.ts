@@ -31,7 +31,8 @@ export type { EmptyStateIcon } from './EmptyState';
 // =============================================================================
 // UTILITY COMPONENTS
 // =============================================================================
-export { Icon } from './Icon';
+export { Icon, ICON_SIZES } from './Icon';
+export type { IconSize } from './Icon';
 export { FilterSortBar } from './FilterSortBar';
 export type { SortOption } from './FilterSortBar';
 
@@ -95,6 +96,18 @@ export { ThumbnailProgressBar } from './ThumbnailProgressBar';
 export { StackedCovers } from './StackedCovers';
 
 // =============================================================================
+// SERIES CARDS
+// =============================================================================
+export { SeriesCard } from './SeriesCard';
+export type {
+  SeriesCardProps,
+  SeriesData,
+  SeriesBook,
+  EnhancedSeriesData,
+  BookStatus,
+} from './SeriesCard';
+
+// =============================================================================
 // NETWORK STATUS
 // =============================================================================
 export { NetworkStatusBar, useNetworkStatus } from './NetworkStatusBar';
@@ -109,3 +122,14 @@ export type { SnackbarProps } from './Snackbar';
 // CONTEXT MENUS
 // =============================================================================
 export { BookContextMenu } from './BookContextMenu';
+
+// =============================================================================
+// GLOBAL TOAST
+// =============================================================================
+export { ToastContainer } from './ToastContainer';
+
+// =============================================================================
+// PIN INPUT
+// =============================================================================
+export { PinInput } from './PinInput';
+export type { PinInputProps } from './PinInput';
