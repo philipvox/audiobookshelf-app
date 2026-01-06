@@ -1,6 +1,4 @@
 export { CDPlayerScreen } from './screens/CDPlayerScreen';
-export { SpeedPanel } from './screens/SpeedPanel';
-export { SleepTimerPanel } from './screens/SleepTimerPanel';
 export { usePlayerStore, useSleepTimerState, useCurrentChapterIndex, useBookProgress } from './stores/playerStore';
 export { audioService } from './services/audioService';
 export { backgroundSyncService } from './services/backgroundSyncService';
