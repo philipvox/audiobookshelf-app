@@ -104,5 +104,27 @@
   - `Pause` - paused download indicator in ProgressRing
 - [x] Uses `iconSizes.xs`, `iconSizes.sm`, `iconSizes.md` tokens for consistent sizing
 
+### B.4 - Replace EmptyState Custom SVGs
+**Status:** Complete
+**Files Modified:**
+- `src/shared/components/EmptyState.tsx`
+
+**Changes:**
+- [x] Replaced 10 custom SVG icon definitions with Lucide React Native imports
+- [x] Removed inline SVG components (BookIcon, SearchIcon, HeartIcon, etc.)
+- [x] Updated ICONS mapping to use Lucide components:
+  - `book` → `BookOpen`
+  - `search` → `Search`
+  - `heart` → `Heart`
+  - `download` → `Download`
+  - `list` → `LayoutGrid`
+  - `user` → `User`
+  - `mic` → `Mic`
+  - `library` → `Library`
+  - `celebrate` → `PartyPopper`
+  - `collection` → `LayoutDashboard`
+- [x] Uses `iconSizes.xxxl` (64px) token for empty state icons
+- [x] Uses `EMPTY_STATE_ICON_COLOR` constant for consistent color
+
 ---
 
