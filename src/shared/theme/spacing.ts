@@ -162,6 +162,28 @@ export const elevation = {
 } as const;
 
 // =============================================================================
+// INTERACTIVE STATES
+// =============================================================================
+
+/** Interactive state tokens for consistent press/animation behavior */
+export const interactiveStates = {
+  /** Press state configuration */
+  press: {
+    opacity: 0.7,     // Standard activeOpacity for TouchableOpacity
+    duration: 100,    // Press animation duration in ms
+  },
+  /** Bounce animation configuration (e.g., heart button) */
+  bounce: {
+    scale: 1.3,       // Maximum scale during bounce
+    duration: 300,    // Total bounce animation duration in ms
+  },
+  /** Disabled state configuration */
+  disabled: {
+    opacity: 0.4,     // Opacity for disabled elements
+  },
+} as const;
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -169,3 +191,4 @@ export type SpacingKey = keyof typeof spacing;
 export type RadiusKey = keyof typeof radius;
 export type ElevationKey = keyof typeof elevation;
 export type LayoutKey = keyof typeof layout;
+export type InteractiveStatesKey = keyof typeof interactiveStates;
