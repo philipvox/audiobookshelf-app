@@ -33,8 +33,8 @@ import {
 } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale } from '@/shared/theme';
-import { useThemeColors, ThemeColors } from '@/shared/theme/themeStore';
+import { accentColors, scale, typography, fontWeight } from '@/shared/theme';
+import { useThemeColors, ThemeColors } from '@/shared/theme';
 
 const ACCENT = accentColors.gold;
 
@@ -454,8 +454,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
+    ...typography.headlineLarge,
+    fontWeight: fontWeight.semibold,
     // color set via colors.text in JSX
   },
   headerSpacer: {
@@ -471,8 +471,8 @@ const styles = StyleSheet.create({
     marginBottom: scale(24),
   },
   sectionHeader: {
-    fontSize: scale(13),
-    fontWeight: '600',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.semibold,
     // color set via colors.textTertiary in JSX
     letterSpacing: 0.5,
     marginHorizontal: scale(20),
@@ -511,12 +511,12 @@ const styles = StyleSheet.create({
     marginLeft: scale(12),
   },
   rowLabel: {
-    fontSize: scale(15),
-    fontWeight: '500',
+    ...typography.headlineMedium,
+    fontWeight: fontWeight.medium,
     // color set via colors.text in JSX
   },
   rowNote: {
-    fontSize: scale(12),
+    ...typography.bodySmall,
     // color set via colors.textTertiary in JSX
     marginTop: scale(2),
   },
@@ -526,9 +526,9 @@ const styles = StyleSheet.create({
     gap: scale(8),
   },
   rowValue: {
-    fontSize: scale(14),
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.medium,
     // color set via colors.accent in JSX
-    fontWeight: '500',
   },
   // Disabled states
   settingsRowDisabled: {
@@ -545,8 +545,8 @@ const styles = StyleSheet.create({
     marginTop: scale(8),
   },
   infoText: {
+    ...typography.bodySmall,
     flex: 1,
-    fontSize: scale(12),
     // color set via colors.textTertiary in JSX
     lineHeight: scale(18),
   },
@@ -559,8 +559,8 @@ const styles = StyleSheet.create({
     // borderTopColor set via colors.border in JSX
   },
   maxRewindLabel: {
-    fontSize: scale(13),
-    fontWeight: '500',
+    ...typography.bodyMedium,
+    fontWeight: fontWeight.medium,
     // color set via colors.textSecondary in JSX
     marginBottom: scale(12),
   },
@@ -580,15 +580,15 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
   },
   maxRewindOptionText: {
-    fontSize: scale(14),
-    fontWeight: '600',
+    ...typography.bodyLarge,
+    fontWeight: fontWeight.semibold,
     // color set via colors.textSecondary in JSX
   },
   maxRewindOptionTextSelected: {
     color: '#000', // Black on gold accent - intentional
   },
   maxRewindNote: {
-    fontSize: scale(11),
+    ...typography.labelMedium,
     // color set via colors.textTertiary in JSX
     marginTop: scale(12),
     textAlign: 'center',
@@ -608,14 +608,14 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   pickerTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
+    ...typography.headlineLarge,
+    fontWeight: fontWeight.semibold,
     // color set via colors.text in JSX
     marginBottom: scale(4),
     textAlign: 'center',
   },
   pickerSubtitle: {
-    fontSize: scale(13),
+    ...typography.bodyMedium,
     // color set via colors.textTertiary in JSX
     marginBottom: scale(16),
     textAlign: 'center',
@@ -635,7 +635,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(193,244,12,0.15)',
   },
   pickerOptionText: {
-    fontSize: scale(15),
+    ...typography.headlineMedium,
     // color set via colors.text in JSX
   },
   pickerOptionTextSelected: {
