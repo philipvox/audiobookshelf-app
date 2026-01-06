@@ -172,5 +172,56 @@ All Phase B component unification tasks complete:
 - B.5: Created unified EntityCard for Author/Narrator cards
 - B.6: Updated Icon component to use theme-aware default color
 
+**Commits:**
+- `style(design-system): Phase A - consolidate design tokens`
+- `style(design-system): Phase B.1 - unify SeriesCard components`
+- `style(design-system): Phase B.2 - migrate AuthorCard to theme`
+- `style(design-system): Phase B.3 - replace BookCard custom SVGs with Lucide icons`
+- `style(design-system): Phase B.4 - replace EmptyState custom SVGs with Lucide icons`
+- `style(design-system): Phase B.5 - create unified EntityCard component`
+- `style(design-system): Phase B.6 - update Icon default color to theme-aware`
+
+---
+
+## Phase C: Screen Updates (Pending)
+
+### Scope Assessment
+
+Phase C requires updating typography/spacing/colors across many screens.
+
+**High-priority screens with hardcoded values:**
+- `CDPlayerScreen.tsx`: 70+ hardcoded `fontSize: scale()` values
+- `ProfileScreen.tsx`: 20+ hardcoded font sizes
+- `PlaybackSettingsScreen.tsx`: 20+ hardcoded font sizes
+- `KidModeSettingsScreen.tsx`: 40+ hardcoded font sizes
+- `JoystickSeekSettingsScreen.tsx`: 30+ hardcoded font sizes
+- Various other settings screens
+
+### Typography Token Mapping Reference
+
+| Hardcoded Size | Typography Token |
+|----------------|------------------|
+| `scale(32)` | `typography.displayLarge` |
+| `scale(24)` | `typography.displayMedium` |
+| `scale(22)` | `typography.displaySmall` |
+| `scale(18)` | `typography.headlineLarge` |
+| `scale(17)` | `typography.headlineLarge` |
+| `scale(16)` | `typography.headlineMedium` |
+| `scale(15)` | `typography.headlineSmall` |
+| `scale(14)` | `typography.bodyLarge` |
+| `scale(13)` | `typography.bodyMedium` |
+| `scale(12)` | `typography.bodySmall` |
+| `scale(11)` | `typography.labelMedium` |
+| `scale(10)` | `typography.labelSmall` |
+| `scale(9)` | `typography.caption` |
+
+### Recommended Approach
+
+Given the scope, Phase C should be executed incrementally:
+1. Start with highest-impact screens (CDPlayerScreen, ProfileScreen)
+2. Create helper components for common patterns (SettingsRow, etc.)
+3. Use search/replace for common patterns
+4. Test dark/light mode after each screen
+
 ---
 
