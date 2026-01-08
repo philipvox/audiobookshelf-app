@@ -63,7 +63,7 @@ export const SIZE_TOLERANCE_PERCENT = 0.01;
 export async function calculateFileChecksum(filePath: string): Promise<string> {
   try {
     const fileContent = await FileSystem.readAsStringAsync(filePath, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
 
     const hash = await Crypto.digestStringAsync(

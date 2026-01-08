@@ -174,7 +174,8 @@ class AppInitializer {
 
         if (Array.isArray(legacyMarkedBooks) && legacyMarkedBooks.length > 0) {
           // Convert array format back to Map for migration
-          const markedBooksMap = new Map(legacyMarkedBooks);
+          type MarkedBookEntry = { bookId: string; markedAt: number; source: string; synced: boolean };
+          const markedBooksMap = new Map<string, MarkedBookEntry>(legacyMarkedBooks);
           log.info(`Migrating ${markedBooksMap.size} books from legacy galleryStore...`);
           const result = await sqliteCache.migrateGalleryStoreToUserBooks(markedBooksMap);
           log.info(`Gallery migration: ${result.migrated} migrated, ${result.skipped} skipped`);

@@ -28,7 +28,8 @@ import { useMoodRecommendationsByQuality } from '../hooks/useMoodRecommendations
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { Icon } from '@/shared/components/Icon';
 import { LoadingSpinner } from '@/shared/components/LoadingSpinner';
-import { colors, spacing, radius } from '@/shared/theme';
+import { spacing, radius, useThemeColors } from '@/shared/theme';
+import { useColors } from '@/shared/theme/themeStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm * 2) / 3;
@@ -45,6 +46,9 @@ interface Section {
 export function MoodResultsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const themeColors = useThemeColors();
+  const colors = useColors();
+  const accent = colors.accent.primary;
 
   const session = useActiveSession();
   const hasSession = useHasActiveSession();
@@ -131,30 +135,29 @@ export function MoodResultsScreen() {
   // No session state
   if (!hasSession || !session) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
               name="X"
               size={24}
-              color={colors.textPrimary}
-             
+              color={themeColors.text}
             />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>No Active Mood</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>No Active Mood</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>🎭</Text>
-          <Text style={styles.emptyTitle}>No mood set</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No mood set</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
             Set your current mood to discover books that match what you're
             looking for.
           </Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('MoodDiscovery')}
-            style={styles.emptyButton}
+            style={[styles.emptyButton, { backgroundColor: accent }]}
           >
             <Text style={styles.emptyButtonText}>Set Your Mood</Text>
           </TouchableOpacity>
@@ -166,17 +169,16 @@ export function MoodResultsScreen() {
   // Loading state
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
               name="X"
               size={24}
-              color={colors.textPrimary}
-             
+              color={themeColors.text}
             />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Finding Matches...</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Finding Matches...</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.loadingContainer}>
@@ -189,17 +191,16 @@ export function MoodResultsScreen() {
   // Empty results
   if (sections.length === 0) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Icon
               name="X"
               size={24}
-              color={colors.textPrimary}
-             
+              color={themeColors.text}
             />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Results</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Results</Text>
           <View style={styles.placeholder} />
         </View>
 
@@ -211,14 +212,14 @@ export function MoodResultsScreen() {
 
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>📚</Text>
-          <Text style={styles.emptyTitle}>No matches found</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No matches found</Text>
+          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
             Try adjusting your mood preferences or adding more vibes to find
             books in your library.
           </Text>
           <TouchableOpacity
             onPress={handleEditMood}
-            style={styles.emptyButton}
+            style={[styles.emptyButton, { backgroundColor: accent }]}
           >
             <Text style={styles.emptyButtonText}>Adjust Mood</Text>
           </TouchableOpacity>
@@ -229,18 +230,17 @@ export function MoodResultsScreen() {
 
   // Results view
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
           <Icon
             name="X"
             size={24}
-            color={colors.textPrimary}
-           
+            color={themeColors.text}
           />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>
           {totalCount} {totalCount === 1 ? 'Match' : 'Matches'}
         </Text>
         <View style={styles.placeholder} />
@@ -273,8 +273,8 @@ export function MoodResultsScreen() {
           >
             {/* Section header */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionSubtitle}>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{section.title}</Text>
+              <Text style={[styles.sectionSubtitle, { color: themeColors.textTertiary }]}>
                 {section.data.length} {section.data.length === 1 ? 'book' : 'books'} · {section.subtitle}
               </Text>
             </View>
@@ -305,7 +305,7 @@ export function MoodResultsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   header: {
     flexDirection: 'row',
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 17,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     textAlign: 'center',
   },
   placeholder: {
@@ -347,19 +347,19 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 15,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: spacing.xl,
   },
   emptyButton: {
-    backgroundColor: colors.accent,
+    // backgroundColor set dynamically via accent in JSX
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.md,
@@ -381,12 +381,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: 2,
   },
   sectionSubtitle: {
     fontSize: 13,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   booksGrid: {
     flexDirection: 'row',

@@ -23,8 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueue, useQueueStore } from '../stores/queueStore';
 import { SwipeableQueueItem } from '../components/SwipeableQueueItem';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, spacing, radius } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { accentColors, scale, spacing, radius, useThemeColors } from '@/shared/theme';
 
 const ACCENT = accentColors.gold;
 

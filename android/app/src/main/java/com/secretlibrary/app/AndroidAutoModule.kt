@@ -1,10 +1,6 @@
 package com.secretlibrary.app
 
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -16,66 +12,50 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 
 /**
  * Native module for Android Auto integration.
- * Receives broadcast commands from MediaPlaybackService and forwards them to React Native.
+ * Receives commands from MediaPlaybackService and forwards them to React Native.
+ * Also provides methods to update MediaSession state for Android Auto display.
  */
 class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     companion object {
         private const val TAG = "AndroidAutoModule"
-        private const val MEDIA_COMMAND_ACTION = "com.secretlibrary.app.MEDIA_COMMAND"
         private const val REFRESH_BROWSE_DATA_ACTION = "com.secretlibrary.app.REFRESH_BROWSE_DATA"
+
+        // Static reference to MediaPlaybackService for state updates
+        var mediaPlaybackService: MediaPlaybackService? = null
+
+        // Static reference to the module instance for direct command forwarding
+        private var instance: AndroidAutoModule? = null
+
+        /**
+         * Forward command from MediaPlaybackService to React Native
+         * Called by MediaPlaybackService when it receives playback commands
+         */
+        fun forwardCommand(command: String, param: String? = null) {
+            instance?.handleCommand(command, param)
+                ?: Log.w(TAG, "No module instance to forward command: $command")
+        }
     }
 
-    private var receiver: BroadcastReceiver? = null
     private var listenerCount = 0
+
+    init {
+        // Store reference for direct command forwarding from MediaPlaybackService
+        instance = this
+    }
 
     override fun getName(): String = "AndroidAutoModule"
 
     /**
      * Start listening for media commands from MediaPlaybackService
+     * Commands are now received directly via handleCommand() method
      */
     @ReactMethod
     fun startListening(promise: Promise) {
         try {
-            if (receiver != null) {
-                Log.d(TAG, "Already listening for commands")
-                promise.resolve(true)
-                return
-            }
-
-            receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    intent?.let {
-                        val command = it.getStringExtra("command") ?: return
-                        val param = it.getStringExtra("param")
-
-                        Log.d(TAG, "Received command: $command, param: $param")
-
-                        // Send event to React Native
-                        val params = Arguments.createMap().apply {
-                            putString("command", command)
-                            if (param != null) {
-                                putString("param", param)
-                            }
-                        }
-                        sendEvent("onAndroidAutoCommand", params)
-                    }
-                }
-            }
-
-            val filter = IntentFilter(MEDIA_COMMAND_ACTION)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                reactContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                reactContext.registerReceiver(receiver, filter)
-            }
-
-            Log.d(TAG, "Started listening for Android Auto commands")
+            Log.d(TAG, "Started listening for Android Auto commands (direct method)")
             promise.resolve(true)
-
         } catch (e: Exception) {
             Log.e(TAG, "Error starting listener", e)
             promise.reject("ERROR", e.message)
@@ -88,16 +68,29 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopListening(promise: Promise) {
         try {
-            receiver?.let {
-                reactContext.unregisterReceiver(it)
-                receiver = null
-                Log.d(TAG, "Stopped listening for Android Auto commands")
-            }
+            Log.d(TAG, "Stopped listening for Android Auto commands")
             promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping listener", e)
             promise.reject("ERROR", e.message)
         }
+    }
+
+    /**
+     * Handle command directly from MediaPlaybackService (called via static reference)
+     * This avoids broadcast restrictions on Android 8+
+     */
+    fun handleCommand(command: String, param: String?) {
+        Log.d(TAG, "Received direct command: $command, param: $param")
+
+        // Send event to React Native
+        val params = Arguments.createMap().apply {
+            putString("command", command)
+            if (param != null) {
+                putString("param", param)
+            }
+        }
+        sendEvent("onAndroidAutoCommand", params)
     }
 
     /**
@@ -123,6 +116,43 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
     fun isAvailable(promise: Promise) {
         // Android Auto is available on Android
         promise.resolve(true)
+    }
+
+    /**
+     * Update playback state for Android Auto display
+     * @param isPlaying Whether audio is currently playing
+     * @param position Current position in milliseconds
+     * @param speed Playback speed (1.0 = normal)
+     */
+    @ReactMethod
+    fun updatePlaybackState(isPlaying: Boolean, position: Double, speed: Double, promise: Promise) {
+        try {
+            mediaPlaybackService?.updatePlaybackState(isPlaying, position.toLong(), speed.toFloat())
+            Log.d(TAG, "Updated playback state: isPlaying=$isPlaying, position=$position, speed=$speed")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating playback state", e)
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    /**
+     * Update metadata for Android Auto display (Now Playing screen)
+     * @param title Book title
+     * @param author Author name
+     * @param duration Total duration in milliseconds
+     * @param artworkUrl URL or local path to cover art
+     */
+    @ReactMethod
+    fun updateMetadata(title: String, author: String, duration: Double, artworkUrl: String?, promise: Promise) {
+        try {
+            mediaPlaybackService?.updateMetadata(title, author, duration.toLong(), artworkUrl)
+            Log.d(TAG, "Updated metadata: title=$title, author=$author, duration=$duration")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating metadata", e)
+            promise.reject("ERROR", e.message)
+        }
     }
 
     /**
@@ -162,14 +192,10 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
      */
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
-        receiver?.let {
-            try {
-                reactContext.unregisterReceiver(it)
-                Log.d(TAG, "Unregistered receiver on destroy")
-            } catch (e: Exception) {
-                // Ignore - receiver may not be registered
-            }
-            receiver = null
+        // Clear static reference
+        if (instance == this) {
+            instance = null
         }
+        Log.d(TAG, "Module destroyed")
     }
 }

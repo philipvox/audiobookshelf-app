@@ -25,12 +25,10 @@ import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
 import { SeriesHeartButton } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, wp, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { wp, spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
 
 const SCREEN_WIDTH = wp(100);
-const ACCENT = accentColors.red;
-const ACCENT_DIM = 'rgba(229,57,53,0.5)';
 const PADDING = 16;
 const GAP = 12;
 const COLUMNS = 2;
@@ -45,13 +43,13 @@ const MAX_VISIBLE_BOOKS = 5;
 const MAX_PROGRESS_DOTS = 8;
 
 // Progress dot component
-function ProgressDot({ status, size = 5 }: { status: 'completed' | 'in_progress' | 'not_started'; size?: number }) {
+function ProgressDot({ status, size = 5, accent, accentDim }: { status: 'completed' | 'in_progress' | 'not_started'; size?: number; accent: string; accentDim: string }) {
   const getColor = () => {
     switch (status) {
       case 'completed':
-        return ACCENT;
+        return accent;
       case 'in_progress':
-        return ACCENT_DIM;
+        return accentDim;
       default:
         return 'rgba(255,255,255,0.25)';
     }
@@ -112,6 +110,9 @@ export function SeriesListScreen() {
   const insets = useSafeAreaInsets();
   const themeColors = useThemeColors();
   const isDarkMode = useIsDarkMode();
+  const colors = useColors();
+  const accent = colors.accent.primary;
+  const accentDim = accent + '80'; // 50% opacity
   const inputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortType>('name');
@@ -254,7 +255,7 @@ export function SeriesListScreen() {
         <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{sortedSeries.length} series</Text>
         <View style={styles.sortButtons}>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'name' && styles.sortButtonActive]}
+            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'name' && { backgroundColor: accent }]}
             onPress={() => handleSortPress('name')}
           >
             <Icon
@@ -268,7 +269,7 @@ export function SeriesListScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'bookCount' && styles.sortButtonActive]}
+            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'bookCount' && { backgroundColor: accent }]}
             onPress={() => handleSortPress('bookCount')}
           >
             <Icon
@@ -295,7 +296,7 @@ export function SeriesListScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={ACCENT}
+            tintColor={accent}
           />
         }
         renderItem={({ item: series }) => {
@@ -375,13 +376,13 @@ export function SeriesListScreen() {
                     })}
                   </View>
                 ) : (
-                  <View style={styles.fanPlaceholder}>
-                    <Icon name="Library" size={40} color={ACCENT} />
+                  <View style={[styles.fanPlaceholder, { backgroundColor: accent + '30' }]}>
+                    <Icon name="Library" size={40} color={accent} />
                   </View>
                 )}
                 {/* Complete badge */}
                 {isComplete && (
-                  <View style={styles.completeBadge}>
+                  <View style={[styles.completeBadge, { backgroundColor: accent }]}>
                     <Icon name="Check" size={10} color="#000" />
                   </View>
                 )}
@@ -402,13 +403,13 @@ export function SeriesListScreen() {
                       } else {
                         status = 'not_started';
                       }
-                      return <ProgressDot key={i} status={status} />;
+                      return <ProgressDot key={i} status={status} accent={accent} accentDim={accentDim} />;
                     })}
                     {showMoreIndicator && (
                       <Text style={[styles.moreText, { color: themeColors.textTertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
                     )}
                   </View>
-                  <Text style={styles.progressCount}>
+                  <Text style={[styles.progressCount, { color: accent }]}>
                     {progress.completed}/{series.bookCount}
                   </Text>
                 </View>
@@ -501,7 +502,7 @@ const styles = StyleSheet.create({
     // backgroundColor set via themeColors.border in JSX
   },
   sortButtonActive: {
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accent in JSX
   },
   sortButtonText: {
     fontSize: 12,
@@ -550,7 +551,7 @@ const styles = StyleSheet.create({
     width: COVER_SIZE,
     height: COVER_SIZE,
     borderRadius: 5,
-    backgroundColor: ACCENT + '30',
+    // backgroundColor set dynamically via accent in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -588,7 +589,7 @@ const styles = StyleSheet.create({
   progressCount: {
     fontSize: 10,
     fontWeight: '600',
-    color: ACCENT,
+    // color set dynamically via accent in JSX
   },
   bookCountText: {
     fontSize: 13,
@@ -603,7 +604,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accent in JSX
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,

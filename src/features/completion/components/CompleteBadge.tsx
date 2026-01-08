@@ -9,9 +9,9 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Check, CheckCircle } from 'lucide-react-native';
 import { useIsComplete } from '../stores/completionStore';
-import { colors, scale } from '@/shared/theme';
+import { scale, accentColors } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 interface CompleteBadgeProps {
   bookId: string;

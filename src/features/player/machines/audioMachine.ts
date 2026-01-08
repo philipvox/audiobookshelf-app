@@ -102,13 +102,13 @@ export const audioMachine = setup({
   },
   actions: {
     setLoadingInfo: assign({
-      bookId: (_, params: { bookId: string }) => params.bookId,
-      bookTitle: (_, params: { bookTitle: string }) => params.bookTitle,
-      trackCount: (_, params: { trackCount: number }) => params.trackCount,
+      bookId: (_, params: { bookId: string; bookTitle: string; trackCount: number }) => params.bookId,
+      bookTitle: (_, params: { bookId: string; bookTitle: string; trackCount: number }) => params.bookTitle,
+      trackCount: (_, params: { bookId: string; bookTitle: string; trackCount: number }) => params.trackCount,
     }),
     setLoadedInfo: assign({
-      duration: (_, params: { duration: number }) => params.duration,
-      position: (_, params: { position: number }) => params.position,
+      duration: (_, params: { duration: number; position: number }) => params.duration,
+      position: (_, params: { duration: number; position: number }) => params.position,
     }),
     setPosition: assign({
       position: (_, params: { position: number }) => params.position,
@@ -126,8 +126,8 @@ export const audioMachine = setup({
       currentTrackIndex: (_, params: { trackIndex: number }) => params.trackIndex,
     }),
     setError: assign({
-      errorMessage: (_, params: { message: string }) => params.message,
-      errorCode: (_, params: { code?: string }) => params.code ?? null,
+      errorMessage: (_, params: { message: string; code?: string }) => params.message,
+      errorCode: (_, params: { message: string; code?: string }) => params.code ?? null,
     }),
     clearError: assign({
       errorMessage: () => null,

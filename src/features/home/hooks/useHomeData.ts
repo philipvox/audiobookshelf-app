@@ -77,10 +77,11 @@ export function useHomeData(): UseHomeDataReturn {
     queryKey: queryKeys.user.inProgress(),
     queryFn: async () => {
       const items = await apiClient.getItemsInProgress();
+
       // Sort by most recently updated
       return items.sort((a, b) => {
-        const aTime = (a as any).progressLastUpdate || (a as any).userMediaProgress?.lastUpdate || 0;
-        const bTime = (b as any).progressLastUpdate || (b as any).userMediaProgress?.lastUpdate || 0;
+        const aTime = (a as any).mediaProgress?.lastUpdate || (a as any).progressLastUpdate || (a as any).userMediaProgress?.lastUpdate || 0;
+        const bTime = (b as any).mediaProgress?.lastUpdate || (b as any).progressLastUpdate || (b as any).userMediaProgress?.lastUpdate || 0;
         return bTime - aTime;
       });
     },
@@ -258,8 +259,8 @@ export function useHomeData(): UseHomeDataReturn {
       };
     }
 
-    // Otherwise use stored progress
-    const userProgress = (currentBook as any).userMediaProgress;
+    // Otherwise use stored progress (mediaProgress from getItemsInProgress, or legacy userMediaProgress)
+    const userProgress = (currentBook as any).mediaProgress || (currentBook as any).userMediaProgress;
     if (userProgress) {
       return {
         currentTime: userProgress.currentTime || 0,
@@ -361,14 +362,9 @@ export function useHomeData(): UseHomeDataReturn {
 
     // Then add series from in-progress items
     inProgressItems.forEach((item) => {
-      const seriesInfo = (item.media?.metadata as any)?.series;
-      if (!seriesInfo?.length) return;
-
-      const firstSeries = seriesInfo[0];
-      const seriesId = typeof firstSeries === 'object' ? firstSeries.id : firstSeries;
-      const seriesName = typeof firstSeries === 'object' ? firstSeries.name : firstSeries;
-
-      if (!seriesId || !seriesName) return;
+      // Extract series name from multiple possible sources
+      const seriesName = extractSeriesName(item);
+      if (!seriesName) return;
 
       // Skip if already added
       if (seriesMap.has(seriesName)) {
@@ -380,11 +376,14 @@ export function useHomeData(): UseHomeDataReturn {
         return;
       }
 
+      // Try to get full series info from cache
+      const cachedSeries = isCacheLoaded ? getSeries(seriesName) : null;
+
       seriesMap.set(seriesName, {
-        id: seriesId,
+        id: seriesName,
         name: seriesName,
-        books: [item],
-        totalBooks: 1,
+        books: cachedSeries ? cachedSeries.books.slice(0, 4) : [item],
+        totalBooks: cachedSeries?.bookCount || 1,
         booksCompleted: 0,
         booksInProgress: 1,
         isFavorite: favoriteSeriesNames.includes(seriesName),
@@ -423,13 +422,15 @@ export function useHomeData(): UseHomeDataReturn {
 
   /**
    * Hero Book - Primary resume target with enhanced chapter info
-   * Uses the most recently played in-progress book
+   * Prefers player's current book (if playing), otherwise most recent from server
    */
   const heroBook: HeroBookData | null = useMemo(() => {
-    if (recentlyListened.length === 0) return null;
-
-    const book = recentlyListened[0];
-    const userProgress = (book as any).userMediaProgress;
+    // Prefer player's current book when loaded (instant update on book switch)
+    // Fall back to server's most recent if no book is loaded in player
+    const book = playerCurrentBook || recentlyListened[0];
+    if (!book) return null;
+    // mediaProgress is attached by getItemsInProgress(), userMediaProgress is legacy
+    const userProgress = (book as any).mediaProgress || (book as any).userMediaProgress;
     const bookDuration = (book.media as any)?.duration || 0;
 
     // Get progress - use player state if this is the current book
@@ -489,12 +490,18 @@ export function useHomeData(): UseHomeDataReturn {
 
   /**
    * Continue Listening Grid - Other in-progress books excluding hero book
+   * Filters by hero book ID to handle player vs server data mismatch
    */
   const continueListeningGrid: LibraryItem[] = useMemo(() => {
-    if (recentlyListened.length <= 1) return [];
-    // Exclude the first book (hero book) and take up to 6 more
-    return recentlyListened.slice(1, 7);
-  }, [recentlyListened]);
+    // Get the hero book ID (player's current book takes priority)
+    const heroBookId = playerCurrentBook?.id || recentlyListened[0]?.id;
+    if (!heroBookId) return recentlyListened.slice(0, 6);
+
+    // Filter out the hero book by ID and take up to 6
+    return recentlyListened
+      .filter((book) => book.id !== heroBookId)
+      .slice(0, 6);
+  }, [recentlyListened, playerCurrentBook]);
 
   /**
    * Series In Progress - Enhanced series data with per-book completion status
@@ -502,20 +509,48 @@ export function useHomeData(): UseHomeDataReturn {
    */
   const seriesInProgress: EnhancedSeriesData[] = useMemo(() => {
     // Build a map of series -> most recent lastUpdate timestamp from in-progress books
+    // Use both raw series name and cleaned name (without book number) for matching
     const seriesLastListened = new Map<string, number>();
 
+    // Helper to extract clean series name (strips "#1" suffix)
+    const cleanSeriesName = (name: string): string => {
+      const match = name.match(/^(.+?)\s*#[\d.]+$/);
+      return match ? match[1].trim() : name;
+    };
+
     inProgressItems.forEach((item) => {
-      const seriesInfo = (item.media?.metadata as any)?.series;
+      const metadata = (item.media?.metadata as any) || {};
+
+      // Try multiple sources for series name
+      let seriesNames: string[] = [];
+
+      // From seriesName field (e.g., "Series Name #1")
+      if (metadata.seriesName) {
+        seriesNames.push(metadata.seriesName);
+        seriesNames.push(cleanSeriesName(metadata.seriesName));
+      }
+
+      // From series array
+      const seriesInfo = metadata.series;
       if (seriesInfo?.length > 0) {
-        const seriesName = typeof seriesInfo[0] === 'object' ? seriesInfo[0].name : seriesInfo[0];
-        if (seriesName) {
-          const lastUpdate = (item as any).userMediaProgress?.lastUpdate || 0;
-          const existing = seriesLastListened.get(seriesName) || 0;
-          if (lastUpdate > existing) {
-            seriesLastListened.set(seriesName, lastUpdate);
-          }
+        const firstSeries = seriesInfo[0];
+        const rawName = typeof firstSeries === 'object' ? firstSeries.name : firstSeries;
+        if (rawName) {
+          seriesNames.push(rawName);
+          seriesNames.push(cleanSeriesName(rawName));
         }
       }
+
+      // Add all variations to the map
+      const lastUpdate = (item as any).mediaProgress?.lastUpdate || (item as any).userMediaProgress?.lastUpdate || 0;
+      seriesNames.forEach((name) => {
+        if (name) {
+          const existing = seriesLastListened.get(name) || 0;
+          if (lastUpdate > existing) {
+            seriesLastListened.set(name, lastUpdate);
+          }
+        }
+      });
     });
 
     return userSeries
@@ -523,7 +558,7 @@ export function useHomeData(): UseHomeDataReturn {
       .map((series): EnhancedSeriesData & { lastListened: number } => {
         // Calculate per-book status
         const bookStatuses: BookStatus[] = series.books.map((book) => {
-          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
           if (bookProgress >= 0.95) return 'done';
           if (bookProgress > 0) return 'current';
           return 'not-started';
@@ -538,7 +573,7 @@ export function useHomeData(): UseHomeDataReturn {
         let listenedDuration = 0;
         series.books.forEach((book) => {
           const bookDuration = (book.media as any)?.duration || 0;
-          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
           totalDuration += bookDuration;
           listenedDuration += bookDuration * bookProgress;
         });
@@ -548,7 +583,7 @@ export function useHomeData(): UseHomeDataReturn {
         let seriesTimeRemainingSeconds = 0;
         series.books.forEach((book) => {
           const bookDuration = (book.media as any)?.duration || 0;
-          const bookProgress = (book as any).userMediaProgress?.progress || 0;
+          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
           seriesTimeRemainingSeconds += bookDuration * (1 - bookProgress);
         });
 
@@ -574,7 +609,7 @@ export function useHomeData(): UseHomeDataReturn {
   const recentlyAdded: LibraryItem[] = useMemo(() => {
     // Get books with no progress (not started)
     const notStarted = libraryBooks.filter((book) => {
-      const progress = (book as any).userMediaProgress?.progress || 0;
+      const progress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
       return progress === 0;
     });
 

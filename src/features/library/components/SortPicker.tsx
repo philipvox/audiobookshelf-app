@@ -16,9 +16,8 @@ import {
 } from 'react-native';
 import { ChevronDown, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, scale, spacing, radius } from '@/shared/theme';
-
-const ACCENT = colors.accent;
+import { scale, spacing, radius } from '@/shared/theme';
+import { useThemeColors, useColors } from '@/shared/theme/themeStore';
 
 export type SortOption =
   | 'recently-played'
@@ -46,6 +45,9 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
+  const themeColors = useThemeColors();
+  const colors = useColors();
+  const accent = colors.accent.primary;
   const [isOpen, setIsOpen] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -64,12 +66,12 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
           onPress={() => setIsOpen(true)}
           activeOpacity={0.7}
         >
-          <Text style={styles.sortLabel}>Sort: </Text>
-          <Text style={styles.sortValue}>{selectedLabel}</Text>
-          <ChevronDown size={16} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+          <Text style={[styles.sortLabel, { color: themeColors.textTertiary }]}>Sort: </Text>
+          <Text style={[styles.sortValue, { color: themeColors.textSecondary }]}>{selectedLabel}</Text>
+          <ChevronDown size={16} color={themeColors.textTertiary} strokeWidth={2} />
         </TouchableOpacity>
 
-        <Text style={styles.bookCount}>
+        <Text style={[styles.bookCount, { color: themeColors.textTertiary }]}>
           {bookCount} {bookCount === 1 ? 'book' : 'books'}
         </Text>
       </View>
@@ -81,9 +83,9 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
         onRequestClose={() => setIsOpen(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)}>
-          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Sort By</Text>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated, paddingBottom: insets.bottom + 20 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: themeColors.textTertiary }]} />
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Sort By</Text>
 
             {SORT_OPTIONS.map((option) => {
               const isSelected = selected === option.value;
@@ -91,15 +93,15 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
               return (
                 <TouchableOpacity
                   key={option.value}
-                  style={[styles.optionRow, isSelected && styles.optionRowSelected]}
+                  style={[styles.optionRow, isSelected && { backgroundColor: `${accent}20` }]}
                   onPress={() => handleSelect(option.value)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                  <Text style={[styles.optionText, { color: themeColors.textSecondary }, isSelected && { color: accent, fontWeight: '600' }]}>
                     {option.label}
                   </Text>
                   {isSelected && (
-                    <Check size={20} color={ACCENT} strokeWidth={2.5} />
+                    <Check size={20} color={accent} strokeWidth={2.5} />
                   )}
                 </TouchableOpacity>
               );
@@ -114,38 +116,33 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.md,
+    gap: scale(8),
   },
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: scale(3),
   },
   sortLabel: {
-    fontSize: scale(13),
-    color: colors.textTertiary,
+    fontSize: scale(12),
   },
   sortValue: {
-    fontSize: scale(13),
+    fontSize: scale(12),
     fontWeight: '500',
-    color: colors.textSecondary,
   },
   bookCount: {
-    fontSize: scale(13),
-    color: colors.textTertiary,
+    fontSize: scale(12),
   },
 
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: colors.overlay.dark,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.backgroundSecondary,
+    // backgroundColor set via themeColors in JSX
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingTop: spacing.md,
@@ -153,7 +150,7 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: scale(40),
     height: scale(4),
-    backgroundColor: colors.textMuted,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.xs,
     alignSelf: 'center',
     marginBottom: spacing.lg,
@@ -161,7 +158,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
@@ -172,15 +169,10 @@ const styles = StyleSheet.create({
     paddingVertical: scale(14),
     paddingHorizontal: spacing.xl,
   },
-  optionRowSelected: {
-    backgroundColor: colors.accentSubtle,
-  },
+  // optionRowSelected set inline with ACCENT color
   optionText: {
     fontSize: scale(15),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
   },
-  optionTextSelected: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
+  // optionTextSelected set inline
 });

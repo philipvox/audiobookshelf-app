@@ -18,6 +18,7 @@ import {
 import { AlertCircle, RefreshCw, CloudOff, LogIn, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity, RecoveryStrategy } from '../types';
+import { useThemeColors, accentColors, scale, spacing } from '@/shared/theme';
 
 
 interface ErrorSheetProps {
@@ -55,6 +56,7 @@ export function ErrorSheet({
   showDetails = __DEV__,
 }: ErrorSheetProps) {
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const color = SEVERITY_COLORS[error.severity];
   const recoveryButton = RECOVERY_BUTTONS[error.recovery];
 
@@ -67,12 +69,12 @@ export function ErrorSheet({
     >
       <Pressable style={styles.overlay} onPress={onDismiss}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
+          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: themeColors.surfaceElevated }]}
           onPress={() => {}}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: themeColors.border }]} />
           </View>
 
           {/* Header */}
@@ -80,34 +82,34 @@ export function ErrorSheet({
             <View style={[styles.iconCircle, { backgroundColor: `${color}20` }]}>
               <AlertCircle size={32} color={color} strokeWidth={2} />
             </View>
-            <Text style={styles.title}>Something went wrong</Text>
-            <Text style={styles.subtitle}>{getCategoryLabel(error.category)}</Text>
+            <Text style={[styles.title, { color: themeColors.text }]}>Something went wrong</Text>
+            <Text style={[styles.subtitle, { color: themeColors.textTertiary }]}>{getCategoryLabel(error.category)}</Text>
           </View>
 
           {/* Message */}
-          <View style={styles.messageContainer}>
-            <Text style={styles.message}>{error.userMessage}</Text>
+          <View style={[styles.messageContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
+            <Text style={[styles.message, { color: themeColors.textSecondary }]}>{error.userMessage}</Text>
           </View>
 
           {/* Debug Details (DEV only) */}
           {showDetails && (
-            <View style={styles.detailsContainer}>
-              <Text style={styles.detailsTitle}>Debug Info</Text>
+            <View style={[styles.detailsContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
+              <Text style={[styles.detailsTitle, { color: themeColors.textTertiary }]}>Debug Info</Text>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Code:</Text>
-                <Text style={styles.detailValue}>{error.code}</Text>
+                <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Code:</Text>
+                <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.code}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Category:</Text>
-                <Text style={styles.detailValue}>{error.category}</Text>
+                <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Category:</Text>
+                <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.category}</Text>
               </View>
               {error.context && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Context:</Text>
-                  <Text style={styles.detailValue}>{error.context}</Text>
+                  <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Context:</Text>
+                  <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.context}</Text>
                 </View>
               )}
-              <Text style={styles.technicalMessage} numberOfLines={3}>
+              <Text style={[styles.technicalMessage, { color: themeColors.textTertiary }]} numberOfLines={3}>
                 {error.message}
               </Text>
             </View>
@@ -122,11 +124,11 @@ export function ErrorSheet({
               >
                 <recoveryButton.Icon
                   size={20}
-                  color="#fff"
+                  color={themeColors.text}
                   strokeWidth={2}
                   style={styles.buttonIcon}
                 />
-                <Text style={styles.primaryButtonText}>{recoveryButton.text}</Text>
+                <Text style={[styles.primaryButtonText, { color: themeColors.text }]}>{recoveryButton.text}</Text>
               </TouchableOpacity>
             )}
 
@@ -135,12 +137,12 @@ export function ErrorSheet({
                 style={styles.secondaryButton}
                 onPress={onSecondaryAction}
               >
-                <Text style={styles.secondaryButtonText}>{secondaryActionText}</Text>
+                <Text style={[styles.secondaryButtonText, { color: accentColors.gold }]}>{secondaryActionText}</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={styles.dismissButton} onPress={onDismiss}>
-              <Text style={styles.dismissButtonText}>Dismiss</Text>
+              <Text style={[styles.dismissButtonText, { color: themeColors.textTertiary }]}>Dismiss</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -170,122 +172,108 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#1c1c1e',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 8,
-    paddingHorizontal: 20,
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xl,
   },
   handleContainer: {
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
+    width: scale(36),
+    height: scale(4),
+    borderRadius: scale(2),
   },
   header: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: spacing.xl,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   title: {
-    fontSize: 20,
+    fontSize: scale(20),
     fontWeight: '600',
-    color: '#fff',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+    fontSize: scale(14),
   },
   messageContainer: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: scale(12),
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
   },
   message: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 22,
+    fontSize: scale(15),
+    lineHeight: scale(22),
     textAlign: 'center',
   },
   detailsContainer: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    borderRadius: scale(8),
+    padding: spacing.md,
+    marginBottom: spacing.lg,
   },
   detailsTitle: {
-    fontSize: 11,
+    fontSize: scale(11),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.4)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detailRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   detailLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    width: 80,
+    fontSize: scale(12),
+    width: scale(80),
   },
   detailValue: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+    fontSize: scale(12),
     flex: 1,
   },
   technicalMessage: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 8,
+    fontSize: scale(11),
+    marginTop: spacing.sm,
   },
   actions: {
-    gap: 12,
+    gap: spacing.md,
   },
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: spacing.lg,
+    borderRadius: scale(12),
   },
   buttonIcon: {
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: scale(16),
     fontWeight: '600',
   },
   secondaryButton: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   secondaryButtonText: {
-    color: '#F4B60C',
-    fontSize: 15,
+    fontSize: scale(15),
     fontWeight: '500',
   },
   dismissButton: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   dismissButtonText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 15,
+    fontSize: scale(15),
   },
 });

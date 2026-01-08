@@ -124,8 +124,27 @@ export function HomeScreen() {
 
     const items: BookSummary[] = continueListeningGrid.map((book) => {
       const coverUrl = apiClient.getItemCoverUrl(book.id);
-      const progress = (book as any).userMediaProgress?.progress || 0;
-      return libraryItemToBookSummary(book, coverUrl, { progress });
+      const bookAny = book as any;
+
+      // ABS items-in-progress now has mediaProgress attached from /api/me
+      const progress = bookAny.mediaProgress?.progress
+        ?? bookAny.userMediaProgress?.progress
+        ?? bookAny.progress
+        ?? 0;
+
+      // Get lastUpdate from various possible locations in the API response
+      const rawLastUpdate =
+        bookAny.mediaProgress?.lastUpdate ||
+        bookAny.progressLastUpdate ||
+        bookAny.userMediaProgress?.lastUpdate;
+
+      // Convert to milliseconds if needed (ABS API returns seconds)
+      let lastPlayedAt: number | undefined;
+      if (rawLastUpdate && rawLastUpdate > 0) {
+        lastPlayedAt = rawLastUpdate < 10000000000 ? rawLastUpdate * 1000 : rawLastUpdate;
+      }
+
+      return libraryItemToBookSummary(book, coverUrl, { progress, lastPlayedAt });
     });
 
     return {
@@ -197,22 +216,22 @@ export function HomeScreen() {
               source={heroCoverUrl || heroBook?.book.media?.coverPath}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              blurRadius={25}
+              blurRadius={50}
             />
             {/* BlurView for Android (blurRadius only works on iOS) */}
-            <BlurView intensity={30} tint={isDarkMode ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+            <BlurView intensity={50} tint={isDarkMode ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
             {/* Dark overlay at top - feathered */}
             <LinearGradient
-              colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']}
-              locations={[0, 0.3, 0.6, 1]}
+              colors={['rgba(0,0,0,0)',  'rgba(0,0,0,0)', 'transparent']}
+              locations={[0, 1]}
               style={styles.topOverlay}
             />
             {/* Smooth fade at bottom */}
             <LinearGradient
               colors={
                 isDarkMode
-                  ? ['transparent', 'transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', themeColors.background]
-                  : ['transparent', 'transparent', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)', themeColors.background]
+                  ? ['transparent', 'transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.7)', themeColors.background]
+                  : ['transparent', 'transparent', 'rgba(255,255,255,0)', 'rgba(255,255,255,0.7)', themeColors.background]
               }
               locations={[0, 0.5, 0.7, 0.85, 1]}
               style={StyleSheet.absoluteFill}
@@ -295,20 +314,21 @@ const styles = StyleSheet.create({
     paddingTop: scale(8),
   },
   // Hero background - matches Browse page
+  // Extended up to cover pull-to-refresh area
   heroBackgroundScrollable: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: scale(550),
-    marginTop: -scale(100),
+    height: scale(800),
+    marginTop: -scale(350),
   },
   topOverlay: {
     position: 'absolute',
-    top: scale(100),
+    top: scale(350),
     left: 0,
     right: 0,
-    height: scale(250),
+    height: scale(200),
   },
   section: {
     marginBottom: spacing.xl,

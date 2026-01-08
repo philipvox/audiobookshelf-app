@@ -25,7 +25,7 @@ import {
 import { Check, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '@/core/api';
-import { colors, wp, hp, moderateScale, layout, cardTokens } from '@/shared/theme';
+import { wp, hp, moderateScale, layout, cardTokens, useThemeColors } from '@/shared/theme';
 import { StackedCovers, ProgressDots } from '@/shared/components';
 import { SeriesWithBooks } from '../types';
 
@@ -109,10 +109,12 @@ const SeriesRow = ({
   series,
   onPress,
   isFirst,
+  themeColors,
 }: {
   series: SeriesWithBooks;
   onPress: () => void;
   isFirst: boolean;
+  themeColors: ReturnType<typeof useThemeColors>;
 }) => {
   const coverUrls = getSeriesCoverUrls(series);
   const author = getSeriesAuthor(series);
@@ -147,7 +149,7 @@ const SeriesRow = ({
       {/* Info */}
       <View style={styles.info}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
             {series.name}
           </Text>
           {isComplete && (
@@ -156,7 +158,7 @@ const SeriesRow = ({
             </View>
           )}
         </View>
-        <Text style={styles.author} numberOfLines={1}>
+        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
           {author}
         </Text>
         {/* Progress indicator - Research: Zeigarnik Effect & Goal Gradient */}
@@ -168,10 +170,10 @@ const SeriesRow = ({
               total={series.totalBooks}
               showCount={true}
             />
-            {timeText && <Text style={styles.timeRemaining}>{timeText}</Text>}
+            {timeText && <Text style={[styles.timeRemaining, { color: themeColors.textTertiary }]}>{timeText}</Text>}
           </View>
         ) : (
-          <Text style={styles.bookCount}>
+          <Text style={[styles.bookCount, { color: themeColors.textTertiary }]}>
             {series.totalBooks} {series.totalBooks === 1 ? 'book' : 'books'}
           </Text>
         )}
@@ -179,7 +181,7 @@ const SeriesRow = ({
 
       {/* Chevron for navigation - Research: Series are containers, not playable */}
       <View style={styles.chevron}>
-        <ChevronRight size={wp(5)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+        <ChevronRight size={wp(5)} color={themeColors.textTertiary} strokeWidth={2} />
       </View>
     </TouchableOpacity>
   );
@@ -190,15 +192,17 @@ export function YourSeriesSection({
   onSeriesPress,
   maxItems = 5,
 }: YourSeriesSectionProps) {
+  const themeColors = useThemeColors();
+
   if (series.length === 0) return null;
 
   const displaySeries = series.slice(0, maxItems);
 
   return (
     <View style={styles.container}>
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
         {/* Header */}
-        <Text style={styles.header}>Your Series</Text>
+        <Text style={[styles.header, { color: themeColors.text }]}>Your Series</Text>
 
         {/* Series rows - NO Play button per NNGroup research */}
         {displaySeries.map((item, index) => (
@@ -207,6 +211,7 @@ export function YourSeriesSection({
             series={item}
             onPress={() => onSeriesPress(item)}
             isFirst={index === 0}
+            themeColors={themeColors}
           />
         ))}
       </View>
@@ -220,14 +225,13 @@ const styles = StyleSheet.create({
     marginTop: hp(3),  // 3%h gap from Recently Added
   },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    // backgroundColor and borderColor set via themeColors in JSX
     borderWidth: 1,
-    borderColor: 'rgba(102,102,102,0.5)',
     borderRadius: RADIUS,
     padding: PADDING,
   },
   header: {
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     fontSize: moderateScale(16),
     fontWeight: '600',
     marginBottom: GAP,
@@ -257,7 +261,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     fontSize: moderateScale(14),
     fontWeight: '600',
   },
@@ -265,12 +269,12 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#4ADE80', // Success green
+    backgroundColor: '#4ADE80', // Intentional: Success green
     justifyContent: 'center',
     alignItems: 'center',
   },
   author: {
-    color: colors.textSecondary,
+    // color set via themeColors.textSecondary in JSX
     fontSize: moderateScale(13),
     marginTop: hp(0.2),
   },
@@ -281,11 +285,11 @@ const styles = StyleSheet.create({
     marginTop: hp(0.3),
   },
   timeRemaining: {
-    color: colors.textTertiary,
+    // color set via themeColors.textTertiary in JSX
     fontSize: moderateScale(11),
   },
   bookCount: {
-    color: colors.textTertiary,
+    // color set via themeColors.textTertiary in JSX
     fontSize: moderateScale(12),
     marginTop: hp(0.1),
   },

@@ -17,7 +17,7 @@ import {
 import { Check, X, AlertCircle, Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
 import { Button } from '@/shared/components';
-import { colors, spacing, radius, scale } from '@/shared/theme';
+import { spacing, radius, scale, useThemeColors, accentColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
 
 // App logo (horizontal version with text)
@@ -69,6 +69,7 @@ function normalizeServerUrl(url: string): { normalized: string; corrected: boole
 
 export function LoginScreen() {
   const { login, isLoading, error, clearError } = useAuth();
+  const themeColors = useThemeColors();
 
   const [serverUrl, setServerUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -203,7 +204,7 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: themeColors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
@@ -214,24 +215,25 @@ export function LoginScreen() {
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.subtitle}>Connect to your server</Text>
+          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>Connect to your server</Text>
         </View>
 
         {/* Form */}
         <View style={styles.form}>
           {/* Server URL with real-time validation */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Server URL</Text>
+            <Text style={[styles.label, { color: themeColors.text }]}>Server URL</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={[
                   styles.input,
+                  { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text },
                   styles.inputWithIcon,
                   urlValidation.status === 'invalid' && styles.inputError,
                   (urlValidation.status === 'valid' || urlValidation.status === 'correctable') && styles.inputValid,
                 ]}
                 placeholder="server.example.com:13378"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={themeColors.textTertiary}
                 value={serverUrl}
                 onChangeText={setServerUrl}
                 autoCapitalize="none"
@@ -247,7 +249,7 @@ export function LoginScreen() {
               )}
               {urlValidation.status === 'correctable' && (
                 <View style={styles.inputIcon}>
-                  <AlertCircle size={scale(18)} color={colors.accent} strokeWidth={2} />
+                  <AlertCircle size={scale(18)} color={accentColors.gold} strokeWidth={2} />
                 </View>
               )}
               {urlValidation.status === 'invalid' && (
@@ -262,7 +264,7 @@ export function LoginScreen() {
                 style={[
                   styles.inlineMessage,
                   urlValidation.status === 'valid' && styles.inlineMessageSuccess,
-                  urlValidation.status === 'correctable' && styles.inlineMessageWarning,
+                  urlValidation.status === 'correctable' && { color: accentColors.gold },
                   urlValidation.status === 'invalid' && styles.inlineMessageError,
                 ]}
               >
@@ -273,11 +275,11 @@ export function LoginScreen() {
 
           {/* Username */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Username</Text>
+            <Text style={[styles.label, { color: themeColors.text }]}>Username</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text }]}
               placeholder="Enter username"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={themeColors.textTertiary}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -288,12 +290,12 @@ export function LoginScreen() {
 
           {/* Password with visibility toggle */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: themeColors.text }]}>Password</Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.input, styles.inputWithIcon]}
+                style={[styles.input, { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text }, styles.inputWithIcon]}
                 placeholder="Enter password"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={themeColors.textTertiary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -307,9 +309,9 @@ export function LoginScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeOff size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
+                  <EyeOff size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
                 ) : (
-                  <Eye size={scale(18)} color={colors.textSecondary} strokeWidth={2} />
+                  <Eye size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
                 )}
               </TouchableOpacity>
             </View>
@@ -317,7 +319,7 @@ export function LoginScreen() {
 
           {/* URL Correction Notice */}
           {urlCorrectionMsg ? (
-            <Text style={styles.correctionText}>{urlCorrectionMsg}</Text>
+            <Text style={[styles.correctionText, { color: accentColors.gold }]}>{urlCorrectionMsg}</Text>
           ) : null}
 
           {/* Validation Error */}
@@ -350,7 +352,7 @@ export function LoginScreen() {
 
         {/* Help Text */}
         <View style={styles.footer}>
-          <Text style={styles.helpText}>
+          <Text style={[styles.helpText, { color: themeColors.textSecondary }]}>
             Enter your server URL and login credentials
           </Text>
         </View>
@@ -362,7 +364,7 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   content: {
     flex: 1,
@@ -381,12 +383,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   subtitle: {
     fontSize: 15,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
   },
   form: {
     width: '100%',
@@ -397,17 +399,15 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '500',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   input: {
     fontSize: 15,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor, borderColor, color set via themeColors in JSX
     borderWidth: 1,
-    borderColor: colors.borderLight,
     borderRadius: radius.md,
     padding: spacing.md,
-    color: colors.textPrimary,
   },
   inputWrapper: {
     position: 'relative',
@@ -437,9 +437,7 @@ const styles = StyleSheet.create({
   inlineMessageSuccess: {
     color: '#30D158',
   },
-  inlineMessageWarning: {
-    color: colors.accent,
-  },
+  // inlineMessageWarning set inline with accentColors.gold
   inlineMessageError: {
     color: '#FF453A',
   },
@@ -448,7 +446,7 @@ const styles = StyleSheet.create({
   },
   correctionText: {
     fontSize: 13,
-    color: colors.accent,
+    // color set via accentColors in JSX
     marginTop: -spacing.sm,
     marginBottom: spacing.sm,
   },
@@ -474,7 +472,7 @@ const styles = StyleSheet.create({
   },
   helpText: {
     fontSize: 13,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     lineHeight: 20,
   },

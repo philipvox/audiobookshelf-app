@@ -36,8 +36,8 @@ import { BookCard } from '@/shared/components/BookCard';
 import { LibraryItem } from '@/core/types';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
-import { useTheme, wp, spacing, radius, accentColors } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { useTheme, wp, spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
 import { filterForKidMode } from '@/shared/utils/kidModeFilter';
 import { logger } from '@/shared/utils/logger';
@@ -108,7 +108,8 @@ export function SearchScreen() {
   // In dark mode, use transparent/subtle backgrounds - content floats on black
   const CARD_COLOR = isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5';
   const SURFACE_ELEVATED = isDarkMode ? 'rgba(255,255,255,0.08)' : '#FFFFFF';
-  const ACCENT = accentColors.red; // Red accent like Browse screen
+  const colorsHook = useColors();
+  const ACCENT = colorsHook.accent.primary; // Dynamic accent from theme
   const TEXT_PRIMARY = storeColors.text;
   const TEXT_SECONDARY = storeColors.textSecondary;
   const TEXT_TERTIARY = storeColors.textTertiary;

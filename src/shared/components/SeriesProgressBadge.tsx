@@ -14,10 +14,16 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { ProgressDots } from './ProgressDots';
-import { colors, scale, spacing } from '@/shared/theme';
+import { scale, spacing } from '@/shared/theme';
+import { useColors, ThemeColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
-const ACCENT = colors.accent;
-const SUCCESS = '#4ADE80';
+// Helper to extract semantic colors
+function getSemanticColors(c: ThemeColors) {
+  return {
+    success: c.semantic.success,
+  };
+}
 
 interface SeriesProgressBadgeProps {
   /** Number of completed books */
@@ -56,6 +62,10 @@ export function SeriesProgressBadge({
   timeRemaining,
   compact = false,
 }: SeriesProgressBadgeProps) {
+  const themeColors = useThemeColors();
+  const fullThemeColors = useColors();
+  const semanticColors = getSemanticColors(fullThemeColors);
+
   const isComplete = completed === total && total > 0;
   const hasProgress = completed > 0 || inProgress > 0;
 
@@ -63,10 +73,10 @@ export function SeriesProgressBadge({
   if (isComplete) {
     return (
       <View style={[styles.container, compact && styles.containerCompact]}>
-        <View style={styles.completeBadge}>
-          <Check size={scale(12)} color="#000" strokeWidth={3} />
+        <View style={[styles.completeBadge, { backgroundColor: semanticColors.success }]}>
+          <Check size={scale(12)} color={themeColors.background} strokeWidth={3} />
         </View>
-        <Text style={styles.completeText}>Complete</Text>
+        <Text style={[styles.completeText, { color: semanticColors.success }]}>Complete</Text>
       </View>
     );
   }
@@ -82,7 +92,7 @@ export function SeriesProgressBadge({
           showCount={true}
         />
         {!compact && timeRemaining && timeRemaining > 0 && (
-          <Text style={styles.timeText}>{formatTimeRemaining(timeRemaining)}</Text>
+          <Text style={[styles.timeText, { color: themeColors.textTertiary }]}>{formatTimeRemaining(timeRemaining)}</Text>
         )}
       </View>
     );
@@ -91,7 +101,7 @@ export function SeriesProgressBadge({
   // No progress - show book count
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <Text style={styles.countOnlyText}>
+      <Text style={[styles.countOnlyText, { color: themeColors.textSecondary }]}>
         {total} {total === 1 ? 'book' : 'books'}
       </Text>
     </View>
@@ -112,22 +122,18 @@ const styles = StyleSheet.create({
     width: scale(20),
     height: scale(20),
     borderRadius: scale(10),
-    backgroundColor: SUCCESS,
     justifyContent: 'center',
     alignItems: 'center',
   },
   completeText: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: SUCCESS,
   },
   timeText: {
     fontSize: scale(11),
-    color: colors.textTertiary,
   },
   countOnlyText: {
     fontSize: scale(12),
-    color: colors.textSecondary,
   },
 });
 

@@ -16,7 +16,7 @@ import {
 import { X, RotateCcw } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
-import { colors, spacing, radius, wp, scale, layout } from '@/shared/theme';
+import { spacing, radius, wp, scale, layout, useThemeColors, accentColors } from '@/shared/theme';
 
 // =============================================================================
 // CONSTANTS
@@ -37,6 +37,8 @@ interface SpeedSheetProps {
 // =============================================================================
 
 export function SpeedSheet({ onClose }: SpeedSheetProps) {
+  const themeColors = useThemeColors();
+
   // Player store state
   const playbackRate = usePlayerStore((s) => s.playbackRate);
   const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
@@ -59,14 +61,14 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Playback Speed</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Playback Speed</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <X size={24} color={colors.textPrimary} strokeWidth={2} />
+          <X size={24} color={themeColors.text} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       {/* Current Speed Display */}
-      <Text style={styles.currentSpeed}>{playbackRate}x</Text>
+      <Text style={[styles.currentSpeed, { color: themeColors.text }]}>{playbackRate}x</Text>
 
       {/* Speed Options Grid */}
       <View style={styles.optionsGrid}>
@@ -77,20 +79,23 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
               key={speed}
               style={[
                 styles.optionButton,
-                isActive && styles.optionButtonActive,
+                { backgroundColor: themeColors.card },
+                isActive && { backgroundColor: accentColors.gold },
               ]}
               onPress={() => handleSpeedSelect(speed)}
               activeOpacity={0.7}
             >
               <Text style={[
                 styles.optionText,
-                isActive && styles.optionTextActive,
+                { color: themeColors.text },
+                isActive && { color: themeColors.background },
               ]}>
                 {speed}x
               </Text>
               {speed === 1 && (
                 <Text style={[
                   styles.optionLabel,
+                  { color: themeColors.textTertiary },
                   isActive && styles.optionLabelActive,
                 ]}>
                   Normal
@@ -104,12 +109,12 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
       {/* Reset to 1x Button */}
       {playbackRate !== 1 && (
         <TouchableOpacity
-          style={styles.resetButton}
+          style={[styles.resetButton, { backgroundColor: themeColors.card }]}
           onPress={() => handleSpeedSelect(1)}
           activeOpacity={0.7}
         >
-          <RotateCcw size={18} color={colors.textPrimary} strokeWidth={2} />
-          <Text style={styles.resetButtonText}>Reset to Normal</Text>
+          <RotateCcw size={18} color={themeColors.text} strokeWidth={2} />
+          <Text style={[styles.resetButtonText, { color: themeColors.text }]}>Reset to Normal</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -133,7 +138,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   closeButton: {
     width: layout.minTouchTarget,
@@ -144,7 +149,7 @@ const styles = StyleSheet.create({
   currentSpeed: {
     fontSize: scale(42),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
@@ -157,24 +162,20 @@ const styles = StyleSheet.create({
   optionButton: {
     width: (wp(100) - 80) / 3,
     paddingVertical: spacing.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.md,
     alignItems: 'center',
   },
-  optionButtonActive: {
-    backgroundColor: colors.accent,
-  },
+  // optionButtonActive set inline
   optionText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
-  optionTextActive: {
-    color: colors.backgroundPrimary,
-  },
+  // optionTextActive set inline
   optionLabel: {
     fontSize: 11,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     marginTop: 2,
   },
   optionLabelActive: {
@@ -187,12 +188,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: 14,
     borderRadius: radius.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
   },
   resetButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
 });
 

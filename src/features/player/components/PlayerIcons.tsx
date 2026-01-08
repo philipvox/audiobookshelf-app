@@ -8,19 +8,23 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { Settings } from 'lucide-react-native';
-import { scale } from '@/shared/theme';
+import { scale, useThemeColors } from '@/shared/theme';
 
 /**
  * Moon icon for sleep timer
  */
-export const MoonIcon = () => (
-  <Svg width={scale(13)} height={scale(13)} viewBox="0 0 13 13" fill="none">
-    <Path
-      d="M13 7.08559C12.8861 8.31757 12.4238 9.49165 11.667 10.4704C10.9102 11.4492 9.89037 12.1923 8.72672 12.6126C7.56307 13.0329 6.30378 13.1131 5.09621 12.8439C3.88863 12.5746 2.78271 11.967 1.90785 11.0921C1.033 10.2173 0.425392 9.11137 0.156131 7.90379C-0.11313 6.69622 -0.0329082 5.43693 0.38741 4.27328C0.807727 3.10963 1.55076 2.08975 2.52955 1.33298C3.50835 0.576212 4.68243 0.113851 5.91441 0C5.19313 0.975819 4.84604 2.17811 4.93628 3.38821C5.02652 4.59831 5.54809 5.73582 6.40614 6.59386C7.26418 7.45191 8.40169 7.97348 9.61179 8.06372C10.8219 8.15396 12.0242 7.80687 13 7.08559Z"
-      fill="white"
-    />
-  </Svg>
-);
+export const MoonIcon = ({ color }: { color?: string }) => {
+  const themeColors = useThemeColors();
+  const fillColor = color ?? themeColors.text;
+  return (
+    <Svg width={scale(13)} height={scale(13)} viewBox="0 0 13 13" fill="none">
+      <Path
+        d="M13 7.08559C12.8861 8.31757 12.4238 9.49165 11.667 10.4704C10.9102 11.4492 9.89037 12.1923 8.72672 12.6126C7.56307 13.0329 6.30378 13.1131 5.09621 12.8439C3.88863 12.5746 2.78271 11.967 1.90785 11.0921C1.033 10.2173 0.425392 9.11137 0.156131 7.90379C-0.11313 6.69622 -0.0329082 5.43693 0.38741 4.27328C0.807727 3.10963 1.55076 2.08975 2.52955 1.33298C3.50835 0.576212 4.68243 0.113851 5.91441 0C5.19313 0.975819 4.84604 2.17811 4.93628 3.38821C5.02652 4.59831 5.54809 5.73582 6.40614 6.59386C7.26418 7.45191 8.40169 7.97348 9.61179 8.06372C10.8219 8.15396 12.0242 7.80687 13 7.08559Z"
+        fill={fillColor}
+      />
+    </Svg>
+  );
+};
 
 /**
  * Double-chevron rewind icon (<<)
@@ -97,17 +101,61 @@ export const BookmarkFlagIcon = ({ size = 24, color = "#2196F3" }: { size?: numb
 };
 
 /**
+ * Previous chapter icon (|<<) - bar with double chevron
+ */
+export const PrevChapterIcon = ({ color = "white" }: { color?: string }) => (
+  <Svg width={scale(22)} height={scale(15)} viewBox="0 0 22 15" fill="none">
+    {/* Vertical bar on left */}
+    <Path d="M0 0H2.5V15H0V0Z" fill={color} />
+    {/* Double chevron */}
+    <Path
+      d="M11.65 13.32C11.65 13.82 11.08 14.1 10.68 13.8L4.39 7.52C4.07 7.28 4.07 6.8 4.39 6.56L10.68 0.28C11.08 -0.03 11.65 0.26 11.65 0.76V13.32Z"
+      fill={color}
+    />
+    <Path
+      d="M21.75 13.32C21.75 13.82 21.18 14.1 20.78 13.8L14.49 7.52C14.17 7.28 14.17 6.8 14.49 6.56L20.78 0.28C21.18 -0.03 21.75 0.26 21.75 0.76V13.32Z"
+      fill={color}
+    />
+  </Svg>
+);
+
+/**
+ * Next chapter icon (>>|) - double chevron with bar
+ */
+export const NextChapterIcon = ({ color = "white" }: { color?: string }) => (
+  <Svg width={scale(22)} height={scale(15)} viewBox="0 0 22 15" fill="none">
+    {/* Double chevron */}
+    <Path
+      d="M10.35 13.32C10.35 13.82 10.92 14.1 11.32 13.8L17.61 7.52C17.93 7.28 17.93 6.8 17.61 6.56L11.32 0.28C10.92 -0.03 10.35 0.26 10.35 0.76V13.32Z"
+      fill={color}
+    />
+    <Path
+      d="M0.25 13.32C0.25 13.82 0.82 14.1 1.22 13.8L7.51 7.52C7.83 7.28 7.83 6.8 7.51 6.56L1.22 0.28C0.82 -0.03 0.25 0.26 0.25 0.76V13.32Z"
+      fill={color}
+    />
+    {/* Vertical bar on right */}
+    <Path d="M19.5 0H22V15H19.5V0Z" fill={color} />
+  </Svg>
+);
+
+/**
  * Settings icon in a circular background
  */
-export const SettingsIconCircle = ({ color = "#FFFFFF", dark = false }: { color?: string; dark?: boolean }) => (
-  <View style={{
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    backgroundColor: dark ? 'transparent' : '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  }}>
-    <Settings size={scale(18)} color={dark ? color : '#000000'} strokeWidth={2} />
-  </View>
-);
+export const SettingsIconCircle = ({ color, transparent = false, darkPill = false }: { color?: string; transparent?: boolean; darkPill?: boolean }) => {
+  const themeColors = useThemeColors();
+  const iconColor = color ?? (darkPill ? '#FFFFFF' : themeColors.text);
+  return (
+    <View style={{
+      width: scale(36),
+      height: scale(36),
+      borderRadius: scale(18),
+      backgroundColor: darkPill ? 'rgba(0,0,0,0.5)' : transparent ? 'transparent' : themeColors.backgroundSecondary,
+      borderWidth: darkPill ? 1 : 0,
+      borderColor: darkPill ? 'rgba(255,255,255,0.6)' : 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <Settings size={scale(18)} color={iconColor} strokeWidth={2} />
+    </View>
+  );
+};

@@ -58,13 +58,13 @@ export const LibraryTabBar = React.memo(function LibraryTabBar({
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    marginBottom: spacing.sm,
+    marginBottom: scale(4),
     flexGrow: 0,
     flexShrink: 0,
   },
   tabBar: {
-    paddingHorizontal: spacing.xl,
-    gap: scale(14),
+    paddingHorizontal: scale(16),
+    gap: scale(16),
     flexDirection: 'row',
     alignItems: 'baseline',
   },
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(2),
   },
   textTabLabel: {
-    fontSize: scale(26),
+    fontSize: scale(22),
     fontWeight: '400',
   },
 });

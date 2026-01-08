@@ -8,11 +8,12 @@ import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { Image } from 'expo-image';
 import {
-  colors,
   spacing,
   radius,
   scale,
   elevation,
+  useThemeColors,
+  accentColors,
 } from '@/shared/theme';
 
 interface CoverArtworkProps {
@@ -26,6 +27,8 @@ export function CoverArtwork({
   size = scale(263),
   seriesSequence,
 }: CoverArtworkProps) {
+  const themeColors = useThemeColors();
+
   // Anima: 263x264 (slightly taller than wide)
   const width = size;
   const height = size * (264 / 263);
@@ -45,18 +48,18 @@ export function CoverArtwork({
       {coverUrl ? (
         <Image
           source={{ uri: coverUrl }}
-          style={[styles.image, { width, height, borderRadius }]}
+          style={[styles.image, { width, height, borderRadius, backgroundColor: themeColors.backgroundSecondary }]}
           contentFit="cover"
           transition={200}
         />
       ) : (
-        <View style={[styles.placeholder, { width, height, borderRadius }]} />
+        <View style={[styles.placeholder, { width, height, borderRadius, backgroundColor: themeColors.backgroundSecondary }]} />
       )}
 
       {/* Series sequence badge */}
       {seriesSequence !== undefined && (
-        <View style={styles.seriesBadge}>
-          <Text style={styles.seriesText}>#{seriesSequence}</Text>
+        <View style={[styles.seriesBadge, { backgroundColor: accentColors.gold }]}>
+          <Text style={[styles.seriesText, { color: themeColors.background }]}>#{seriesSequence}</Text>
         </View>
       )}
     </View>
@@ -70,16 +73,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: {
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
   },
   placeholder: {
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
   },
   seriesBadge: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
-    backgroundColor: colors.accent,
+    // backgroundColor set via accentColors in JSX
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
@@ -87,6 +90,6 @@ const styles = StyleSheet.create({
   seriesText: {
     fontSize: scale(14),
     fontWeight: '700',
-    color: colors.backgroundPrimary,
+    // color set via themeColors in JSX
   },
 });

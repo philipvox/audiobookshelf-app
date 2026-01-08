@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Check, ChevronLeft, Code, Info, ArrowRight, type LucideIcon } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, typography, fontWeight, spacing } from '@/shared/theme';
+import { scale, typography, fontWeight, spacing } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
 import {
   useChapterCleaningStore,
@@ -27,12 +27,11 @@ import {
   type ChapterCleaningLevel,
 } from '../stores/chapterCleaningStore';
 
-const ACCENT = accentColors.gold;
-
 // Helper to create theme-aware colors from nested ThemeColors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
+    accentSubtle: c.accent.primarySubtle,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -60,7 +59,7 @@ function LevelOption({ level, isSelected, onSelect, isRecommended, colors }: Lev
 
   return (
     <TouchableOpacity
-      style={[styles.levelOption, { borderBottomColor: colors.border }, isSelected && { backgroundColor: 'rgba(243, 182, 12, 0.08)' }]}
+      style={[styles.levelOption, { borderBottomColor: colors.border }, isSelected && { backgroundColor: colors.accentSubtle }]}
       onPress={() => onSelect(level)}
       activeOpacity={0.7}
     >
@@ -124,7 +123,7 @@ function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, colors }:
       <Switch
         value={switchValue}
         onValueChange={onSwitchChange}
-        trackColor={{ false: colors.border, true: ACCENT }}
+        trackColor={{ false: colors.border, true: colors.accent }}
         thumbColor="#fff"
       />
     </View>

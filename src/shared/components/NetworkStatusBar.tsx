@@ -13,7 +13,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { CloudOff, CloudDownload } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import { colors, scale, spacing } from '@/shared/theme';
+import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 interface NetworkStatusBarProps {
   /**
@@ -25,6 +25,7 @@ interface NetworkStatusBarProps {
 
 export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const [isOffline, setIsOffline] = useState(false);
   const [showBar, setShowBar] = useState(false);
   const slideAnim = useState(() => new Animated.Value(-50))[0];
@@ -70,9 +71,11 @@ export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
 
   if (!showBar) return null;
 
-  const backgroundColor = isOffline ? colors.error : colors.accent;
+  const backgroundColor = isOffline ? themeColors.error : accentColors.gold;
   const message = isOffline ? 'No internet connection' : 'Loading...';
   const StatusIcon = isOffline ? CloudOff : CloudDownload;
+  // Use contrasting text color
+  const textColor = isOffline ? themeColors.text : themeColors.background;
 
   return (
     <Animated.View
@@ -87,8 +90,8 @@ export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
       accessibilityLabel={message}
       accessibilityRole="alert"
     >
-      <StatusIcon size={scale(14)} color="#FFFFFF" strokeWidth={2} />
-      <Text style={styles.text}>{message}</Text>
+      <StatusIcon size={scale(14)} color={textColor} strokeWidth={2} />
+      <Text style={[styles.text, { color: textColor }]}>{message}</Text>
     </Animated.View>
   );
 }
@@ -132,6 +135,5 @@ const styles = StyleSheet.create({
   text: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: '#FFFFFF',
   },
 });

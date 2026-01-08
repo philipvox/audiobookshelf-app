@@ -7,7 +7,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { scale } from '@/shared/theme';
+import { scale, useThemeColors, accentColors } from '@/shared/theme';
 
 export interface CircularProgressProps {
   progress: number; // 0-1
@@ -21,22 +21,27 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
   progress,
   size = scale(32),
   strokeWidth = 3,
-  progressColor = '#000000',
-  backgroundColor = 'rgba(0,0,0,0.2)',
+  progressColor,
+  backgroundColor,
 }) => {
+  const themeColors = useThemeColors();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference * (1 - Math.min(Math.max(progress, 0), 1));
 
+  // Use provided colors or theme defaults
+  const effectiveProgressColor = progressColor ?? accentColors.gold;
+  const effectiveBackgroundColor = backgroundColor ?? `${themeColors.text}30`;
+
   return (
-    <View style={{ width: size, height: size, backgroundColor: '#FFFFFF', borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size, height: size, backgroundColor: themeColors.background, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
       <Svg width={size} height={size} style={{ position: 'absolute' }}>
         {/* Background circle */}
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={backgroundColor}
+          stroke={effectiveBackgroundColor}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -45,7 +50,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={progressColor}
+          stroke={effectiveProgressColor}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={`${circumference} ${circumference}`}
@@ -54,7 +59,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <Text style={{ fontSize: scale(9), fontWeight: '700', color: '#000000' }}>
+      <Text style={{ fontSize: scale(9), fontWeight: '700', color: themeColors.text }}>
         {Math.round(progress * 100)}%
       </Text>
     </View>

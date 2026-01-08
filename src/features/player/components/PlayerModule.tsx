@@ -14,7 +14,7 @@ import { InfoTiles } from '@/features/home/components/InfoTiles';
 import { PlaybackControls } from '@/features/home/components/PlaybackControls';
 import { ProgressBar } from './ProgressBar';
 import { HeartButton, CircularDownloadButton } from '@/shared/components';
-import { colors, scale, layout } from '@/shared/theme';
+import { scale, layout, useThemeColors } from '@/shared/theme';
 
 
 export interface PlayerModuleProgress {
@@ -100,6 +100,7 @@ export function PlayerModule({
   onClosePanel,
   variant = 'home',
 }: PlayerModuleProps) {
+  const themeColors = useThemeColors();
   const coverUrl = useCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Untitled';
@@ -183,7 +184,7 @@ export function PlayerModule({
             accessibilityLabel="Close panel"
             accessibilityRole="button"
           >
-            <Text style={styles.panelCloseText}>✕</Text>
+            <Text style={[styles.panelCloseText, { color: themeColors.textSecondary }]}>✕</Text>
           </TouchableOpacity>
           {panelContent}
         </View>
@@ -209,9 +210,9 @@ export function PlayerModule({
           {/* Progress Bar - always visible for system status visibility (NN/g #1) */}
           <View style={styles.progressBarContainer}>
             <ProgressBar
-              textColor={colors.textSecondary}
-              trackColor={colors.progressTrack}
-              fillColor={colors.textPrimary}
+              textColor={themeColors.textSecondary}
+              trackColor={themeColors.border}
+              fillColor={themeColors.text}
             />
           </View>
 
@@ -296,7 +297,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   panelCloseText: {
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     fontSize: scale(20),
     fontWeight: '300',
   },

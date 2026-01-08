@@ -652,7 +652,7 @@ function EmptyState({
   return (
     <Animated.View style={styles.emptyState} entering={FadeIn.duration(300)}>
       <View style={styles.emptyIconContainer}>
-        <PartyPopper size={moderateScale(48)} color={colors.accent} strokeWidth={1.5} />
+        <PartyPopper size={moderateScale(48)} color={accentColors.primary} strokeWidth={1.5} />
       </View>
       <Text style={styles.emptyTitle}>
         {viewLevel === 'top' ? 'All caught up!' : 'Section complete!'}

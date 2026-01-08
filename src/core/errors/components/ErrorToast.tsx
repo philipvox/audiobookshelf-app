@@ -16,6 +16,7 @@ import {
 import { Info, AlertTriangle, AlertCircle, XCircle, X, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity } from '../types';
+import { useThemeColors, scale, spacing } from '@/shared/theme';
 
 interface ErrorToastProps {
   error: AppError;
@@ -45,6 +46,7 @@ export function ErrorToast({
   duration = 4000,
 }: ErrorToastProps) {
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -101,11 +103,11 @@ export function ErrorToast({
         },
       ]}
     >
-      <View style={[styles.toast, { borderLeftColor: color }]}>
+      <View style={[styles.toast, { borderLeftColor: color, backgroundColor: themeColors.surfaceElevated }]}>
         <IconComponent size={22} color={color} strokeWidth={2} style={styles.icon} />
 
         <View style={styles.content}>
-          <Text style={styles.message} numberOfLines={2}>
+          <Text style={[styles.message, { color: themeColors.text }]} numberOfLines={2}>
             {error.userMessage}
           </Text>
         </View>
@@ -126,7 +128,7 @@ export function ErrorToast({
           )}
 
           <TouchableOpacity style={styles.dismissButton} onPress={dismiss}>
-            <X size={20} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+            <X size={20} color={themeColors.textTertiary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>
@@ -137,18 +139,17 @@ export function ErrorToast({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: spacing.lg,
+    right: spacing.lg,
     zIndex: 9999,
   },
   toast: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 12,
+    borderRadius: scale(12),
     borderLeftWidth: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -156,31 +157,30 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   icon: {
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   content: {
     flex: 1,
   },
   message: {
-    color: '#fff',
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: scale(14),
+    lineHeight: scale(18),
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
   actionButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   actionText: {
-    fontSize: 14,
+    fontSize: scale(14),
     fontWeight: '600',
   },
   dismissButton: {
-    padding: 4,
-    marginLeft: 4,
+    padding: spacing.xs,
+    marginLeft: spacing.xs,
   },
 });

@@ -23,7 +23,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, radius, scale } from '@/shared/theme';
+import { spacing, radius, scale, useThemeColors, ThemeColors } from '@/shared/theme';
 import { BOTTOM_NAV_HEIGHT, MINI_PLAYER_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -55,32 +55,35 @@ export interface SnackbarProps {
 // COLORS
 // ============================================================================
 
-const SNACKBAR_COLORS = {
-  info: {
-    background: colors.backgroundElevated,
-    border: colors.border,
-    text: colors.textPrimary,
-    action: colors.accent,
-  },
-  success: {
-    background: 'rgba(48, 209, 88, 0.15)',
-    border: 'rgba(48, 209, 88, 0.3)',
-    text: colors.textPrimary,
-    action: '#30D158',
-  },
-  warning: {
-    background: 'rgba(255, 159, 10, 0.15)',
-    border: 'rgba(255, 159, 10, 0.3)',
-    text: colors.textPrimary,
-    action: '#FF9F0A',
-  },
-  error: {
-    background: 'rgba(255, 69, 58, 0.15)',
-    border: 'rgba(255, 69, 58, 0.3)',
-    text: colors.textPrimary,
-    action: '#FF453A',
-  },
-};
+// Get snackbar colors based on theme
+function getSnackbarColors(themeColors: ReturnType<typeof useThemeColors>) {
+  return {
+    info: {
+      background: themeColors.surfaceElevated,
+      border: themeColors.border,
+      text: themeColors.text,
+      action: themeColors.accent,
+    },
+    success: {
+      background: `${themeColors.success}25`,
+      border: `${themeColors.success}50`,
+      text: themeColors.text,
+      action: themeColors.success,
+    },
+    warning: {
+      background: `${themeColors.warning}25`,
+      border: `${themeColors.warning}50`,
+      text: themeColors.text,
+      action: themeColors.warning,
+    },
+    error: {
+      background: `${themeColors.error}25`,
+      border: `${themeColors.error}50`,
+      text: themeColors.text,
+      action: themeColors.error,
+    },
+  };
+}
 
 // ============================================================================
 // COMPONENT
@@ -97,12 +100,14 @@ export function Snackbar({
   type = 'info',
 }: SnackbarProps) {
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const translateY = useSharedValue(100);
   const opacity = useSharedValue(0);
   // Track when snackbar is fully hidden (avoids reading .value during render)
   const [isHidden, setIsHidden] = useState(!visible);
 
-  const colors = SNACKBAR_COLORS[type];
+  const snackbarColors = getSnackbarColors(themeColors);
+  const typeColors = snackbarColors[type];
 
   // Calculate bottom position (above tab bar + mini player)
   const bottomOffset = insets.bottom + BOTTOM_NAV_HEIGHT + MINI_PLAYER_HEIGHT + spacing.md;
@@ -175,7 +180,7 @@ export function Snackbar({
       style={[
         styles.container,
         { bottom: bottomOffset },
-        { backgroundColor: colors.background, borderColor: colors.border },
+        { backgroundColor: typeColors.background, borderColor: typeColors.border },
         animatedStyle,
       ]}
       accessibilityRole="alert"
@@ -185,7 +190,7 @@ export function Snackbar({
       {icon && <View style={styles.iconContainer}>{icon}</View>}
 
       {/* Message */}
-      <Text style={[styles.message, { color: colors.text }]} numberOfLines={2}>
+      <Text style={[styles.message, { color: typeColors.text }]} numberOfLines={2}>
         {message}
       </Text>
 
@@ -198,7 +203,7 @@ export function Snackbar({
           accessibilityRole="button"
           accessibilityLabel={actionLabel}
         >
-          <Text style={[styles.actionText, { color: colors.action }]}>{actionLabel}</Text>
+          <Text style={[styles.actionText, { color: typeColors.action }]}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
     </Animated.View>

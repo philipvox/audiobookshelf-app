@@ -86,6 +86,7 @@ export interface BookSummary {
   progress?: number;           // 0-1, if in progress
   isDownloaded: boolean;
   queuePosition?: number;
+  lastPlayedAt?: number;       // timestamp in ms for "2 hours ago" display
 
   // Visual flags
   isSerendipity?: boolean;     // Flag for "Try Something Different" styling
@@ -131,6 +132,7 @@ export function libraryItemToBookSummary(
     isDownloaded?: boolean;
     progress?: number;
     queuePosition?: number;
+    lastPlayedAt?: number;
   }
 ): BookSummary {
   const metadata = (item.media?.metadata as any) || {};
@@ -150,6 +152,7 @@ export function libraryItemToBookSummary(
     progress: options?.progress,
     isDownloaded: options?.isDownloaded || false,
     queuePosition: options?.queuePosition,
+    lastPlayedAt: options?.lastPlayedAt,
   };
 }
 

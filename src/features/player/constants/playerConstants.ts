@@ -18,7 +18,7 @@ export const SCREEN_HEIGHT = hp(100);
 // PLAYER LAYOUT
 // =============================================================================
 
-export const COVER_SIZE = scale(360); // Large centered cover
+export const COVER_SIZE = scale(250); // Large centered cover
 export const ACCENT_COLOR = colors.accent;
 
 // =============================================================================

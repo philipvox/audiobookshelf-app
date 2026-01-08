@@ -20,17 +20,15 @@ import {
   LayoutDashboard,
 } from 'lucide-react-native';
 import {
-  colors,
   spacing,
   radius,
   layout,
   typography,
   scale,
   iconSizes,
+  useThemeColors,
+  accentColors,
 } from '@/shared/theme';
-
-// Default icon color for empty states
-const EMPTY_STATE_ICON_COLOR = colors.textMuted;
 
 export type EmptyStateIcon =
   | 'book'
@@ -106,49 +104,52 @@ export function EmptyState({
   fullScreen = true,
   style,
 }: EmptyStateProps) {
+  const themeColors = useThemeColors();
+  const iconColor = themeColors.textTertiary;
+
   const renderIcon = () => {
     if (typeof icon === 'string') {
       // Check if it's a valid icon name
       if (icon in ICONS) {
         const IconComponent = ICONS[icon as EmptyStateIcon];
-        return <IconComponent size={iconSizes.xxxl} color={EMPTY_STATE_ICON_COLOR} />;
+        return <IconComponent size={iconSizes.xxxl} color={iconColor} />;
       }
       // Check if it's an emoji that can be mapped
       if (icon in EMOJI_TO_ICON) {
         const mappedIcon = EMOJI_TO_ICON[icon];
         const IconComponent = ICONS[mappedIcon];
-        return <IconComponent size={iconSizes.xxxl} color={EMPTY_STATE_ICON_COLOR} />;
+        return <IconComponent size={iconSizes.xxxl} color={iconColor} />;
       }
       // Fallback for any unrecognized string (including unknown emojis)
-      return <BookOpen size={iconSizes.xxxl} color={EMPTY_STATE_ICON_COLOR} />;
+      return <BookOpen size={iconSizes.xxxl} color={iconColor} />;
     }
     if (React.isValidElement(icon)) {
       return icon;
     }
-    return <BookOpen size={iconSizes.xxxl} color={EMPTY_STATE_ICON_COLOR} />;
+    return <BookOpen size={iconSizes.xxxl} color={iconColor} />;
   };
 
   return (
-    <View style={[styles.container, fullScreen && styles.fullScreen, style]}>
+    <View style={[styles.container, fullScreen && styles.fullScreen, { backgroundColor: fullScreen ? themeColors.backgroundSecondary : 'transparent' }, style]}>
       <View style={styles.iconContainer}>
         {renderIcon()}
       </View>
 
-      <Text style={styles.title}>{title}</Text>
+      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
 
       {description && (
-        <Text style={styles.description}>{description}</Text>
+        <Text style={[styles.description, { color: themeColors.textTertiary }]}>{description}</Text>
       )}
 
       {(actionTitle && onAction) && (
-        <Pressable style={styles.actionButton} onPress={onAction}>
-          <Text style={styles.actionButtonText}>{actionTitle}</Text>
+        <Pressable style={[styles.actionButton, { backgroundColor: accentColors.gold }]} onPress={onAction}>
+          <Text style={[styles.actionButtonText, { color: themeColors.background }]}>{actionTitle}</Text>
         </Pressable>
       )}
 
       {(secondaryActionTitle && onSecondaryAction) && (
         <Pressable style={styles.secondaryButton} onPress={onSecondaryAction}>
-          <Text style={styles.secondaryButtonText}>{secondaryActionTitle}</Text>
+          <Text style={[styles.secondaryButtonText, { color: themeColors.textSecondary }]}>{secondaryActionTitle}</Text>
         </Pressable>
       )}
     </View>
@@ -163,27 +164,23 @@ const styles = StyleSheet.create({
   },
   fullScreen: {
     flex: 1,
-    backgroundColor: colors.backgroundTertiary,
   },
   iconContainer: {
     marginBottom: spacing.xl,
   },
   title: {
     ...typography.displaySmall,
-    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   description: {
     ...typography.bodyMedium,
-    color: colors.textTertiary,
     textAlign: 'center',
     maxWidth: scale(280),
     marginBottom: spacing.xxl,
   },
   // NN/g: 44px minimum touch targets
   actionButton: {
-    backgroundColor: colors.accent,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing['3xl'],
     borderRadius: radius.card,
@@ -195,7 +192,6 @@ const styles = StyleSheet.create({
   actionButtonText: {
     ...typography.labelLarge,
     fontWeight: '600',
-    color: colors.backgroundPrimary,
   },
   secondaryButton: {
     paddingVertical: spacing.md,
@@ -207,6 +203,5 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     ...typography.bodyMedium,
     fontWeight: '500',
-    color: colors.textSecondary,
   },
 });

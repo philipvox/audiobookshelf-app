@@ -16,18 +16,14 @@ import {
 import { Icon } from '@/shared/components/Icon';
 import { formatDuration } from '@/shared/utils/format';
 import { shareWeeklyStats, shareStreak, shareMilestone } from '../services/shareService';
-import { colors, wp } from '@/shared/theme';
+import { wp, accentColors, useThemeColors } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 
-// Share card colors
-const COLORS = {
-  background: colors.backgroundTertiary,
+// Static colors for StyleSheet (card gradient is always the same)
+const STATIC_COLORS = {
   cardGradientStart: '#16213E',
   cardGradientEnd: '#0F3460',
-  accent: colors.accent,
-  text: colors.textPrimary,
-  textSecondary: colors.textSecondary,
 };
 
 interface ShareStatsCardProps {
@@ -56,7 +52,18 @@ export function ShareStatsCard({
   allTimeStats,
   onClose,
 }: ShareStatsCardProps) {
+  const themeColors = useThemeColors();
   const cardRef = useRef<View>(null);
+
+  // Share card colors (derived from theme)
+  const COLORS = {
+    background: themeColors.backgroundTertiary,
+    cardGradientStart: '#16213E',
+    cardGradientEnd: '#0F3460',
+    accent: accentColors.gold,
+    text: themeColors.text,
+    textSecondary: themeColors.textSecondary,
+  };
 
   const handleShare = useCallback(async () => {
     try {
@@ -89,20 +96,20 @@ export function ShareStatsCard({
 
   const renderWeeklyCard = () => (
     <View style={styles.statsContent}>
-      <Text style={styles.cardLabel}>This Week</Text>
-      <Text style={styles.mainStat}>
+      <Text style={[styles.cardLabel, { color: COLORS.accent }]}>This Week</Text>
+      <Text style={[styles.mainStat, { color: COLORS.text }]}>
         {formatDuration(weeklyStats?.totalSeconds || 0)}
       </Text>
-      <Text style={styles.mainStatLabel}>of listening</Text>
+      <Text style={[styles.mainStatLabel, { color: COLORS.textSecondary }]}>of listening</Text>
       <View style={styles.statRow}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{weeklyStats?.sessionCount || 0}</Text>
-          <Text style={styles.statLabel}>sessions</Text>
+          <Text style={[styles.statValue, { color: COLORS.text }]}>{weeklyStats?.sessionCount || 0}</Text>
+          <Text style={[styles.statLabel, { color: COLORS.textSecondary }]}>sessions</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{weeklyStats?.uniqueBooks || 0}</Text>
-          <Text style={styles.statLabel}>books</Text>
+          <Text style={[styles.statValue, { color: COLORS.text }]}>{weeklyStats?.uniqueBooks || 0}</Text>
+          <Text style={[styles.statLabel, { color: COLORS.textSecondary }]}>books</Text>
         </View>
       </View>
     </View>
@@ -111,10 +118,10 @@ export function ShareStatsCard({
   const renderStreakCard = () => (
     <View style={styles.statsContent}>
       <Icon name="Flame" size={48} color="#FF9500" />
-      <Text style={styles.mainStat}>{streakStats?.currentStreak || 0}</Text>
-      <Text style={styles.mainStatLabel}>day streak</Text>
+      <Text style={[styles.mainStat, { color: COLORS.text }]}>{streakStats?.currentStreak || 0}</Text>
+      <Text style={[styles.mainStatLabel, { color: COLORS.textSecondary }]}>day streak</Text>
       {streakStats && streakStats.longestStreak > streakStats.currentStreak && (
-        <Text style={styles.secondaryStat}>
+        <Text style={[styles.secondaryStat, { color: COLORS.textSecondary }]}>
           Best: {streakStats.longestStreak} days
         </Text>
       )}
@@ -125,18 +132,18 @@ export function ShareStatsCard({
     const totalHours = Math.floor((allTimeStats?.totalSeconds || 0) / 3600);
     return (
       <View style={styles.statsContent}>
-        <Text style={styles.cardLabel}>All Time</Text>
-        <Text style={styles.mainStat}>{totalHours}</Text>
-        <Text style={styles.mainStatLabel}>hours listened</Text>
+        <Text style={[styles.cardLabel, { color: COLORS.accent }]}>All Time</Text>
+        <Text style={[styles.mainStat, { color: COLORS.text }]}>{totalHours}</Text>
+        <Text style={[styles.mainStatLabel, { color: COLORS.textSecondary }]}>hours listened</Text>
         <View style={styles.statRow}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{allTimeStats?.totalSessions || 0}</Text>
-            <Text style={styles.statLabel}>sessions</Text>
+            <Text style={[styles.statValue, { color: COLORS.text }]}>{allTimeStats?.totalSessions || 0}</Text>
+            <Text style={[styles.statLabel, { color: COLORS.textSecondary }]}>sessions</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{allTimeStats?.uniqueBooks || 0}</Text>
-            <Text style={styles.statLabel}>books</Text>
+            <Text style={[styles.statValue, { color: COLORS.text }]}>{allTimeStats?.uniqueBooks || 0}</Text>
+            <Text style={[styles.statLabel, { color: COLORS.textSecondary }]}>books</Text>
           </View>
         </View>
       </View>
@@ -153,19 +160,19 @@ export function ShareStatsCard({
 
           <View style={styles.branding}>
             <Icon name="Headset" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.brandingText}>AudiobookShelf</Text>
+            <Text style={[styles.brandingText, { color: COLORS.textSecondary }]}>AudiobookShelf</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+        <TouchableOpacity style={[styles.shareButton, { backgroundColor: COLORS.accent }]} onPress={handleShare}>
           <Icon name="Share" size={20} color={COLORS.background} />
-          <Text style={styles.shareButtonText}>Share</Text>
+          <Text style={[styles.shareButtonText, { color: COLORS.background }]}>Share</Text>
         </TouchableOpacity>
         {onClose && (
           <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={[styles.cancelButtonText, { color: COLORS.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -192,7 +199,7 @@ const styles = StyleSheet.create({
   },
   cardBackground: {
     flex: 1,
-    backgroundColor: COLORS.cardGradientStart,
+    backgroundColor: STATIC_COLORS.cardGradientStart,
     padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
@@ -205,7 +212,7 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.accent,
+    // color set via COLORS in JSX
     textTransform: 'uppercase',
     letterSpacing: 2,
     marginBottom: 8,
@@ -213,17 +220,17 @@ const styles = StyleSheet.create({
   mainStat: {
     fontSize: 72,
     fontWeight: '800',
-    color: COLORS.text,
+    // color set via COLORS in JSX
     letterSpacing: -2,
   },
   mainStatLabel: {
     fontSize: 18,
-    color: COLORS.textSecondary,
+    // color set via COLORS in JSX
     marginTop: 4,
   },
   secondaryStat: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    // color set via COLORS in JSX
     marginTop: 16,
   },
   statRow: {
@@ -247,11 +254,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 28,
     fontWeight: '700',
-    color: COLORS.text,
+    // color set via COLORS in JSX
   },
   statLabel: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    // color set via COLORS in JSX
     marginTop: 2,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -265,7 +272,7 @@ const styles = StyleSheet.create({
   },
   brandingText: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    // color set via COLORS in JSX
     fontWeight: '500',
   },
   actions: {
@@ -276,7 +283,7 @@ const styles = StyleSheet.create({
   shareButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.accent,
+    // backgroundColor set via COLORS in JSX
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 25,
@@ -285,7 +292,7 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: COLORS.background,
+    // color set via COLORS in JSX
   },
   cancelButton: {
     paddingVertical: 10,
@@ -293,6 +300,6 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontSize: 15,
-    color: COLORS.textSecondary,
+    // color set via COLORS in JSX
   },
 });

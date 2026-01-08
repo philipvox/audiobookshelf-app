@@ -15,9 +15,11 @@ export {
   useColors,
   useThemeMode,
   useThemeStore,
+  useIsDarkMode,
   useThemeColors, // deprecated
   themeColors, // deprecated
   type ThemeMode,
+  type AccentTheme,
 } from './themeStore';
 
 // Color tokens
@@ -25,6 +27,9 @@ export {
   lightColors,
   darkColors,
   accentColors,
+  accentThemes,
+  themePresets,
+  getThemeColors,
   colors, // deprecated legacy export
   type ThemeColors,
   type LightColors,

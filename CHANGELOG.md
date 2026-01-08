@@ -9,6 +9,560 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.6.164] - 2026-01-07
+
+### Fixed - Background Cover (Match BookDetailScreen)
+
+- Changed backgroundContainer height to `scale(600)` instead of `hp(70)`
+- Added `overflow: 'hidden'` to container
+- Guard with `coverUrl &&` like BookDetailScreen
+- Added back `width: 1200` parameter
+
+---
+
+## [0.6.163] - 2026-01-07
+
+### Fixed - Background Cover Loading (Removed Width)
+
+Removed width parameter from background cover URL - trying without size specification to fix Android loading issue.
+
+---
+
+## [0.6.162] - 2026-01-07
+
+### Fixed - Background Cover Not Loading on Android
+
+Changed background image source to use `{ uri: ... }` format and set width to 1000px for Android compatibility.
+
+---
+
+## [0.6.161] - 2026-01-07
+
+### Fixed - Center Down Arrow in Player Header
+
+Made the close button (down arrow) absolutely centered in the player header using `position: 'absolute'`, `left: '50%'`, and `marginLeft: scale(-22)`.
+
+---
+
+## [0.6.160] - 2026-01-07
+
+### Changed - Separator On Time Side
+
+Moved the "|" separator from the blue delta text to the time side:
+- New `timeSeparator` style with `opacity: 0.4` (lower than time)
+- Separator appears between time and delta
+- Delta text now just shows "+/-Xm Xs" without the pipe
+
+---
+
+## [0.6.159] - 2026-01-07
+
+### Fixed - Delta Text Actually Centered
+
+Added `width: scale(120)` to deltaDisplay so `textAlign: 'center'` actually works. Text now centers within the fixed-width container.
+
+---
+
+## [0.6.158] - 2026-01-07
+
+### Changed - Center Align Delta Text
+
+Added `textAlign: 'center'` to deltaDisplay style.
+
+---
+
+## [0.6.157] - 2026-01-07
+
+### Changed - Animated Horizontal Shift for Time
+
+Time now animates horizontally:
+- Not seeking: time is centered (translateX: 0)
+- Seeking: time shifts left (translateX: scale(-50)) to visually center time+delta group
+- Both shifts animate together with the font size and vertical position changes
+
+---
+
+## [0.6.156] - 2026-01-07
+
+### Fixed - Visual Centering of Time + Delta
+
+Added `marginLeft: scale(-50)` to timeWrapper to shift the group left, making "00:11:10 | -1m 41s" appear visually centered on screen.
+
+---
+
+## [0.6.155] - 2026-01-07
+
+### Fixed - Delta Doesn't Shift Time When Value Changes
+
+Added timeWrapper around time text with delta absolutely positioned:
+- Time is centered via the wrapper
+- Delta uses `position: 'absolute', left: '100%'` to appear right after time
+- When delta value changes length ("+30s" vs "+1m 33s"), time position stays stable
+
+---
+
+## [0.6.154] - 2026-01-07
+
+### Fixed - Time + Delta Centered Together
+
+Changed layout so time and delta are centered as a group:
+- Removed absolute positioning from delta - now a flex sibling of time
+- Made timeAndDeltaRow an animated view with translateY
+- Both elements move up together and are centered as "00:03:12 | +6m 38s"
+
+---
+
+## [0.6.153] - 2026-01-07
+
+### Fixed - Delta Vertical Position
+
+Fixed delta appearing on separate line below time instead of inline. Added:
+- `top: 0` to deltaDisplay style for proper vertical positioning
+- `translateY: timeTranslateY.value` to delta animation so it moves up along with the time
+
+---
+
+## [0.6.152] - 2026-01-07
+
+### Fixed - Genre Page Loading Performance
+
+Removed excessive console.log statements from useDownloadStatus hook. These were logging for every BookCard on mount, causing significant slowdown when loading pages with many books (like genre detail pages with 50+ books).
+
+**Root cause identified:** Each BookCard makes a separate SQLite query via `downloadManager.getDownloadStatus()`. With 50 books, that's 50 DB queries. A more complete fix would batch these queries, but removing the console.logs provides immediate improvement.
+
+---
+
+## [0.6.151] - 2026-01-07
+
+### Fixed - Delta Position Side-by-Side Without Shifting Time
+
+Changed delta positioning to use `left: '50%'` with `marginLeft: scale(60)` so it appears just to the right of the centered time. The delta is absolutely positioned so changes to its content don't shift the time around. Re-added translateX animation for smooth slide-in effect.
+
+---
+
+## [0.6.150] - 2026-01-07
+
+### Changed - Separate Delta From Time
+
+Made delta a separate absolutely positioned element (instead of nested Text) so it doesn't affect time's centered position when delta value changes.
+
+---
+
+## [0.6.149] - 2026-01-07
+
+### Fixed - Delta Inline (Nested Text)
+
+Switched back to nested Text approach for proper inline layout. Removed translateX animation (only opacity fade now) since nested text can't transform independently.
+
+---
+
+## [0.6.148] - 2026-01-07
+
+### Fixed - Delta Inline With Time
+
+Fixed delta text wrapping to next line. Now uses `alignItems: 'baseline'` and `flexWrap: 'nowrap'` to keep time and delta on the same line.
+
+---
+
+## [0.6.147] - 2026-01-07
+
+### Changed - Delta Slides Out From Center
+
+Delta text now animates with opacity and translateX, sliding out from center towards the right (120ms).
+
+Sequence:
+1. Time shrinks and moves up (80ms)
+2. 100ms delay
+3. Delta fades in while sliding from left to right (120ms)
+
+---
+
+## [0.6.146] - 2026-01-07
+
+### Changed - Delayed Delta Reveal
+
+Added 100ms delay before showing the delta text, so the resize animation completes first before the delta appears.
+
+---
+
+## [0.6.145] - 2026-01-07
+
+### Changed - Faster Animate In
+
+Made the seeking animation faster on entry (80ms) while keeping exit at 150ms.
+
+---
+
+## [0.6.144] - 2026-01-07
+
+### Changed - Time Moves Up When Seeking
+
+Time display now animates UP when seeking (translateY: -30), then back down to normal position when done.
+
+- Base position restored to scale(8)
+- When seeking: shrinks to 28pt AND moves up 30px
+- When done: returns to 64pt at original position
+
+---
+
+## [0.6.143] - 2026-01-07
+
+### Changed - Move Time Display Up
+
+Moved the time display up slightly (scale(8) → scale(20)) for better spacing above the progress bar.
+
+---
+
+## [0.6.142] - 2026-01-07
+
+### Fixed - Time Display Center Animation
+
+Fixed the center-shrink animation by using fontSize + translateY compensation instead of transform scale (which doesn't change layout and caused text wrapping issues).
+
+**Approach:** Animate fontSize (64→28) plus translateY (0→18) to keep text visually centered while allowing proper layout reflow.
+
+---
+
+## [0.6.141] - 2026-01-07
+
+### Fixed - Time Display Shrinks From Center
+
+Changed from animating fontSize to using transform scale so the text shrinks from its center instead of the baseline.
+
+**Before:** Text shrank toward baseline (bottom), causing visual jump
+**After:** Text scales from center, smooth centered animation
+
+---
+
+## [0.6.140] - 2026-01-07
+
+### Fixed - Seeking Time Display Size
+
+Reduced seeking font size from 40pt to 28pt to ensure time + delta fits on one line.
+
+---
+
+## [0.6.139] - 2026-01-07
+
+### Changed - Animated Time Display Size During Seeking
+
+The time display now animates to a smaller font size when seeking to fit both the time and delta on one line.
+
+**Changes:**
+- Font size animates from 64pt → 28pt when seeking starts
+- Animates back to 64pt when seeking ends
+- 150ms smooth transition using Reanimated
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+
+---
+
+## [0.6.138] - 2026-01-07
+
+### Changed - Inline Seeking Delta Display
+
+Moved the seeking delta indicator to display inline with the time, formatted as `00:00:00 | -30s`.
+
+**Before:** Delta was shown as separate text above the time
+**After:** Delta appears next to time with a pipe separator, colored with accent
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+
+---
+
+## [0.6.137] - 2026-01-07
+
+### Changed - Remove Progress Bar Marker
+
+Removed the circular marker dot from the progress bar. The fill color now indicates position without a separate marker.
+
+**Removed:**
+- Marker element from progress bar JSX
+- `markerStyle` animated style
+- `markerOnTrack` style
+- `TRACK_MARKER_SIZE` constant
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+
+---
+
+## [0.6.136] - 2026-01-07
+
+### Fixed - Progress Bar Coordinate Accuracy
+
+Fixed coordinate mismatch between gesture events and track content area.
+
+**Issue:** Track had `borderWidth: 1` which created a 1px offset on left/right. Gesture events were measured relative to the outer container, but fill/marker were positioned in the track's content area (inside borders). This caused 2px total error.
+
+**Fix:** Changed track to use `borderTopWidth: 1` only (no left/right borders). This aligns the gesture coordinate space with the content area.
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx` - Changed track border style
+
+---
+
+## [0.6.135] - 2026-01-07
+
+### Fixed - Progress Bar Marker Overflow (Simplified Approach)
+
+Completely rewrote marker positioning with a simpler, more robust approach.
+
+**Previous Issue:** Complex clamping math was causing the marker to escape the track on both edges.
+
+**New Approach:**
+- Position marker center at `progress * trackWidth`
+- Use CSS transform to center the marker: `translateX(-markerRadius)`
+- Add `overflow: 'hidden'` to track to clip the marker at edges
+
+This eliminates all the complex clamping math and lets the CSS handle edge cases naturally.
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+  - Simplified `markerStyle` to use transform for centering
+  - Added `overflow: 'hidden'` to track style
+
+---
+
+## [0.6.134] - 2026-01-07
+
+### Fixed - Progress Bar Marker Double-Offset Bug
+
+Fixed bug where the progress marker was still going outside the track bounds at position 0.
+
+**Issue:** The marker was being offset twice:
+1. Animated style: `left: clampedLeft - markerRadius` (subtracts 8px to center)
+2. Static style: `marginLeft: -TRACK_MARKER_SIZE / 2` (subtracts another 8px)
+
+This caused the marker to go 8px outside the left edge at position 0.
+
+**Fix:**
+- Removed duplicate `marginLeft` from static `markerOnTrack` style
+- Centering is now handled only in the animated style
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx` - Removed duplicate offset from markerOnTrack
+
+---
+
+## [0.6.133] - 2026-01-07
+
+### Fixed - Progress Bar Marker Position
+
+Fixed bug where the progress marker was going outside the track bounds.
+
+**Issue:** Marker was using wrong constant (`PROGRESS_MARKER_SIZE` instead of `TRACK_MARKER_SIZE`) and wasn't clamped to track boundaries.
+
+**Fix:**
+- Updated marker position calculation to use correct `TRACK_MARKER_SIZE`
+- Added clamping so marker stays within track bounds (min: marker radius from left, max: marker radius from right)
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx` - Fixed `markerStyle` calculation
+
+---
+
+## [0.6.132] - 2026-01-07
+
+### Fixed - Transparent Player Controls in Dark Mode
+
+Made the player control bar background fully transparent in dark mode so it floats cleanly over the cover artwork.
+
+**Changes (dark mode only):**
+- `widgetButtonBg`: Changed from `#1A1A1A` → `transparent`
+- `widgetBorder`: Changed from `rgba(255,255,255,0.2)` → `transparent`
+- `widgetTrack`: Changed from `#3A3A3A` → `rgba(255,255,255,0.2)` (lighter track)
+
+**Files Modified:**
+- `src/shared/theme/colors.ts` - Updated dark mode player widget colors
+
+---
+
+## [0.6.131] - 2026-01-07
+
+### Changed - Player Time Display and Progress Bar
+
+Made the current time display even bigger and simplified the progress bar design.
+
+**Changes:**
+- Time display: Increased to 64pt font, weight 800 (extra bold)
+- Removed the stem/line from the progress marker
+- Marker is now a dot directly on the progress bar track (16pt circle with shadow)
+- Simplified layout by removing the marker area above the progress bar
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+  - Updated `currentTimeDisplay` style (larger, bolder)
+  - Removed stem from SimpleProgressBar
+  - Added `markerOnTrack` style for marker dot on the track
+  - Updated `MARKER_AREA_HEIGHT` to just time row height
+
+---
+
+## [0.6.130] - 2026-01-07
+
+### Changed - Large Time Display on Player
+
+Made the current time display above the progress bar large and bold like a title.
+
+**Style:**
+- Font size: 48pt (scaled)
+- Font weight: 700 (bold)
+- Width: 100%
+- Tabular nums for consistent digit widths
+- Letter spacing: -1 for tighter look
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx` - Added `currentTimeDisplay` style
+
+---
+
+## [0.6.129] - 2026-01-07
+
+### Changed - Player Layout: Swapped Chapter Name and Time
+
+Swapped the positions of the chapter name and current time on the CDPlayerScreen.
+
+**New Layout:**
+- **Above progress bar**: Current time displayed prominently (was chapter name)
+- **On progress bar (left)**: Chapter name - tappable to open chapters sheet (was current time)
+- **On progress bar (right)**: Duration/remaining time (unchanged)
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx`
+  - Swapped chapter title and time positions
+  - Added `onChapterPress` prop to SimpleProgressBar interface
+  - Made chapter label tappable to open chapters sheet
+
+---
+
+## [0.6.128] - 2026-01-07
+
+### Fixed - BookDetailScreen Gradients
+
+Updated BookDetailScreen to use theme-aware gradient colors from `colors.ts` instead of hardcoded values.
+
+**Changes:**
+- Top gradient: Now uses `themeColors.player.gradientStart/Mid/End` (was hardcoded dark rgba)
+- Bottom gradient: Fixed to use correct nested path `themeColors.player.gradientStart/Mid` and `themeColors.background.primary`
+
+**Result:**
+- Light mode: White gradient fades over cover image
+- Dark mode: Black gradient fades over cover image
+
+**Files Modified:**
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Updated both gradient LinearGradients
+
+---
+
+## [0.6.127] - 2026-01-07
+
+### Fixed - Text Color on Accent Backgrounds
+
+Fixed text color on accent-colored backgrounds (pills, buttons) to use theme-aware `textOnAccent` color instead of hardcoded black. This ensures proper contrast when using the Electric Blue or other accent themes.
+
+**Problem:** When accent color is used as a background (e.g., selected pills, primary buttons), text was hardcoded to black (`#000`), which is unreadable on dark accent colors like Electric Blue.
+
+**Solution:** Added `textOnAccent` to color helpers and updated components to use dynamic text colors:
+- Red/Gold theme: White text on accent
+- Electric Blue theme: White text on blue
+- Lime theme: Black text on lime (high contrast)
+
+**Files Modified:**
+- `src/shared/components/Button.tsx` - Primary variant now uses `textOnAccent`
+- `src/features/profile/screens/PlaybackSettingsScreen.tsx` - Smart rewind pills
+- `src/features/profile/screens/JoystickSeekSettingsScreen.tsx` - Preset curve pills
+
+---
+
+## [0.6.126] - 2026-01-07
+
+### Improved - Player Header Layout
+
+Moved bookmark button into the header row next to settings, with drop shadows on all header icons for better visibility over cover art.
+
+**Layout Change:**
+- Before: Download (left), Close (center), Settings (right), Bookmark (absolute positioned at bottom-right of cover)
+- After: Download (left), Close (center), Bookmark + Settings (right, grouped)
+
+**Visual Enhancement:**
+- Added drop shadows to all header icons (Download, Close, Bookmark, Settings)
+- Shadows improve icon visibility when overlaid on light/dark cover images
+
+**Files Modified:**
+- `src/features/player/screens/CDPlayerScreen.tsx` - Header layout and shadow styles
+
+---
+
+## [0.6.125] - 2026-01-07
+
+### Fixed - Silent Player Priming
+
+Fixed audio playing briefly when loading a book without autoPlay (e.g., tapping hero cover).
+
+**Problem:** When loading a book with `autoPlay: false`, expo-audio requires a "priming" workaround where we briefly play then pause to prevent the player from getting stuck in perpetual buffering. This caused audible playback for ~500ms.
+
+**Solution:** Mute the player during priming (`volume = 0`) and restore volume after pausing.
+
+**Files Modified:**
+- `src/features/player/services/audioService.ts` - Silent priming in `loadAudio()` and `loadTracks()`
+
+---
+
+## [0.6.124] - 2026-01-07
+
+### Fixed - Chapter Titles and Playback Transitions
+
+**Chapter Title Normalization:**
+- Applied chapter title cleaning to player chapters (was only applied to display, not playback)
+- Numeric prefixes like "004 - Prologue" are now properly cleaned to show "Prologue"
+- Both `mapSessionChapters()` and `extractChaptersFromBook()` now use `getCleanChapterName()`
+
+**Track Transition Playback:**
+- Added `verifyPlaybackAfterTransition()` to ensure playback actually starts after track changes
+- Prevents audio stopping silently when transitioning between audio files/chapters
+- Includes automatic retry logic (up to 2 retries with increasing delays)
+- Emits status callback if playback fails to recover so UI shows correct state
+
+**Files Modified:**
+- `src/features/player/utils/bookLoadingHelpers.ts` - Added chapter normalization
+- `src/features/player/services/audioService.ts` - Added playback verification after track transitions
+
+---
+
+## [0.6.123] - 2026-01-07
+
+### Fixed - CDPlayerScreen Light/Dark Theme Support
+
+Fixed CDPlayerScreen to properly support light and dark modes with correct gradient and text colors.
+
+**Theme Changes:**
+- Added gradient color properties (`gradientStart`, `gradientMid`, `gradientEnd`) to both light and dark mode player sections in colors.ts
+- Light mode: white gradients + dark text
+- Dark mode: black gradients + light text
+- All colors now derived from the shared theme system
+
+**Icon Improvements:**
+- Header icons (download, close, settings) now use `themeColors.iconPrimary` for proper theme support
+- Bookmark icon updated to use theme colors
+- Removed circle backgrounds from bookmark and settings icons for cleaner look
+- Redesigned header layout with centered close arrow, download status on left, settings on right
+
+**Widget Fixes:**
+- Fixed bottom-left corner not being rounded (changed `overflow: 'visible'` to `'hidden'`)
+- Restored widget border (`widgetBorder`) visibility
+- Set widget background to full black (`#000000`)
+
+**Files Modified:**
+- `src/shared/theme/colors.ts` - Added gradient colors to light/dark player sections
+- `src/features/player/utils/playerTheme.ts` - Added gradient colors to PlayerColors interface
+- `src/features/player/screens/CDPlayerScreen.tsx` - Updated gradients and icons to use theme colors
+- `src/navigation/components/GlobalMiniPlayer.tsx` - Timeline positioning adjustment
+
+---
+
 ## [0.6.121] - 2026-01-04
 
 ### Fixed - Android Auto Player Controls

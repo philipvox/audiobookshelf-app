@@ -13,37 +13,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
 import { useShallow } from 'zustand/react/shallow';
-import {
-  colors,
-  spacing,
-  sizes,
-} from '@/shared/theme';
-import { useThemeStore } from '@/shared/theme/themeStore';
+import { spacing } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { lightColors, darkColors } from '@/shared/theme/colors';
 
 // =============================================================================
-// THEME COLORS
+// THEME COLORS - Uses theme tokens from colors.ts
 // =============================================================================
-
-const navColors = {
-  light: {
-    background: '#FFFFFF',
-    iconActive: '#000000',
-    iconInactive: 'rgba(0,0,0,0.4)',
-    labelActive: '#000000',
-    labelInactive: 'rgba(0,0,0,0.4)',
-  },
-  dark: {
-    background: '#000000',
-    iconActive: '#FFFFFF',
-    iconInactive: 'rgba(255,255,255,0.5)',
-    labelActive: '#FFFFFF',
-    labelInactive: 'rgba(255,255,255,0.5)',
-  },
-};
 
 function useNavColors() {
-  const mode = useThemeStore((state) => state.mode);
-  return navColors[mode];
+  const isDark = useIsDarkMode();
+  const colors = isDark ? darkColors : lightColors;
+
+  return {
+    background: colors.nav.background,
+    iconActive: colors.nav.active,
+    iconInactive: colors.nav.inactive,
+    labelActive: colors.nav.active,
+    labelInactive: colors.nav.inactive,
+  };
 }
 
 // Design constants
@@ -52,11 +40,12 @@ const ICON_SIZE = 20; // Slightly smaller for cleaner look
 // Using 52 as a balanced cross-platform value
 const BAR_HEIGHT = 52;
 const BAR_BOTTOM_PADDING = 8; // Minimal extra padding, safe area handles the rest
+// Note: Icon color is provided by useNavColors() hook - see themeColors.iconInactive
 
 // Home icon (house with door) - from design
 const HomeIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
+  color = darkColors.nav.inactive, // Default for SSR/initial render
 }) => (
   <Svg width={size} height={size} viewBox="0 0 13 15" fill="none">
     <Path
@@ -71,7 +60,7 @@ const HomeIcon: React.FC<{ size?: number; color?: string }> = ({
 // Search icon (magnifying glass) - from design
 const SearchIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
+  color = darkColors.nav.inactive,
 }) => (
   <Svg width={size} height={size} viewBox="0 0 14 14" fill="none">
     <Path
@@ -86,7 +75,7 @@ const SearchIcon: React.FC<{ size?: number; color?: string }> = ({
 // Browse icon (compass) - from design
 const BrowseIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
+  color = darkColors.nav.inactive,
 }) => (
   <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
     <Path
@@ -107,7 +96,7 @@ const BrowseIcon: React.FC<{ size?: number; color?: string }> = ({
 // Profile icon (person outline) - from design
 const ProfileIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
+  color = darkColors.nav.inactive,
 }) => (
   <Svg width={size} height={size} viewBox="0 0 14 15" fill="none">
     <Path
@@ -119,23 +108,19 @@ const ProfileIcon: React.FC<{ size?: number; color?: string }> = ({
   </Svg>
 );
 
-// Library icon (books/bookshelf) - stack of books
+// Library icon (open book)
 const LibraryIcon: React.FC<{ size?: number; color?: string }> = ({
   size = ICON_SIZE,
-  color = ICON_COLOR_INACTIVE
+  color = darkColors.nav.inactive,
 }) => (
-  <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
-      d="M2 1.5V14.5M6 1.5V14.5M10 1.5V14.5M14 1.5V14.5"
+      d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2V3zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7V3z"
       stroke={color}
       strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <Rect x="0.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
-    <Rect x="4.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
-    <Rect x="8.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
-    <Rect x="12.5" y="1" width="3" height="13.5" rx="0.5" stroke={color} strokeWidth={0.8} />
   </Svg>
 );
 
@@ -315,7 +300,7 @@ const styles = StyleSheet.create({
     minHeight: BAR_HEIGHT,
     paddingHorizontal: spacing.sm,
     paddingTop: 0,
-    backgroundColor: '#FFFFFF',
+    // backgroundColor set dynamically via themeColors.background
   },
   tab: {
     flex: 1,
@@ -329,11 +314,8 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 10,
     fontWeight: '500',
-    color: 'rgba(0,0,0,0.4)',
+    // color set dynamically via themeColors.labelInactive
     letterSpacing: 0.2,
   },
-  labelActive: {
-    color: '#000',
-    fontWeight: '600',
-  },
+  // labelActive color set dynamically via themeColors.labelActive
 });

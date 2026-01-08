@@ -18,13 +18,14 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
-  colors,
   spacing,
   radius,
   typography,
   elevation,
   scale,
+  useThemeColors,
 } from '@/shared/theme';
+import { useColors } from '@/shared/theme/themeStore';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type ButtonSize = 'small' | 'medium' | 'large';
@@ -65,6 +66,10 @@ export function Button({
   noHaptics = false,
   accessibilityLabel,
 }: ButtonProps) {
+  const themeColors = useThemeColors();
+  const colors = useColors();
+  const accentColor = colors.accent.primary;
+  const textOnAccent = colors.accent.textOnAccent;
   const isDisabled = disabled || loading;
 
   const handlePress = () => {
@@ -74,17 +79,61 @@ export function Button({
     onPress();
   };
 
-  const textColor = variant === 'primary' || variant === 'danger'
-    ? colors.backgroundPrimary
-    : variant === 'outline'
-      ? colors.accent
-      : colors.textPrimary;
+  // Get variant-specific colors
+  const getVariantStyles = () => {
+    switch (variant) {
+      case 'primary':
+        return {
+          backgroundColor: accentColor,
+          borderColor: 'transparent',
+          textColor: textOnAccent,
+        };
+      case 'secondary':
+        return {
+          backgroundColor: themeColors.surfaceElevated,
+          borderColor: themeColors.border,
+          textColor: themeColors.text,
+        };
+      case 'outline':
+        return {
+          backgroundColor: 'transparent',
+          borderColor: accentColor,
+          textColor: accentColor,
+        };
+      case 'ghost':
+        return {
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          textColor: accentColor,
+        };
+      case 'danger':
+        return {
+          backgroundColor: themeColors.error,
+          borderColor: 'transparent',
+          textColor: '#FFFFFF',
+        };
+      default:
+        return {
+          backgroundColor: accentColor,
+          borderColor: 'transparent',
+          textColor: textOnAccent,
+        };
+    }
+  };
+
+  const variantStyles = getVariantStyles();
+  const loaderColor = variant === 'primary' || variant === 'danger' ? textOnAccent : accentColor;
 
   return (
     <TouchableOpacity
       style={[
         styles.base,
-        styles[variant],
+        {
+          backgroundColor: variantStyles.backgroundColor,
+          borderColor: variantStyles.borderColor,
+          borderWidth: variant === 'secondary' || variant === 'outline' ? 1 : 0,
+        },
+        (variant === 'primary' || variant === 'danger') && elevation.small,
         styles[`${size}Size`],
         fullWidth && styles.fullWidth,
         isDisabled && styles.disabled,
@@ -99,7 +148,7 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' || variant === 'danger' ? colors.backgroundPrimary : colors.accent}
+          color={loaderColor}
           size="small"
         />
       ) : (
@@ -108,8 +157,8 @@ export function Button({
           <Text
             style={[
               styles.text,
-              styles[`${variant}Text`],
               styles[`${size}Text`],
+              { color: variantStyles.textColor },
               isDisabled && styles.disabledText,
             ]}
           >
@@ -128,7 +177,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.button,
-    borderWidth: 0,
   },
 
   // Content container for icon + text layout
@@ -144,76 +192,28 @@ const styles = StyleSheet.create({
     marginLeft: scale(8),
   },
 
-  // Variants
-  primary: {
-    backgroundColor: colors.accent,
-    ...elevation.small,
-  },
-  secondary: {
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-  },
-  danger: {
-    backgroundColor: colors.error,
-    ...elevation.small,
-  },
-
   // Sizes
   smallSize: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    minHeight: 36,
+    minHeight: scale(36),
   },
   mediumSize: {
     paddingHorizontal: spacing.xxl,
     paddingVertical: spacing.md,
-    minHeight: 44,
+    minHeight: scale(44),
   },
   largeSize: {
     paddingHorizontal: spacing['3xl'],
     paddingVertical: spacing.lg,
-    minHeight: 52,
+    minHeight: scale(52),
   },
 
   // Text base
   text: {
+    ...typography.labelLarge,
+    fontWeight: '600',
     textAlign: 'center',
-  },
-
-  // Text variants
-  primaryText: {
-    ...typography.labelLarge,
-    fontWeight: '600',
-    color: colors.backgroundPrimary,
-  },
-  secondaryText: {
-    ...typography.labelLarge,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  outlineText: {
-    ...typography.labelLarge,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  ghostText: {
-    ...typography.labelLarge,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  dangerText: {
-    ...typography.labelLarge,
-    fontWeight: '600',
-    color: colors.textPrimary,
   },
 
   // Text sizes

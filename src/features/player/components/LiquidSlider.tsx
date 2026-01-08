@@ -18,6 +18,7 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
+import { useThemeColors } from '@/shared/theme';
 
 // SVG with drop shadow filter included
 const THUMB_SVG = `<svg viewBox="-20 -20 294 236" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -121,6 +122,7 @@ interface LiquidSliderProps {
   onValueChange: (value: number) => void;
   onSlidingStart?: () => void;
   onSlidingComplete?: (value: number) => void;
+  /** @deprecated Use theme instead. This prop is ignored. */
   isDark?: boolean;
 }
 
@@ -132,8 +134,8 @@ export function LiquidSlider({
   onValueChange,
   onSlidingStart,
   onSlidingComplete,
-  isDark = false,
 }: LiquidSliderProps) {
+  const themeColors = useThemeColors();
   const trackWidth = useSharedValue(300);
   const translateX = useSharedValue(0);
   const startX = useSharedValue(0);
@@ -237,8 +239,9 @@ export function LiquidSlider({
     };
   });
 
-  const trackLeftColor = isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)';
-  const trackRightColor = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)';
+  // Use theme colors for track - filled portion is text color, unfilled is muted
+  const trackLeftColor = themeColors.text;
+  const trackRightColor = `${themeColors.text}40`;
 
   return (
     <View style={styles.container} onLayout={handleLayout}>

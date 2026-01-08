@@ -18,20 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { useLibraryCache, getGenresByPopularity } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
-import { colors, spacing, radius } from '@/shared/theme';
-
-// Create theme compat object for styles that use old theme structure
-const theme = {
-  colors: {
-    text: { primary: colors.textPrimary, secondary: colors.textSecondary, tertiary: colors.textTertiary },
-    background: { primary: colors.backgroundPrimary, secondary: colors.backgroundSecondary },
-    border: { light: colors.borderLight },
-    neutral: { 200: colors.progressTrack },
-    primary: { 50: colors.accentSubtle, 500: colors.accent, 700: colors.accentDark },
-  },
-  spacing: { 2: spacing.xs, 3: spacing.sm, 4: spacing.md, 5: spacing.lg, 6: spacing.xl, 8: spacing.xxl },
-  radius: { medium: radius.md },
-};
+import { spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
 
 interface Question {
   id: string;
@@ -66,6 +53,7 @@ const SERIES_OPTIONS = [
 ];
 
 export function PreferencesOnboardingScreen() {
+  const themeColors = useThemeColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
@@ -207,45 +195,46 @@ export function PreferencesOnboardingScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Icon name="ArrowLeft" size={24} color={theme.colors.text.primary} />
+          <Icon name="ArrowLeft" size={24} color={themeColors.text} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSkip}>
-          <Text style={styles.skipText}>Skip</Text>
+          <Text style={[styles.skipText, { color: themeColors.textSecondary }]}>Skip</Text>
         </TouchableOpacity>
       </View>
 
       {/* Progress bar */}
       <View style={styles.progressContainer}>
-        <View style={styles.progressTrack}>
-          <Animated.View 
+        <View style={[styles.progressTrack, { backgroundColor: themeColors.border }]}>
+          <Animated.View
             style={[
               styles.progressFill,
-              { 
+              {
+                backgroundColor: accentColors.gold,
                 width: progressAnim.interpolate({
                   inputRange: [0, 1],
                   outputRange: ['0%', '100%'],
                 }),
               },
-            ]} 
+            ]}
           />
         </View>
-        <Text style={styles.stepText}>{currentStep + 1} of {questions.length}</Text>
+        <Text style={[styles.stepText, { color: themeColors.textTertiary }]}>{currentStep + 1} of {questions.length}</Text>
       </View>
 
-      <ScrollView 
+      <ScrollView
         ref={scrollRef}
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
         {/* Question */}
-        <Text style={styles.question}>{currentQuestion.question}</Text>
+        <Text style={[styles.question, { color: themeColors.text }]}>{currentQuestion.question}</Text>
         {currentQuestion.subtitle && (
-          <Text style={styles.subtitle}>{currentQuestion.subtitle}</Text>
+          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{currentQuestion.subtitle}</Text>
         )}
 
         {/* Options */}
@@ -255,18 +244,26 @@ export function PreferencesOnboardingScreen() {
             return (
               <TouchableOpacity
                 key={option.value}
-                style={[styles.option, selected && styles.optionSelected]}
+                style={[
+                  styles.option,
+                  { backgroundColor: themeColors.backgroundSecondary },
+                  selected && [styles.optionSelected, { borderColor: accentColors.gold, backgroundColor: 'rgba(243, 182, 12, 0.1)' }]
+                ]}
                 onPress={() => handleOptionPress(option.value)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
+                <Text style={[
+                  styles.optionLabel,
+                  { color: themeColors.text },
+                  selected && { color: accentColors.gold }
+                ]}>
                   {option.label}
                 </Text>
                 {selected && (
                   <Icon
                     name="CircleCheck"
                     size={20}
-                    color={theme.colors.primary[500]}
+                    color={accentColors.gold}
                   />
                 )}
               </TouchableOpacity>
@@ -276,7 +273,7 @@ export function PreferencesOnboardingScreen() {
       </ScrollView>
 
       {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16, borderTopColor: themeColors.border }]}>
         <TouchableOpacity
           style={[styles.nextButton, !canProceed() && styles.nextButtonDisabled]}
           onPress={handleNext}
@@ -285,10 +282,10 @@ export function PreferencesOnboardingScreen() {
           <Text style={styles.nextButtonText}>
             {isLastStep ? 'Get Recommendations' : 'Continue'}
           </Text>
-          <Icon 
+          <Icon
             name={isLastStep ? "Sparkles" : "ArrowRight"}
             size={20}
-            color="#FFFFFF" 
+            color="#000"
           />
         </TouchableOpacity>
       </View>
@@ -299,14 +296,14 @@ export function PreferencesOnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
+    // backgroundColor set via themeColors in JSX
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 40,
@@ -316,87 +313,86 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 15,
-    color: theme.colors.text.secondary,
+    // color set via themeColors in JSX
   },
   progressContainer: {
-    paddingHorizontal: theme.spacing[5],
-    marginBottom: theme.spacing[4],
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
   progressTrack: {
     height: 6,
-    backgroundColor: theme.colors.neutral[200],
+    // backgroundColor set via themeColors in JSX
     borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: theme.colors.primary[500],
+    // backgroundColor set via accentColors in JSX
     borderRadius: 3,
   },
   stepText: {
     fontSize: 12,
-    color: theme.colors.text.tertiary,
-    marginTop: theme.spacing[2],
+    // color set via themeColors in JSX
+    marginTop: spacing.xs,
     textAlign: 'right',
   },
   content: {
     flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: theme.spacing[5],
-    paddingBottom: theme.spacing[8],
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   question: {
     fontSize: 26,
     fontWeight: '700',
-    color: theme.colors.text.primary,
+    // color set via themeColors in JSX
     lineHeight: 34,
-    marginBottom: theme.spacing[2],
+    marginBottom: spacing.xs,
   },
   subtitle: {
     fontSize: 15,
-    color: theme.colors.text.secondary,
-    marginBottom: theme.spacing[6],
+    // color set via themeColors in JSX
+    marginBottom: spacing.xl,
   },
   optionsContainer: {
-    gap: theme.spacing[3],
+    gap: spacing.sm,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.radius.medium,
-    padding: theme.spacing[4],
+    // backgroundColor set via themeColors in JSX
+    borderRadius: radius.md,
+    padding: spacing.md,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   optionSelected: {
-    borderColor: theme.colors.primary[500],
-    backgroundColor: theme.colors.primary[50],
+    // borderColor and backgroundColor set via themeColors in JSX
   },
   optionLabel: {
     flex: 1,
     fontSize: 16,
-    color: theme.colors.text.primary,
+    // color set via themeColors in JSX
     fontWeight: '500',
   },
   optionLabelSelected: {
-    color: theme.colors.primary[700],
+    // color set via accentColors in JSX
   },
   footer: {
-    paddingHorizontal: theme.spacing[5],
-    paddingTop: theme.spacing[3],
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border.light,
+    // borderTopColor set via themeColors in JSX
   },
   nextButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.primary[500],
-    borderRadius: theme.radius.medium,
-    paddingVertical: theme.spacing[4],
-    gap: theme.spacing[2],
+    backgroundColor: accentColors.gold,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
   },
   nextButtonDisabled: {
     opacity: 0.5,
@@ -404,6 +400,6 @@ const styles = StyleSheet.create({
   nextButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000',
   },
 });

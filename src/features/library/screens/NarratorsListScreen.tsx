@@ -27,10 +27,7 @@ import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
 import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
-
-const ACCENT = accentColors.red;
+import { useThemeColors, useColors } from '@/shared/theme/themeStore';
 
 type SortType = 'name' | 'bookCount' | 'recent';
 
@@ -60,6 +57,8 @@ export function NarratorsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const themeColors = useThemeColors();
+  const colors = useColors();
+  const accent = colors.accent.primary;
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortType>('name');
@@ -292,7 +291,7 @@ export function NarratorsListScreen() {
           {(['name', 'bookCount', 'recent'] as SortType[]).map(type => (
             <TouchableOpacity
               key={type}
-              style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === type && styles.sortButtonActive]}
+              style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === type && { backgroundColor: accent }]}
               onPress={() => setSortBy(type)}
             >
               <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === type && styles.sortButtonTextActive]}>
@@ -316,7 +315,7 @@ export function NarratorsListScreen() {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={ACCENT}
+              tintColor={accent}
             />
           }
           ListHeaderComponent={
@@ -336,7 +335,7 @@ export function NarratorsListScreen() {
           renderSectionHeader={({ section }) =>
             section.title ? (
               <View style={[styles.letterHeader, { backgroundColor: themeColors.background }]}>
-                <Text style={styles.letterText}>{section.title}</Text>
+                <Text style={[styles.letterText, { color: accent }]}>{section.title}</Text>
               </View>
             ) : null
           }
@@ -429,7 +428,7 @@ const styles = StyleSheet.create({
     // backgroundColor set via themeColors.border in JSX
   },
   sortButtonActive: {
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accent in JSX
   },
   sortButtonText: {
     fontSize: 12,
@@ -496,7 +495,7 @@ const styles = StyleSheet.create({
   letterText: {
     fontSize: 14,
     fontWeight: '700',
-    color: ACCENT,
+    // color set dynamically via accent in JSX
   },
   // Narrator row
   narratorRow: {

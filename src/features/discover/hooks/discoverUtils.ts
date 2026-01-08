@@ -70,10 +70,10 @@ export function getMoodCategoryTitle(
 
   switch (baseTitle) {
     case 'Not Started':
-      if (worldLabel && moodAdjective) return `${moodAdjective} ${worldLabel} Picks`;
-      if (moodAdjective) return `${moodAdjective} Picks for You`;
-      if (worldLabel) return `${worldLabel} Awaiting You`;
-      return 'Matching Your Mood';
+      if (worldLabel && moodAdjective) return `${moodAdjective} ${worldLabel} Adventures`;
+      if (moodAdjective) return `${moodAdjective} Adventures Await`;
+      if (worldLabel) return `${worldLabel} Adventures`;
+      return 'Next Adventures';
 
     case 'New This Week':
       if (moodAdjective) return `New ${moodAdjective} Arrivals`;

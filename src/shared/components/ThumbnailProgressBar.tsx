@@ -14,7 +14,7 @@
 
 import React, { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { colors, scale } from '@/shared/theme';
+import { scale, accentColors } from '@/shared/theme';
 
 interface ThumbnailProgressBarProps {
   /** Progress value from 0 to 1 */
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
   },
   fill: {
     height: '100%',
-    backgroundColor: colors.accent,
+    backgroundColor: accentColors.gold,
   },
 });
 

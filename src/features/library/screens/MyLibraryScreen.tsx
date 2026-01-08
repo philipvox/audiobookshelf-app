@@ -41,14 +41,14 @@ import {
 import { useLibraryData } from '../hooks/useLibraryData';
 import { TabType, EnrichedBook } from '../types';
 
-// Compass/browse icon
-const BrowseIcon = ({ size = 24, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+// Compass icon for browse/discover
+const CompassIcon = ({ size = 24, color = '#FFFFFF' }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Circle cx={12} cy={12} r={10} stroke={color} strokeWidth={2} />
+    <Circle cx={12} cy={12} r={10} stroke={color} strokeWidth={1.5} />
     <Path
-      d="M14.31 8l-5.31 2.16L12 15.31l5.31-2.16L14.31 8z"
+      d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"
       stroke={color}
-      strokeWidth={2}
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
     />
@@ -198,7 +198,7 @@ export function MyLibraryScreen() {
       case 'in-progress':
         return (
           <InProgressTab
-            books={enrichedBooks}
+            books={serverInProgressBooks}
             onBookPress={handleBookPress}
             onBookPlay={handlePlayBook}
             onResumeBook={handleResumeBook}
@@ -298,7 +298,7 @@ export function MyLibraryScreen() {
             style={[styles.browseButton, { backgroundColor: themeColors.backgroundSecondary }]}
             onPress={handleBrowse}
           >
-            <BrowseIcon size={scale(20)} color={themeColors.text} />
+            <CompassIcon size={scale(18)} color={themeColors.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -350,31 +350,31 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: scale(16),
-    paddingBottom: scale(12),
+    paddingBottom: scale(4),
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: scale(12),
+    borderRadius: scale(10),
     paddingHorizontal: scale(12),
-    minHeight: scale(44),
+    minHeight: scale(40),
     gap: scale(8),
   },
   searchInput: {
     flex: 1,
-    fontSize: scale(15),
+    fontSize: scale(14),
     paddingVertical: scale(4),
   },
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: scale(12),
+    marginTop: scale(6),
   },
   browseButton: {
-    width: scale(44),
-    height: scale(44),
-    borderRadius: scale(22),
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
     alignItems: 'center',
     justifyContent: 'center',
   },

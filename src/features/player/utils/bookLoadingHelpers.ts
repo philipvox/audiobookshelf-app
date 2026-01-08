@@ -7,6 +7,7 @@
 
 import { LibraryItem } from '@/core/types';
 import { SessionChapter } from '../services/sessionService';
+import { getCleanChapterName } from '@/core/services/chapterNormalizer';
 
 // =============================================================================
 // TYPES
@@ -24,19 +25,19 @@ export interface Chapter {
 // =============================================================================
 
 /**
- * Map session chapters to internal Chapter format
+ * Map session chapters to internal Chapter format with normalized titles
  */
 export function mapSessionChapters(sessionChapters: SessionChapter[]): Chapter[] {
   return sessionChapters.map((ch, i) => ({
     id: i,
     start: ch.start,
     end: ch.end,
-    title: ch.title || `Chapter ${i + 1}`,
+    title: ch.title ? getCleanChapterName(ch.title) : `Chapter ${i + 1}`,
   }));
 }
 
 /**
- * Extract chapters from book metadata
+ * Extract chapters from book metadata with normalized titles
  */
 export function extractChaptersFromBook(book: LibraryItem): Chapter[] {
   const bookChapters = book.media?.chapters;
@@ -46,7 +47,7 @@ export function extractChaptersFromBook(book: LibraryItem): Chapter[] {
     id: i,
     start: ch.start || 0,
     end: ch.end || bookChapters[i + 1]?.start || book.media?.duration || 0,
-    title: ch.title || `Chapter ${i + 1}`,
+    title: ch.title ? getCleanChapterName(ch.title) : `Chapter ${i + 1}`,
   }));
 }
 

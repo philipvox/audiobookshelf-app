@@ -5,7 +5,7 @@
  * Provides accelerating seek speed the longer the button is held.
  */
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { usePlayerStore } from '../stores/playerStore';
 import { audioService } from '../services/audioService';
 import { haptics } from '@/core/native/haptics';
@@ -16,12 +16,19 @@ export interface UseContinuousSeekingOptions {
   handleSkipForward: () => void;
 }
 
+export interface SeekingState {
+  isActive: boolean;
+  direction: 'back' | 'forward' | null;
+  amount: number; // Current seek amount per tick (or skip interval for tap)
+}
+
 export interface UseContinuousSeekingReturn {
   handleRewindPressIn: () => void;
   handleFastForwardPressIn: () => void;
   handleSeekPressOut: () => void;
   handleSkipBackWithCheck: () => void;
   handleSkipForwardWithCheck: () => void;
+  seekingState: SeekingState;
 }
 
 /**
@@ -46,6 +53,17 @@ export function useContinuousSeeking({
   const seekDirectionRef = useRef<'back' | 'forward' | null>(null);
   const didStartSeekingRef = useRef<boolean>(false);
 
+  // Get skip intervals from store
+  const skipBackInterval = usePlayerStore((s) => s.skipBackInterval ?? 15);
+  const skipForwardInterval = usePlayerStore((s) => s.skipForwardInterval ?? 30);
+
+  // Seeking state for UI display
+  const [seekingState, setSeekingState] = useState<SeekingState>({
+    isActive: false,
+    direction: null,
+    amount: 0,
+  });
+
   // Calculate seek amount based on how long button has been held
   const getSeekAmount = useCallback(() => {
     const holdDuration = Date.now() - seekStartTimeRef.current;
@@ -66,10 +84,17 @@ export function useContinuousSeeking({
     // Prevent SmartRewind from activating when we release
     audioService.setScrubbing(true);
 
+    // Set initial seeking state
+    const initialAmount = 2; // First tick amount
+    setSeekingState({ isActive: true, direction, amount: initialAmount });
+
     // Continue seeking every 100ms
     seekIntervalRef.current = setInterval(() => {
       const currentState = usePlayerStore.getState();
       const seekAmount = getSeekAmount();
+
+      // Update seeking state with current amount
+      setSeekingState({ isActive: true, direction, amount: seekAmount });
 
       let newPosition: number;
       if (direction === 'back') {
@@ -92,21 +117,27 @@ export function useContinuousSeeking({
     didStartSeekingRef.current = false;
     seekDirectionRef.current = 'back';
 
+    // Show skip preview immediately
+    setSeekingState({ isActive: true, direction: 'back', amount: skipBackInterval });
+
     // Start continuous seeking after 300ms hold
     seekDelayRef.current = setTimeout(() => {
       beginContinuousSeeking('back');
     }, 300);
-  }, [beginContinuousSeeking]);
+  }, [beginContinuousSeeking, skipBackInterval]);
 
   const handleFastForwardPressIn = useCallback(() => {
     didStartSeekingRef.current = false;
     seekDirectionRef.current = 'forward';
 
+    // Show skip preview immediately
+    setSeekingState({ isActive: true, direction: 'forward', amount: skipForwardInterval });
+
     // Start continuous seeking after 300ms hold
     seekDelayRef.current = setTimeout(() => {
       beginContinuousSeeking('forward');
     }, 300);
-  }, [beginContinuousSeeking]);
+  }, [beginContinuousSeeking, skipForwardInterval]);
 
   // Handle press out - stop seeking
   const handleSeekPressOut = useCallback(() => {
@@ -125,6 +156,9 @@ export function useContinuousSeeking({
     }
 
     seekDirectionRef.current = null;
+
+    // Clear seeking state
+    setSeekingState({ isActive: false, direction: null, amount: 0 });
   }, []);
 
   // Modified skip handlers - only skip if we didn't start continuous seeking
@@ -152,5 +186,6 @@ export function useContinuousSeeking({
     handleSeekPressOut,
     handleSkipBackWithCheck,
     handleSkipForwardWithCheck,
+    seekingState,
   };
 }

@@ -34,16 +34,14 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, typography, fontWeight, spacing } from '@/shared/theme';
+import { scale, typography, fontWeight, spacing } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
-
-const ACCENT = accentColors.gold;
 
 // Helper to create theme-aware colors from nested ThemeColors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -116,7 +114,7 @@ function SettingsRow({
           <Switch
             value={switchValue}
             onValueChange={onSwitchChange}
-            trackColor={{ false: colors.border, true: ACCENT }}
+            trackColor={{ false: colors.border, true: colors.accent }}
             thumbColor="#fff"
           />
         ) : null}
@@ -147,7 +145,7 @@ function SectionHeader({ title, colors }: { title: string; colors: ReturnType<ty
 function StorageMeter({ used, label, colors }: { used: number; label: string; colors: ReturnType<typeof createColors> }) {
   return (
     <View style={styles.storageMeter}>
-      <View style={styles.storageIcon}>
+      <View style={[styles.storageIcon, { backgroundColor: `${colors.accent}20` }]}>
         <Folder size={scale(24)} color={colors.accent} strokeWidth={2} />
       </View>
       <View style={styles.storageInfo}>
@@ -392,7 +390,7 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(12),
-    backgroundColor: 'rgba(193,244,12,0.15)', // Intentional: accent highlight
+    // backgroundColor set dynamically via colors.accent in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },

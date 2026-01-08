@@ -7,9 +7,10 @@ import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { AuthorInfo } from '@/features/author/services/authorAdapter';
-import { colors, spacing } from '@/shared/theme';
+import { spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 export function AuthorsListContent() {
+  const themeColors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { authors, authorCount, isLoading, error, refetch } = useAuthors(
@@ -36,7 +37,7 @@ export function AuthorsListContent() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -62,7 +63,7 @@ export function AuthorsListContent() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refetch}
-            tintColor={colors.accent}
+            tintColor={accentColors.gold}
           />
         }
         ListEmptyComponent={
@@ -80,7 +81,7 @@ export function AuthorsListContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   searchContainer: {
     paddingHorizontal: spacing.lg,

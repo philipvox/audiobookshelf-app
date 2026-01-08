@@ -54,6 +54,9 @@ class AutomotiveService {
   // Android Auto event subscription
   private androidAutoSubscription: EmitterSubscription | null = null;
 
+  // Player state subscription for Android Auto sync
+  private playerStoreUnsubscribe: (() => void) | null = null;
+
   /**
    * Initialize the automotive service
    */
@@ -203,6 +206,9 @@ class AutomotiveService {
       // Initial sync of browse data to JSON file
       await this.syncAndroidAutoBrowseData();
 
+      // Subscribe to player state changes for MediaSession sync
+      await this.setupPlayerStateSync();
+
       log('Android Auto initialized successfully');
 
     } catch (error) {
@@ -229,7 +235,7 @@ class AutomotiveService {
       case 'play':
         {
           const { usePlayerStore } = await import('@/features/player/stores/playerStore');
-          await usePlayerStore.getState().resume();
+          await usePlayerStore.getState().play();
           log('Play command executed');
         }
         break;
@@ -253,7 +259,7 @@ class AutomotiveService {
       case 'skipPrevious':
         {
           const { usePlayerStore } = await import('@/features/player/stores/playerStore');
-          await usePlayerStore.getState().previousChapter();
+          await usePlayerStore.getState().prevChapter();
           log('Skip previous (previous chapter) executed');
         }
         break;
@@ -286,8 +292,145 @@ class AutomotiveService {
         }
         break;
 
+      case 'search':
+        if (event.param) {
+          await this.handleSearch(event.param);
+        }
+        break;
+
       default:
         log('Unknown Android Auto command:', event.command);
+    }
+  }
+
+  /**
+   * Handle voice search from Android Auto
+   * Searches library for matching book and plays it
+   */
+  private async handleSearch(query: string): Promise<void> {
+    log('Handling search:', query);
+
+    try {
+      const { useLibraryCache } = await import('@/core/cache/libraryCache');
+      const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+
+      const libraryItems = useLibraryCache.getState().items;
+      const queryLower = query.toLowerCase().trim();
+
+      // Search for matching book by title or author
+      const match = libraryItems.find(item => {
+        const metadata = item.media?.metadata as any;
+        const title = (metadata?.title || '').toLowerCase();
+        const author = (metadata?.authorName || metadata?.authors?.[0]?.name || '').toLowerCase();
+        const series = (metadata?.seriesName || '').toLowerCase();
+
+        return (
+          title.includes(queryLower) ||
+          author.includes(queryLower) ||
+          series.includes(queryLower)
+        );
+      });
+
+      if (match) {
+        log('Found match for search:', match.media?.metadata?.title);
+        await usePlayerStore.getState().loadBook(match, {
+          autoPlay: true,
+          showPlayer: false,
+        });
+      } else {
+        log('No match found for search query:', query);
+        // Could show a toast or notification here
+      }
+    } catch (error) {
+      log('Search failed:', error);
+    }
+  }
+
+  /**
+   * Set up player state synchronization for Android Auto MediaSession
+   * This ensures the Now Playing screen shows correct info
+   */
+  private async setupPlayerStateSync(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      const { usePlayerStore } = await import('@/features/player/stores/playerStore');
+      const { AndroidAutoModule } = NativeModules;
+
+      if (!AndroidAutoModule) {
+        log('AndroidAutoModule not available for player sync');
+        return;
+      }
+
+      // Unsubscribe from previous listener if any
+      if (this.playerStoreUnsubscribe) {
+        this.playerStoreUnsubscribe();
+      }
+
+      // Track previous values to detect changes
+      let prevIsPlaying = false;
+      let prevPosition = 0;
+      let prevBookId = '';
+
+      // Helper to sync current state to Android Auto
+      const syncState = (state: any) => {
+        const isPlaying = state.isPlaying;
+        const position = state.position;
+        const book = state.currentBook;
+        const speed = state.playbackRate || 1.0;
+        const duration = state.duration || 0;
+
+        // Always sync playback state on play/pause changes or significant position changes
+        if (isPlaying !== prevIsPlaying || Math.abs(position - prevPosition) > 5) {
+          prevIsPlaying = isPlaying;
+          prevPosition = position;
+
+          // Convert to milliseconds for native
+          AndroidAutoModule.updatePlaybackState(
+            isPlaying,
+            position * 1000, // Convert to ms
+            speed
+          ).catch((err: any) => log('Failed to update playback state:', err));
+        }
+
+        // Sync metadata when book changes
+        if (book && book.id !== prevBookId) {
+          prevBookId = book.id;
+          const metadata = book.media?.metadata as any;
+          const title = metadata?.title || 'Unknown Title';
+          const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
+
+          // Get cover URL - try local first, then server
+          const { apiClient } = require('@/core/api');
+          const coverUrl = apiClient.getItemCoverUrl(book.id);
+
+          AndroidAutoModule.updateMetadata(
+            title,
+            author,
+            duration * 1000, // Convert to ms
+            coverUrl
+          ).catch((err: any) => log('Failed to update metadata:', err));
+
+          log('Synced metadata to Android Auto:', { title, author, duration });
+        }
+      };
+
+      // Immediate sync of current state
+      const currentState = usePlayerStore.getState();
+      if (currentState.currentBook) {
+        log('Syncing initial player state to Android Auto');
+        // Force initial sync by resetting prev values
+        prevBookId = '';
+        prevIsPlaying = !currentState.isPlaying; // Force mismatch
+        syncState(currentState);
+      }
+
+      // Subscribe to player state changes
+      this.playerStoreUnsubscribe = usePlayerStore.subscribe(syncState);
+
+      log('Player state sync set up for Android Auto');
+    } catch (error) {
+      log('Failed to set up player state sync:', error);
     }
   }
 
@@ -549,6 +692,7 @@ class AutomotiveService {
 
       // Get downloaded items
       const { downloadManager } = await import('@/core/services/downloadManager');
+      const FileSystem = await import('expo-file-system/legacy');
       const allDownloads = await downloadManager.getAllDownloads();
       const completedDownloads = allDownloads.filter(d => d.status === 'complete');
 
@@ -558,11 +702,13 @@ class AutomotiveService {
         const item = libraryItems.find(i => i.id === download.itemId);
         if (item) {
           const metadata = item.media?.metadata as any;
+          // Use local cover path for downloaded items (works better with Android Auto)
+          const localCoverPath = `${FileSystem.documentDirectory}audiobooks/${item.id}/cover.jpg`;
           downloadedItems.push({
             id: item.id,
             title: metadata?.title || 'Unknown Title',
             subtitle: metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author',
-            imageUrl: apiClient.getItemCoverUrl(item.id),
+            imageUrl: localCoverPath, // Local file URI for downloaded items
             isPlayable: true,
             isBrowsable: false,
           });
@@ -574,6 +720,62 @@ class AutomotiveService {
           id: 'downloads',
           title: 'Downloads',
           items: downloadedItems,
+        });
+      }
+
+      // Recently Added section - books sorted by addedAt
+      const recentlyAddedItems = [...libraryItems]
+        .sort((a, b) => {
+          const aAdded = (a as any).addedAt || 0;
+          const bAdded = (b as any).addedAt || 0;
+          return bAdded - aAdded;
+        })
+        .slice(0, this.config.maxListItems)
+        .map((item): BrowseItem => {
+          const metadata = item.media?.metadata as any;
+          return {
+            id: item.id,
+            title: metadata?.title || 'Unknown Title',
+            subtitle: metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author',
+            imageUrl: apiClient.getItemCoverUrl(item.id),
+            isPlayable: true,
+            isBrowsable: false,
+          };
+        });
+
+      if (recentlyAddedItems.length > 0) {
+        sections.push({
+          id: 'recently-added',
+          title: 'Recently Added',
+          items: recentlyAddedItems,
+        });
+      }
+
+      // Library section - all books alphabetically
+      const libraryBookItems = [...libraryItems]
+        .sort((a, b) => {
+          const aTitle = (a.media?.metadata as any)?.title || '';
+          const bTitle = (b.media?.metadata as any)?.title || '';
+          return aTitle.localeCompare(bTitle);
+        })
+        .slice(0, this.config.maxListItems)
+        .map((item): BrowseItem => {
+          const metadata = item.media?.metadata as any;
+          return {
+            id: item.id,
+            title: metadata?.title || 'Unknown Title',
+            subtitle: metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author',
+            imageUrl: apiClient.getItemCoverUrl(item.id),
+            isPlayable: true,
+            isBrowsable: false,
+          };
+        });
+
+      if (libraryBookItems.length > 0) {
+        sections.push({
+          id: 'library',
+          title: 'Library',
+          items: libraryBookItems,
         });
       }
 
@@ -621,6 +823,12 @@ class AutomotiveService {
     if (this.libraryCacheUnsubscribe) {
       this.libraryCacheUnsubscribe();
       this.libraryCacheUnsubscribe = null;
+    }
+
+    // Unsubscribe from player state
+    if (this.playerStoreUnsubscribe) {
+      this.playerStoreUnsubscribe();
+      this.playerStoreUnsubscribe = null;
     }
 
     // Remove Android Auto event subscription

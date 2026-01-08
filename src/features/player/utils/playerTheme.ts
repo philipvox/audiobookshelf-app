@@ -2,103 +2,127 @@
  * src/features/player/utils/playerTheme.ts
  *
  * Theme colors and hook for the player UI.
- * Provides light and dark mode color palettes.
+ * Derives colors from the central theme system in @/shared/theme/colors.ts.
  */
 
-import { colors } from '@/shared/theme';
 import { useThemeStore } from '@/shared/theme/themeStore';
+import { getThemeColors } from '@/shared/theme/colors';
 
 /**
- * Player color palette for light and dark modes.
- * All player UI components should use these colors for consistency.
+ * Type for player color theme (derived from central theme)
  */
-export const playerColors = {
-  light: {
-    // Main backgrounds
-    background: '#FFFFFF',
-    backgroundSecondary: '#F5F5F5',
-    backgroundTertiary: '#E8E8E8',
-    // Text
-    textPrimary: '#000000',
-    textSecondary: 'rgba(0,0,0,0.6)',
-    textTertiary: 'rgba(0,0,0,0.4)',
-    textMuted: 'rgba(0,0,0,0.25)',
-    // Borders & dividers
-    border: 'rgba(0,0,0,0.1)',
-    borderStrong: 'rgba(0,0,0,0.2)',
-    // Sheet backgrounds
-    sheetBackground: '#FFFFFF',
-    sheetHandle: '#E0E0E0',
-    // Timeline
-    tickDefault: '#000000',
-    tickActive: '#F50101',
-    markerColor: '#F50101',
-    // Overlays
-    overlayLight: 'rgba(0,0,0,0.05)',
-    overlayMedium: 'rgba(0,0,0,0.3)',
-    overlayHeavy: 'rgba(0,0,0,0.5)',
-    // Accents
-    accent: colors.accent,
-    accentRed: '#E53935',
-    // Icons
-    iconPrimary: '#000000',
-    iconSecondary: 'rgba(0,0,0,0.5)',
-    iconMuted: 'rgba(0,0,0,0.3)',
-    // Buttons
-    buttonBackground: '#FFFFFF',
-    buttonText: '#000000',
-    // Status bar
-    statusBar: 'dark-content' as const,
-  },
-  dark: {
-    // Main backgrounds
-    background: '#000000',
-    backgroundSecondary: '#1A1A1A',
-    backgroundTertiary: '#262626',
-    // Text
-    textPrimary: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.7)',
-    textTertiary: 'rgba(255,255,255,0.5)',
-    textMuted: 'rgba(255,255,255,0.3)',
-    // Borders & dividers
-    border: 'rgba(255,255,255,0.1)',
-    borderStrong: 'rgba(255,255,255,0.2)',
-    // Sheet backgrounds
-    sheetBackground: '#1C1C1E',
-    sheetHandle: 'rgba(255,255,255,0.3)',
-    // Timeline
-    tickDefault: 'rgba(255,255,255,0.4)',
-    tickActive: '#F50101',
-    markerColor: '#F50101',
-    // Overlays
-    overlayLight: 'rgba(255,255,255,0.05)',
-    overlayMedium: 'rgba(0,0,0,0.5)',
-    overlayHeavy: 'rgba(0,0,0,0.7)',
-    // Accents
-    accent: colors.accent,
-    accentRed: '#E53935',
-    // Icons
-    iconPrimary: '#FFFFFF',
-    iconSecondary: 'rgba(255,255,255,0.7)',
-    iconMuted: 'rgba(255,255,255,0.4)',
-    // Buttons
-    buttonBackground: '#000000',
-    buttonText: '#FFFFFF',
-    // Status bar
-    statusBar: 'light-content' as const,
-  },
-};
+export interface PlayerColors {
+  // Page background (respects light/dark mode)
+  pageBackground: string;
+  // Main backgrounds (player-specific, always dark)
+  background: string;
+  backgroundSecondary: string;
+  backgroundTertiary: string;
+  // Text
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  textMuted: string;
+  // Borders & dividers
+  border: string;
+  borderStrong: string;
+  // Sheet backgrounds
+  sheetBackground: string;
+  sheetHandle: string;
+  // Timeline
+  tickDefault: string;
+  tickActive: string;
+  markerColor: string;
+  // Overlays
+  overlayLight: string;
+  overlayMedium: string;
+  overlayHeavy: string;
+  // Accents
+  accent: string;
+  accentRed: string;
+  // Icons
+  iconPrimary: string;
+  iconSecondary: string;
+  iconMuted: string;
+  // Buttons
+  buttonBackground: string;
+  buttonText: string;
+  // Status bar
+  statusBar: 'light-content' | 'dark-content';
+  // Floating widget (control bar) - from central theme
+  widgetBackground: string;
+  widgetButtonBg: string;
+  widgetIcon: string;
+  widgetDivider: string;
+  widgetBorder: string;
+  widgetTrack: string;
+  widgetTimeLabel: string;
+  // Gradients (for cover overlays)
+  gradientStart: string;
+  gradientMid: string;
+  gradientEnd: string;
+}
 
 /**
- * Type for player color theme
- */
-export type PlayerColors = typeof playerColors.light;
-
-/**
- * Hook to get player colors based on current theme mode.
- * Returns the appropriate color palette for light or dark mode.
+ * Hook to get player colors based on current theme mode and accent theme.
+ * Returns the appropriate color palette for light or dark mode with dynamic accent.
+ * All colors are derived from the central theme in @/shared/theme/colors.ts.
  */
 export function usePlayerColors(): PlayerColors {
   const mode = useThemeStore((state) => state.mode);
-  return playerColors[mode] as PlayerColors;
+  const accentTheme = useThemeStore((state) => state.accentTheme);
+  const themeColors = getThemeColors(accentTheme, mode === 'dark');
+  const isDark = mode === 'dark';
+
+  return {
+    // Page background - from main theme (respects light/dark mode)
+    pageBackground: themeColors.background.primary,
+    // Main backgrounds - from player section (always dark for cinematic feel)
+    background: themeColors.player.background,
+    backgroundSecondary: themeColors.player.backgroundSecondary,
+    backgroundTertiary: themeColors.player.backgroundTertiary,
+    // Text - from main theme (respects light/dark mode)
+    textPrimary: themeColors.text.primary,
+    textSecondary: themeColors.text.secondary,
+    textTertiary: themeColors.text.tertiary,
+    textMuted: themeColors.text.disabled,
+    // Borders & dividers - from player section
+    border: themeColors.player.border,
+    borderStrong: themeColors.player.borderStrong,
+    // Sheet backgrounds - from player section
+    sheetBackground: themeColors.player.sheetBackground,
+    sheetHandle: themeColors.player.sheetHandle,
+    // Timeline - from player section
+    tickDefault: themeColors.player.tickDefault,
+    tickActive: themeColors.player.tickActive,
+    markerColor: themeColors.player.markerColor,
+    // Overlays - from player section
+    overlayLight: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    overlayMedium: themeColors.player.overlay,
+    overlayHeavy: themeColors.player.overlayHeavy,
+    // Accents - from player section
+    accent: themeColors.player.accent,
+    accentRed: themeColors.player.accentRed,
+    // Icons - from player section
+    iconPrimary: themeColors.player.control,
+    iconSecondary: themeColors.player.controlSecondary,
+    iconMuted: themeColors.player.controlMuted,
+    // Buttons - from player section
+    buttonBackground: themeColors.player.standardControlsBg,
+    buttonText: themeColors.player.standardControlsText,
+    // Status bar
+    statusBar: themeColors.statusBar,
+    // Floating widget - from player section (new fields)
+    widgetBackground: themeColors.player.widgetBackground,
+    widgetButtonBg: themeColors.player.widgetButtonBg,
+    widgetIcon: themeColors.player.widgetIcon,
+    widgetDivider: themeColors.player.widgetDivider,
+    widgetBorder: themeColors.player.widgetBorder,
+    widgetTrack: themeColors.player.widgetTrack,
+    widgetTimeLabel: themeColors.player.widgetTimeLabel,
+    // Gradients - from player section
+    gradientStart: themeColors.player.gradientStart,
+    gradientMid: themeColors.player.gradientMid,
+    gradientEnd: themeColors.player.gradientEnd,
+  };
 }

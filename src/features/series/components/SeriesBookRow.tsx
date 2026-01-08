@@ -25,8 +25,7 @@ import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { usePlayerStore } from '@/features/player';
-import { colors, scale, spacing, radius, accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
 
 const ACCENT = accentColors.red;
 
@@ -279,7 +278,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             {isNowPlaying && isPlaying ? (
-              <Pause size={scale(18)} color="#000" strokeWidth={2} />
+              <Pause size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
             ) : (
               <Play size={scale(18)} color={isNowPlaying ? '#000' : themeColors.textSecondary} fill={isNowPlaying ? '#000' : themeColors.textSecondary} strokeWidth={0} />
             )}

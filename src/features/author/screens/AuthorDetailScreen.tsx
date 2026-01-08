@@ -365,8 +365,10 @@ export function AuthorDetailScreen() {
       setIsLoadingBooks(true);
       try {
         const authorData = await apiClient.getAuthor(authorInfo.id, { include: 'items' });
-        if (authorData?.libraryItems) {
-          setAuthorBooks(authorData.libraryItems as LibraryItem[]);
+        // Server returns libraryItems when include=items is specified
+        const authorWithItems = authorData as { libraryItems?: LibraryItem[] };
+        if (authorWithItems?.libraryItems) {
+          setAuthorBooks(authorWithItems.libraryItems);
         }
       } catch (error) {
         logger.warn('[AuthorDetail] Failed to fetch author books from API:', error);

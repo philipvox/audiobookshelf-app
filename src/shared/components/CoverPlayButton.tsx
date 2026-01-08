@@ -22,7 +22,8 @@ import Animated, {
 import { usePlayerStore } from '@/features/player';
 import { haptics } from '@/core/native/haptics';
 import { audioService } from '@/features/player/services/audioService';
-import { colors, wp } from '@/shared/theme';
+import { wp, accentColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import type { JoystickSeekSettings } from '@/features/player/stores/joystickSeekStore';
 import { calculateSeekSpeed, applyDeadzone } from '@/features/player/stores/joystickSeekStore';
 
@@ -72,7 +73,6 @@ const SCRUB_CONFIG = {
 // Visual constants
 const BUTTON_SIZE = 48;
 const COVER_SIZE = 44;
-const ACCENT_COLOR = colors.accent;
 
 // ============================================================================
 // ICONS
@@ -186,6 +186,7 @@ export function CoverPlayButton({
   onJogStateChange,
   joystickSettings,
 }: CoverPlayButtonProps) {
+  const themeColors = useThemeColors();
   const currentBook = usePlayerStore((s) => s.currentBook);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const position = usePlayerStore((s) => s.position);
@@ -253,7 +254,7 @@ export function CoverPlayButton({
   }, [chapters, duration]);
 
   const startScrub = useCallback(() => {
-    scrubStartPosition.value = audioService.lastKnownGoodPosition ?? positionRef.current;
+    scrubStartPosition.value = audioService.getLastKnownGoodPosition() ?? positionRef.current;
     currentScrubOffset.value = 0;
     setTooltipText('+00:00');
     setScrubPosition(positionRef.current);
@@ -557,7 +558,7 @@ export function CoverPlayButton({
     // CRITICAL: Set position AND clear isSeeking together
     // This ensures the store has the correct position when we exit seeking mode.
     // Audio callbacks can resume updating position after this point.
-    const actualPosition = audioService.lastKnownGoodPosition ?? finalPosition;
+    const actualPosition = audioService.getLastKnownGoodPosition() ?? finalPosition;
     usePlayerStore.setState({
       position: actualPosition,
       isSeeking: false,
@@ -738,7 +739,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: BUTTON_SIZE / 2,
     borderWidth: 2,
-    borderColor: ACCENT_COLOR,
+    borderColor: accentColors.gold,
     backgroundColor: 'transparent',
   },
   iconOverlay: {
@@ -787,7 +788,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     right: 12,
-    backgroundColor: ACCENT_COLOR,
+    backgroundColor: accentColors.gold,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -805,7 +806,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT_COLOR,
+    backgroundColor: accentColors.gold,
     borderRadius: 3,
   },
   progressLabels: {
@@ -821,7 +822,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   progressTimeOffset: {
-    color: ACCENT_COLOR,
+    color: accentColors.gold,
     fontSize: 16,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],

@@ -86,7 +86,6 @@ export {
 
 // Player theme
 export {
-  playerColors,
   usePlayerColors,
   type PlayerColors,
 } from './playerTheme';

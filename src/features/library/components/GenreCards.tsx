@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { Library, BookOpen } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
 import { GenreWithData, getMetaCategoryForGenre } from '../constants/genreCategories';
-import { colors, wp, spacing, radius, accentColors } from '@/shared/theme';
+import { wp, spacing, radius, accentColors } from '@/shared/theme';
 import { useColors, useIsDarkMode } from '@/shared/theme/themeStore';
 
 const ACCENT = accentColors.red;

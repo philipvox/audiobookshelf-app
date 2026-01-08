@@ -9,6 +9,7 @@ import { sqliteCache } from './sqliteCache';
 import { userApi } from '@/core/api/endpoints/user';
 import { apiClient } from '@/core/api';
 import { syncLogger as log } from '@/shared/utils/logger';
+import { useLibraryCache } from '@/core/cache/libraryCache';
 
 /**
  * Sync finished books between local SQLite and server.
@@ -60,7 +61,13 @@ export const finishedBooksSync = {
 
     try {
       // Get library items from cache (they should be loaded by now)
-      const items = await apiClient.getLibraryItems({ limit: 1000 });
+      const libraryId = useLibraryCache.getState().currentLibraryId;
+      if (!libraryId) {
+        log.warn('No current library ID - skipping import');
+        return 0;
+      }
+      const response = await apiClient.getLibraryItems(libraryId, { limit: 1000 });
+      const items = response.results || [];
 
       for (const item of items) {
         const serverProgress = (item as any).userMediaProgress;

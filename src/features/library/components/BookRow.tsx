@@ -8,17 +8,16 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
-import { Play, CheckCircle, Cloud } from 'lucide-react-native';
+import { Play, CheckCircle } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
 import { scale, spacing } from '@/shared/theme';
 import { useThemeColors } from '@/shared/theme/themeStore';
-import { EnrichedBook, formatDuration } from '../types';
+import { EnrichedBook, formatDuration, formatTimeAgo } from '../types';
 
 interface BookRowProps {
   book: EnrichedBook;
   onPress: () => void;
   onPlay: () => void;
-  showIndicator?: boolean;
   isMarkedFinished?: boolean;
 }
 
@@ -26,45 +25,31 @@ export const BookRow = React.memo(function BookRow({
   book,
   onPress,
   onPlay,
-  showIndicator = true,
   isMarkedFinished = false,
 }: BookRowProps) {
   const themeColors = useThemeColors();
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const isCompleted = book.progress >= 0.95 || isMarkedFinished;
-  const isDownloaded = book.isDownloaded || book.totalBytes > 0;
+  const isInProgress = book.progress > 0 && book.progress < 0.95;
 
-  const progressText = book.progress > 0 && book.progress < 0.95
+  const progressText = isInProgress
     ? `, ${Math.round(book.progress * 100)}% complete`
     : isCompleted ? ', completed' : '';
-  const downloadText = isDownloaded ? ', downloaded' : '';
+
+  // Format last played time
+  const lastPlayedText = book.lastPlayedAt ? formatTimeAgo(book.lastPlayedAt) : '';
 
   return (
     <TouchableOpacity
       style={styles.bookRow}
       onPress={onPress}
       activeOpacity={0.7}
-      accessibilityLabel={`${book.title} by ${book.author}${progressText}${downloadText}`}
+      accessibilityLabel={`${book.title} by ${book.author}${progressText}`}
       accessibilityRole="button"
       accessibilityHint="Double tap to view book details"
     >
       <View style={styles.bookCoverContainer}>
         <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
-        {/* Download/Stream indicator */}
-        {showIndicator && (
-          <View style={[
-            styles.statusBadge,
-            isDownloaded
-              ? [styles.downloadedBadge, { backgroundColor: themeColors.text }]
-              : styles.streamBadge
-          ]}>
-            {isDownloaded ? (
-              <CheckCircle size={scale(10)} color={themeColors.background} strokeWidth={2.5} />
-            ) : (
-              <Cloud size={scale(10)} color={themeColors.background} strokeWidth={2} />
-            )}
-          </View>
-        )}
         {isCompleted && (
           <View style={styles.completedBadge}>
             <CheckCircle size={14} color={themeColors.text} strokeWidth={2} />
@@ -83,14 +68,25 @@ export const BookRow = React.memo(function BookRow({
           <Text style={[styles.bookMeta, { color: themeColors.textSecondary }]}>
             {formatDuration(book.duration)}
           </Text>
-          {book.progress > 0 && book.progress < 0.95 && (
-            <Text style={[styles.bookProgress, { color: themeColors.text }]}>
-              {Math.round(book.progress * 100)}%
-            </Text>
+          {isInProgress && (
+            <>
+              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>·</Text>
+              <Text style={[styles.bookProgress, { color: themeColors.text }]}>
+                {Math.round(book.progress * 100)}%
+              </Text>
+            </>
+          )}
+          {lastPlayedText && (
+            <>
+              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>·</Text>
+              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>
+                {lastPlayedText}
+              </Text>
+            </>
           )}
         </View>
         {/* Progress bar for in-progress books */}
-        {book.progress > 0 && book.progress < 0.95 && (
+        {isInProgress && (
           <View style={[styles.bookProgressBar, { backgroundColor: themeColors.border }]}>
             <View
               style={[
@@ -109,7 +105,7 @@ export const BookRow = React.memo(function BookRow({
         accessibilityLabel={`Play ${book.title}`}
         accessibilityRole="button"
       >
-        <Play size={18} color={themeColors.background} fill={themeColors.background} strokeWidth={0} />
+        <Play size={14} color={themeColors.background} fill={themeColors.background} strokeWidth={0} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -135,22 +131,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: scale(8),
   },
-  statusBadge: {
-    position: 'absolute',
-    bottom: scale(4),
-    right: scale(4),
-    width: scale(18),
-    height: scale(18),
-    borderRadius: scale(9),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  downloadedBadge: {
-    // backgroundColor set dynamically
-  },
-  streamBadge: {
-    backgroundColor: 'rgba(0,0,0,0.6)', // Fixed dark overlay for visibility on cover
-  },
   completedBadge: {
     position: 'absolute',
     top: scale(4),
@@ -158,7 +138,7 @@ const styles = StyleSheet.create({
     width: scale(20),
     height: scale(20),
     borderRadius: scale(10),
-    backgroundColor: 'rgba(0,0,0,0.6)', // Fixed dark overlay for visibility on cover
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -178,7 +158,7 @@ const styles = StyleSheet.create({
   bookMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(8),
+    gap: scale(4),
   },
   bookMeta: {
     fontSize: scale(12),
@@ -198,9 +178,9 @@ const styles = StyleSheet.create({
     borderRadius: 1.5,
   },
   playButton: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     justifyContent: 'center',
     alignItems: 'center',
   },
