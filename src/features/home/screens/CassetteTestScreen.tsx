@@ -20,11 +20,10 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import CassettePlayer from '../components/CassettePlayer';
-import { colors, wp, hp } from '@/shared/theme';
+import { wp, hp, accentColors, useThemeColors } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 const SCREEN_HEIGHT = hp(100);
-const COLORS = { background: colors.backgroundPrimary, accent: colors.accent };
 
 // Scale to 80% of previous size
 const CASSETTE_SCALE = (SCREEN_WIDTH * 0.85 * 0.8) / 263;
@@ -33,12 +32,13 @@ const CASSETTE_SCALE = (SCREEN_WIDTH * 0.85 * 0.8) / 263;
 const SAMPLE_COVER = 'https://covers.openlibrary.org/b/isbn/9780590353427-L.jpg';
 
 export function CassetteTestScreen() {
+  const themeColors = useThemeColors();
   const navigation = useNavigation();
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       {/* Blurred background (like HomeScreen) */}
       <View style={styles.backgroundContainer}>
         <Image
@@ -50,7 +50,7 @@ export function CassetteTestScreen() {
         <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="dark" />
         <View style={styles.brightnessOverlay} />
         <LinearGradient
-          colors={['transparent', 'transparent', COLORS.background]}
+          colors={['transparent', 'transparent', themeColors.background]}
           locations={[0, 0.4, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -160,7 +160,7 @@ export function CassetteTestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    // backgroundColor set via themeColors in JSX
   },
   backgroundContainer: {
     position: 'absolute',

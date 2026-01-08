@@ -16,9 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { Icon } from '@/shared/components/Icon';
-import { colors, spacing, radius } from '@/shared/theme';
+import { spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
 
 export function PreferencesScreen() {
+  const themeColors = useThemeColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const preferences = usePreferencesStore();
@@ -45,22 +46,22 @@ export function PreferencesScreen() {
       : 'Prefers standalones';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="ArrowLeft" size={24} color={colors.textPrimary} />
+          <Icon name="ArrowLeft" size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Reading Preferences</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Reading Preferences</Text>
         <View style={styles.backButton} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {!preferences.hasCompletedOnboarding ? (
           <View style={styles.emptyState}>
-            <Icon name="Sparkles" size={48} color={colors.accent} />
-            <Text style={styles.emptyTitle}>Set up your preferences</Text>
-            <Text style={styles.emptySubtitle}>
+            <Icon name="Sparkles" size={48} color={accentColors.gold} />
+            <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Set up your preferences</Text>
+            <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
               Answer a few questions to get personalized recommendations
             </Text>
             <TouchableOpacity style={styles.setupButton} onPress={handleEditPreferences}>
@@ -71,58 +72,58 @@ export function PreferencesScreen() {
           <>
             {/* Moods */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Reading Moods</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Reading Moods</Text>
               <View style={styles.tagsRow}>
                 {preferences.moods.length > 0 ? (
                   preferences.moods.map(mood => (
-                    <View key={mood} style={styles.tag}>
-                      <Text style={styles.tagText}>{mood}</Text>
+                    <View key={mood} style={[styles.tag, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]}>
+                      <Text style={[styles.tagText, { color: accentColors.gold }]}>{mood}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={styles.emptyText}>None selected</Text>
+                  <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>None selected</Text>
                 )}
               </View>
             </View>
 
             {/* Genres */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Favorite Genres</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Favorite Genres</Text>
               <View style={styles.tagsRow}>
                 {preferences.favoriteGenres.length > 0 ? (
                   preferences.favoriteGenres.map(genre => (
-                    <View key={genre} style={styles.tag}>
-                      <Text style={styles.tagText}>{genre}</Text>
+                    <View key={genre} style={[styles.tag, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]}>
+                      <Text style={[styles.tagText, { color: accentColors.gold }]}>{genre}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={styles.emptyText}>None selected</Text>
+                  <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>None selected</Text>
                 )}
               </View>
             </View>
 
             {/* Length */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Preferred Length</Text>
-              <Text style={styles.valueText}>{lengthLabels[preferences.preferredLength]}</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Preferred Length</Text>
+              <Text style={[styles.valueText, { color: themeColors.text }]}>{lengthLabels[preferences.preferredLength]}</Text>
             </View>
 
             {/* Series */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Series Preference</Text>
-              <Text style={styles.valueText}>{seriesLabel}</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Series Preference</Text>
+              <Text style={[styles.valueText, { color: themeColors.text }]}>{seriesLabel}</Text>
             </View>
 
             {/* Actions */}
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.editButton} onPress={handleEditPreferences}>
-                <Icon name="Plus" size={20} color={colors.accent} />
-                <Text style={styles.editButtonText}>Edit Preferences</Text>
+              <TouchableOpacity style={[styles.editButton, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]} onPress={handleEditPreferences}>
+                <Icon name="Plus" size={20} color={accentColors.gold} />
+                <Text style={[styles.editButtonText, { color: accentColors.gold }]}>Edit Preferences</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.resetButton} onPress={handleResetPreferences}>
-                <Icon name="RefreshCw" size={20} color={colors.textTertiary} />
-                <Text style={styles.resetButtonText}>Reset All</Text>
+                <Icon name="RefreshCw" size={20} color={themeColors.textTertiary} />
+                <Text style={[styles.resetButtonText, { color: themeColors.textTertiary }]}>Reset All</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -135,7 +136,7 @@ export function PreferencesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   header: {
     flexDirection: 'row',
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   content: {
     flex: 1,
@@ -167,18 +168,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   emptySubtitle: {
     fontSize: 15,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: spacing.xl,
   },
   setupButton: {
-    backgroundColor: colors.accent,
+    backgroundColor: accentColors.gold,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
@@ -186,7 +187,7 @@ const styles = StyleSheet.create({
   setupButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000',
   },
   section: {
     marginBottom: spacing.lg,
@@ -194,7 +195,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.xs,
@@ -205,23 +206,23 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   tag: {
-    backgroundColor: colors.accentSubtle,
+    // backgroundColor set via themeColors in JSX
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.xl,
   },
   tagText: {
     fontSize: 14,
-    color: colors.accentDark,
+    // color set via accentColors in JSX
     fontWeight: '500',
   },
   valueText: {
     fontSize: 16,
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   emptyText: {
     fontSize: 14,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     fontStyle: 'italic',
   },
   actions: {
@@ -232,7 +233,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accentSubtle,
+    // backgroundColor set via themeColors in JSX
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     gap: spacing.xs,
@@ -240,7 +241,7 @@ const styles = StyleSheet.create({
   editButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.accent,
+    // color set via accentColors in JSX
   },
   resetButton: {
     flexDirection: 'row',
@@ -251,6 +252,6 @@ const styles = StyleSheet.create({
   },
   resetButtonText: {
     fontSize: 14,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
 });

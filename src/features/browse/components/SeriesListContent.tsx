@@ -17,10 +17,8 @@ import { SearchBar } from '@/features/search/components/SearchBar';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { SeriesInfo } from '@/features/series';
 import { apiClient } from '@/core/api';
-import { colors, spacing, radius, accentColors } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
-
-const ACCENT = accentColors.red;
+import { spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Fanned card dimensions matching GenreCardLarge
@@ -43,6 +41,8 @@ const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFanned
   const navigation = useNavigation<any>();
   const themeColors = useThemeColors();
   const isDarkMode = useIsDarkMode();
+  const colors = useColors();
+  const accent = colors.accent.primary;
 
   const handlePress = () => {
     navigation.navigate('SeriesDetail', { seriesName: series.name });
@@ -92,8 +92,8 @@ const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFanned
             ))}
           </View>
         ) : (
-          <View style={[styles.fanPlaceholder, { backgroundColor: ACCENT + '30' }]}>
-            <Library size={40} color={ACCENT} strokeWidth={1.5} />
+          <View style={[styles.fanPlaceholder, { backgroundColor: accent + '30' }]}>
+            <Library size={40} color={accent} strokeWidth={1.5} />
           </View>
         )}
       </View>
@@ -116,6 +116,8 @@ const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFanned
 export function SeriesListContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const themeColors = useThemeColors();
+  const colors = useColors();
+  const accent = colors.accent.primary;
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { series, seriesCount, isLoading, error, refetch } = useSeries(
     library?.id || '',
@@ -174,7 +176,7 @@ export function SeriesListContent() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refetch}
-            tintColor={ACCENT}
+            tintColor={accent}
           />
         }
         ListEmptyComponent={

@@ -33,15 +33,15 @@ import {
 } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, typography, fontWeight, spacing } from '@/shared/theme';
+import { scale, typography, fontWeight, spacing } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.gold;
 
 // Helper to create theme-aware colors from nested ThemeColors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
+    accentSubtle: c.accent.primarySubtle,
+    textOnAccent: c.accent.textOnAccent,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -99,7 +99,7 @@ function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange,
           <Switch
             value={switchValue}
             onValueChange={onSwitchChange}
-            trackColor={{ false: colors.border, true: ACCENT }}
+            trackColor={{ false: colors.border, true: colors.accent }}
             thumbColor="#fff"
             disabled={disabled}
           />
@@ -172,7 +172,7 @@ function OptionPicker<T>({
                 key={index}
                 style={[
                   styles.pickerOption,
-                  selectedValue === option && styles.pickerOptionSelected,
+                  selectedValue === option && { backgroundColor: colors.accentSubtle },
                 ]}
                 onPress={() => {
                   onSelect(option);
@@ -336,7 +336,7 @@ export function PlaybackSettingsScreen() {
                       style={[
                         styles.maxRewindOption,
                         { backgroundColor: colors.iconBg },
-                        smartRewindMaxSeconds === seconds && styles.maxRewindOptionSelected,
+                        smartRewindMaxSeconds === seconds && { backgroundColor: colors.accent },
                       ]}
                       onPress={() => setSmartRewindMaxSeconds(seconds)}
                       activeOpacity={0.7}
@@ -345,7 +345,7 @@ export function PlaybackSettingsScreen() {
                         style={[
                           styles.maxRewindOptionText,
                           { color: colors.textSecondary },
-                          smartRewindMaxSeconds === seconds && styles.maxRewindOptionTextSelected,
+                          smartRewindMaxSeconds === seconds && { color: colors.textOnAccent },
                         ]}
                       >
                         {seconds}s
@@ -577,16 +577,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   maxRewindOptionSelected: {
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically in JSX
   },
   maxRewindOptionText: {
     ...typography.bodyLarge,
     fontWeight: fontWeight.semibold,
     // color set via colors.textSecondary in JSX
   },
-  maxRewindOptionTextSelected: {
-    color: '#000', // Black on gold accent - intentional
-  },
+  // maxRewindOptionTextSelected removed - now using dynamic colors.textOnAccent
   maxRewindNote: {
     ...typography.labelMedium,
     // color set via colors.textTertiary in JSX
@@ -632,14 +630,14 @@ const styles = StyleSheet.create({
     borderRadius: scale(8),
   },
   pickerOptionSelected: {
-    backgroundColor: 'rgba(193,244,12,0.15)',
+    // backgroundColor set dynamically in JSX
   },
   pickerOptionText: {
     ...typography.headlineMedium,
     // color set via colors.text in JSX
   },
   pickerOptionTextSelected: {
-    color: ACCENT,
+    // color set dynamically in JSX
     fontWeight: '600',
   },
 });

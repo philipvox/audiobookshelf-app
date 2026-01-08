@@ -11,7 +11,7 @@ import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators } from '@
 import { LibraryItem } from '@/core/types';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
-import { useFinishedBookIds } from '@/core/hooks/useUserBooks';
+import { useFinishedBookIds, useInProgressBooks } from '@/core/hooks/useUserBooks';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { useCompletionStore } from '@/features/completion';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
@@ -85,6 +85,19 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
   // Continue listening data from server
   const { items: continueListeningItems, refetch: refetchContinueListening } = useContinueListening();
 
+  // SQLite progress data for accurate in-progress state
+  const { data: sqliteInProgressBooks = [] } = useInProgressBooks();
+  const sqliteProgressMap = useMemo(() => {
+    const map = new Map<string, { progress: number; lastPlayedAt?: string }>();
+    for (const book of sqliteInProgressBooks) {
+      map.set(book.bookId, {
+        progress: book.progress,
+        lastPlayedAt: book.lastPlayedAt ?? undefined,
+      });
+    }
+    return map;
+  }, [sqliteInProgressBooks]);
+
   // Kid Mode filter
   const kidModeEnabled = useKidModeStore((state) => state.enabled);
 
@@ -130,6 +143,13 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const metadata = getMetadata(item);
       const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
 
+      // Use SQLite progress if available (more accurate), fallback to API response
+      const sqliteProgress = sqliteProgressMap.get(download.itemId);
+      const progress = sqliteProgress?.progress ?? getProgress(item);
+      const lastPlayedAt = sqliteProgress?.lastPlayedAt
+        ? new Date(sqliteProgress.lastPlayedAt).getTime()
+        : (item as any).userMediaProgress?.lastUpdate;
+
       return {
         id: download.itemId,
         item,
@@ -137,15 +157,15 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
         seriesName,
         sequence,
-        progress: getProgress(item),
+        progress,
         duration: getDuration(item),
         totalBytes: download.totalBytes || 0,
-        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        lastPlayedAt,
         addedAt: item.addedAt,
         isDownloaded: true,
       };
     });
-  }, [completedDownloads, getItem, isLoaded]);
+  }, [completedDownloads, getItem, isLoaded, sqliteProgressMap]);
 
   // Server in-progress books
   const serverInProgressBooks = useMemo<EnrichedBook[]>(() => {
@@ -184,6 +204,13 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
       const download = downloadMap.get(bookId);
 
+      // Use SQLite progress if available
+      const sqliteProgress = sqliteProgressMap.get(bookId);
+      const progress = sqliteProgress?.progress ?? getProgress(item);
+      const lastPlayedAt = sqliteProgress?.lastPlayedAt
+        ? new Date(sqliteProgress.lastPlayedAt).getTime()
+        : (item as any).userMediaProgress?.lastUpdate;
+
       result.push({
         id: bookId,
         item,
@@ -191,16 +218,16 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
         seriesName,
         sequence,
-        progress: getProgress(item),
+        progress,
         duration: getDuration(item),
         totalBytes: download?.totalBytes || 0,
-        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        lastPlayedAt,
         addedAt: item.addedAt,
         isDownloaded: !!download,
       });
     }
     return result;
-  }, [libraryIds, cachedItems, isLoaded, downloadMap, getItem]);
+  }, [libraryIds, cachedItems, isLoaded, downloadMap, getItem, sqliteProgressMap]);
 
   // All library books (union with Kid Mode filter)
   const allLibraryBooks = useMemo<EnrichedBook[]>(() => {
@@ -240,6 +267,13 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const metadata = getMetadata(item);
       const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
 
+      // Use SQLite progress if available
+      const sqliteProgress = sqliteProgressMap.get(bookId);
+      const progress = sqliteProgress?.progress ?? getProgress(item);
+      const lastPlayedAt = sqliteProgress?.lastPlayedAt
+        ? new Date(sqliteProgress.lastPlayedAt).getTime()
+        : (item as any).userMediaProgress?.lastUpdate;
+
       result.push({
         id: bookId,
         item,
@@ -247,16 +281,16 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
         seriesName,
         sequence,
-        progress: getProgress(item),
+        progress,
         duration: getDuration(item),
         totalBytes: 0,
-        lastPlayedAt: (item as any).userMediaProgress?.lastUpdate,
+        lastPlayedAt,
         addedAt: item.addedAt,
         isDownloaded: false,
       });
     }
     return result;
-  }, [isLoaded, finishedBookIds, enrichedBooks, getItem]);
+  }, [isLoaded, finishedBookIds, enrichedBooks, getItem, sqliteProgressMap]);
 
   // Get books for current tab
   const currentTabBooks = useMemo(() => {

@@ -33,9 +33,9 @@ import {
 import * as Haptics from 'expo-haptics';
 import { WishlistPriority } from '../types';
 import { useWishlistStore } from '../stores/wishlistStore';
-import { colors, spacing, radius, scale, layout, hp } from '@/shared/theme';
+import { spacing, radius, scale, layout, hp, useThemeColors, accentColors } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 interface ManualAddSheetProps {
   visible: boolean;
@@ -58,6 +58,7 @@ const PRIORITY_OPTIONS: { value: WishlistPriority; label: string; description: s
 ];
 
 export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
+  const themeColors = useThemeColors();
   const insets = useSafeAreaInsets();
   const addFromManualEntry = useWishlistStore((s) => s.addFromManualEntry);
 
@@ -152,23 +153,23 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
           style={styles.keyboardView}
         >
           <Pressable
-            style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}
+            style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg, backgroundColor: themeColors.card }]}
             onPress={() => {}} // Prevent close when tapping sheet
           >
             {/* Handle */}
             <View style={styles.handleContainer}>
-              <View style={styles.handle} />
+              <View style={[styles.handle, { backgroundColor: themeColors.border }]} />
             </View>
 
             {/* Header */}
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>Add to Wishlist</Text>
+            <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
+              <Text style={[styles.headerTitle, { color: themeColors.text }]}>Add to Wishlist</Text>
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={handleClose}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <X size={24} color={colors.textPrimary} strokeWidth={2} />
+                <X size={24} color={themeColors.text} strokeWidth={2} />
               </TouchableOpacity>
             </View>
 
@@ -182,15 +183,15 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               {/* Title Field */}
               <View style={styles.fieldContainer}>
                 <View style={styles.fieldLabel}>
-                  <Bookmark size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                  <Text style={styles.fieldLabelText}>Title *</Text>
+                  <Bookmark size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>Title *</Text>
                 </View>
                 <TextInput
-                  style={[styles.input, errors.title && styles.inputError]}
+                  style={[styles.input, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }, errors.title && styles.inputError]}
                   value={formData.title}
                   onChangeText={(v) => updateField('title', v)}
                   placeholder="Book title"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={themeColors.textTertiary}
                   autoCapitalize="words"
                   returnKeyType="next"
                 />
@@ -200,15 +201,15 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               {/* Author Field */}
               <View style={styles.fieldContainer}>
                 <View style={styles.fieldLabel}>
-                  <User size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                  <Text style={styles.fieldLabelText}>Author *</Text>
+                  <User size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>Author *</Text>
                 </View>
                 <TextInput
-                  style={[styles.input, errors.author && styles.inputError]}
+                  style={[styles.input, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }, errors.author && styles.inputError]}
                   value={formData.author}
                   onChangeText={(v) => updateField('author', v)}
                   placeholder="Author name"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={themeColors.textTertiary}
                   autoCapitalize="words"
                   returnKeyType="next"
                 />
@@ -218,15 +219,15 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               {/* Narrator Field */}
               <View style={styles.fieldContainer}>
                 <View style={styles.fieldLabel}>
-                  <Mic size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                  <Text style={styles.fieldLabelText}>Narrator</Text>
+                  <Mic size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>Narrator</Text>
                 </View>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }]}
                   value={formData.narrator}
                   onChangeText={(v) => updateField('narrator', v)}
                   placeholder="Narrator name (optional)"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={themeColors.textTertiary}
                   autoCapitalize="words"
                   returnKeyType="next"
                 />
@@ -236,30 +237,30 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               <View style={styles.rowContainer}>
                 <View style={[styles.fieldContainer, { flex: 2 }]}>
                   <View style={styles.fieldLabel}>
-                    <Library size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                    <Text style={styles.fieldLabelText}>Series</Text>
+                    <Library size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                    <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>Series</Text>
                   </View>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }]}
                     value={formData.series}
                     onChangeText={(v) => updateField('series', v)}
                     placeholder="Series name (optional)"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholderTextColor={themeColors.textTertiary}
                     autoCapitalize="words"
                     returnKeyType="next"
                   />
                 </View>
                 <View style={[styles.fieldContainer, { flex: 1, marginLeft: spacing.sm }]}>
                   <View style={styles.fieldLabel}>
-                    <Hash size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                    <Text style={styles.fieldLabelText}>#</Text>
+                    <Hash size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                    <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>#</Text>
                   </View>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }]}
                     value={formData.seriesSequence}
                     onChangeText={(v) => updateField('seriesSequence', v)}
                     placeholder="1"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholderTextColor={themeColors.textTertiary}
                     keyboardType="numeric"
                     returnKeyType="next"
                   />
@@ -269,15 +270,15 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
               {/* Notes Field */}
               <View style={styles.fieldContainer}>
                 <View style={styles.fieldLabel}>
-                  <FileText size={scale(16)} color={colors.textSecondary} strokeWidth={2} />
-                  <Text style={styles.fieldLabelText}>Notes</Text>
+                  <FileText size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.fieldLabelText, { color: themeColors.textSecondary }]}>Notes</Text>
                 </View>
                 <TextInput
-                  style={[styles.input, styles.inputMultiline]}
+                  style={[styles.input, styles.inputMultiline, { backgroundColor: themeColors.backgroundTertiary, color: themeColors.text }]}
                   value={formData.notes}
                   onChangeText={(v) => updateField('notes', v)}
                   placeholder="Why do you want to read this? (optional)"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={themeColors.textTertiary}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
@@ -286,7 +287,7 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
 
               {/* Priority Selector */}
               <View style={styles.prioritySection}>
-                <Text style={styles.prioritySectionTitle}>Priority</Text>
+                <Text style={[styles.prioritySectionTitle, { color: themeColors.textSecondary }]}>Priority</Text>
                 <View style={styles.priorityOptions}>
                   {PRIORITY_OPTIONS.map((option) => {
                     const isActive = priority === option.value;
@@ -295,6 +296,7 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
                         key={option.value}
                         style={[
                           styles.priorityOption,
+                          { backgroundColor: themeColors.backgroundTertiary },
                           isActive && styles.priorityOptionActive,
                           option.value === 'must-read' && isActive && styles.priorityOptionMustRead,
                         ]}
@@ -304,14 +306,14 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
                         {option.value === 'must-read' ? (
                           <Star
                             size={scale(16)}
-                            color={isActive ? '#000' : colors.textSecondary}
+                            color={isActive ? '#000' : themeColors.textSecondary}
                             fill={isActive ? '#000' : 'transparent'}
                             strokeWidth={2}
                           />
                         ) : (
                           <Bookmark
                             size={scale(16)}
-                            color={isActive ? '#000' : colors.textSecondary}
+                            color={isActive ? '#000' : themeColors.textSecondary}
                             fill={isActive ? '#000' : 'transparent'}
                             strokeWidth={2}
                           />
@@ -319,12 +321,14 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
                         <View style={styles.priorityTextContainer}>
                           <Text style={[
                             styles.priorityLabel,
+                            { color: themeColors.text },
                             isActive && styles.priorityLabelActive,
                           ]}>
                             {option.label}
                           </Text>
                           <Text style={[
                             styles.priorityDescription,
+                            { color: themeColors.textTertiary },
                             isActive && styles.priorityDescriptionActive,
                           ]}>
                             {option.description}
@@ -338,7 +342,7 @@ export function ManualAddSheet({ visible, onClose }: ManualAddSheetProps) {
             </ScrollView>
 
             {/* Submit Button */}
-            <View style={styles.footer}>
+            <View style={[styles.footer, { borderTopColor: themeColors.border }]}>
               <TouchableOpacity
                 style={[styles.submitButton, !isValid && styles.submitButtonDisabled]}
                 onPress={handleSubmit}
@@ -367,7 +371,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#1c1c1e',
+    // backgroundColor set via themeColors in JSX
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
     maxHeight: hp(90),
@@ -380,7 +384,7 @@ const styles = StyleSheet.create({
   handle: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    // backgroundColor set via themeColors in JSX
     borderRadius: scale(2),
   },
   header: {
@@ -390,12 +394,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    // borderBottomColor set via themeColors in JSX
   },
   headerTitle: {
     fontSize: scale(20),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   closeButton: {
     width: layout.minTouchTarget,
@@ -424,20 +428,19 @@ const styles = StyleSheet.create({
   fieldLabelText: {
     fontSize: scale(13),
     fontWeight: '500',
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor and color set via themeColors in JSX
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: scale(15),
-    color: colors.textPrimary,
     minHeight: scale(44),
   },
   inputError: {
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: accentColors.red,
   },
   inputMultiline: {
     minHeight: scale(80),
@@ -445,7 +448,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: scale(12),
-    color: colors.error,
+    color: accentColors.red,
     marginTop: spacing.xs,
   },
   rowContainer: {
@@ -457,7 +460,7 @@ const styles = StyleSheet.create({
   prioritySectionTitle: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginBottom: spacing.sm,
   },
   priorityOptions: {
@@ -467,7 +470,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
@@ -484,14 +487,14 @@ const styles = StyleSheet.create({
   priorityLabel: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   priorityLabelActive: {
     color: '#000',
   },
   priorityDescription: {
     fontSize: scale(12),
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     marginTop: scale(1),
   },
   priorityDescriptionActive: {
@@ -501,7 +504,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    // borderTopColor set via themeColors in JSX
   },
   submitButton: {
     flexDirection: 'row',

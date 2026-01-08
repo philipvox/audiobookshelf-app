@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ChevronLeft, Play, Square, RotateCcw, AlertTriangle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scale, colors, spacing } from '@/shared/theme';
+import { scale, spacing, accentColors, useThemeColors } from '@/shared/theme';
 import {
   errorStore,
   memoryMonitor,
@@ -43,6 +43,7 @@ interface TestResult {
 }
 
 export function DebugStressTestScreen() {
+  const themeColors = useThemeColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [isRunning, setIsRunning] = useState(false);
@@ -357,29 +358,29 @@ export function DebugStressTestScreen() {
       case 'warning':
         return '#FF9800';
       case 'running':
-        return colors.accent;
+        return accentColors.gold;
       default:
-        return colors.textSecondary;
+        return themeColors.textSecondary;
     }
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <ChevronLeft size={scale(24)} color={colors.textPrimary} />
+          <ChevronLeft size={scale(24)} color={themeColors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Stress Tests</Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>Stress Tests</Text>
         <View style={styles.headerRight}>
           {isRunning ? (
-            <ActivityIndicator color={colors.accent} />
+            <ActivityIndicator color={accentColors.gold} />
           ) : (
             <TouchableOpacity onPress={exportReport}>
-              <AlertTriangle size={scale(22)} color={colors.textSecondary} />
+              <AlertTriangle size={scale(22)} color={themeColors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -392,8 +393,8 @@ export function DebugStressTestScreen() {
           onPress={runAllTests}
           disabled={isRunning}
         >
-          <Play size={scale(18)} color={isRunning ? colors.textSecondary : colors.accent} />
-          <Text style={[styles.controlText, isRunning && styles.controlTextDisabled]}>
+          <Play size={scale(18)} color={isRunning ? themeColors.textSecondary : accentColors.gold} />
+          <Text style={[styles.controlText, { color: themeColors.text }, isRunning && styles.controlTextDisabled]}>
             Run All
           </Text>
         </TouchableOpacity>
@@ -403,23 +404,23 @@ export function DebugStressTestScreen() {
           onPress={stopTests}
           disabled={!isRunning}
         >
-          <Square size={scale(18)} color={!isRunning ? colors.textSecondary : '#F44336'} />
-          <Text style={[styles.controlText, !isRunning && styles.controlTextDisabled]}>
+          <Square size={scale(18)} color={!isRunning ? themeColors.textSecondary : '#F44336'} />
+          <Text style={[styles.controlText, { color: themeColors.text }, !isRunning && styles.controlTextDisabled]}>
             Stop
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.controlButton} onPress={resetTests}>
-          <RotateCcw size={scale(18)} color={colors.textSecondary} />
-          <Text style={styles.controlText}>Reset</Text>
+          <RotateCcw size={scale(18)} color={themeColors.textSecondary} />
+          <Text style={[styles.controlText, { color: themeColors.text }]}>Reset</Text>
         </TouchableOpacity>
       </View>
 
       {/* Current Test Indicator */}
       {currentTest && (
         <View style={styles.currentTest}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.currentTestText}>{currentTest}</Text>
+          <ActivityIndicator size="small" color={accentColors.gold} />
+          <Text style={[styles.currentTestText, { color: accentColors.gold }]}>{currentTest}</Text>
         </View>
       )}
 
@@ -427,10 +428,10 @@ export function DebugStressTestScreen() {
       <ScrollView style={styles.results} contentContainerStyle={styles.resultsContent}>
         {results.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: themeColors.text }]}>
               Press "Run All" to start stress tests
             </Text>
-            <Text style={styles.emptySubtext}>
+            <Text style={[styles.emptySubtext, { color: themeColors.textSecondary }]}>
               Tests will check memory, rendering, network, storage, and monitoring health
             </Text>
           </View>
@@ -444,14 +445,14 @@ export function DebugStressTestScreen() {
                     { backgroundColor: getStatusColor(result.status) },
                   ]}
                 />
-                <Text style={styles.resultName}>{result.name}</Text>
+                <Text style={[styles.resultName, { color: themeColors.text }]}>{result.name}</Text>
                 {result.duration !== undefined && (
-                  <Text style={styles.resultDuration}>{result.duration}ms</Text>
+                  <Text style={[styles.resultDuration, { color: themeColors.textSecondary }]}>{result.duration}ms</Text>
                 )}
               </View>
 
               {result.details && (
-                <Text style={styles.resultDetails}>{result.details}</Text>
+                <Text style={[styles.resultDetails, { color: themeColors.textSecondary }]}>{result.details}</Text>
               )}
 
               {result.errors && result.errors.length > 0 && (
@@ -470,8 +471,8 @@ export function DebugStressTestScreen() {
 
       {/* Summary */}
       {results.length > 0 && !isRunning && (
-        <View style={[styles.summary, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Text style={styles.summaryText}>
+        <View style={[styles.summary, { paddingBottom: insets.bottom + spacing.md, borderTopColor: themeColors.border }]}>
+          <Text style={[styles.summaryText, { color: themeColors.textSecondary }]}>
             Passed: {results.filter((r) => r.status === 'passed').length} |{' '}
             Failed: {results.filter((r) => r.status === 'failed').length} |{' '}
             Warning: {results.filter((r) => r.status === 'warning').length}
@@ -485,7 +486,7 @@ export function DebugStressTestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   header: {
     flexDirection: 'row',
@@ -493,7 +494,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    // borderBottomColor set via themeColors in JSX
   },
   backButton: {
     padding: spacing.xs,
@@ -503,7 +504,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: scale(18),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   headerRight: {
     width: scale(40),
@@ -529,10 +530,10 @@ const styles = StyleSheet.create({
   },
   controlText: {
     fontSize: scale(14),
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   controlTextDisabled: {
-    color: colors.textSecondary,
+    // Use inline styles via themeColors in JSX
   },
   currentTest: {
     flexDirection: 'row',
@@ -544,7 +545,7 @@ const styles = StyleSheet.create({
   },
   currentTestText: {
     fontSize: scale(13),
-    color: colors.accent,
+    // color set via themeColors in JSX
     fontWeight: '500',
   },
   results: {
@@ -562,12 +563,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: scale(16),
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     textAlign: 'center',
   },
   emptySubtext: {
     fontSize: scale(13),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginTop: spacing.sm,
     paddingHorizontal: spacing.xl,
@@ -593,15 +594,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: scale(15),
     fontWeight: '500',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   resultDuration: {
     fontSize: scale(12),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
   },
   resultDetails: {
     fontSize: scale(13),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginTop: spacing.xs,
     marginLeft: scale(18),
   },
@@ -619,13 +620,13 @@ const styles = StyleSheet.create({
   },
   summary: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    // borderTopColor set via themeColors in JSX
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
   summaryText: {
     fontSize: scale(14),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     textAlign: 'center',
   },
 });

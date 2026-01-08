@@ -24,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { usePlayerStore, useCurrentChapter } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
-import { colors, spacing, layout, radius } from '@/shared/theme';
+import { spacing, layout, radius, useThemeColors, accentColors } from '@/shared/theme';
 
 // ============================================================================
 // CONFIGURATION
@@ -96,12 +96,18 @@ interface ProgressBarProps {
 }
 
 export function ProgressBar({
-  textColor = colors.textTertiary,
-  trackColor = colors.progressTrack,
-  fillColor = colors.textPrimary,
+  textColor,
+  trackColor,
+  fillColor,
   mode = 'bar',
   showChapterMarkers = true,
 }: ProgressBarProps) {
+  const themeColors = useThemeColors();
+
+  // Use provided colors or theme defaults
+  const effectiveTextColor = textColor ?? themeColors.textTertiary;
+  const effectiveTrackColor = trackColor ?? themeColors.border;
+  const effectiveFillColor = fillColor ?? themeColors.text;
   const { position, duration, seekTo, progressMode, isSeeking, seekPosition, chapters } = usePlayerStore();
   const currentChapter = useCurrentChapter();
 
@@ -300,7 +306,7 @@ export function ProgressBar({
       {/* Fine-scrub mode indicator */}
       {isDragging && verticalOffset > 20 && (
         <View style={styles.fineModeContainer}>
-          <Text style={styles.fineModeText}>Fine {sensitivityInfo.label}</Text>
+          <Text style={[styles.fineModeText, { color: accentColors.gold }]}>Fine {sensitivityInfo.label}</Text>
         </View>
       )}
 
@@ -310,10 +316,10 @@ export function ProgressBar({
           style={[
             styles.tooltip,
             tooltipAnimatedStyle,
-            { left: `${progress * 100}%` },
+            { left: `${progress * 100}%`, backgroundColor: themeColors.surfaceElevated },
           ]}
         >
-          <Text style={styles.tooltipText}>{formatTime(dragPosition)}</Text>
+          <Text style={[styles.tooltipText, { color: themeColors.text }]}>{formatTime(dragPosition)}</Text>
         </Animated.View>
       )}
 
@@ -322,7 +328,7 @@ export function ProgressBar({
           style={styles.trackContainer}
           onLayout={handleLayout}
         >
-          <View style={[styles.track, { backgroundColor: trackColor }]}>
+          <View style={[styles.track, { backgroundColor: effectiveTrackColor }]}>
             {/* Chapter markers */}
             {showChapterMarkers && chapters && chapters.length > 1 && !isChapterMode && (
               chapters.map((chapter, index) => {
@@ -333,7 +339,7 @@ export function ProgressBar({
                     key={chapter.id}
                     style={[
                       styles.chapterMarker,
-                      { left: `${markerPos}%` },
+                      { left: `${markerPos}%`, backgroundColor: `${themeColors.text}66` },
                     ]}
                   />
                 );
@@ -345,7 +351,7 @@ export function ProgressBar({
               style={[
                 styles.fill,
                 {
-                  backgroundColor: fillColor,
+                  backgroundColor: effectiveFillColor,
                   width: `${progress * 100}%`,
                 },
               ]}
@@ -357,7 +363,7 @@ export function ProgressBar({
                 styles.thumb,
                 thumbAnimatedStyle,
                 {
-                  backgroundColor: fillColor,
+                  backgroundColor: effectiveFillColor,
                   left: `${progress * 100}%`,
                 },
               ]}
@@ -367,10 +373,10 @@ export function ProgressBar({
       </GestureDetector>
 
       <View style={styles.timeRow}>
-        <Text style={[styles.timeText, { color: textColor }]}>
+        <Text style={[styles.timeText, { color: effectiveTextColor }]}>
           {formatTime(effectivePosition)}
         </Text>
-        <Text style={[styles.timeText, { color: textColor }]}>
+        <Text style={[styles.timeText, { color: effectiveTextColor }]}>
           {isChapterMode && currentChapter?.title ? currentChapter.title : formatTime(effectiveDuration)}
         </Text>
       </View>
@@ -414,7 +420,6 @@ const styles = StyleSheet.create({
     top: -2,
     width: 2,
     height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 1,
     transform: [{ translateX: -1 }],
   },
@@ -430,7 +435,6 @@ const styles = StyleSheet.create({
   tooltip: {
     position: 'absolute',
     top: -8,
-    backgroundColor: colors.overlay?.dark || 'rgba(0, 0, 0, 0.85)',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
@@ -438,7 +442,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   tooltipText: {
-    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
@@ -452,7 +455,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   fineModeText: {
-    color: colors.accent,
     fontSize: 12,
     fontWeight: '600',
   },

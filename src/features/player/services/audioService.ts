@@ -458,13 +458,25 @@ class AudioService {
         // CRITICAL: Stop the old player BEFORE swapping to prevent multiple audio streams
         this.player?.pause();
 
+        // Remove listener from old player before swap
+        if (this.playbackStatusSubscription) {
+          this.playbackStatusSubscription.remove();
+          this.playbackStatusSubscription = null;
+        }
+
         // Swap players
         const temp = this.player;
         this.player = this.preloadPlayer;
         this.preloadPlayer = temp;
 
+        // Re-attach listener to new player - CRITICAL for detecting next track end
+        this.setupEventListeners();
+
         // Start playback immediately
         this.player?.play();
+
+        // Verify playback started with retry
+        await this.verifyPlaybackAfterTransition();
 
         // Reset preload state and start preloading next-next track
         this.preloadedTrackIndex = -1;
@@ -489,9 +501,11 @@ class AudioService {
             trackReady = await this.waitForTrackReady(3000);
             if (!trackReady) {
               audioLog.error('[Audio] Track load failed after retry - chapter may be stuck');
-              // Note: User will need to tap play or seek to recover
             }
           }
+
+          // Verify playback started with retry
+          await this.verifyPlaybackAfterTransition();
 
           // Update lastKnownGoodPosition to new track start
           this.lastKnownGoodPosition = this.tracks[this.currentTrackIndex].startOffset;
@@ -806,11 +820,16 @@ class AudioService {
         // WORKAROUND: Prime the player with play-pause to initialize buffering
         // expo-audio has issues where calling play() later on an unprimed player
         // gets stuck in perpetual buffering state. See expo/expo#34162
-        log('Priming player (play-pause trick)');
-        this.player?.play();
-        // Wait for playback to initialize - 500ms gives time for network buffering
-        await new Promise(resolve => setTimeout(resolve, 500));
-        this.player?.pause();
+        // NOTE: Mute during priming to prevent audible playback
+        log('Priming player (silent play-pause trick)');
+        if (this.player) {
+          this.player.volume = 0;
+          this.player.play();
+          // Wait for playback to initialize - 500ms gives time for network buffering
+          await new Promise(resolve => setTimeout(resolve, 500));
+          this.player.pause();
+          this.player.volume = 1;
+        }
         log('Ready (paused, primed for playback)');
       }
       timing('Load complete');
@@ -937,11 +956,16 @@ class AudioService {
         // WORKAROUND: Prime the player with play-pause to initialize buffering
         // expo-audio has issues where calling play() later on an unprimed player
         // gets stuck in perpetual buffering state. See expo/expo#34162
-        log('Priming player (play-pause trick)');
-        this.player?.play();
-        // Wait for playback to initialize - 500ms gives time for network buffering
-        await new Promise(resolve => setTimeout(resolve, 500));
-        this.player?.pause();
+        // NOTE: Mute during priming to prevent audible playback
+        log('Priming player (silent play-pause trick)');
+        if (this.player) {
+          this.player.volume = 0;
+          this.player.play();
+          // Wait for playback to initialize - 500ms gives time for network buffering
+          await new Promise(resolve => setTimeout(resolve, 500));
+          this.player.pause();
+          this.player.volume = 1;
+        }
         log('Ready (paused, primed for playback)');
       }
       timing('Load complete');
@@ -1140,6 +1164,52 @@ class AudioService {
   }
 
   /**
+   * Verify playback actually started after a track transition.
+   * Retries play command if player is not playing/buffering.
+   */
+  private async verifyPlaybackAfterTransition(): Promise<void> {
+    if (!this.player) return;
+
+    // Wait a brief moment for playback to initialize
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Check if playing or buffering
+    if (this.player.playing || this.player.isBuffering) {
+      log('[Audio] Track transition verified - playback active');
+      return;
+    }
+
+    // First retry
+    log('[Audio] Track transition: playback not started, retrying...');
+    this.player.play();
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    if (this.player.playing || this.player.isBuffering) {
+      log('[Audio] Track transition verified after retry');
+      return;
+    }
+
+    // Second retry
+    audioLog.warn('[Audio] Track transition: second retry...');
+    this.player.play();
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    if (!this.player.playing && !this.player.isBuffering) {
+      audioLog.error('[Audio] Track transition: playback failed to start after retries');
+      // Emit status update so UI knows playback stopped
+      this.statusCallback?.({
+        isPlaying: false,
+        position: this.getGlobalPositionSync(),
+        duration: this.totalDuration,
+        isBuffering: false,
+        didJustFinish: false,
+      });
+    } else {
+      log('[Audio] Track transition verified after second retry');
+    }
+  }
+
+  /**
    * Check if currently in a scrubbing session
    */
   getIsScrubbing(): boolean {
@@ -1277,6 +1347,13 @@ class AudioService {
 
   async getPosition(): Promise<number> {
     return this.getGlobalPositionSync();
+  }
+
+  /**
+   * Get the last known good position (for use during scrubbing/seeking)
+   */
+  getLastKnownGoodPosition(): number {
+    return this.lastKnownGoodPosition;
   }
 
   async getDuration(): Promise<number> {

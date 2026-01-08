@@ -49,15 +49,14 @@ import {
 } from '@/features/player/stores/joystickSeekStore';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, wp, typography, fontWeight, spacing } from '@/shared/theme';
+import { scale, wp, typography, fontWeight, spacing } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.gold;
 
 // Helper to create theme-aware colors from nested ThemeColors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
+    textOnAccent: c.accent.textOnAccent,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -79,9 +78,10 @@ interface CurvePreviewProps {
   testPosition?: number;
   /** Callback when user drags to adjust exponent (makes curve interactive) */
   onExponentChange?: (exponent: number) => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentChange }: CurvePreviewProps) {
+function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentChange, colors }: CurvePreviewProps) {
   const width = wp(92);
   const height = wp(50); // Taller for better dragging
   const padding = { top: 20, right: 45, bottom: 35, left: 45 };
@@ -153,8 +153,8 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id="fillGradient" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={ACCENT} stopOpacity="0.25" />
-            <Stop offset="100%" stopColor={ACCENT} stopOpacity="0.02" />
+            <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.25" />
+            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0.02" />
           </LinearGradient>
         </Defs>
 
@@ -202,7 +202,7 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
         <Path d={fillPath} fill="url(#fillGradient)" />
 
         {/* Curve line */}
-        <Path d={curvePath} stroke={ACCENT} strokeWidth="2.5" fill="none" />
+        <Path d={curvePath} stroke={colors.accent} strokeWidth="2.5" fill="none" />
 
         {/* Test position indicator */}
         {testPoint && (
@@ -212,7 +212,7 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
               y1={padding.top + graphHeight}
               x2={testPoint.x}
               y2={testPoint.y}
-              stroke={ACCENT}
+              stroke={colors.accent}
               strokeWidth="1"
               strokeDasharray="4,4"
             />
@@ -221,11 +221,11 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
               y1={testPoint.y}
               x2={testPoint.x}
               y2={testPoint.y}
-              stroke={ACCENT}
+              stroke={colors.accent}
               strokeWidth="1"
               strokeDasharray="4,4"
             />
-            <Circle cx={testPoint.x} cy={testPoint.y} r="6" fill={ACCENT} />
+            <Circle cx={testPoint.x} cy={testPoint.y} r="6" fill={colors.accent} />
           </>
         )}
 
@@ -304,6 +304,7 @@ function CurvePreview({ minSpeed, maxSpeed, exponent, testPosition, onExponentCh
 interface PresetPillsProps {
   selected: CurvePreset;
   onSelect: (preset: CurvePreset) => void;
+  colors: ReturnType<typeof createColors>;
 }
 
 const PRESET_LABELS: Record<CurvePreset, string> = {
@@ -314,7 +315,7 @@ const PRESET_LABELS: Record<CurvePreset, string> = {
   custom: 'Cust.',
 };
 
-function PresetPills({ selected, onSelect }: PresetPillsProps) {
+function PresetPills({ selected, onSelect, colors }: PresetPillsProps) {
   const presets: CurvePreset[] = ['fine', 'swift', 'even', 'rush'];
 
   const handleSelect = useCallback(
@@ -334,11 +335,11 @@ function PresetPills({ selected, onSelect }: PresetPillsProps) {
           return (
             <TouchableOpacity
               key={preset}
-              style={[styles.presetPill, isSelected && styles.presetPillSelected]}
+              style={[styles.presetPill, isSelected && { backgroundColor: colors.accent }]}
               onPress={() => handleSelect(preset)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.presetPillText, isSelected && styles.presetPillTextSelected]}>
+              <Text style={[styles.presetPillText, isSelected && { color: colors.textOnAccent }]}>
                 {PRESET_LABELS[preset]}
               </Text>
             </TouchableOpacity>
@@ -364,9 +365,10 @@ interface SpeedSliderProps {
   max: number;
   step: number;
   onChange: (value: number) => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function SpeedSlider({ label, note, value, min, max, step, onChange }: SpeedSliderProps) {
+function SpeedSlider({ label, note, value, min, max, step, onChange, colors }: SpeedSliderProps) {
   const [localValue, setLocalValue] = useState(value);
 
   const handleValueChange = useCallback(
@@ -397,7 +399,7 @@ function SpeedSlider({ label, note, value, min, max, step, onChange }: SpeedSlid
     <View style={styles.sliderContainer}>
       <View style={styles.sliderHeader}>
         <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderValue}>{formatSpeedShort(localValue)}</Text>
+        <Text style={[styles.sliderValue, { color: colors.accent }]}>{formatSpeedShort(localValue)}</Text>
       </View>
       <Text style={styles.sliderNote}>{note}</Text>
 
@@ -438,9 +440,10 @@ interface TestAreaProps {
     hapticEnabled: boolean;
   };
   onTestPositionChange: (position: number | undefined) => void;
+  colors: ReturnType<typeof createColors>;
 }
 
-function TestArea({ settings, onTestPositionChange }: TestAreaProps) {
+function TestArea({ settings, onTestPositionChange, colors }: TestAreaProps) {
   const [isTesting, setIsTesting] = useState(false);
   const [testSpeed, setTestSpeed] = useState(0);
   const [testDirection, setTestDirection] = useState<'forward' | 'backward' | null>(null);
@@ -533,7 +536,7 @@ function TestArea({ settings, onTestPositionChange }: TestAreaProps) {
 
       <View style={styles.testAreaCircle}>
         <GestureDetector gesture={gesture}>
-          <Animated.View style={[styles.testButton, buttonStyle]}>
+          <Animated.View style={[styles.testButton, { backgroundColor: colors.accent, shadowColor: colors.accent }, buttonStyle]}>
             {isTesting ? (
               testDirection === 'forward' ? (
                 <SkipForward size={scale(24)} color="#000" strokeWidth={2} />
@@ -550,14 +553,14 @@ function TestArea({ settings, onTestPositionChange }: TestAreaProps) {
       <View style={styles.testStats}>
         <View style={styles.testStat}>
           <Text style={styles.testStatLabel}>Speed</Text>
-          <Text style={[styles.testStatValue, isTesting && styles.testStatValueActive]}>
+          <Text style={[styles.testStatValue, isTesting && { color: colors.accent }]}>
             {isTesting ? formatSpeedShort(testSpeed) : '--'}
           </Text>
         </View>
         <View style={styles.testStatDivider} />
         <View style={styles.testStat}>
           <Text style={styles.testStatLabel}>Direction</Text>
-          <Text style={[styles.testStatValue, isTesting && styles.testStatValueActive]}>
+          <Text style={[styles.testStatValue, isTesting && { color: colors.accent }]}>
             {isTesting && testDirection ? (testDirection === 'forward' ? 'Forward' : 'Backward') : '--'}
           </Text>
         </View>
@@ -671,7 +674,7 @@ export function JoystickSeekSettingsScreen() {
               <Switch
                 value={enabled}
                 onValueChange={setEnabled}
-                trackColor={{ false: colors.border, true: ACCENT }}
+                trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor="#fff"
               />
             </View>
@@ -687,10 +690,11 @@ export function JoystickSeekSettingsScreen() {
               exponent={curveExponent}
               testPosition={testPosition}
               onExponentChange={setCurveExponent}
+              colors={colors}
             />
 
             {/* Preset Pills */}
-            <PresetPills selected={curvePreset} onSelect={setCurvePreset} />
+            <PresetPills selected={curvePreset} onSelect={setCurvePreset} colors={colors} />
 
             {/* Speed Range Section */}
             <View style={styles.section}>
@@ -704,6 +708,7 @@ export function JoystickSeekSettingsScreen() {
                 max={30}
                 step={0.1}
                 onChange={setMinSpeed}
+                colors={colors}
               />
 
               <SpeedSlider
@@ -714,6 +719,7 @@ export function JoystickSeekSettingsScreen() {
                 max={600}
                 step={30}
                 onChange={setMaxSpeed}
+                colors={colors}
               />
             </View>
 
@@ -744,7 +750,7 @@ export function JoystickSeekSettingsScreen() {
                     onValueChange={(value) => {
                       setDeadzone(value);
                     }}
-                    minimumTrackTintColor={ACCENT}
+                    minimumTrackTintColor={colors.accent}
                     maximumTrackTintColor={colors.border}
                     thumbTintColor="#fff"
                   />
@@ -773,7 +779,7 @@ export function JoystickSeekSettingsScreen() {
                     onValueChange={(value) => {
                       setCurveExponent(value);
                     }}
-                    minimumTrackTintColor={ACCENT}
+                    minimumTrackTintColor={colors.accent}
                     maximumTrackTintColor={colors.border}
                     thumbTintColor="#fff"
                   />
@@ -793,7 +799,7 @@ export function JoystickSeekSettingsScreen() {
                   <Switch
                     value={hapticEnabled}
                     onValueChange={setHapticEnabled}
-                    trackColor={{ false: colors.border, true: ACCENT }}
+                    trackColor={{ false: colors.border, true: colors.accent }}
                     thumbColor="#fff"
                   />
                 </View>
@@ -801,7 +807,7 @@ export function JoystickSeekSettingsScreen() {
             </View>
 
             {/* Test Area */}
-            <TestArea settings={settings} onTestPositionChange={setTestPosition} />
+            <TestArea settings={settings} onTestPositionChange={setTestPosition} colors={colors} />
 
             {/* Reset Button */}
             <TouchableOpacity style={[styles.resetButton, { borderColor: colors.border }]} onPress={handleReset} activeOpacity={0.7}>
@@ -970,17 +976,13 @@ const styles = StyleSheet.create({
     borderRadius: scale(20),
     alignItems: 'center',
   },
-  presetPillSelected: {
-    backgroundColor: ACCENT,
-  },
+  // presetPillSelected backgroundColor is set via inline style for dynamic theming
   presetPillText: {
     ...typography.bodySmall,
     fontWeight: fontWeight.semibold,
     color: 'rgba(255,255,255,0.7)',
   },
-  presetPillTextSelected: {
-    color: '#000',
-  },
+  // presetPillTextSelected removed - now using dynamic colors.textOnAccent
   customNote: {
     ...typography.labelMedium,
     color: 'rgba(255,255,255,0.4)',
@@ -1007,7 +1009,7 @@ const styles = StyleSheet.create({
   sliderValue: {
     ...typography.headlineLarge,
     fontWeight: fontWeight.bold,
-    color: ACCENT,
+    // color set via inline style for dynamic theming
   },
   sliderNote: {
     ...typography.bodySmall,
@@ -1077,10 +1079,9 @@ const styles = StyleSheet.create({
     width: scale(64),
     height: scale(64),
     borderRadius: scale(32),
-    backgroundColor: ACCENT,
+    // backgroundColor and shadowColor set via inline style for dynamic theming
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -1104,9 +1105,7 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: 'rgba(255,255,255,0.3)',
   },
-  testStatValueActive: {
-    color: ACCENT,
-  },
+  // testStatValueActive color set via inline style for dynamic theming
   testStatDivider: {
     width: 1,
     height: scale(30),

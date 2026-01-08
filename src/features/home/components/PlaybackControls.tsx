@@ -10,10 +10,11 @@ import { View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-nat
 import { SkipBack, SkipForward, Play, Pause } from 'lucide-react-native';
 import { haptics } from '@/core/native/haptics';
 import {
-  colors,
   spacing,
   scale,
   layout,
+  useThemeColors,
+  accentColors,
 } from '@/shared/theme';
 
 interface PlaybackControlsProps {
@@ -43,6 +44,8 @@ export function PlaybackControls({
   onSkipBackwardPressOut,
   disabled = false,
 }: PlaybackControlsProps) {
+  const themeColors = useThemeColors();
+
   // NN/g: Haptic feedback for play/pause provides tactile confirmation
   const handlePlayPause = useCallback(() => {
     if (isLoading) return; // Don't allow play/pause while loading
@@ -93,7 +96,7 @@ export function PlaybackControls({
         accessibilityRole="button"
         accessibilityHint="Double tap to skip back. Long press for continuous rewind."
       >
-        <SkipBack size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} strokeWidth={2} />
+        <SkipBack size={iconSize} color={controlsDisabled ? themeColors.textTertiary : themeColors.text} strokeWidth={2} />
       </TouchableOpacity>
 
       {/* Fast Forward */}
@@ -108,7 +111,7 @@ export function PlaybackControls({
         accessibilityRole="button"
         accessibilityHint="Double tap to skip forward. Long press for continuous fast forward."
       >
-        <SkipForward size={iconSize} color={controlsDisabled ? colors.textMuted : colors.textPrimary} strokeWidth={2} />
+        <SkipForward size={iconSize} color={controlsDisabled ? themeColors.textTertiary : themeColors.text} strokeWidth={2} />
       </TouchableOpacity>
 
       {/* Play/Pause - shows spinner when loading */}
@@ -122,11 +125,11 @@ export function PlaybackControls({
         accessibilityState={{ disabled: controlsDisabled }}
       >
         {isLoading ? (
-          <ActivityIndicator size={playIconSize} color={colors.accent} />
+          <ActivityIndicator size={playIconSize} color={accentColors.gold} />
         ) : isPlaying ? (
-          <Pause size={playIconSize} color={colors.accent} strokeWidth={2} fill={colors.accent} />
+          <Pause size={playIconSize} color={accentColors.gold} fill={accentColors.gold} strokeWidth={0} />
         ) : (
-          <Play size={playIconSize} color={colors.accent} strokeWidth={0} fill={colors.accent} />
+          <Play size={playIconSize} color={accentColors.gold} fill={accentColors.gold} strokeWidth={0} />
         )}
       </TouchableOpacity>
     </View>

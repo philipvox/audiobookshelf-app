@@ -94,7 +94,6 @@ export function DownloadedTab({
               book={book}
               onPress={() => onBookPress(book.id)}
               onPlay={() => onBookPlay(book)}
-              showIndicator={false}
               isMarkedFinished={isMarkedFinished(book.id)}
             />
           ))}

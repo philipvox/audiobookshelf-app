@@ -17,9 +17,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { getSeriesNavigationInfo } from '@/core/cache';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 interface SeriesNavigatorProps {
   book: LibraryItem;
@@ -60,6 +60,7 @@ function getSeriesFromMetadata(book: LibraryItem): {
 }
 
 export function SeriesNavigator({ book }: SeriesNavigatorProps) {
+  const themeColors = useThemeColors();
   const navigation = useNavigation<any>();
 
   // Get series info from book metadata (always available if book has series)
@@ -130,8 +131,8 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
       >
         {previousBook ? (
           <>
-            <ChevronLeft size={scale(16)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
-            <Text style={styles.arrowText}>{getPreviousLabel()}</Text>
+            <ChevronLeft size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+            <Text style={[styles.arrowText, { color: themeColors.textSecondary }]}>{getPreviousLabel()}</Text>
           </>
         ) : (
           <View style={styles.arrowPlaceholder} />
@@ -147,10 +148,10 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
         accessibilityRole="button"
         accessibilityHint="Double tap to view series details"
       >
-        <Text style={styles.seriesName} numberOfLines={1}>
+        <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={1}>
           {seriesName}
         </Text>
-        <Text style={styles.seriesPosition}>
+        <Text style={[styles.seriesPosition, { color: themeColors.textSecondary }]}>
           #{Math.floor(currentSequence)}{totalBooks > 0 ? ` of ${totalBooks}` : ''}
         </Text>
       </TouchableOpacity>
@@ -168,8 +169,8 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
       >
         {nextBook ? (
           <>
-            <Text style={styles.arrowText}>{getNextLabel()}</Text>
-            <ChevronRight size={scale(16)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+            <Text style={[styles.arrowText, { color: themeColors.textSecondary }]}>{getNextLabel()}</Text>
+            <ChevronRight size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
           </>
         ) : (
           <View style={styles.arrowPlaceholder} />
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
   },
   arrowText: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.7)',
+    // color set via themeColors in JSX
   },
   seriesInfo: {
     flex: 1,
@@ -214,13 +215,13 @@ const styles = StyleSheet.create({
   seriesName: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors in JSX
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
   seriesPosition: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.7)',
+    // color set via themeColors in JSX
     marginTop: scale(2),
   },
 });

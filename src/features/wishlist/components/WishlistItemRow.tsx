@@ -27,9 +27,9 @@ import * as Haptics from 'expo-haptics';
 import { WishlistItem, WishlistPriority } from '../types';
 import { useWishlistStore } from '../stores/wishlistStore';
 import { useCoverUrl, useLibraryCache } from '@/core/cache';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 interface WishlistItemRowProps {
   item: WishlistItem;
@@ -54,6 +54,7 @@ function formatDuration(seconds?: number): string {
 }
 
 export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowProps) {
+  const themeColors = useThemeColors();
   const removeItem = useWishlistStore((s) => s.removeItem);
   const getItem = useLibraryCache((s) => s.getItem);
 
@@ -128,13 +129,13 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
         {displayCover ? (
           <Image
             source={displayCover}
-            style={styles.cover}
+            style={[styles.cover, { backgroundColor: themeColors.surfaceElevated }]}
             contentFit="cover"
             cachePolicy="memory-disk"
           />
         ) : (
-          <View style={[styles.cover, styles.coverPlaceholder]}>
-            <Bookmark size={scale(24)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.surfaceElevated }]}>
+            <Bookmark size={scale(24)} color={themeColors.textTertiary} strokeWidth={1.5} />
           </View>
         )}
         {/* Priority indicator */}
@@ -149,29 +150,29 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>{title}</Text>
 
         <View style={styles.metaRow}>
-          <User size={scale(11)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
-          <Text style={styles.metaText} numberOfLines={1}>{author}</Text>
+          <User size={scale(11)} color={themeColors.textTertiary} strokeWidth={2} />
+          <Text style={[styles.metaText, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
         </View>
 
         {narrator && (
-          <Text style={styles.narratorText} numberOfLines={1}>
+          <Text style={[styles.narratorText, { color: themeColors.textTertiary }]} numberOfLines={1}>
             Narrated by {narrator}
           </Text>
         )}
 
         <View style={styles.tagsRow}>
           {seriesText && (
-            <View style={styles.seriesBadge}>
-              <Text style={styles.seriesText} numberOfLines={1}>{seriesText}</Text>
+            <View style={[styles.seriesBadge, { backgroundColor: themeColors.backgroundTertiary }]}>
+              <Text style={[styles.seriesText, { color: themeColors.textSecondary }]} numberOfLines={1}>{seriesText}</Text>
             </View>
           )}
           {duration && (
             <View style={styles.durationBadge}>
-              <Clock size={scale(10)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
-              <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+              <Clock size={scale(10)} color={themeColors.textTertiary} strokeWidth={2} />
+              <Text style={[styles.durationText, { color: themeColors.textTertiary }]}>{formatDuration(duration)}</Text>
             </View>
           )}
         </View>
@@ -190,9 +191,9 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
           onPress={handleDelete}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Trash2 size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+          <Trash2 size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
         </TouchableOpacity>
-        <ChevronRight size={scale(16)} color="rgba(255,255,255,0.3)" strokeWidth={2} />
+        <ChevronRight size={scale(16)} color={themeColors.textTertiary} strokeWidth={2} />
       </View>
     </TouchableOpacity>
   );
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
     width: scale(56),
     height: scale(56),
     borderRadius: scale(8),
-    backgroundColor: '#262626',
+    // backgroundColor set via themeColors in JSX
   },
   coverPlaceholder: {
     justifyContent: 'center',
@@ -237,7 +238,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors in JSX
     marginBottom: scale(2),
   },
   metaRow: {
@@ -247,12 +248,12 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors in JSX
     flex: 1,
   },
   narratorText: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.4)',
+    // color set via themeColors in JSX
   },
   tagsRow: {
     flexDirection: 'row',
@@ -261,7 +262,7 @@ const styles = StyleSheet.create({
     marginTop: scale(4),
   },
   seriesBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // backgroundColor set via themeColors in JSX
     paddingHorizontal: scale(8),
     paddingVertical: scale(2),
     borderRadius: scale(4),
@@ -269,7 +270,7 @@ const styles = StyleSheet.create({
   },
   seriesText: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors in JSX
   },
   durationBadge: {
     flexDirection: 'row',
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
   },
   durationText: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
   },
   notes: {
     fontSize: scale(11),

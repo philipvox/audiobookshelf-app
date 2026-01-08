@@ -41,10 +41,8 @@ import {
   PopularGenresSection,
 } from '../components/GenreSections';
 import { GenreListItem } from '../components/GenreCards';
-import { accentColors, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
-
-const ACCENT = accentColors.red;
+import { spacing, radius } from '@/shared/theme';
+import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
 
 type ViewMode = 'grouped' | 'flat';
 
@@ -53,6 +51,8 @@ export function GenresListScreen() {
   const insets = useSafeAreaInsets();
   const themeColors = useThemeColors();
   const isDarkMode = useIsDarkMode();
+  const colors = useColors();
+  const accent = colors.accent.primary;
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
@@ -250,7 +250,7 @@ export function GenresListScreen() {
         <RefreshControl
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
-          tintColor={ACCENT}
+          tintColor={accent}
         />
       }
     >
@@ -318,7 +318,7 @@ export function GenresListScreen() {
         showsVerticalScrollIndicator={false}
         renderSectionHeader={({ section }) => (
           <View style={[styles.sectionHeader, { backgroundColor: themeColors.background }]}>
-            <Text style={styles.sectionHeaderText}>{section.title}</Text>
+            <Text style={[styles.sectionHeaderText, { color: accent }]}>{section.title}</Text>
           </View>
         )}
         renderItem={({ item }) => (
@@ -344,7 +344,7 @@ export function GenresListScreen() {
               style={styles.alphabetLetterButton}
               onPress={() => handleLetterPress(letter)}
             >
-              <Text style={styles.alphabetLetter}>{letter}</Text>
+              <Text style={[styles.alphabetLetter, { color: accent }]}>{letter}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -398,7 +398,7 @@ export function GenresListScreen() {
           }
         ]}>
           <TouchableOpacity
-            style={[styles.toggleButton, viewMode === 'grouped' && [styles.toggleButtonActive, { backgroundColor: ACCENT }]]}
+            style={[styles.toggleButton, viewMode === 'grouped' && [styles.toggleButtonActive, { backgroundColor: accent }]]}
             onPress={() => setViewMode('grouped')}
           >
             <Icon
@@ -408,7 +408,7 @@ export function GenresListScreen() {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, viewMode === 'flat' && [styles.toggleButtonActive, { backgroundColor: ACCENT }]]}
+            style={[styles.toggleButton, viewMode === 'flat' && [styles.toggleButtonActive, { backgroundColor: accent }]]}
             onPress={() => setViewMode('flat')}
           >
             <Icon
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
   alphabetLetter: {
     fontSize: 10,
     fontWeight: '700',
-    color: ACCENT,
+    // color set dynamically via accent in JSX
   },
   sectionHeader: {
     // backgroundColor set via themeColors.background in JSX
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
   sectionHeaderText: {
     fontSize: 14,
     fontWeight: '700',
-    color: ACCENT,
+    // color set dynamically via accent in JSX
   },
   browseHeader: {
     paddingHorizontal: 16,

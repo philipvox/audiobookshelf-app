@@ -208,6 +208,8 @@ interface ToolbarProps {
   onFilterPress: () => void;
   isSearching: boolean;
   onSearchPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+  COLORS: ThemeColorsConfig;
 }
 
 function Toolbar({
@@ -217,6 +219,8 @@ function Toolbar({
   onFilterPress,
   isSearching,
   onSearchPress,
+  styles,
+  COLORS,
 }: ToolbarProps) {
   return (
     <View style={styles.toolbar}>
@@ -278,9 +282,11 @@ interface SearchBarProps {
   value: string;
   onChangeText: (text: string) => void;
   onClose: () => void;
+  styles: ReturnType<typeof createStyles>;
+  COLORS: ThemeColorsConfig;
 }
 
-function SearchBar({ value, onChangeText, onClose }: SearchBarProps) {
+function SearchBar({ value, onChangeText, onClose, styles, COLORS }: SearchBarProps) {
   return (
     <Animated.View
       style={styles.searchBar}
@@ -319,9 +325,11 @@ interface ActiveFiltersRowProps {
   filters: ActiveFilter[];
   onRemove: (id: string) => void;
   onClearAll: () => void;
+  styles: ReturnType<typeof createStyles>;
+  COLORS: ThemeColorsConfig;
 }
 
-function ActiveFiltersRow({ filters, onRemove, onClearAll }: ActiveFiltersRowProps) {
+function ActiveFiltersRow({ filters, onRemove, onClearAll, styles, COLORS }: ActiveFiltersRowProps) {
   if (filters.length === 0) return null;
 
   return (
@@ -368,9 +376,10 @@ function ActiveFiltersRow({ filters, onRemove, onClearAll }: ActiveFiltersRowPro
 
 interface SectionHeaderProps {
   title: string;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function SectionHeader({ title }: SectionHeaderProps) {
+function SectionHeader({ title, styles }: SectionHeaderProps) {
   return (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionHeaderText}>{title}</Text>
@@ -389,6 +398,7 @@ interface StatsCardProps {
   syncPercentage: number;
   onSyncAll: () => void;
   isSyncing: boolean;
+  styles: ReturnType<typeof createStyles>;
 }
 
 function StatsCard({
@@ -398,6 +408,7 @@ function StatsCard({
   syncPercentage,
   onSyncAll,
   isSyncing,
+  styles,
 }: StatsCardProps) {
   const totalHours = Math.round(totalDuration / 3600);
   const hasUnsynced = syncedCount < totalBooks;
@@ -459,6 +470,8 @@ interface HistoryListItemProps {
   isSelected: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+  COLORS: ThemeColorsConfig;
 }
 
 function HistoryListItem({
@@ -467,6 +480,8 @@ function HistoryListItem({
   isSelected,
   onPress,
   onLongPress,
+  styles,
+  COLORS,
 }: HistoryListItemProps) {
   const seriesInfo = book.seriesName
     ? `${book.seriesName} • ${formatDuration(book.duration)}`
@@ -543,6 +558,8 @@ interface SelectionFooterProps {
   onRemove: () => void;
   onSync: () => void;
   canSync: boolean;
+  styles: ReturnType<typeof createStyles>;
+  COLORS: ThemeColorsConfig;
 }
 
 function SelectionFooter({
@@ -553,6 +570,8 @@ function SelectionFooter({
   onRemove,
   onSync,
   canSync,
+  styles,
+  COLORS,
 }: SelectionFooterProps) {
   const allSelected = selectedCount === totalCount && totalCount > 0;
 
@@ -644,8 +663,12 @@ export function ReadingHistoryScreen() {
   const finishedBooksMap = useMemo(() => {
     const map = new Map<string, { finishedAt: number; synced: boolean }>();
     for (const book of finishedBooksData) {
+      const finishedAtValue = book.finishedAt;
+      const finishedAtNum = typeof finishedAtValue === 'string'
+        ? parseInt(finishedAtValue, 10) || Date.now()
+        : (finishedAtValue || Date.now());
       map.set(book.bookId, {
-        finishedAt: book.finishedAt || Date.now(),
+        finishedAt: finishedAtNum,
         synced: book.finishedSynced ?? false,
       });
     }
@@ -1051,8 +1074,10 @@ export function ReadingHistoryScreen() {
       isSelected={selectedIds.has(item.id)}
       onPress={() => handleItemPress(item.id)}
       onLongPress={() => handleLongPress(item.id)}
+      styles={styles}
+      COLORS={COLORS}
     />
-  ), [isSelecting, selectedIds, handleItemPress, handleLongPress]);
+  ), [isSelecting, selectedIds, handleItemPress, handleLongPress, styles, COLORS]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1088,6 +1113,7 @@ export function ReadingHistoryScreen() {
           syncPercentage={stats.syncPercentage}
           onSyncAll={handleSyncAll}
           isSyncing={isSyncing}
+          styles={styles}
         />
       )}
 
@@ -1101,6 +1127,8 @@ export function ReadingHistoryScreen() {
               setIsSearching(false);
               setSearchQuery('');
             }}
+            styles={styles}
+            COLORS={COLORS}
           />
         ) : (
           <Toolbar
@@ -1110,6 +1138,8 @@ export function ReadingHistoryScreen() {
             onFilterPress={() => setShowFilterSheet(true)}
             isSearching={isSearching}
             onSearchPress={() => setIsSearching(true)}
+            styles={styles}
+            COLORS={COLORS}
           />
         )
       )}
@@ -1120,6 +1150,8 @@ export function ReadingHistoryScreen() {
           filters={activeFilters}
           onRemove={handleRemoveFilter}
           onClearAll={clearFilters}
+          styles={styles}
+          COLORS={COLORS}
         />
       )}
 
@@ -1156,6 +1188,8 @@ export function ReadingHistoryScreen() {
             onRemove={handleRemoveSelected}
             onSync={handleSyncSelected}
             canSync={unsyncedSelectedCount > 0}
+            styles={styles}
+            COLORS={COLORS}
           />
         </View>
       )}

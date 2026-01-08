@@ -30,7 +30,7 @@ import { AuthorDetailScreen } from '@/features/author';
 import { NarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { BookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen } from '@/features/profile';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen, AppearanceSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MoodDiscoveryScreen, MoodResultsScreen } from '@/features/mood-discovery';
 import { CDPlayerScreen, BookCompletionSheet } from '@/features/player';
@@ -260,6 +260,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
         <Stack.Screen name="HiddenItems" component={HiddenItemsScreen} />
         <Stack.Screen name="KidModeSettings" component={KidModeSettingsScreen} />
+        <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         {__DEV__ && (
           <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />

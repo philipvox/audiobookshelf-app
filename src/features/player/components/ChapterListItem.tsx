@@ -7,10 +7,8 @@
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Volume2 } from 'lucide-react-native';
-import { scale } from '@/shared/theme';
+import { scale, useThemeColors, accentColors } from '@/shared/theme';
 import { formatTime } from '../utils/timeFormatters';
-import { ACCENT_COLOR } from '../constants/playerConstants';
-import type { PlayerColors } from '../utils/playerTheme';
 
 export interface ChapterListItemChapter {
   start: number;
@@ -23,8 +21,6 @@ export interface ChapterListItemProps {
   index: number;
   isCurrentChapter: boolean;
   onSelect: (start: number) => void;
-  themeColors: PlayerColors;
-  isDarkMode: boolean;
 }
 
 export const ChapterListItem = React.memo(({
@@ -32,9 +28,8 @@ export const ChapterListItem = React.memo(({
   index,
   isCurrentChapter,
   onSelect,
-  themeColors,
-  isDarkMode,
 }: ChapterListItemProps) => {
+  const themeColors = useThemeColors();
   const chapterTitle = chapter.displayTitle || `Chapter ${index + 1}`;
   const chapterDuration = formatTime(chapter.end - chapter.start);
 
@@ -46,7 +41,8 @@ export const ChapterListItem = React.memo(({
     <TouchableOpacity
       style={[
         styles.item,
-        isCurrentChapter && { backgroundColor: isDarkMode ? themeColors.backgroundTertiary : '#F0F0F0' },
+        { borderBottomColor: themeColors.border },
+        isCurrentChapter && { backgroundColor: themeColors.backgroundSecondary },
       ]}
       onPress={handlePress}
       accessibilityLabel={`${chapterTitle}, ${chapterDuration}${isCurrentChapter ? ', currently playing' : ''}`}
@@ -58,8 +54,8 @@ export const ChapterListItem = React.memo(({
         <Text
           style={[
             styles.title,
-            { color: themeColors.textPrimary },
-            isCurrentChapter && styles.titleActive,
+            { color: themeColors.text },
+            isCurrentChapter && { fontWeight: '700', color: accentColors.gold },
           ]}
           numberOfLines={1}
         >
@@ -70,7 +66,7 @@ export const ChapterListItem = React.memo(({
         </Text>
       </View>
       {isCurrentChapter && (
-        <Volume2 size={16} color={ACCENT_COLOR} strokeWidth={2} />
+        <Volume2 size={16} color={accentColors.gold} strokeWidth={2} />
       )}
     </TouchableOpacity>
   );
@@ -83,7 +79,6 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     paddingHorizontal: scale(16),
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
     minHeight: scale(54),
   },
   number: {
@@ -100,10 +95,6 @@ const styles = StyleSheet.create({
     fontSize: scale(15),
     fontWeight: '500',
     marginBottom: scale(2),
-  },
-  titleActive: {
-    fontWeight: '700',
-    color: ACCENT_COLOR,
   },
   duration: {
     fontSize: scale(12),

@@ -58,6 +58,8 @@ import {
   Moon,
   Gauge,
   ArrowDown,
+  Clock,
+  List,
 } from 'lucide-react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigation } from '@react-navigation/native';
@@ -69,6 +71,7 @@ import { QueuePanel } from '@/features/queue/components/QueuePanel';
 import { useQueueCount, useQueueStore } from '@/features/queue/stores/queueStore';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useCoverUrl } from '@/core/cache';
+import { apiClient } from '@/core/api';
 import { useIsOfflineAvailable, useDownloads, useDownloadStatus } from '@/core/hooks/useDownloads';
 import { useRenderTracker, useLifecycleTracker } from '@/utils/perfDebug';
 import { useFpsMonitor, fpsMonitor } from '@/utils/runtimeMonitor';
@@ -99,6 +102,8 @@ import {
   DownArrowIcon,
   BookmarkFlagIcon,
   SettingsIconCircle,
+  PrevChapterIcon,
+  NextChapterIcon,
 } from '../components/PlayerIcons';
 import { ChapterListItem } from '../components/ChapterListItem';
 import { ChaptersSheet, SettingsSheet, BookmarksSheet, type Bookmark as BookmarkType } from '../components/sheets';
@@ -136,943 +141,415 @@ import {
 type SheetType = 'none' | 'chapters' | 'settings' | 'queue' | 'sleep' | 'speed' | 'bookmarks';
 type ProgressMode = 'chapter' | 'book';
 
-// =============================================================================
-// Timeline Progress Bar
-// =============================================================================
-
 interface TimelineChapter {
   start: number;
   end: number;
   displayTitle?: string;
 }
 
-interface TimelineBookmark {
-  id: string;
-  time: number; // seconds
-}
+// =============================================================================
+// SIMPLE PROGRESS BAR (New Design - 2026-01-07)
+// =============================================================================
 
-interface TimelineProgressBarProps {
+interface SimpleProgressBarProps {
+  /** Position within the current scope (chapter or book) in seconds */
   position: number;
+  /** Duration of the current scope (chapter or book) in seconds */
   duration: number;
-  chapters: TimelineChapter[];
+  /** Called with the new position within scope when user seeks */
   onSeek: (position: number) => void;
-  /** Bookmarks to display as flags on the timeline */
-  bookmarks?: TimelineBookmark[];
-  /** Library item ID for tick caching */
-  libraryItemId?: string;
+  /** Accent color for the progress bar and marker */
+  accentColor?: string;
+  /** Track background color */
+  trackColor?: string;
+  /** Track border color */
+  borderColor?: string;
+  /** Time label text color */
+  timeLabelColor?: string;
+  /** Called when scrubbing starts */
+  onScrubStart?: () => void;
+  /** Called with delta in seconds and progress (0-1) during scrubbing */
+  onScrubUpdate?: (delta: number, progress: number) => void;
+  /** Called when scrubbing ends */
+  onScrubEnd?: () => void;
+  /** Called when the chapter label (startTimeLabel) is pressed */
+  onChapterPress?: () => void;
 }
 
-const TimelineProgressBar = React.memo(({ position, duration, chapters, onSeek, bookmarks = [] }: TimelineProgressBarProps) => {
-  // Get theme colors
-  const themeColors = usePlayerColors();
+// Floating widget progress bar design
+const PROGRESS_BAR_HEIGHT = scale(20);
+const PROGRESS_MARKER_SIZE = scale(24); // Larger marker
+const PROGRESS_STEM_HEIGHT = scale(6); // Shorter stem
+const FLOATING_WIDGET_MARGIN = scale(20); // Gap from bottom of screen
+const FLOATING_WIDGET_RADIUS = scale(10); // Subtle rounded corners
 
-  // Normalize position to 0-1 based on chapters (equal width per chapter)
-  const normalizedProgress = useMemo(() => {
-    if (duration <= 0) return 0;
-
-    // If no chapters, treat whole book as one chapter
-    if (!chapters.length) {
-      return position / duration;
-    }
-
-    // Find current chapter
-    let currentChapterIndex = 0;
-    for (let i = chapters.length - 1; i >= 0; i--) {
-      if (position >= chapters[i].start) {
-        currentChapterIndex = i;
-        break;
-      }
-    }
-
-    const chapter = chapters[currentChapterIndex];
-    const chapterDuration = chapter.end - chapter.start;
-    const positionInChapter = position - chapter.start;
-    const chapterProgress = chapterDuration > 0 ? positionInChapter / chapterDuration : 0;
-
-    // Each chapter takes equal width (1/numChapters)
-    const chapterWidth = 1 / chapters.length;
-    return (currentChapterIndex * chapterWidth) + (chapterProgress * chapterWidth);
-  }, [position, duration, chapters]);
-
-  const markerPosition = useSharedValue(normalizedProgress * TIMELINE_WIDTH);
+const SimpleProgressBar = React.memo(({
+  position,
+  duration,
+  onSeek,
+  accentColor = '#F50101',
+  trackColor = '#E0E0E0',
+  borderColor = 'rgba(255,255,255,0.2)',
+  timeLabelColor = '#FFFFFF',
+  startTimeLabel,
+  endTimeLabel,
+  onScrubStart,
+  onScrubUpdate,
+  onScrubEnd,
+  onChapterPress,
+}: SimpleProgressBarProps & { startTimeLabel?: string; endTimeLabel?: string; onChapterPress?: () => void }) => {
+  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  const markerPosition = useSharedValue(progress);
   const isDragging = useSharedValue(false);
+  const startPositionRef = useRef(0); // Track starting position for delta
+  const barWidth = useRef(SCREEN_WIDTH); // Full width
 
-  // Update marker when progress changes (but not while dragging)
+  // Update marker when position changes (but not while dragging)
+  // Use withTiming for smooth animation between whole-second updates
   useEffect(() => {
     if (!isDragging.value) {
-      markerPosition.value = normalizedProgress * TIMELINE_WIDTH;
+      markerPosition.value = withTiming(progress, { duration: 300 });
     }
-  }, [normalizedProgress]);
-
-  // Generate tick marks based on chapters
-  // NOTE: Using chapters.length as explicit dependency to ensure re-render when chapters load
-  const ticks = useMemo(() => {
-    const tickArray: { x: number; isMajor: boolean }[] = [];
-
-    // Treat 0 chapters as 1 chapter (whole book)
-    const effectiveChapters = chapters.length || 1;
-    const chapterWidth = TIMELINE_WIDTH / effectiveChapters;
-
-    // Adaptive density
-    const minorTickMode: 'full' | 'half' | 'none' =
-      chapterWidth >= 20 ? 'full' :
-      chapterWidth >= 12 ? 'half' :
-      'none';
-
-    for (let chapterIndex = 0; chapterIndex < effectiveChapters; chapterIndex++) {
-      const chapterStartX = chapterIndex * chapterWidth;
-
-      // Major tick at chapter start
-      tickArray.push({ x: chapterStartX, isMajor: true });
-
-      // Minor ticks based on density mode
-      if (minorTickMode === 'full') {
-        for (let i = 1; i <= 3; i++) {
-          tickArray.push({ x: chapterStartX + (chapterWidth * i * 0.25), isMajor: false });
-        }
-      } else if (minorTickMode === 'half') {
-        tickArray.push({ x: chapterStartX + (chapterWidth * 0.5), isMajor: false });
-      }
-    }
-
-    // Final major tick at end
-    tickArray.push({ x: TIMELINE_WIDTH, isMajor: true });
-
-    return tickArray;
-  }, [chapters, chapters.length]);
-
-  // Convert normalized progress back to actual position
-  const normalizedToPosition = useCallback((normalized: number): number => {
-    if (duration <= 0) return 0;
-
-    if (!chapters.length) {
-      return normalized * duration;
-    }
-
-    const chapterWidth = 1 / chapters.length;
-    const chapterIndex = Math.min(Math.floor(normalized / chapterWidth), chapters.length - 1);
-    const progressInChapter = (normalized - (chapterIndex * chapterWidth)) / chapterWidth;
-
-    const chapter = chapters[chapterIndex];
-    const chapterDuration = chapter.end - chapter.start;
-    return chapter.start + (progressInChapter * chapterDuration);
-  }, [chapters, duration]);
+  }, [progress]);
 
   const handleSeek = useCallback((normalizedProgress: number) => {
     const clampedProgress = Math.max(0, Math.min(1, normalizedProgress));
-    const newPosition = normalizedToPosition(clampedProgress);
+    const newPosition = clampedProgress * duration;
     onSeek(newPosition);
-  }, [normalizedToPosition, onSeek]);
+  }, [duration, onSeek]);
 
-  // Pan gesture for scrubbing (book view only)
-  const scrubGesture = Gesture.Pan()
-    .onStart(() => {
+  const handleScrubStart = useCallback(() => {
+    startPositionRef.current = position;
+    onScrubStart?.();
+  }, [position, onScrubStart]);
+
+  const handleScrubUpdate = useCallback((normalizedProgress: number) => {
+    const currentPos = normalizedProgress * duration;
+    const delta = currentPos - startPositionRef.current;
+    onScrubUpdate?.(delta, normalizedProgress);
+  }, [duration, onScrubUpdate]);
+
+  const handleScrubEnd = useCallback(() => {
+    onScrubEnd?.();
+  }, [onScrubEnd]);
+
+  // Pan gesture for scrubbing - works on marker and track
+  const panGesture = Gesture.Pan()
+    .onStart((event) => {
       'worklet';
       isDragging.value = true;
+      // Update marker to where user touched
+      const newProgress = Math.max(0, Math.min(1, event.x / barWidth.current));
+      markerPosition.value = newProgress;
+      runOnJS(handleScrubStart)();
     })
     .onUpdate((event) => {
       'worklet';
-      const newX = Math.max(0, Math.min(TIMELINE_WIDTH, event.x));
-      markerPosition.value = newX;
+      const newProgress = Math.max(0, Math.min(1, event.x / barWidth.current));
+      markerPosition.value = newProgress;
+      runOnJS(handleScrubUpdate)(newProgress);
     })
     .onEnd((event) => {
       'worklet';
       isDragging.value = false;
-      const newProgress = Math.max(0, Math.min(1, event.x / TIMELINE_WIDTH));
-      runOnJS(handleSeek)(newProgress);
+      const finalProgress = Math.max(0, Math.min(1, event.x / barWidth.current));
+      runOnJS(handleSeek)(finalProgress);
+      runOnJS(handleScrubEnd)();
     });
 
   // Tap gesture for seeking
   const tapGesture = Gesture.Tap()
     .onEnd((event) => {
       'worklet';
-      const newX = Math.max(0, Math.min(TIMELINE_WIDTH, event.x));
-      markerPosition.value = newX;
-      const newProgress = newX / TIMELINE_WIDTH;
+      const newProgress = Math.max(0, Math.min(1, event.x / barWidth.current));
+      markerPosition.value = newProgress;
       runOnJS(handleSeek)(newProgress);
     });
 
-  const combinedGesture = Gesture.Race(scrubGesture, tapGesture);
+  const combinedGesture = Gesture.Race(panGesture, tapGesture);
 
-  const markerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: markerPosition.value - TIMELINE_MARKER_RADIUS }],
+  const fillStyle = useAnimatedStyle(() => ({
+    width: markerPosition.value * barWidth.current,
   }));
 
-  // Find which tick is closest to marker for highlight
-  const currentTickIndex = useMemo(() => {
-    if (!ticks.length) return -1;
-    const markerX = normalizedProgress * TIMELINE_WIDTH;
-    let closestIndex = 0;
-    let closestDistance = Math.abs(ticks[0].x - markerX);
-    for (let i = 1; i < ticks.length; i++) {
-      const distance = Math.abs(ticks[i].x - markerX);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = i;
-      }
-    }
-    return closestIndex;
-  }, [ticks, normalizedProgress]);
+  const onLayout = useCallback((event: any) => {
+    barWidth.current = event.nativeEvent.layout.width;
+  }, []);
 
-  // Convert bookmark times to X positions (normalized like the marker)
-  const bookmarkPositions = useMemo(() => {
-    if (!bookmarks.length || duration <= 0) return [];
-
-    return bookmarks.map((bookmark) => {
-      const time = Math.round(bookmark.time); // Round to nearest second
-
-      // Convert time to normalized progress (same logic as normalizedProgress)
-      let normalized = 0;
-      if (!chapters.length) {
-        normalized = time / duration;
-      } else {
-        let chapterIndex = 0;
-        for (let i = chapters.length - 1; i >= 0; i--) {
-          if (time >= chapters[i].start) {
-            chapterIndex = i;
-            break;
-          }
-        }
-        const chapter = chapters[chapterIndex];
-        const chapterDuration = chapter.end - chapter.start;
-        const positionInChapter = time - chapter.start;
-        const chapterProgress = chapterDuration > 0 ? positionInChapter / chapterDuration : 0;
-        const chapterWidth = 1 / chapters.length;
-        normalized = (chapterIndex * chapterWidth) + (chapterProgress * chapterWidth);
-      }
-
-      return {
-        id: bookmark.id,
-        x: Math.max(0, Math.min(TIMELINE_WIDTH, normalized * TIMELINE_WIDTH)),
-      };
-    });
-  }, [bookmarks, duration, chapters]);
-
-  // Flag dimensions for book view - stem reaches full height like red marker line
-  const CONTAINER_HEIGHT = TIMELINE_MARKER_RADIUS * 2 + TIMELINE_MAJOR_TICK_HEIGHT + 4;
-  const FLAG_PENNANT_WIDTH = scale(20);  // Width of the flag part
-  const FLAG_PENNANT_HEIGHT = scale(10); // Height of the flag part
-  const FLAG_POLE_WIDTH = 2;
-  const FLAG_COLOR = '#0146F5';          // Solid blue for flag
-  const STEM_COLOR = '#64B5F6';          // Light blue for stem
+  const hasLabels = startTimeLabel || endTimeLabel;
 
   return (
     <GestureDetector gesture={combinedGesture}>
-      <View style={timelineStyles.container}>
-        {/* Bookmark flags - render before marker so marker appears on top */}
-        {bookmarkPositions.map((bm) => (
-          <View
-            key={bm.id}
-            style={[
-              timelineStyles.bookmarkFlag,
-              { left: bm.x - FLAG_POLE_WIDTH / 2 },
-            ]}
-          >
-            <Svg width={FLAG_PENNANT_WIDTH + FLAG_POLE_WIDTH} height={CONTAINER_HEIGHT} viewBox={`0 0 ${FLAG_PENNANT_WIDTH + FLAG_POLE_WIDTH} ${CONTAINER_HEIGHT}`}>
-              {/* Stem - full height like red center line */}
-              <Line
-                x1={FLAG_POLE_WIDTH / 2}
-                y1={0}
-                x2={FLAG_POLE_WIDTH / 2}
-                y2={CONTAINER_HEIGHT}
-                stroke={STEM_COLOR}
-                strokeWidth={FLAG_POLE_WIDTH}
-              />
-              {/* Flag - notched pennant shape (based on Flag.svg) */}
-              <Path
-                d={`M${FLAG_POLE_WIDTH} 0 H${FLAG_POLE_WIDTH + FLAG_PENNANT_WIDTH} L${FLAG_POLE_WIDTH + FLAG_PENNANT_WIDTH * 0.78} ${FLAG_PENNANT_HEIGHT / 2} L${FLAG_POLE_WIDTH + FLAG_PENNANT_WIDTH} ${FLAG_PENNANT_HEIGHT} H${FLAG_POLE_WIDTH} Z`}
-                fill={FLAG_COLOR}
-              />
-            </Svg>
+      <View style={[progressBarStyles.gestureContainer, !hasLabels && { height: PROGRESS_BAR_HEIGHT }]} onLayout={onLayout}>
+        {/* Time labels - only show if provided */}
+        {hasLabels && (
+          <View style={progressBarStyles.timeRow}>
+            {onChapterPress ? (
+              <TouchableOpacity onPress={onChapterPress} activeOpacity={0.7}>
+                <Text style={[progressBarStyles.timeLabel, { color: timeLabelColor }]} numberOfLines={1}>{startTimeLabel}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={[progressBarStyles.timeLabel, { color: timeLabelColor }]}>{startTimeLabel}</Text>
+            )}
+            <Text style={[progressBarStyles.timeLabel, { color: timeLabelColor }]}>{endTimeLabel}</Text>
           </View>
-        ))}
+        )}
 
-        {/* Red marker circle */}
-        <ReanimatedAnimated.View style={[timelineStyles.marker, markerStyle]}>
-          <View style={timelineStyles.markerInner} />
-        </ReanimatedAnimated.View>
-
-        {/* Tick marks */}
-        <Svg width={TIMELINE_WIDTH} height={TIMELINE_MAJOR_TICK_HEIGHT + 4} style={timelineStyles.ticks}>
-          {ticks.map((tick, index) => {
-            const isCurrentTick = index === currentTickIndex;
-            return (
-              <Line
-                key={index}
-                x1={tick.x}
-                y1={tick.isMajor ? 0 : TIMELINE_MAJOR_TICK_HEIGHT - TIMELINE_MINOR_TICK_HEIGHT}
-                x2={tick.x}
-                y2={TIMELINE_MAJOR_TICK_HEIGHT}
-                stroke={isCurrentTick ? themeColors.tickActive : themeColors.tickDefault}
-                strokeWidth={1}
+        {/* Track */}
+        <View style={[progressBarStyles.track, { backgroundColor: trackColor, borderColor }]}>
+          <View style={progressBarStyles.trackClip}>
+            <ReanimatedAnimated.View
+              style={[progressBarStyles.fill, { backgroundColor: accentColor }, fillStyle]}
             />
-          );
-        })}
-        </Svg>
+          </View>
+        </View>
       </View>
     </GestureDetector>
   );
 });
 
-const timelineStyles = StyleSheet.create({
-  container: {
-    width: TIMELINE_WIDTH,
-    height: TIMELINE_MARKER_RADIUS * 2 + TIMELINE_MAJOR_TICK_HEIGHT + 4,
-    alignSelf: 'center',
+const TIME_ROW_HEIGHT = scale(24);
+const MARKER_AREA_HEIGHT = 0; // Time labels now shown above, not in progress bar
+
+const progressBarStyles = StyleSheet.create({
+  // Gesture container covers time row + track
+  gestureContainer: {
+    width: '100%',
+    height: MARKER_AREA_HEIGHT + PROGRESS_BAR_HEIGHT,
   },
-  marker: {
+  timeRow: {
     position: 'absolute',
     top: 0,
-    width: TIMELINE_MARKER_RADIUS * 2,
-    height: TIMELINE_MARKER_RADIUS * 2,
-    borderRadius: TIMELINE_MARKER_RADIUS,
-    backgroundColor: '#F50101',
-    zIndex: 10,
-    shadowColor: '#F50101',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 4,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(16),
+    height: TIME_ROW_HEIGHT,
+    alignItems: 'center',
   },
-  markerInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: TIMELINE_MARKER_RADIUS,
-    backgroundColor: '#F50101',
+  timeLabel: {
+    color: '#FFFFFF',
+    fontSize: scale(14),
+    fontWeight: '600',
+    marginBottom: 10,
   },
-  ticks: {
+  // Track at the bottom of the gesture container - top corners rounded, top border only
+  track: {
     position: 'absolute',
     bottom: 0,
     left: 0,
+    right: 0,
+    height: PROGRESS_BAR_HEIGHT,
+    borderTopLeftRadius: FLOATING_WIDGET_RADIUS,
+    borderTopRightRadius: FLOATING_WIDGET_RADIUS,
+    borderTopWidth: 1,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
-  bookmarkFlag: {
+  // Inner clip view to ensure fill respects rounded corners on Android
+  trackClip: {
     position: 'absolute',
-    top: 0, // Stem starts from top, reaches bottom
-    zIndex: 5,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: FLOATING_WIDGET_RADIUS,
+    borderTopRightRadius: FLOATING_WIDGET_RADIUS,
+    overflow: 'hidden',
+  },
+  fill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    height: '100%',
+    // Apply left border radius directly to fill - Android doesn't clip with overflow:hidden properly
+    borderTopLeftRadius: FLOATING_WIDGET_RADIUS,
   },
 });
 
 // =============================================================================
-// Chapter Timeline Progress Bar (Scrolling Chapter View)
+// PLAYER CONTROL BAR (New Design - 2026-01-07)
 // =============================================================================
 
-const ChapterTimelineProgressBar = React.memo(({ position, duration, chapters, onSeek, bookmarks = [], libraryItemId }: TimelineProgressBarProps) => {
-  // Get theme colors
-  const themeColors = usePlayerColors();
-
-  // Calculate total timeline width based on duration
-  // IMPORTANT: This is the LOGICAL width, not the actual SVG canvas size
-  // The SVG uses a smaller viewport to avoid "bitmap too large" crashes on Android
-  const timelineWidth = useMemo(() => {
-    return Math.max(TIMELINE_WIDTH, duration * PIXELS_PER_SECOND);
-  }, [duration]);
-
-  // Cached ticks state
-  const [cachedTicks, setCachedTicks] = useState<TimelineTick[] | null>(null);
-  const [ticksLoading, setTicksLoading] = useState(true);
-
-  // Load or generate ticks
-  useEffect(() => {
-    if (duration <= 0 || chapters.length === 0) {
-      setTicksLoading(false);
-      return;
-    }
-
-    let mounted = true;
-
-    const loadTicks = async () => {
-      let ticks: TimelineTick[] | null = null;
-
-      // Try to get cached ticks if we have libraryItemId
-      if (libraryItemId) {
-        ticks = await getCachedTicks(libraryItemId);
-      }
-
-      if (!ticks) {
-        // Generate ticks (and cache if we have libraryItemId)
-        const chapterInputs: ChapterInput[] = chapters.map(ch => ({
-          start: ch.start,
-          end: ch.end,
-          displayTitle: ch.displayTitle,
-        }));
-        ticks = await generateAndCacheTicks(libraryItemId || 'temp', duration, chapterInputs, !!libraryItemId);
-      }
-
-      if (mounted) {
-        setCachedTicks(ticks);
-        setTicksLoading(false);
-      }
-    };
-
-    loadTicks();
-
-    return () => {
-      mounted = false;
-    };
-  }, [libraryItemId, duration, chapters]);
-
-  // Timeline offset to keep current position at center (time-based)
-  // IMPORTANT: Initialize with correct offset based on position to prevent jump on first render
-  const initialOffset = useMemo(() => {
-    const positionX = position * PIXELS_PER_SECOND;
-    return -positionX + CHAPTER_MARKER_X;
-  }, []); // Only calculate once on mount
-  const timelineOffset = useSharedValue(initialOffset);
-  const lastPosition = useRef(position);
-  const lastOffsetUpdate = useRef(0);
-
-  // Position-based update (for playback - when NOT direct scrubbing)
-  // Direct scrubbing updates timelineOffset directly in the pan gesture
-  // NOTE: Throttled to 10fps (100ms) to reduce unnecessary work
-  useEffect(() => {
-    // Skip position updates during direct scrubbing to prevent conflicts
-    if (isDirectScrubbing) return;
-
-    // Throttle updates to 10fps (100ms) - smooth enough for timeline
-    const now = Date.now();
-    if (now - lastOffsetUpdate.current < 100) return;
-
-    const positionX = position * PIXELS_PER_SECOND;
-    const newOffset = -positionX + CHAPTER_MARKER_X;
-
-    // Calculate how much position changed
-    const positionDelta = Math.abs(position - lastPosition.current);
-    lastPosition.current = position;
-
-    // All position changes are instant - no animation
-    if (positionDelta > 0.1) {
-      lastOffsetUpdate.current = now;
-      timelineOffset.value = newOffset;
-    }
-  }, [position, isDirectScrubbing]);
-
-  // Handle seek from tap or scrub
-  const handleSeek = useCallback((seconds: number) => {
-    const clampedPosition = Math.max(0, Math.min(duration, seconds));
-    onSeek(clampedPosition);
-  }, [duration, onSeek]);
-
-  // ============================================================================
-  // DIRECT SCRUB MODE (Long-press + Pan)
-  // ============================================================================
-
-  // Haptic feedback
-  const timelineHaptics = useTimelineHaptics();
-
-  // Snap-to-chapter settings
-  const snapSettings = useSnapToChapterSettings();
-
-  // Convert chapters to haptic chapter format
-  const hapticChapters: HapticChapter[] = useMemo(() => {
-    return chapters.map((ch, index) => ({
-      index,
-      startTime: ch.start,
-      endTime: ch.end,
-      title: ch.title,
-    }));
-  }, [chapters]);
-
-  // Calculate snap position (finds nearest chapter boundary within threshold)
-  const calculateSnapPosition = useCallback((rawPosition: number): { position: number; didSnap: boolean } => {
-    if (!snapSettings.enabled) return { position: rawPosition, didSnap: false };
-
-    let nearestBoundary = rawPosition;
-    let nearestDistance = Infinity;
-
-    for (const chapter of chapters) {
-      const distance = Math.abs(rawPosition - chapter.start);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestBoundary = chapter.start;
-      }
-    }
-
-    // Snap if within threshold
-    if (nearestDistance <= snapSettings.threshold) {
-      return { position: nearestBoundary, didSnap: true };
-    }
-
-    return { position: rawPosition, didSnap: false };
-  }, [chapters, snapSettings.enabled, snapSettings.threshold]);
-
-  // Scrub state
-  const [isDirectScrubbing, setIsDirectScrubbing] = useState(false);
-  const [showScrubTooltip, setShowScrubTooltip] = useState(false);
-  const [scrubSpeedMode, setScrubSpeedMode] = useState<'normal' | 'half' | 'quarter' | 'fine' | 'fast'>('normal');
-  const [scrubViewPosition, setScrubViewPosition] = useState(position); // For tick windowing
-  const scrubStartOffset = useSharedValue(0);
-  const scrubStartX = useSharedValue(0);
-  const scrubStartY = useSharedValue(0);
-  const scrubCurrentPosition = useSharedValue(0);
-  const lastScrubPosition = useRef(position);
-  const lastScrubViewUpdate = useRef(0);
-
-  // Edge auto-scroll (accumulated offset approach - no interval)
-  const EDGE_ZONE = 80; // pixels from edge to trigger auto-scroll
-  const screenWidth = Dimensions.get('window').width;
-  const edgeScrollAccumulator = useSharedValue(0);
-
-  // Speed mode labels
-  const SPEED_MODE_LABELS: Record<string, string> = {
-    normal: '',
-    half: 'HALF SPEED',
-    quarter: 'QUARTER SPEED',
-    fine: 'FINE',
-    fast: 'FAST (2×)',
-  };
-
-  // Calculate speed multiplier from vertical offset
-  const getSpeedMultiplier = useCallback((dy: number): { multiplier: number; mode: 'normal' | 'half' | 'quarter' | 'fine' | 'fast' } => {
-    if (dy > 120) return { multiplier: 0.1, mode: 'fine' };
-    if (dy > 80) return { multiplier: 0.25, mode: 'quarter' };
-    if (dy > 40) return { multiplier: 0.5, mode: 'half' };
-    if (dy < -40) return { multiplier: 2.0, mode: 'fast' };
-    return { multiplier: 1.0, mode: 'normal' };
-  }, []);
-
-  // Track if we were playing before scrubbing (to resume after)
-  const wasPlayingBeforeScrub = useRef(false);
-
-  // Enter direct scrub mode
-  // NOTE: Uses getState() to avoid callback recreation on position updates
-  const enterDirectScrub = useCallback(() => {
-    const state = usePlayerStore.getState();
-    const currentPosition = state.position;
-
-    // Pause playback during scrubbing for better UX
-    wasPlayingBeforeScrub.current = state.isPlaying;
-    if (state.isPlaying) {
-      state.pause();
-    }
-
-    setIsDirectScrubbing(true);
-    setShowScrubTooltip(false); // No tooltip needed - immediate drag mode
-    setScrubSpeedMode('normal');
-    setScrubViewPosition(currentPosition); // Initialize scrub view position
-    timelineHaptics.triggerModeChange('enter');
-    timelineHaptics.resetTracking();
-    lastScrubPosition.current = currentPosition;
-    // Tell audioService we're scrubbing - enables skipNextSmartRewind to prevent
-    // position jump on play after scrubbing while paused
-    audioService.setScrubbing(true);
-  }, [timelineHaptics]);
-
-  // Exit direct scrub mode
-  const exitDirectScrub = useCallback(async (finalSeconds: number) => {
-    setIsDirectScrubbing(false);
-    setShowScrubTooltip(false);
-    setScrubSpeedMode('normal');
-    setScrubViewPosition(finalSeconds); // Update to final position
-
-    // Check for snap-to-chapter
-    const { position: snapPosition, didSnap } = calculateSnapPosition(finalSeconds);
-
-    if (didSnap) {
-      timelineHaptics.triggerSnap();
-    }
-
-    timelineHaptics.triggerModeChange('exit');
-    // End scrubbing mode BEFORE seeking - this clears pending track switches
-    // and prepares for the final seek
-    audioService.setScrubbing(false);
-
-    handleSeek(snapPosition);
-
-    // Resume playback if we were playing before scrubbing
-    if (wasPlayingBeforeScrub.current) {
-      // Small delay to let seek complete before resuming
-      setTimeout(() => {
-        usePlayerStore.getState().play();
-      }, 150);
-    }
-  }, [handleSeek, timelineHaptics, calculateSnapPosition]);
-
-  // Check haptics during scrub
-  const checkScrubHaptics = useCallback((newPositionSec: number) => {
-    timelineHaptics.checkChapterCrossing(lastScrubPosition.current, newPositionSec, hapticChapters);
-    timelineHaptics.checkMinuteCrossing(lastScrubPosition.current, newPositionSec);
-    timelineHaptics.checkEdgeReached(newPositionSec, duration);
-    lastScrubPosition.current = newPositionSec;
-  }, [hapticChapters, duration, timelineHaptics]);
-
-  // Hide tooltip when dragging starts
-  const hideScrubTooltip = useCallback(() => {
-    setShowScrubTooltip(false);
-  }, []);
-
-  // Throttled update of scrub view position (for tick windowing)
-  const updateScrubViewPosition = useCallback((newSeconds: number) => {
-    const now = Date.now();
-    // Only update every 200ms to avoid excessive re-renders
-    if (now - lastScrubViewUpdate.current > 200) {
-      lastScrubViewUpdate.current = now;
-      setScrubViewPosition(newSeconds);
-    }
-  }, []);
-
-  // FPS monitoring during scrubbing
-  useEffect(() => {
-    if (isDirectScrubbing) {
-      fpsMonitor.start('scrubbing');
-    } else {
-      fpsMonitor.stop();
-    }
-  }, [isDirectScrubbing]);
-
-  // Tap-to-seek disabled - only drag scrubbing is allowed
-  // This prevents accidental position jumps when touching the timeline
-
-  // Pan gesture for direct scrubbing (immediate - no long-press required)
-  const scrubPanGesture = Gesture.Pan()
-    .minDistance(10) // Small threshold to distinguish from accidental touches
-    .onStart((event) => {
-      'worklet';
-      // Store starting values
-      scrubStartOffset.value = timelineOffset.value;
-      scrubStartX.value = event.x;
-      scrubStartY.value = event.y;
-      edgeScrollAccumulator.value = 0;
-
-      // Calculate starting position in seconds
-      const startSeconds = (-timelineOffset.value + CHAPTER_MARKER_X) / PIXELS_PER_SECOND;
-      scrubCurrentPosition.value = startSeconds;
-
-      runOnJS(enterDirectScrub)();
-    })
-    .onUpdate((event) => {
-      'worklet';
-      const dx = event.x - scrubStartX.value;
-      const dy = event.y - scrubStartY.value;
-      const absX = event.absoluteX;
-
-      // Hide tooltip once dragging starts (movement > 5px)
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        runOnJS(hideScrubTooltip)();
-      }
-
-      // Calculate sensitivity based on vertical offset (fine-scrub) - inline for worklet
-      let multiplier = 1.0;
-      let mode: 'normal' | 'half' | 'quarter' | 'fine' | 'fast' = 'normal';
-      if (dy > 120) {
-        multiplier = 0.1;
-        mode = 'fine';
-      } else if (dy > 80) {
-        multiplier = 0.25;
-        mode = 'quarter';
-      } else if (dy > 40) {
-        multiplier = 0.5;
-        mode = 'half';
-      } else if (dy < -40) {
-        multiplier = 2.0;
-        mode = 'fast';
-      }
-
-      // Update speed mode display
-      runOnJS(setScrubSpeedMode)(mode);
-
-      // Edge auto-scroll: accumulate when finger is near edge
-      // Uses exponential curve for smooth acceleration
-      const EDGE_SCROLL_MAX_SPEED = 20;
-      if (absX < EDGE_ZONE) {
-        // Left edge - scroll backward (increase offset = earlier time)
-        const edgeDepth = (EDGE_ZONE - absX) / EDGE_ZONE; // 0 to 1
-        // Exponential curve: slow at start, fast at edge
-        const easedDepth = edgeDepth * edgeDepth * edgeDepth; // cubic easing
-        edgeScrollAccumulator.value += EDGE_SCROLL_MAX_SPEED * easedDepth;
-      } else if (absX > screenWidth - EDGE_ZONE) {
-        // Right edge - scroll forward (decrease offset = later time)
-        const edgeDepth = (absX - (screenWidth - EDGE_ZONE)) / EDGE_ZONE; // 0 to 1
-        // Exponential curve: slow at start, fast at edge
-        const easedDepth = edgeDepth * edgeDepth * edgeDepth; // cubic easing
-        edgeScrollAccumulator.value -= EDGE_SCROLL_MAX_SPEED * easedDepth;
-      }
-
-      // Direct 1:1 mapping with sensitivity adjustment + edge scroll
-      const adjustedDx = dx * multiplier;
-      const newOffset = scrubStartOffset.value - adjustedDx + edgeScrollAccumulator.value;
-
-      // Clamp to valid range
-      const minOffset = -timelineWidth + CHAPTER_MARKER_X;
-      const maxOffset = CHAPTER_MARKER_X;
-      timelineOffset.value = Math.max(minOffset, Math.min(maxOffset, newOffset));
-
-      // Calculate new position in seconds for haptics
-      const newSeconds = (-timelineOffset.value + CHAPTER_MARKER_X) / PIXELS_PER_SECOND;
-      scrubCurrentPosition.value = newSeconds;
-
-      // Check for haptic feedback (chapter/minute crossings)
-      runOnJS(checkScrubHaptics)(newSeconds);
-
-      // Update view position for tick windowing (throttled)
-      runOnJS(updateScrubViewPosition)(newSeconds);
-    })
-    .onEnd(() => {
-      'worklet';
-      // Reset edge scroll accumulator
-      edgeScrollAccumulator.value = 0;
-
-      // Calculate final position
-      const finalSeconds = scrubCurrentPosition.value;
-      const clampedSeconds = Math.max(0, Math.min(duration, finalSeconds));
-
-      runOnJS(exitDirectScrub)(clampedSeconds);
-    });
-
-  // Single gesture: just pan for scrubbing (tap-to-seek disabled)
-  const combinedGesture = scrubPanGesture;
-
-  // Animated style for scrolling timeline
-  const timelineStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: timelineOffset.value },
-    ],
-  }));
-
-  // Effective position for tick windowing (use scrub position when scrubbing)
-  const effectivePosition = isDirectScrubbing ? scrubViewPosition : position;
-
-  // Window size: 60 minutes each direction (120 min total)
-  const VISIBLE_WINDOW_SECONDS = 60 * 60;
-
-  // Get visible ticks from cache (fast - just filtering)
-  const ticks = useMemo(() => {
-    if (!cachedTicks) return [];
-    return getVisibleTicks(cachedTicks, effectivePosition, VISIBLE_WINDOW_SECONDS);
-  }, [cachedTicks, effectivePosition]);
-
-  // SVG viewport - use a reasonable fixed size to avoid "bitmap too large" crash on Android
-  // The parent view handles scrolling via translateX, so SVG just needs to be large enough
-  // for the visible content. We use 2x the visible window to ensure smooth scrolling.
-  const SVG_VIEWPORT_SECONDS = VISIBLE_WINDOW_SECONDS * 2; // 2 hours worth
-  const svgViewportWidth = SVG_VIEWPORT_SECONDS * PIXELS_PER_SECOND;
-  // Calculate offset: where the viewport starts in absolute time
-  const viewportStartTime = Math.max(0, effectivePosition - SVG_VIEWPORT_SECONDS / 2);
-
-  const svgHeight = CHAPTER_TICKS_AREA_HEIGHT;
-  const ticksY = CHAPTER_LABEL_Y + scale(4);
-
-  const getTickHeight = (tier: 'chapter' | 'tenMin' | 'oneMin' | 'fifteenSec') => {
-    switch (tier) {
-      case 'chapter': return CHAPTER_TICK_HEIGHT;
-      case 'tenMin': return TEN_MIN_TICK_HEIGHT;
-      case 'oneMin': return ONE_MIN_TICK_HEIGHT;
-      case 'fifteenSec': return FIFTEEN_SEC_TICK_HEIGHT;
-    }
-  };
-
-  // Bookmark flag dimensions for chapter view - stem reaches full height
-  const CHAPTER_FLAG_PENNANT_WIDTH = scale(24);  // Width of the flag part
-  const CHAPTER_FLAG_PENNANT_HEIGHT = scale(12); // Height of the flag part
-  const CHAPTER_FLAG_POLE_WIDTH = 2;
-  const CHAPTER_FLAG_COLOR = '#0146F5';          // Solid blue for flag
-  const CHAPTER_STEM_COLOR = '#64B5F6';          // Light blue for stem
-
-  // Calculate bookmark positions within visible window (relative to viewport start)
-  const visibleBookmarks = useMemo(() => {
-    if (!bookmarks.length) return [];
-    const minTime = Math.max(0, effectivePosition - VISIBLE_WINDOW_SECONDS);
-    const maxTime = Math.min(duration, effectivePosition + VISIBLE_WINDOW_SECONDS);
-
-    return bookmarks
-      .filter((bm) => {
-        const time = Math.round(bm.time);
-        return time >= minTime && time <= maxTime;
-      })
-      .map((bm) => ({
-        id: bm.id,
-        // Position relative to viewport start, not absolute
-        x: (Math.round(bm.time) - viewportStartTime) * PIXELS_PER_SECOND,
-      }));
-  }, [bookmarks, effectivePosition, duration, viewportStartTime]);
-
+interface PlayerControlBarProps {
+  isPlaying: boolean;
+  onPlayPause: () => void;
+  onSkipBack: () => void;
+  onSkipForward: () => void;
+  onPrevChapter: () => void;
+  onNextChapter: () => void;
+  onRewindPressIn?: () => void;
+  onFastForwardPressIn?: () => void;
+  onSeekPressOut?: () => void;
+  accentColor?: string;
+  backgroundColor?: string;
+  iconColor?: string;
+  dividerColor?: string;
+  bottomInset?: number;
+}
+
+const CONTROL_BAR_HEIGHT = scale(72);
+const CONTROL_ICON_SIZE = scale(32);
+const PLAY_ICON_SIZE = scale(40);
+
+// Icon components for control bar
+const PrevChapterControlIcon = ({ color }: { color: string }) => (
+  <Svg width={CONTROL_ICON_SIZE} height={CONTROL_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Rect x="4" y="5" width="3" height="14" fill={color} />
+    <Path d="M19 5L9 12L19 19V5Z" fill={color} />
+  </Svg>
+);
+
+const RewindControlIcon = ({ color }: { color: string }) => (
+  <Svg width={CONTROL_ICON_SIZE} height={CONTROL_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 5L2 12L12 19V5Z" fill={color} />
+    <Path d="M22 5L12 12L22 19V5Z" fill={color} />
+  </Svg>
+);
+
+const FastForwardControlIcon = ({ color }: { color: string }) => (
+  <Svg width={CONTROL_ICON_SIZE} height={CONTROL_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 5L22 12L12 19V5Z" fill={color} />
+    <Path d="M2 5L12 12L2 19V5Z" fill={color} />
+  </Svg>
+);
+
+const NextChapterControlIcon = ({ color }: { color: string }) => (
+  <Svg width={CONTROL_ICON_SIZE} height={CONTROL_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 5L15 12L5 19V5Z" fill={color} />
+    <Rect x="17" y="5" width="3" height="14" fill={color} />
+  </Svg>
+);
+
+const PlayControlIcon = ({ color }: { color: string }) => (
+  <Svg width={PLAY_ICON_SIZE} height={PLAY_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Path d="M8 5V19L19 12L8 5Z" fill={color} />
+  </Svg>
+);
+
+const PauseControlIcon = ({ color }: { color: string }) => (
+  <Svg width={PLAY_ICON_SIZE} height={PLAY_ICON_SIZE} viewBox="0 0 24 24" fill="none">
+    <Rect x="6" y="5" width="4" height="14" fill={color} />
+    <Rect x="14" y="5" width="4" height="14" fill={color} />
+  </Svg>
+);
+
+const PlayerControlBar = React.memo(({
+  isPlaying,
+  onPlayPause,
+  onSkipBack,
+  onSkipForward,
+  onPrevChapter,
+  onNextChapter,
+  onRewindPressIn,
+  onFastForwardPressIn,
+  onSeekPressOut,
+  accentColor = '#F50101',
+  backgroundColor = '#000000',
+  iconColor = '#FFFFFF',
+  dividerColor = 'rgba(255,255,255,0.2)',
+  bottomInset = 0,
+}: PlayerControlBarProps) => {
   return (
-    <View style={chapterTimelineStyles.outerContainer}>
-      {/* Marker line - positioned at bottom, extends up */}
-      <View style={chapterTimelineStyles.markerLine} />
-      <View style={chapterTimelineStyles.markerDot} />
+    <View style={[controlBarStyles.container, { height: CONTROL_BAR_HEIGHT + bottomInset, backgroundColor }]}>
+      {/* Previous Chapter - rounded bottom-left corner */}
+      <TouchableOpacity
+        style={[
+          controlBarStyles.navButton,
+          { paddingBottom: bottomInset, borderBottomLeftRadius: FLOATING_WIDGET_RADIUS }
+        ]}
+        onPress={onPrevChapter}
+        activeOpacity={0.7}
+        accessibilityLabel="Previous chapter"
+      >
+        <PrevChapterControlIcon color={iconColor} />
+      </TouchableOpacity>
 
-      {/* "DRAG TO SCRUB" tooltip (shown when long-press activates, hidden when dragging) */}
-      {showScrubTooltip && (
-        <View style={chapterTimelineStyles.scrubTooltip}>
-          <Text style={chapterTimelineStyles.scrubTooltipText}>DRAG TO SCRUB</Text>
-        </View>
-      )}
+      <View style={[controlBarStyles.divider, { backgroundColor: dividerColor }]} />
 
-      {/* Speed mode indicator (shown during direct scrub when not normal speed) */}
-      {isDirectScrubbing && !showScrubTooltip && scrubSpeedMode !== 'normal' && (
-        <View style={chapterTimelineStyles.speedIndicator}>
-          <Text style={chapterTimelineStyles.speedIndicatorText}>
-            {SPEED_MODE_LABELS[scrubSpeedMode]}
-          </Text>
-        </View>
-      )}
+      {/* Rewind */}
+      <TouchableOpacity
+        style={[controlBarStyles.navButton, { paddingBottom: bottomInset }]}
+        onPress={onSkipBack}
+        onPressIn={onRewindPressIn}
+        onPressOut={onSeekPressOut}
+        activeOpacity={0.7}
+        accessibilityLabel="Skip back"
+      >
+        <RewindControlIcon color={iconColor} />
+      </TouchableOpacity>
 
-      {/* Scrolling timeline area */}
-      <GestureDetector gesture={combinedGesture}>
-        <View style={chapterTimelineStyles.container}>
-          <ReanimatedAnimated.View style={[chapterTimelineStyles.timeline, { width: timelineWidth }, timelineStyle]}>
-            {/* SVG viewport wrapper - positioned at viewport start within the full timeline
-                This avoids "bitmap too large" crash on Android by using a smaller SVG canvas
-                positioned at the correct offset instead of a single massive canvas */}
-            <View style={{ position: 'absolute', left: viewportStartTime * PIXELS_PER_SECOND }}>
-              <Svg width={svgViewportWidth} height={svgHeight}>
-              {/* Ticks - four tiers */}
-              {/* tick.time is in seconds, convert to pixels relative to viewport start */}
-              {ticks.map((tick, index) => {
-                // Position relative to viewport start to fit within capped SVG width
-                const tickX = (tick.time - viewportStartTime) * PIXELS_PER_SECOND;
-                const tickHeight = getTickHeight(tick.tier);
-                const tickY = ticksY + CHAPTER_TICK_HEIGHT - tickHeight;
-                const isChapter = tick.tier === 'chapter';
-                const hasMinuteLabel = tick.tier === 'oneMin' || tick.tier === 'tenMin';
-                return (
-                  <React.Fragment key={index}>
-                    <Line
-                      x1={tickX}
-                      y1={tickY}
-                      x2={tickX}
-                      y2={ticksY + CHAPTER_TICK_HEIGHT}
-                      stroke={themeColors.tickDefault}
-                      strokeWidth={isChapter ? 2.5 : 1}
-                    />
-                    {tick.label && isChapter && (
-                      <SvgText
-                        x={tickX}
-                        y={CHAPTER_LABEL_Y}
-                        fontSize={scale(11)}
-                        fill={themeColors.textPrimary}
-                        fontWeight="600"
-                        textAnchor="middle"
-                      >
-                        {tick.label.length > 20 ? tick.label.slice(0, 18) + '…' : tick.label}
-                      </SvgText>
-                    )}
-                    {tick.label && hasMinuteLabel && (
-                      <SvgText
-                        x={tickX}
-                        y={tickY - scale(6)}
-                        fontSize={scale(10)}
-                        fill={themeColors.textSecondary}
-                        fontWeight="600"
-                        textAnchor="middle"
-                      >
-                        {tick.label}
-                      </SvgText>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-              {/* Bookmark flags - rendered within the scrolling SVG */}
-              {visibleBookmarks.map((bm) => (
-                <React.Fragment key={`bookmark-${bm.id}`}>
-                  {/* Stem - full height like red center line */}
-                  <Line
-                    x1={bm.x}
-                    y1={0}
-                    x2={bm.x}
-                    y2={svgHeight}
-                    stroke={CHAPTER_STEM_COLOR}
-                    strokeWidth={CHAPTER_FLAG_POLE_WIDTH}
-                  />
-                  {/* Flag - notched pennant shape (based on Flag.svg) */}
-                  <Path
-                    d={`M${bm.x} 0 H${bm.x + CHAPTER_FLAG_PENNANT_WIDTH} L${bm.x + CHAPTER_FLAG_PENNANT_WIDTH * 0.78} ${CHAPTER_FLAG_PENNANT_HEIGHT / 2} L${bm.x + CHAPTER_FLAG_PENNANT_WIDTH} ${CHAPTER_FLAG_PENNANT_HEIGHT} H${bm.x} Z`}
-                    fill={CHAPTER_FLAG_COLOR}
-                  />
-                </React.Fragment>
-              ))}
-              </Svg>
-            </View>
-          </ReanimatedAnimated.View>
-        </View>
-      </GestureDetector>
+      <View style={[controlBarStyles.divider, { backgroundColor: dividerColor }]} />
+
+      {/* Fast Forward */}
+      <TouchableOpacity
+        style={[controlBarStyles.navButton, { paddingBottom: bottomInset }]}
+        onPress={onSkipForward}
+        onPressIn={onFastForwardPressIn}
+        onPressOut={onSeekPressOut}
+        activeOpacity={0.7}
+        accessibilityLabel="Skip forward"
+      >
+        <FastForwardControlIcon color={iconColor} />
+      </TouchableOpacity>
+
+      <View style={[controlBarStyles.divider, { backgroundColor: dividerColor }]} />
+
+      {/* Next Chapter */}
+      <TouchableOpacity
+        style={[controlBarStyles.navButton, { paddingBottom: bottomInset }]}
+        onPress={onNextChapter}
+        activeOpacity={0.7}
+        accessibilityLabel="Next chapter"
+      >
+        <NextChapterControlIcon color={iconColor} />
+      </TouchableOpacity>
+
+      <View style={[controlBarStyles.divider, { backgroundColor: dividerColor }]} />
+
+      {/* Play/Pause - rounded bottom-right corner, accent colored */}
+      <TouchableOpacity
+        style={[
+          controlBarStyles.navButton,
+          {
+            backgroundColor: accentColor,
+            paddingBottom: bottomInset,
+            borderBottomRightRadius: FLOATING_WIDGET_RADIUS,
+          }
+        ]}
+        onPress={onPlayPause}
+        activeOpacity={0.8}
+        accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+      >
+        {isPlaying ? (
+          <PauseControlIcon color="#FFFFFF" />
+        ) : (
+          <PlayControlIcon color="#FFFFFF" />
+        )}
+      </TouchableOpacity>
     </View>
   );
 });
 
-const chapterTimelineStyles = StyleSheet.create({
-  outerContainer: {
-    width: TIMELINE_WIDTH,
-    height: CHAPTER_TIMELINE_TOTAL_HEIGHT,
-    alignSelf: 'center',
-    alignItems: 'center',
-  },
-  markerContainer: {
-    position: 'absolute',
-    top: scale(115), // Moved down ~115px to position over timeline ticks
-    left: CHAPTER_MARKER_X - CHAPTER_MARKER_CIRCLE_SIZE / 2,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  markerCircle: {
-    width: CHAPTER_MARKER_CIRCLE_SIZE,
-    height: CHAPTER_MARKER_CIRCLE_SIZE,
-    borderRadius: CHAPTER_MARKER_CIRCLE_SIZE / 2,
-    backgroundColor: '#F50101',
-  },
-  markerLine: {
-    position: 'absolute',
-    bottom: 0, // Anchored at bottom of timeline
-    left: CHAPTER_MARKER_X - 1, // Center horizontally (line is 2px wide)
-    width: 2,
-    height: CHAPTER_TICKS_AREA_HEIGHT, // Extend up through ticks area
-    backgroundColor: '#F50101',
-    zIndex: 5,
-  },
-  markerDot: {
-    position: 'absolute',
-    bottom: CHAPTER_TICKS_AREA_HEIGHT - 3, // At top of line, centered
-    left: CHAPTER_MARKER_X - 3, // Center the 6px dot
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F50101',
-    zIndex: 6,
-  },
+const controlBarStyles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 0,
-    width: TIMELINE_WIDTH,
-    height: CHAPTER_TICKS_AREA_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'stretch',
     overflow: 'hidden',
   },
-  timeline: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    height: '100%',
+  navButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: CONTROL_BAR_HEIGHT,
   },
-  speedIndicator: {
-    position: 'absolute',
-    top: scale(40),
+  divider: {
+    width: 1,
     alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(8),
-    borderRadius: scale(8),
-    zIndex: 20,
-  },
-  speedIndicatorText: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.semibold,
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  scrubTooltip: {
-    position: 'absolute',
-    top: scale(40),
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(8),
-    borderRadius: scale(8),
-    zIndex: 20,
-  },
-  scrubTooltipText: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.semibold,
-    color: '#FFFFFF',
-    textAlign: 'center',
+    height: scale(32),
   },
 });
 
@@ -1144,9 +621,9 @@ export function CDPlayerScreen() {
 
   // Position-dependent state - optimized to only trigger re-render on whole-second changes
   // This dramatically reduces re-renders from ~2/sec to ~1/sec during playback
+  // Math.floor ensures we only re-render when the floored value changes
   const position = usePlayerStore(
-    (s) => Math.floor(s.isSeeking ? s.seekPosition : s.position),
-    (a, b) => a === b // Strict equality - only re-render when floored value changes
+    (s) => Math.floor(s.isSeeking ? s.seekPosition : s.position)
   );
 
   // Formatted position string - recalculates only when position changes (already floored)
@@ -1196,6 +673,7 @@ export function CDPlayerScreen() {
   const chapterIndex = useCurrentChapterIndex();
   // NOTE: bookProgress removed - was unused and caused extra re-renders on every position tick
   const coverUrl = useCoverUrl(currentBook?.id || '');
+  const backgroundCoverUrl = useCoverUrl(currentBook?.id || '', { width: 1200 });
   const { isAvailable: isDownloaded } = useIsOfflineAvailable(currentBook?.id || '');
   const { queueDownload } = useDownloads();
   const { isDownloading, progress: downloadProgress } = useDownloadStatus(currentBook?.id || '');
@@ -1246,6 +724,35 @@ export function CDPlayerScreen() {
     (metadata?.narrators?.length > 0
       ? metadata.narrators.map((n: any) => typeof n === 'string' ? n : n.name).filter(Boolean).join(', ')
       : '');
+
+  // Series info - try series array first (expanded), then seriesName string (same as BookDetailScreen)
+  const series = metadata?.series?.[0] || metadata?.seriesName || null;
+  const seriesName = typeof series === 'string' ? series : series?.name || '';
+  const seriesSequence = metadata?.series?.[0]?.sequence || null;
+
+  // Format duration as "Xh Ym" (e.g., "28h 40m")
+  const formattedTotalDuration = useMemo(() => {
+    if (!duration || duration <= 0) return '';
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${minutes}m`;
+  }, [duration]);
+
+  // Chapter count
+  const chapterCount = chapters.length;
+
+  // Dynamic title font size and lines - shorter titles get bigger fonts
+  const { titleFontSize, titleLines } = useMemo(() => {
+    const len = title.length;
+    if (len <= 12) return { titleFontSize: scale(42), titleLines: 1 };
+    if (len <= 18) return { titleFontSize: scale(38), titleLines: 1 };
+    if (len <= 25) return { titleFontSize: scale(34), titleLines: 1 };
+    if (len <= 35) return { titleFontSize: scale(30), titleLines: 2 };
+    return { titleFontSize: scale(26), titleLines: 2 };
+  }, [title]);
+
   const currentChapter = chapters[chapterIndex];
 
   // Get normalized chapter names based on user settings
@@ -1419,6 +926,40 @@ export function CDPlayerScreen() {
     nextChapter?.();
   }, [nextChapter]);
 
+  // Toggle between chapter and book progress mode
+  const toggleProgressMode = useCallback(() => {
+    setProgressMode((prev) => (prev === 'chapter' ? 'book' : 'chapter'));
+    haptics.selection();
+  }, []);
+
+  // Calculate chapter position and duration
+  const chapterPosition = useMemo(() => {
+    if (!currentChapter) return 0;
+    return Math.max(0, position - currentChapter.start);
+  }, [position, currentChapter]);
+
+  const chapterDuration = useMemo(() => {
+    if (!currentChapter) return 0;
+    return currentChapter.end - currentChapter.start;
+  }, [currentChapter]);
+
+  // Formatted chapter position and duration
+  const formattedChapterPosition = useMemo(
+    () => formatTimeHHMMSS(chapterPosition),
+    [chapterPosition]
+  );
+  const formattedChapterDuration = useMemo(
+    () => formatTimeHHMMSS(chapterDuration),
+    [chapterDuration]
+  );
+
+  // Seek handler for chapter mode - converts chapter-relative position to book position
+  const handleChapterSeek = useCallback((chapterRelativePosition: number) => {
+    if (!currentChapter || !seekTo) return;
+    const bookPosition = currentChapter.start + chapterRelativePosition;
+    seekTo(bookPosition);
+  }, [currentChapter, seekTo]);
+
   // Play/pause toggle
   // NOTE: Uses getState() to avoid callback recreation on position/isPlaying updates
   const handlePlayPause = useCallback(() => {
@@ -1439,11 +980,79 @@ export function CDPlayerScreen() {
     handleSeekPressOut,
     handleSkipBackWithCheck,
     handleSkipForwardWithCheck,
+    seekingState,
   } = useContinuousSeeking({
     seekTo,
     handleSkipBack,
     handleSkipForward,
   });
+
+  // ==========================================================================
+  // TIMELINE SCRUBBING DELTA - for visual indicator
+  // ==========================================================================
+  const [timelineScrubDelta, setTimelineScrubDelta] = useState<number | null>(null);
+
+  const handleTimelineScrubStart = useCallback(() => {
+    // Delta starts at 0 when scrubbing begins
+    setTimelineScrubDelta(0);
+  }, []);
+
+  const handleTimelineScrubUpdate = useCallback((delta: number, _progress: number) => {
+    setTimelineScrubDelta(delta);
+  }, []);
+
+  const handleTimelineScrubEnd = useCallback(() => {
+    setTimelineScrubDelta(null);
+  }, []);
+
+  // Animated font size for time display - shrinks and moves up when showing delta
+  const isSeeking = seekingState.isActive || timelineScrubDelta !== null;
+  const [showDelta, setShowDelta] = useState(false);
+  const timeFontSize = useSharedValue(scale(64));
+  const timeTranslateY = useSharedValue(0);
+  const timeTranslateX = useSharedValue(0); // Shift left when delta visible
+  const deltaOpacity = useSharedValue(0);
+  const deltaTranslateX = useSharedValue(scale(-20));
+
+  useEffect(() => {
+    // Animate font size smaller and move UP when seeking (fast in, normal out)
+    const duration = isSeeking ? 80 : 150;
+    timeFontSize.value = withTiming(isSeeking ? scale(28) : scale(64), { duration });
+    timeTranslateY.value = withTiming(isSeeking ? scale(-30) : 0, { duration });
+    // Shift left to visually center time+delta group
+    timeTranslateX.value = withTiming(isSeeking ? scale(-50) : 0, { duration });
+
+    // Delay showing delta so resize animation completes first
+    if (isSeeking) {
+      const timer = setTimeout(() => {
+        setShowDelta(true);
+        // Animate delta sliding out from center to right
+        deltaOpacity.value = withTiming(1, { duration: 120 });
+        deltaTranslateX.value = withTiming(0, { duration: 120 });
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      setShowDelta(false);
+      deltaOpacity.value = 0;
+      deltaTranslateX.value = scale(-20);
+    }
+  }, [isSeeking]);
+
+  const timeRowAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: timeTranslateX.value },
+      { translateY: timeTranslateY.value },
+    ],
+  }));
+
+  const timeTextAnimatedStyle = useAnimatedStyle(() => ({
+    fontSize: timeFontSize.value,
+  }));
+
+  const deltaAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: deltaOpacity.value,
+    transform: [{ translateX: deltaTranslateX.value }],
+  }));
 
   // ==========================================================================
   // BOOKMARK ACTIONS - extracted to hook
@@ -1483,37 +1092,26 @@ export function CDPlayerScreen() {
         styles.container,
         {
           transform: [{ translateY: slideAnim }],
-          backgroundColor: themeColors.background,
+          backgroundColor: themeColors.pageBackground,
         },
       ]}
       {...panResponder.panHandlers}
     >
       <StatusBar barStyle={themeColors.statusBar} />
 
-      {/* Background blur layer */}
+      {/* Background blur layer - matches BookDetailScreen */}
       <View style={styles.backgroundContainer}>
-        {coverUrl && (
+        {backgroundCoverUrl ? (
           <Image
-            source={coverUrl}
+            source={backgroundCoverUrl}
             style={StyleSheet.absoluteFill}
-            blurRadius={25}
             contentFit="cover"
           />
-        )}
-        {/* BlurView for Android (blurRadius only works on iOS) */}
-        <BlurView
-          intensity={25}
-          tint={isDarkMode ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Gradient feathers to background color */}
+        ) : null}
+        {/* Fade to background at bottom */}
         <LinearGradient
-          colors={isDarkMode
-            ? ['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,1)']
-            : ['rgba(255,255,255,0)', 'rgba(255,255,255,0)', 'rgba(255,255,255,0)', '#FFFFFF']}
-          locations={[0, 0.2, 0.3, 0.45]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
+          colors={['transparent', themeColors.pageBackground]}
+          locations={[0.3, 1]}
           style={StyleSheet.absoluteFill}
         />
       </View>
@@ -1533,7 +1131,7 @@ export function CDPlayerScreen() {
 
 
       {/* Content area */}
-      <View style={[styles.contentArea, { marginTop: scale(-60) }]}>
+      <View style={styles.contentArea}>
         {/* Overview Section - hidden for now */}
         {false && description ? (
           <View style={styles.overviewSection}>
@@ -1545,124 +1143,139 @@ export function CDPlayerScreen() {
           </View>
         ) : null}
 
-        {/* Cover at top */}
+        {/* Cover overlay buttons */}
+        {/* Header row with icons */}
+        <View style={[styles.playerHeader, { paddingTop: insets.top + scale(8) }]}>
+          {/* Left: Download/Check status */}
+          {isDownloaded ? (
+            <View style={styles.headerIconButtonShadow}>
+              <Check size={scale(20)} color={themeColors.iconPrimary} strokeWidth={2.5} />
+            </View>
+          ) : isDownloading ? (
+            <View style={styles.headerIconButtonShadow}>
+              <CircularProgress progress={downloadProgress} size={scale(20)} />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.headerIconButtonShadow}
+              onPress={handleStartDownload}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Download for offline"
+            >
+              <Download size={scale(20)} color={themeColors.iconPrimary} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+
+          {/* Center: Down arrow (close) */}
+          <TouchableOpacity
+            style={styles.headerCloseButtonShadow}
+            onPress={handleClose}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close player"
+          >
+            <DownArrowIcon color={themeColors.iconPrimary} />
+          </TouchableOpacity>
+
+          {/* Right: Bookmark + Settings */}
+          <View style={styles.headerRightGroup}>
+            <TouchableOpacity
+              style={styles.headerIconButtonShadow}
+              onPress={handleAddBookmark}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add bookmark"
+            >
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      scale: bookmarkPillAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.2, 1],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                {showBookmarkPill ? (
+                  <Check size={scale(20)} color="#22C55E" strokeWidth={2.5} />
+                ) : (
+                  <Bookmark size={scale(20)} color={themeColors.iconPrimary} strokeWidth={2} />
+                )}
+              </Animated.View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIconButtonShadow}
+              onPress={openSettings}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+            >
+              <Settings size={scale(20)} color={themeColors.iconPrimary} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Cover image container */}
         <View style={styles.standardCoverContainerFull}>
-            {coverUrl ? (
-              <Image
-                source={coverUrl}
-                style={styles.standardCoverFull}
-                contentFit="cover"
-              />
-            ) : (
-              <View style={[styles.standardCoverFull, { backgroundColor: '#333' }]} />
-            )}
             {/* Speed badge when not 1.0x */}
             {playbackRate !== 1 && (
               <View style={styles.speedBadgeStandard}>
                 <Text style={styles.speedBadgeOnDiscText}>{playbackRate}x</Text>
               </View>
             )}
-
-            {/* Top-left: Source indicator (downloaded/downloading/streaming) */}
-            {isDownloaded ? (
-              <View style={styles.coverOverlayTopLeft}>
-                <Check size={scale(24)} color="#FFFFFF" strokeWidth={2.5} />
-              </View>
-            ) : isDownloading ? (
-              <View style={styles.coverOverlayTopLeft}>
-                <CircularProgress progress={downloadProgress} />
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.coverOverlayTopLeft}
-                onPress={handleStartDownload}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Download for offline"
-              >
-                <View style={styles.downloadCircleFilled}>
-                  <Download size={scale(18)} color="#000000" strokeWidth={2.5} />
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {/* Top-center: Down arrow (close) - white stroke with shadow */}
-            <TouchableOpacity
-              style={styles.coverOverlayTopCenter}
-              onPress={handleClose}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Close player"
-            >
-              <View style={styles.coverOverlayArrowShadow}>
-                <DownArrowIcon color="#FFFFFF" />
-              </View>
-            </TouchableOpacity>
-
-            {/* Top-right: Settings */}
-            <TouchableOpacity
-              style={styles.coverOverlayTopRight}
-              onPress={openSettings}
-              activeOpacity={0.7}
-            >
-              <SettingsIconCircle color="#FFFFFF" />
-            </TouchableOpacity>
-
-            {/* Bottom overlay buttons - Queue (left) and Bookmark (right) */}
-            <View style={styles.coverOverlayButtons}>
-              <TouchableOpacity
-                onPress={openQueue}
-                style={styles.coverOverlayButton}
-                activeOpacity={0.7}
-                accessibilityLabel={queueCount > 0 ? `Queue with ${queueCount} items` : 'Queue empty'}
-                accessibilityRole="button"
-              >
-                <Layers size={scale(18)} color="#000000" strokeWidth={2} />
-                {queueCount > 0 && (
-                  <View style={styles.coverButtonBadge}>
-                    <Text style={styles.coverButtonBadgeText}>{queueCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAddBookmark}
-                style={styles.coverOverlayButton}
-                activeOpacity={0.7}
-                accessibilityLabel="Add bookmark"
-                accessibilityRole="button"
-              >
-                <Animated.View
-                  style={{
-                    transform: [
-                      {
-                        scale: bookmarkPillAnim.interpolate({
-                          inputRange: [0, 0.5, 1],
-                          outputRange: [1, 1.2, 1],
-                        }),
-                      },
-                    ],
-                  }}
-                >
-                  {showBookmarkPill ? (
-                    <Check size={scale(18)} color="#22C55E" strokeWidth={2.5} />
-                  ) : (
-                    <Bookmark size={scale(18)} color="#000000" strokeWidth={2} />
-                  )}
-                </Animated.View>
-              </TouchableOpacity>
-            </View>
           </View>
+
 
         {/* Title and metadata */}
           <View style={styles.standardTitleSection}>
+            {/* Metadata row - duration, chapters, series (above title like BookDetail) */}
+            <View style={styles.metadataRowInline}>
+              {formattedTotalDuration ? (
+                <View style={styles.metadataItem}>
+                  <Clock size={scale(14)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.metadataText, { color: themeColors.textSecondary }]}>{formattedTotalDuration}</Text>
+                </View>
+              ) : null}
+              {chapterCount > 0 ? (
+                <>
+                  <Text style={[styles.metadataDot, { color: themeColors.textSecondary }]}>·</Text>
+                  <View style={styles.metadataItem}>
+                    <List size={scale(14)} color={themeColors.textSecondary} strokeWidth={2} />
+                    <Text style={[styles.metadataText, { color: themeColors.textSecondary }]}>{chapterCount} ch</Text>
+                  </View>
+                </>
+              ) : null}
+              {seriesName ? (
+                <>
+                  <Text style={[styles.metadataDot, { color: themeColors.textSecondary }]}>·</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      handleClose();
+                      setTimeout(() => {
+                        navigation.navigate('SeriesDetail' as never, { seriesName } as never);
+                      }, 100);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.metadataSeriesText, { color: themeColors.textSecondary }]}>
+                      {seriesName}{seriesSequence ? ` #${seriesSequence}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+            </View>
+
             <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
               <Text
-                style={[styles.standardTitle, { color: themeColors.textPrimary }]}
-                numberOfLines={2}
+                style={[styles.standardTitle, { color: themeColors.textPrimary, fontSize: titleFontSize }]}
+                numberOfLines={titleLines}
                 adjustsFontSizeToFit
-                minimumFontScale={0.6}
+                minimumFontScale={0.7}
               >
                 {title}
               </Text>
@@ -1672,7 +1285,7 @@ export function CDPlayerScreen() {
                 <Text style={[styles.standardMetaLabel, { color: themeColors.textTertiary }]}>Written By</Text>
                 <TouchableOpacity
                   onPress={() => {
-                    const authors = author.split(',').map(a => a.trim()).filter(Boolean);
+                    const authors = author.split(',').map((a: string) => a.trim()).filter(Boolean);
                     const navigateToAuthor = (authorName: string) => {
                       handleClose();
                       setTimeout(() => {
@@ -1700,7 +1313,7 @@ export function CDPlayerScreen() {
                           'Select Author',
                           undefined,
                           [
-                            ...authors.map(a => ({
+                            ...authors.map((a: string) => ({
                               text: a,
                               onPress: () => navigateToAuthor(a),
                             })),
@@ -1720,7 +1333,7 @@ export function CDPlayerScreen() {
                   <Text style={[styles.standardMetaLabel, { color: themeColors.textTertiary }]}>Narrated By</Text>
                   <TouchableOpacity
                     onPress={() => {
-                      const narrators = narrator.split(',').map(n => n.trim()).filter(Boolean);
+                      const narrators = narrator.split(',').map((n: string) => n.trim()).filter(Boolean);
                       const navigateToNarrator = (narratorName: string) => {
                         handleClose();
                         setTimeout(() => {
@@ -1748,7 +1361,7 @@ export function CDPlayerScreen() {
                             'Select Narrator',
                             undefined,
                             [
-                              ...narrators.map(n => ({
+                              ...narrators.map((n: string) => ({
                                 text: n,
                                 onPress: () => navigateToNarrator(n),
                               })),
@@ -1767,132 +1380,92 @@ export function CDPlayerScreen() {
             </View>
           </View>
 
-        {/* Chapter title & time */}
-        <View style={styles.standardChapterRowTop}>
-          <TouchableOpacity onPress={openChapters} style={styles.standardChapterTouch}>
-            <Text style={[styles.standardChapterTextTop, { color: themeColors.textPrimary }]} numberOfLines={1}>
+        {/* Current time and seeking delta - above floating widget */}
+        <View style={[styles.chapterInfoAboveProgress, { bottom: insets.bottom + FLOATING_WIDGET_MARGIN + CONTROL_BAR_HEIGHT + PROGRESS_BAR_HEIGHT + MARKER_AREA_HEIGHT + scale(8) }]}>
+          {/* Chapter info row - above current time */}
+          <TouchableOpacity onPress={openChapters} activeOpacity={0.7} style={styles.chapterLabelRow}>
+            <Text style={[styles.chapterLabelText, { color: themeColors.textSecondary }]} numberOfLines={1}>
               {currentNormalizedChapter?.displayTitle || `Chapter ${chapterIndex + 1}`}
             </Text>
+            <Text style={[styles.chapterLabelText, { color: themeColors.textSecondary }]}>
+              {progressMode === 'chapter' ? formattedChapterDuration : formattedDuration}
+            </Text>
           </TouchableOpacity>
-          <Text style={styles.standardChapterTimeTop}>
-            {formattedPosition} / {formattedDuration}
-          </Text>
-        </View>
-
-        {/* Progress Bar */}
-        <View style={[styles.progressWrapper, styles.progressWrapperStandard, { bottom: insets.bottom + scale(88) }]}>
-          {progressMode === 'book' ? (
-            // Book mode: Full timeline with chapter-normalized segments
-            <TimelineProgressBar
-              key={`timeline-book-${chapters.length}`}
-              position={position}
-              duration={duration}
-              chapters={chapters}
-              onSeek={seekTo}
-              bookmarks={bookmarks}
-            />
-          ) : (
-            // Chapter mode: Scrolling timeline with long-press + pan scrubbing
-            <ChapterTimelineProgressBar
-              key={`timeline-chapter-${chapters.length}`}
-              position={position}
-              duration={duration}
-              chapters={timelineChapters}
-              onSeek={seekTo}
-              bookmarks={bookmarks}
-              libraryItemId={currentBook?.id}
-            />
-          )}
-        </View>
-
-        {/* Player Controls - at bottom */}
-        <View style={[styles.standardControlsBar, { backgroundColor: themeColors.buttonBackground, bottom: insets.bottom }]}>
-            {/* Skip Back - tap to skip, hold to scrub */}
-            <TouchableOpacity
-              style={styles.standardControlButton}
-              onPress={handleSkipBackWithCheck}
-              onPressIn={handleRewindPressIn}
-              onPressOut={handleSeekPressOut}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              accessibilityLabel={`Skip back ${skipBackInterval} seconds, hold to scrub`}
-              accessibilityRole="button"
-            >
-              <RewindIcon color={themeColors.buttonText} />
-            </TouchableOpacity>
-
-            {/* Divider */}
-            <View style={[styles.standardControlDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
-
-            {/* Play/Pause - or Sleep Timer when active */}
-            <TouchableOpacity
-              style={styles.standardControlButton}
-              onPress={handlePlayPause}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-              accessibilityRole="button"
-            >
-              {sleepTimer ? (
-                <View style={styles.sleepTimerControl}>
-                  {/* Small play/pause icon */}
-                  {isPlaying ? (
-                    <Svg width={scale(14)} height={scale(14)} viewBox="0 0 24 24" fill="none">
-                      <Rect x="6" y="5" width="4" height="14" fill="#E53935" />
-                      <Rect x="14" y="5" width="4" height="14" fill="#E53935" />
-                    </Svg>
-                  ) : (
-                    <Svg width={scale(14)} height={scale(14)} viewBox="0 0 24 24" fill="none">
-                      <Path
-                        d="M8 5.14v13.72a1 1 0 001.5.86l10.14-6.86a1 1 0 000-1.72L9.5 4.28a1 1 0 00-1.5.86z"
-                        fill="#E53935"
-                      />
-                    </Svg>
-                  )}
-                  {/* Time remaining in red bold - live seconds countdown */}
-                  <Text style={styles.sleepTimerText}>
-                    {formatSleepCountdown(sleepTimer)}
-                  </Text>
-                </View>
-              ) : isPlaying ? (
-                <Svg width={scale(28)} height={scale(28)} viewBox="0 0 24 24" fill="none">
-                  <Rect x="6" y="5" width="4" height="14" fill="#E53935" />
-                  <Rect x="14" y="5" width="4" height="14" fill="#E53935" />
-                </Svg>
-              ) : (
-                <Svg width={scale(28)} height={scale(28)} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M8 5.14v13.72a1 1 0 001.5.86l10.14-6.86a1 1 0 000-1.72L9.5 4.28a1 1 0 00-1.5.86z"
-                    fill="#E53935"
-                  />
-                </Svg>
+          {/* Time and delta row - centered together, moves up when seeking */}
+          <ReanimatedAnimated.View style={[styles.timeAndDeltaRow, timeRowAnimatedStyle]}>
+            {/* Time wrapper - delta is positioned absolutely relative to this */}
+            <View style={styles.timeWrapper}>
+              <ReanimatedAnimated.Text style={[styles.currentTimeDisplay, { color: themeColors.textPrimary }, timeTextAnimatedStyle]}>
+                {progressMode === 'chapter' ? formattedChapterPosition : formattedPosition}
+              </ReanimatedAnimated.Text>
+              {/* Separator - lower opacity, appears with delta */}
+              {showDelta && (
+                <ReanimatedAnimated.Text style={[styles.timeSeparator, { color: themeColors.textPrimary }, deltaAnimatedStyle]}>
+                  |
+                </ReanimatedAnimated.Text>
               )}
-            </TouchableOpacity>
+              {/* Delta indicator - absolutely positioned so length changes don't shift time */}
+              {showDelta && seekingState.isActive && (
+                <ReanimatedAnimated.Text style={[styles.deltaDisplay, { color: themeColors.accent }, deltaAnimatedStyle]}>
+                  {seekingState.direction === 'back' ? '−' : '+'}
+                  {seekingState.amount >= 60
+                    ? `${Math.floor(seekingState.amount / 60)}m ${seekingState.amount % 60}s`
+                    : `${seekingState.amount}s`
+                  }
+                </ReanimatedAnimated.Text>
+              )}
+              {showDelta && timelineScrubDelta !== null && !seekingState.isActive && (
+                <ReanimatedAnimated.Text style={[styles.deltaDisplay, { color: themeColors.accent }, deltaAnimatedStyle]}>
+                  {timelineScrubDelta >= 0 ? '+' : '−'}
+                  {Math.abs(timelineScrubDelta) >= 60
+                    ? `${Math.floor(Math.abs(timelineScrubDelta) / 60)}m ${Math.floor(Math.abs(timelineScrubDelta) % 60)}s`
+                    : `${Math.floor(Math.abs(timelineScrubDelta))}s`
+                  }
+                </ReanimatedAnimated.Text>
+              )}
+            </View>
+          </ReanimatedAnimated.View>
+        </View>
 
-            {/* Divider */}
-            <View style={[styles.standardControlDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
+        {/* Floating Player Widget - contains progress bar + controls */}
+        <View style={[styles.floatingWidgetContainer, { bottom: insets.bottom + FLOATING_WIDGET_MARGIN }]}>
+          {/* Progress bar with marker (marker floats above widget visually) */}
+          <SimpleProgressBar
+            position={progressMode === 'chapter' ? chapterPosition : position}
+            duration={progressMode === 'chapter' ? chapterDuration : duration}
+            onSeek={progressMode === 'chapter' ? handleChapterSeek : seekTo}
+            accentColor={themeColors.accent}
+            trackColor={themeColors.widgetTrack}
+            borderColor={themeColors.widgetBorder}
+            onScrubStart={handleTimelineScrubStart}
+            onScrubUpdate={handleTimelineScrubUpdate}
+            onScrubEnd={handleTimelineScrubEnd}
+          />
 
-            {/* Skip Forward - tap to skip, hold to scrub */}
-            <TouchableOpacity
-              style={styles.standardControlButton}
-              onPress={handleSkipForwardWithCheck}
-              onPressIn={handleFastForwardPressIn}
-              onPressOut={handleSeekPressOut}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              accessibilityLabel={`Skip forward ${skipForwardInterval} seconds, hold to scrub`}
-              accessibilityRole="button"
-            >
-              <FastForwardIcon color={themeColors.buttonText} />
-            </TouchableOpacity>
+          {/* Floating widget with rounded corners - contains control bar */}
+          <View style={[styles.floatingWidget, { backgroundColor: themeColors.widgetButtonBg, borderColor: themeColors.widgetBorder }]}>
+            <PlayerControlBar
+              isPlaying={isPlaying}
+              onPlayPause={handlePlayPause}
+              onSkipBack={handleSkipBackWithCheck}
+              onSkipForward={handleSkipForwardWithCheck}
+              onPrevChapter={handlePrevChapter}
+              onNextChapter={handleNextChapter}
+              onRewindPressIn={handleRewindPressIn}
+              onFastForwardPressIn={handleFastForwardPressIn}
+              onSeekPressOut={handleSeekPressOut}
+              accentColor={themeColors.accent}
+              backgroundColor={themeColors.widgetButtonBg}
+              iconColor={themeColors.widgetIcon}
+              dividerColor={themeColors.widgetDivider}
+              bottomInset={0}
+            />
           </View>
-
-        {/* Bottom padding */}
-        <View style={safeAreaStyles.bottomSpacer} />
+        </View>
       </View>
 
-      {/* Inline Bottom Sheets (chapters, settings, queue, sleep, speed) */}
-      {activeSheet !== 'none' && activeSheet !== 'speedPanel' && activeSheet !== 'sleepPanel' && (
+      {/* Inline Bottom Sheets (chapters, settings, queue, sleep, speed, bookmarks) */}
+      {activeSheet !== 'none' && (
         <TouchableOpacity
           style={styles.sheetOverlay}
           activeOpacity={1}
@@ -1901,8 +1474,6 @@ export function CDPlayerScreen() {
           <View style={[styles.sheetContainer, { marginBottom: insets.bottom + scale(90) }]}>
             {activeSheet === 'chapters' && (
               <ChaptersSheet
-                themeColors={themeColors}
-                isDarkMode={isDarkMode}
                 chapters={normalizedChapters}
                 currentChapterIndex={chapterIndex}
                 onChapterSelect={handleChapterSelect}
@@ -1911,8 +1482,6 @@ export function CDPlayerScreen() {
             )}
             {activeSheet === 'settings' && (
               <SettingsSheet
-                themeColors={themeColors}
-                isDarkMode={isDarkMode}
                 progressMode={progressMode}
                 setProgressMode={setProgressMode}
                 playbackRate={playbackRate}
@@ -1941,8 +1510,6 @@ export function CDPlayerScreen() {
             )}
             {activeSheet === 'bookmarks' && (
               <BookmarksSheet
-                themeColors={themeColors}
-                isDarkMode={isDarkMode}
                 bookmarks={bookmarks}
                 coverUrl={coverUrl}
                 onGoBack={openSettings}
@@ -2039,8 +1606,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   backgroundContainer: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: scale(600),
+    overflow: 'hidden',
   },
   topGradientOverlay: {
     position: 'absolute',
@@ -2142,9 +1713,11 @@ const styles = StyleSheet.create({
     ...typography.labelMedium,
     fontWeight: fontWeight.medium,
     color: colors.textTertiary,
+    overflow: 'visible',
   },
   sourceTextDownloaded: {
     color: colors.success,
+    overflow: 'visible',
   },
   settingsButton: {
     width: layout.minTouchTarget,
@@ -2156,6 +1729,7 @@ const styles = StyleSheet.create({
     ...typography.headlineMedium,
     color: colors.textPrimary,
     textAlign: 'center',
+    overflow: 'visible',
   },
   author: {
     ...typography.bodyMedium,
@@ -2171,51 +1745,58 @@ const styles = StyleSheet.create({
     color: 'rgba(0,0,0,0.6)',
   },
   // Standard player - Book Detail style title/author (absolute positioning)
+  // Positioned to overlap gradient 50/50 - gradient starts fading at 50% screen height
   standardTitleSection: {
     position: 'absolute',
-    top: scale(448), // Below cover (100 + 320 + 10 padding)
+    top: hp(55), // User-set position
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: scale(20),
+    paddingHorizontal: scale(10),
+    paddingTop: scale(16), // Breathing room for top content (icons)
+    overflow: 'visible',
+    zIndex: 20,
   },
   standardTitle: {
-    ...typography.displayLarge,
-    fontSize: fontSize['4xl'], // 32px - larger than displayLarge
+    fontSize: fontSize['4xl'], // 32px
+    fontWeight: '700',
+    letterSpacing: -0.5,
     color: '#000',
-    marginBottom: scale(12),
+    marginBottom: scale(10),
     textAlign: 'center',
   },
   standardMetaRow: {
     flexDirection: 'row',
-    gap: scale(20),
-    width: '80%',
+    justifyContent: 'center',
+    gap: scale(40),
   },
   standardMetaCell: {
-    flex: 1,
     alignItems: 'center',
   },
   standardMetaLabel: {
-    ...typography.bodySmall,
-    fontWeight: fontWeight.medium,
-    color: 'rgba(0,0,0,0.4)',
+    fontSize: scale(10),
+    fontWeight: '500',
     textTransform: 'capitalize',
-    marginBottom: scale(2),
+    marginBottom: scale(0),
     textAlign: 'center',
   },
   standardMetaValue: {
-    ...typography.bodyLarge,
-    fontWeight: fontWeight.bold,
-    color: '#000',
+    fontSize: scale(13),
+    fontWeight: '500',
     textAlign: 'center',
   },
   sourceTextStandard: {
     color: 'rgba(0,0,0,0.5)',
   },
   contentArea: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 10,
     paddingTop: scale(10),
+    overflow: 'visible', // Allow absolutely positioned children to extend beyond bounds
   },
   overviewSection: {
     paddingHorizontal: scale(22),
@@ -2538,47 +2119,144 @@ const styles = StyleSheet.create({
     color: '#E53935',
     fontVariant: ['tabular-nums'],
   },
-  // Standard player chapter row - centered directly above marker
-  standardChapterRowTop: {
+  // Current time centered above marker
+  currentTimeAboveMarker: {
     position: 'absolute',
-    bottom: scale(255), // Well above the timeline marker
     left: 0,
     right: 0,
-    width: '100%',
-    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     zIndex: 10,
   },
-  standardChapterTextTop: {
-    ...typography.displaySmall,
-    fontSize: fontSize.xl, // 20px
-    fontWeight: fontWeight.bold,
-    textAlign: 'center',
-    marginBottom: scale(4),
+  currentTimeText: {
+    fontSize: scale(14),
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
-  standardChapterTimeTop: {
-    ...typography.labelSmall,
-    fontWeight: fontWeight.regular,
-    color: '#FFFFFF',
+  // Chapter info above progress bar
+  chapterInfoAboveProgress: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    zIndex: 10,
+  },
+  chapterLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: scale(4),
+    marginBottom: scale(8),
+  },
+  chapterLabelText: {
+    fontSize: scale(14),
+    fontWeight: '500',
+  },
+  chapterTitleText: {
+    fontSize: scale(16),
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  timeAndDeltaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  timeWrapper: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  currentTimeDisplay: {
+    fontSize: scale(64),
+    fontWeight: '800',
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -2,
+  },
+  timeSeparator: {
+    fontSize: scale(28),
+    fontWeight: '800',
+    opacity: 0.4,
+    marginLeft: scale(8),
+    marginRight: scale(4),
+  },
+  deltaDisplay: {
+    fontSize: scale(24),
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
+    width: scale(120), // Fixed width for centering (fits "| +59m 59s")
+    position: 'absolute',
+    left: '100%',
+    marginLeft: scale(4),
+  },
+  // Metadata row - duration, chapters, series (inline above title)
+  metadataRowInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: scale(4),
+    flexWrap: 'wrap',
+    overflow: 'visible',
+    minHeight: scale(20), // Ensure enough height for icons
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+    overflow: 'visible',
+  },
+  metadataText: {
+    fontSize: scale(14),
+    fontWeight: '500',
+  },
+  metadataDot: {
+    fontSize: scale(14),
+    marginHorizontal: scale(8),
+  },
+  metadataSeriesText: {
+    fontSize: scale(14),
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+  // Chapter (left) and Duration (right) row below timeline
+  chapterDurationRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(22),
+    zIndex: 10,
+  },
+  chapterTouchLeft: {
+    maxWidth: '50%',
+  },
+  chapterTextBelow: {
+    fontSize: scale(12),
+    fontWeight: '500',
+  },
+  durationTextRight: {
+    fontSize: scale(12),
+    fontWeight: '500',
+    fontVariant: ['tabular-nums'],
   },
   // Centered cover for standard player - absolute positioning
   standardCoverContainerFull: {
     position: 'absolute',
-    top: scale(70),
+    top: scale(90),
     left: (wp(100) - COVER_SIZE) / 2,
     width: COVER_SIZE,
     height: COVER_SIZE,
     borderRadius: radius.md,
-    overflow: 'hidden',
-    // Drop shadow like book detail page
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    overflow: 'visible', // Allow buttons to extend past edges
+    // // Drop shadow like book detail page
+    // shadowColor: '#000',
+    // shadowOffset: { width: 0, height: 8 },
+    // shadowOpacity: 0.3,
+    // shadowRadius: 12,
+    // elevation: 8,
     zIndex: 10,
   },
   standardCoverFull: {
@@ -2586,26 +2264,60 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: radius.md,
   },
-  // Cover overlay positions for top icons
-  coverOverlayTopLeft: {
+  // Player header row
+  playerHeader: {
     position: 'absolute',
-    top: scale(12),
-    left: scale(12),
-    zIndex: 25, // Higher than center to ensure touch priority
-  },
-  coverOverlayTopRight: {
-    position: 'absolute',
-    top: scale(12),
-    right: scale(12),
-    zIndex: 25, // Higher than center to ensure touch priority
-  },
-  coverOverlayTopCenter: {
-    position: 'absolute',
-    top: scale(12),
+    top: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(20),
+    zIndex: 100,
+  },
+  headerIconButton: {
+    width: scale(44),
+    height: scale(44),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconButtonShadow: {
+    width: scale(44),
+    height: scale(44),
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Drop shadow for visibility over cover
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  headerCloseButton: {
+    width: scale(44),
+    height: scale(44),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCloseButtonShadow: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: scale(-22), // Half of width to center
+    width: scale(44),
+    height: scale(44),
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Drop shadow for visibility over cover
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   coverOverlayCircle: {
     width: scale(36),
@@ -2617,9 +2329,9 @@ const styles = StyleSheet.create({
   },
   // White filled circle for download button
   downloadCircleFilled: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(36),
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2632,28 +2344,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 6,
   },
-  // Cover overlay buttons (queue left, bookmark right)
-  coverOverlayButtons: {
+  // Edge buttons positioned at cover edges
+  coverEdgeButtonLeft: {
     position: 'absolute',
-    bottom: scale(16), // Closer to bottom edge for smaller cover
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(16),
-  },
-  coverOverlayButton: {
-    width: scale(44),
-    height: scale(44),
+    top: scale(250) + COVER_SIZE * 0.55,
+    left: (wp(80) - COVER_SIZE) / 2 - scale(18),
+    width: scale(36),
+    height: scale(36),
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius:scale(44),
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 6,
+    zIndex: 15,
+  },
+  coverEdgeButtonRight: {
+    position: 'absolute',
+    top: scale(300) + COVER_SIZE * 0.55,
+    left: (wp(120) - COVER_SIZE) / 2 + COVER_SIZE - scale(18),
+    width: scale(36),
+    height: scale(36),
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 15,
   },
   coverButtonBadge: {
     position: 'absolute',
@@ -3497,6 +3207,20 @@ const styles = StyleSheet.create({
     top: 0,
     marginTop: scale(10),
     marginBottom: scale(10),
+  },
+  // Floating player widget container
+  floatingWidgetContainer: {
+    position: 'absolute',
+    left: scale(16),
+    right: scale(16),
+  },
+  // The floating widget - control bar area with border on bottom/left/right
+  floatingWidget: {
+    overflow: 'hidden', // Clip children to rounded corners
+    borderBottomLeftRadius: FLOATING_WIDGET_RADIUS,
+    borderBottomRightRadius: FLOATING_WIDGET_RADIUS,
+    borderWidth: 1,
+    borderTopWidth: 0,
   },
 });
 

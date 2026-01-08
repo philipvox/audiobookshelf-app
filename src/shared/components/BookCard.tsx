@@ -47,8 +47,20 @@ import {
   formatProgress,
   formatDuration,
   iconSizes,
+  accentColors,
 } from '@/shared/theme';
+import { useColors, ThemeColors } from '@/shared/theme';
 import { useThemeColors } from '@/shared/theme/themeStore';
+
+// Helper to get semantic colors from ThemeColors
+function getSemanticColors(c: ThemeColors) {
+  return {
+    warning: c.semantic.warning, // Orange - paused state
+    error: c.semantic.error,
+    success: c.semantic.success,
+    iconInverse: c.icon.inverse, // White on dark backgrounds
+  };
+}
 import { ThumbnailProgressBar } from './ThumbnailProgressBar';
 
 // Inline Progress Bar for book cards (UX: visual progress + time remaining)
@@ -77,13 +89,14 @@ const inlineProgressStyles = StyleSheet.create({
 });
 
 // Progress Ring for downloading
-const ProgressRing = ({ progress, size = 28, isPaused = false }: { progress: number; size?: number; isPaused?: boolean }) => {
+const ProgressRing = ({ progress, size = 28, isPaused = false, warningColor }: { progress: number; size?: number; isPaused?: boolean; warningColor?: string }) => {
   const strokeWidth = 2.5;
   const ringRadius = (size - strokeWidth) / 2;
   const circumference = ringRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
   const progressPct = Math.round(progress);
-  const progressColor = isPaused ? '#FF9800' : colors.textPrimary;
+  const pausedColor = warningColor || '#FF9800'; // Fallback for backward compatibility
+  const progressColor = isPaused ? pausedColor : colors.textPrimary;
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
@@ -110,7 +123,7 @@ const ProgressRing = ({ progress, size = 28, isPaused = false }: { progress: num
         />
       </Svg>
       {isPaused ? (
-        <Pause size={size * 0.4} color="#FF9800" fill="#FF9800" />
+        <Pause size={size * 0.4} color={pausedColor} fill={pausedColor} strokeWidth={0} />
       ) : (
         <Text style={styles.progressText}>{progressPct === 0 ? '...' : `${progressPct}%`}</Text>
       )}
@@ -175,8 +188,10 @@ export function BookCard({
   layout = 'default',
   showPlayOverlay = false,
 }: BookCardProps) {
-  // Theme colors for search layout
+  // Theme colors - use both legacy (for existing code) and new (for semantic colors)
   const themeColors = useThemeColors();
+  const fullThemeColors = useColors();
+  const semanticColors = getSemanticColors(fullThemeColors);
 
   // State from hooks
   const { isDownloaded, isDownloading, isPaused, isPending, progress } = useDownloadStatus(book.id);
@@ -364,7 +379,7 @@ export function BookCard({
               onPress={handlePlayPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Play size={iconSizes.sm} color="#fff" fill="#fff" />
+              <Play size={iconSizes.sm} color={semanticColors.iconInverse} fill={semanticColors.iconInverse} />
             </TouchableOpacity>
           )}
 
@@ -377,9 +392,9 @@ export function BookCard({
             >
               <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
                 {isInQueue ? (
-                  <Check size={iconSizes.xs} color={colors.backgroundPrimary} strokeWidth={3} />
+                  <Check size={iconSizes.xs} color={themeColors.background} strokeWidth={3} />
                 ) : (
-                  <Plus size={iconSizes.xs} color={colors.textPrimary} strokeWidth={3} />
+                  <Plus size={iconSizes.xs} color={themeColors.text} strokeWidth={3} />
                 )}
               </Animated.View>
             </TouchableOpacity>
@@ -413,8 +428,8 @@ export function BookCard({
               <Animated.View style={{ transform: [{ scale: wishlistScaleAnim }] }}>
                 <Bookmark
                   size={iconSizes.xs}
-                  color={isOnWishlist ? '#000' : colors.textPrimary}
-                  fill={isOnWishlist ? '#000' : 'none'}
+                  color={isOnWishlist ? themeColors.background : themeColors.text}
+                  fill={isOnWishlist ? themeColors.background : 'none'}
                 />
               </Animated.View>
             </TouchableOpacity>
@@ -464,11 +479,11 @@ export function BookCard({
           disabled={isUnavailableOffline}
         >
           {isDownloading || isPaused || isPending ? (
-            <ProgressRing progress={progress * 100} size={scale(28)} isPaused={isPaused} />
+            <ProgressRing progress={progress * 100} size={scale(28)} isPaused={isPaused} warningColor={semanticColors.warning} />
           ) : isUnavailableOffline ? (
-            <CloudOff size={iconSizes.md} color={colors.textTertiary} />
+            <CloudOff size={iconSizes.md} color={themeColors.textTertiary} />
           ) : (
-            <Download size={iconSizes.md} color={colors.textSecondary} />
+            <Download size={iconSizes.md} color={themeColors.textSecondary} />
           )}
         </TouchableOpacity>
       )}
@@ -479,7 +494,7 @@ export function BookCard({
           style={styles.playButton}
           onPress={handlePlayPress}
         >
-          <Play size={iconSizes.sm} color={colors.backgroundPrimary} fill={colors.backgroundPrimary} />
+          <Play size={iconSizes.sm} color={themeColors.background} fill={themeColors.background} />
         </TouchableOpacity>
       )}
     </View>

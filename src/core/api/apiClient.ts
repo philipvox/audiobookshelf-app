@@ -125,7 +125,7 @@ class ApiClient extends BaseApiClient {
     this._coverCacheVersion = Date.now();
   }
 
-  getItemCoverUrl(itemId: string, options?: { width?: number; height?: number }): string {
+  getItemCoverUrl(itemId: string, options?: { width?: number; height?: number; format?: string }): string {
     const baseUrl = `${this.getBaseURL()}${endpoints.items.cover(itemId)}`;
 
     // Build query params
@@ -143,6 +143,9 @@ class ApiClient extends BaseApiClient {
     if (options?.height) {
       params.append('height', options.height.toString());
     }
+
+    // Add format param - default to jpeg for better Android compatibility
+    params.append('format', options?.format || 'jpeg');
 
     const queryString = params.toString();
     return queryString ? `${baseUrl}?${queryString}` : baseUrl;

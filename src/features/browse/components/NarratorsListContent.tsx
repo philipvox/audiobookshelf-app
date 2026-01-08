@@ -6,9 +6,10 @@ import { useNarrators, NarratorInfo } from '@/features/narrator';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
-import { colors, spacing } from '@/shared/theme';
+import { spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 export function NarratorsListContent() {
+  const themeColors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { narrators, narratorCount, isLoading, error, refetch } = useNarrators(
@@ -35,7 +36,7 @@ export function NarratorsListContent() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -61,7 +62,7 @@ export function NarratorsListContent() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refetch}
-            tintColor={colors.accent}
+            tintColor={accentColors.gold}
           />
         }
         ListEmptyComponent={
@@ -79,7 +80,7 @@ export function NarratorsListContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   searchContainer: {
     paddingHorizontal: spacing.lg,

@@ -77,6 +77,8 @@ export type { BookCardProps, BookCardActionType, BookCardContext } from './BookC
 // PLAYER CONTROLS
 // =============================================================================
 export { CoverPlayButton } from './CoverPlayButton';
+export { PlayPauseButton } from './PlayPauseButton';
+export type { PlayPauseButtonProps, PlayPauseButtonSize, PlayPauseButtonVariant } from './PlayPauseButton';
 
 // =============================================================================
 // NAVIGATION

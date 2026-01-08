@@ -6,9 +6,10 @@ import { useCollections } from '@/features/collections/hooks/useCollections';
 import { SearchBar } from '@/features/search/components/SearchBar';
 import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
 import { Collection } from '@/core/types';
-import { colors, spacing } from '@/shared/theme';
+import { spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 export function CollectionsListContent() {
+  const themeColors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
   const { collections, isLoading, error, refetch } = useCollections();
 
@@ -37,7 +38,7 @@ export function CollectionsListContent() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -63,7 +64,7 @@ export function CollectionsListContent() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refetch}
-            tintColor={colors.accent}
+            tintColor={accentColors.gold}
           />
         }
         ListEmptyComponent={
@@ -81,7 +82,7 @@ export function CollectionsListContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundPrimary,
+    // backgroundColor set via themeColors in JSX
   },
   searchContainer: {
     paddingHorizontal: spacing.lg,

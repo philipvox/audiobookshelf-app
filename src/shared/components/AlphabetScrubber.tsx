@@ -20,6 +20,8 @@ import {
   Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useThemeColors } from '@/shared/theme/themeStore';
+import { accentColors, scale } from '@/shared/theme';
 
 interface AlphabetScrubberProps {
   /** Available letters to display */
@@ -34,8 +36,6 @@ interface AlphabetScrubberProps {
   style?: object;
 }
 
-const ACCENT = '#F4B60C';
-
 export function AlphabetScrubber({
   letters,
   activeLetter,
@@ -43,6 +43,7 @@ export function AlphabetScrubber({
   visible = true,
   style,
 }: AlphabetScrubberProps) {
+  const themeColors = useThemeColors();
   const containerRef = useRef<View>(null);
   const [containerHeight, setContainerHeight] = useState(0);
   const lastLetterRef = useRef<string>('');
@@ -117,13 +118,14 @@ export function AlphabetScrubber({
           key={letter}
           style={[
             styles.letterContainer,
-            activeLetter === letter && styles.letterContainerActive,
+            activeLetter === letter && { backgroundColor: accentColors.gold, borderRadius: scale(12) },
           ]}
         >
           <Text
             style={[
               styles.letter,
-              activeLetter === letter && styles.letterActive,
+              { color: accentColors.gold },
+              activeLetter === letter && { color: themeColors.background },
             ]}
           >
             {letter}
@@ -151,16 +153,8 @@ const styles = StyleSheet.create({
     width: 24,
     minHeight: 14,
   },
-  letterContainerActive: {
-    backgroundColor: ACCENT,
-    borderRadius: 12,
-  },
   letter: {
-    fontSize: 10,
+    fontSize: scale(10),
     fontWeight: '700',
-    color: ACCENT,
-  },
-  letterActive: {
-    color: '#000',
   },
 });

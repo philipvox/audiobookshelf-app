@@ -18,7 +18,7 @@ const mockSocket = {
 const mockIo = jest.fn(() => mockSocket);
 
 jest.mock('socket.io-client', () => ({
-  io: (url: string, options: any) => mockIo(url, options),
+  io: (_url: string, _options: unknown) => mockIo(),
 }));
 
 // Mock authService

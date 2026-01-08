@@ -31,8 +31,7 @@ import {
   LogOut,
   ChevronRight,
   Bug,
-  Moon,
-  Sun,
+  Palette,
   Library,
   Sparkles,
   EyeOff,
@@ -40,7 +39,7 @@ import {
   Heart,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useThemeStore, useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { useThemeStore, useThemeColors, useIsDarkMode, useTheme } from '@/shared/theme/themeStore';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
@@ -55,7 +54,7 @@ import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 import { generateErrorReport, exportErrorReportJSON } from '@/utils/runtimeMonitor';
 import { logger } from '@/shared/utils/logger';
 
-const ACCENT = accentColors.red;  // Red accent for primary interactive
+// Note: ACCENT removed - using themeColors.accent for dynamic accent color
 
 // Format bytes to human readable
 function formatBytes(bytes: number): string {
@@ -84,6 +83,7 @@ interface ProfileLinkProps {
 
 function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress, themeColors, iconBgColor, isDarkMode }: ProfileLinkProps) {
   const iconContainerBg = iconBgColor || (isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border);
+  const effectiveBadgeColor = badgeColor || themeColors.accent;
   return (
     <TouchableOpacity style={[styles.profileLink, { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : themeColors.border }]} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.linkIconContainer, { backgroundColor: iconContainerBg }]}>
@@ -94,8 +94,8 @@ function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress, themeC
         {subtitle ? <Text style={[styles.linkSubtitle, { color: themeColors.textSecondary }]}>{subtitle}</Text> : null}
       </View>
       {badge ? (
-        <View style={[styles.badge, { borderColor: badgeColor || ACCENT }]}>
-          <Text style={[styles.badgeText, { color: badgeColor || ACCENT }]}>{badge}</Text>
+        <View style={[styles.badge, { borderColor: effectiveBadgeColor }]}>
+          <Text style={[styles.badgeText, { color: effectiveBadgeColor }]}>{badge}</Text>
         </View>
       ) : null}
       <ChevronRight size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
@@ -131,7 +131,7 @@ function ProfileToggle({ Icon, label, subtitle, value, onValueChange, themeColor
           haptics.selection();
           onValueChange(newValue);
         }}
-        trackColor={{ false: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', true: accentColors.gold }}
+        trackColor={{ false: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', true: themeColors.accent }}
         thumbColor="#fff"
       />
     </View>
@@ -180,7 +180,7 @@ export function ProfileScreen() {
   const totalStorage = completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
 
   // Theme
-  const { mode: themeMode, toggleMode: toggleTheme } = useThemeStore();
+  const { mode: themeMode, accentThemeName } = useTheme();
 
   // Library preferences
   const { hideSingleBookSeries, setHideSingleBookSeries } = useMyLibraryStore();
@@ -240,7 +240,7 @@ export function ProfileScreen() {
 
         {/* User Header with quick sign out */}
         <View style={[styles.userHeader, { backgroundColor: 'transparent', borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: themeColors.accent }]}>
             <Text style={styles.avatarText}>{(user?.username || 'User').split(' ').map((word) => word[0]).slice(0, 2).join('').toUpperCase() || '?'}</Text>
           </View>
           <View style={styles.userInfo}>
@@ -284,7 +284,6 @@ export function ProfileScreen() {
             label="Wishlist"
             subtitle={wishlistCount > 0 ? `${wishlistCount} item${wishlistCount !== 1 ? 's' : ''}` : 'Track books you want'}
             badge={wishlistCount > 0 ? String(wishlistCount) : undefined}
-            badgeColor={accentColors.gold}
             onPress={() => navigation.navigate('Wishlist')}
             themeColors={themeColors}
             isDarkMode={isDarkMode}
@@ -317,12 +316,11 @@ export function ProfileScreen() {
             themeColors={themeColors}
             isDarkMode={isDarkMode}
           />
-          <ProfileToggle
-            Icon={themeMode === 'dark' ? Moon : Sun}
-            label="Dark Mode"
-            subtitle={themeMode === 'dark' ? 'Using dark theme' : 'Using light theme'}
-            value={themeMode === 'dark'}
-            onValueChange={toggleTheme}
+          <ProfileLink
+            Icon={Palette}
+            label="Appearance"
+            subtitle={`${themeMode === 'dark' ? 'Dark' : 'Light'} · ${accentThemeName}`}
+            onPress={() => navigation.navigate('AppearanceSettings')}
             themeColors={themeColors}
             isDarkMode={isDarkMode}
           />
@@ -343,7 +341,7 @@ export function ProfileScreen() {
             badgeColor={kidModeEnabled ? '#34C759' : undefined}
             onPress={() => navigation.navigate('KidModeSettings' as never)}
             themeColors={themeColors}
-            iconBgColor={kidModeEnabled ? accentColors.gold : undefined}
+            iconBgColor={kidModeEnabled ? themeColors.accent : undefined}
             isDarkMode={isDarkMode}
           />
         </SectionGroup>
@@ -480,7 +478,7 @@ const styles = StyleSheet.create({
     width: scale(64),
     height: scale(64),
     borderRadius: scale(32),
-    backgroundColor: ACCENT,
+    // backgroundColor set via themeColors.accent in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -582,12 +580,12 @@ const styles = StyleSheet.create({
     borderRadius: scale(6),
     marginRight: scale(8),
     borderWidth: 1,
-    borderColor: ACCENT,
+    // borderColor set dynamically in JSX
   },
   badgeText: {
     ...typography.labelMedium,
     fontWeight: fontWeight.semibold,
-    color: ACCENT,
+    // color set dynamically in JSX
   },
   // Sign Out
   signOutSection: {

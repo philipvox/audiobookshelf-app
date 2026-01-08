@@ -14,11 +14,11 @@ import { useNavigation } from '@react-navigation/native';
 import { Check } from 'lucide-react-native';
 import { SeriesInfo } from '../services/seriesAdapter';
 import { apiClient } from '@/core/api';
-import { colors, scale, spacing, radius, elevation, cardTokens } from '@/shared/theme';
+import { scale, spacing, radius, elevation, cardTokens, useThemeColors, accentColors } from '@/shared/theme';
 import { StackedCovers } from '@/shared/components';
 import { formatDuration } from '@/shared/utils/format';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 const ACCENT_DIM = 'rgba(243,182,12,0.5)';
 
 interface SeriesCardProps {
@@ -66,6 +66,7 @@ function ProgressDot({
 }
 
 function SeriesCardComponent({ series, showProgress = true, downloadedIds }: SeriesCardProps) {
+  const themeColors = useThemeColors();
   const navigation = useNavigation<any>();
 
   const handlePress = () => {
@@ -205,7 +206,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
       </View>
 
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>
+        <Text style={[styles.name, { color: themeColors.text }]} numberOfLines={2}>
           {series.name}
         </Text>
 
@@ -214,7 +215,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
           <View style={styles.progressSection}>
             {/* Progress bar */}
             <View style={styles.progressBarContainer}>
-              <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarBg, { backgroundColor: `${themeColors.text}15` }]}>
                 <View
                   style={[
                     styles.progressBarFill,
@@ -234,17 +235,17 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
                 )}
               </Text>
               {!isComplete && remainingText && (
-                <Text style={styles.remainingText}>~{remainingText}</Text>
+                <Text style={[styles.remainingText, { color: themeColors.textTertiary }]}>~{remainingText}</Text>
               )}
             </View>
 
             {/* Up next indicator */}
             {upNextBook && !isComplete && (
               <View style={styles.upNextContainer}>
-                <Text style={styles.upNextText} numberOfLines={1}>
+                <Text style={[styles.upNextText, { color: themeColors.textSecondary }]} numberOfLines={1}>
                   ↳ Up next: {upNextBook.title}
                 </Text>
-                <Text style={styles.upNextMeta}>
+                <Text style={[styles.upNextMeta, { color: themeColors.textTertiary }]}>
                   {formatDuration(upNextBook.duration)}
                   {upNextIsDownloaded && ' · Downloaded ✓'}
                 </Text>
@@ -255,7 +256,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
 
         {/* Book count and duration - show if no progress */}
         {!hasProgress && (
-          <Text style={styles.bookCount} numberOfLines={1}>
+          <Text style={[styles.bookCount, { color: themeColors.textSecondary }]} numberOfLines={1}>
             {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
             {durationText && ` • ${durationText}`}
           </Text>
@@ -311,7 +312,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
     lineHeight: 20,
   },
@@ -323,7 +324,7 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set via themeColors in JSX
     borderRadius: scale(2),
     overflow: 'hidden',
   },
@@ -344,24 +345,24 @@ const styles = StyleSheet.create({
   },
   remainingText: {
     fontSize: scale(10),
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   upNextContainer: {
     marginTop: scale(4),
   },
   upNextText: {
     fontSize: scale(10),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     fontStyle: 'italic',
   },
   upNextMeta: {
     fontSize: scale(9),
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     marginTop: scale(1),
   },
   bookCount: {
     fontSize: 13,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginTop: spacing.xs,
   },
 });

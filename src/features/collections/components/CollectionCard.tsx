@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LayoutGrid, BookOpen } from 'lucide-react-native';
 import { Collection } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { colors, scale, spacing, radius, elevation } from '@/shared/theme';
+import { scale, spacing, radius, elevation, useThemeColors, accentColors } from '@/shared/theme';
 
 interface CollectionCardProps {
   collection: Collection;
@@ -20,6 +20,7 @@ interface CollectionCardProps {
 
 export const CollectionCard = memo(function CollectionCard({ collection }: CollectionCardProps) {
   const navigation = useNavigation();
+  const themeColors = useThemeColors();
 
   const handlePress = () => {
     (navigation as any).navigate('CollectionDetail', { collectionId: collection.id });
@@ -35,27 +36,27 @@ export const CollectionCard = memo(function CollectionCard({ collection }: Colle
 
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress} activeOpacity={0.7}>
-      <View style={styles.coverContainer}>
+      <View style={[styles.coverContainer, { backgroundColor: themeColors.surfaceElevated }]}>
         {coverUrl ? (
           <Image source={coverUrl} style={styles.cover} contentFit="cover" transition={200} />
         ) : (
-          <View style={[styles.cover, styles.placeholderCover]}>
-            <LayoutGrid size={scale(32)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <View style={[styles.cover, styles.placeholderCover, { backgroundColor: themeColors.surfaceElevated }]}>
+            <LayoutGrid size={scale(32)} color={themeColors.textTertiary} strokeWidth={1.5} />
           </View>
         )}
 
-        <View style={styles.countBadge}>
+        <View style={[styles.countBadge, { backgroundColor: accentColors.gold }]}>
           <BookOpen size={scale(10)} color="#000" strokeWidth={2.5} />
-          <Text style={styles.countText}>{bookCount}</Text>
+          <Text style={[styles.countText, { color: themeColors.background }]}>{bookCount}</Text>
         </View>
       </View>
 
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>
+        <Text style={[styles.name, { color: themeColors.text }]} numberOfLines={2}>
           {collection.name}
         </Text>
         {collection.description && (
-          <Text style={styles.description} numberOfLines={1}>
+          <Text style={[styles.description, { color: themeColors.textTertiary }]} numberOfLines={1}>
             {collection.description}
           </Text>
         )}
@@ -74,7 +75,7 @@ const styles = StyleSheet.create({
     width: scale(160),
     height: scale(160),
     borderRadius: radius.lg,
-    backgroundColor: colors.backgroundElevated,
+    // backgroundColor set via themeColors in JSX
     overflow: 'hidden',
     ...elevation.small,
   },
@@ -85,7 +86,7 @@ const styles = StyleSheet.create({
   placeholderCover: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.backgroundElevated,
+    // backgroundColor set via themeColors in JSX
   },
   countBadge: {
     position: 'absolute',
@@ -94,7 +95,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.accent,
+    // backgroundColor set via accentColors in JSX
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
   countText: {
     fontSize: scale(11),
     fontWeight: '700',
-    color: colors.backgroundPrimary,
+    // color set via themeColors in JSX
   },
   info: {
     marginTop: spacing.sm,
@@ -110,12 +111,12 @@ const styles = StyleSheet.create({
   name: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xxs,
     lineHeight: scale(18),
   },
   description: {
     fontSize: scale(12),
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
 });

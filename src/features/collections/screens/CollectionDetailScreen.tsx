@@ -25,12 +25,11 @@ import { useCollectionDetails } from '../hooks/useCollectionDetails';
 import { BookCard } from '@/shared/components/BookCard';
 import { apiClient } from '@/core/api';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { colors, scale, wp } from '@/shared/theme';
+import { scale, wp, accentColors, useThemeColors } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 
-const BG_COLOR = colors.backgroundTertiary;
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 
 type CollectionDetailRouteParams = {
   CollectionDetail: {
@@ -92,11 +91,13 @@ function StackedCovers({ coverUrls }: { coverUrls: string[] }) {
 }
 
 export function CollectionDetailScreen() {
+  const themeColors = useThemeColors();
   const route = useRoute<CollectionDetailRouteProp>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { collectionId } = route.params;
   const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
+  const BG_COLOR = themeColors.backgroundTertiary;
 
   const books = collection?.books || [];
 
@@ -140,7 +141,7 @@ export function CollectionDetailScreen() {
   // Loading state
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG_COLOR }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.loadingContainer}>
           <LayoutGrid size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
@@ -153,7 +154,7 @@ export function CollectionDetailScreen() {
   // Error state
   if (error || !collection) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG_COLOR }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -256,7 +257,7 @@ export function CollectionDetailScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: BG_COLOR }]}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {books.length > 0 ? (
@@ -300,7 +301,7 @@ export function CollectionDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    // backgroundColor set via themeColors in JSX
   },
   // Loading/Error states
   loadingContainer: {

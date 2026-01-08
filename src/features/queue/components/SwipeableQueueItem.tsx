@@ -14,10 +14,9 @@ import { Menu, Trash2, ArrowUp, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, scale } from '@/shared/theme';
+import { scale, useThemeColors, accentColors } from '@/shared/theme';
 
 const ACTION_WIDTH = 80;
-const ACCENT = colors.accent;
 
 interface SwipeableQueueItemProps {
   book: LibraryItem;
@@ -36,6 +35,7 @@ export function SwipeableQueueItem({
   onPress,
   showPlayNext = true,
 }: SwipeableQueueItemProps) {
+  const themeColors = useThemeColors();
   const swipeableRef = useRef<Swipeable>(null);
   const coverUrl = useCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
@@ -103,21 +103,21 @@ export function SwipeableQueueItem({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }}
     >
-      <Pressable style={styles.container} onPress={onPress}>
+      <Pressable style={[styles.container, { backgroundColor: `${themeColors.text}10` }]} onPress={onPress}>
         {/* Drag handle */}
         <View style={styles.dragHandle}>
-          <Menu size={scale(18)} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+          <Menu size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
         </View>
 
         {/* Cover */}
-        <Image source={coverUrl} style={styles.cover} contentFit="cover" />
+        <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} contentFit="cover" />
 
         {/* Info */}
         <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
+          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>
             {subtitle}
           </Text>
         </View>
@@ -126,11 +126,11 @@ export function SwipeableQueueItem({
         <View style={styles.actions}>
           {showPlayNext && onPlayNext ? (
             <TouchableOpacity
-              style={styles.playNextButton}
+              style={[styles.playNextButton, { backgroundColor: `${accentColors.gold}25` }]}
               onPress={handlePlayNext}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <ArrowUp size={scale(16)} color={ACCENT} strokeWidth={2} />
+              <ArrowUp size={scale(16)} color={accentColors.gold} strokeWidth={2} />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -138,7 +138,7 @@ export function SwipeableQueueItem({
             onPress={handleRemove}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <X size={scale(18)} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+            <X size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </Pressable>
@@ -152,7 +152,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: scale(10),
     paddingHorizontal: scale(12),
-    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: scale(12),
     marginBottom: scale(8),
     gap: scale(10),
@@ -164,7 +163,6 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(6),
-    backgroundColor: '#262626',
   },
   info: {
     flex: 1,
@@ -172,12 +170,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: '#fff',
     marginBottom: scale(2),
   },
   subtitle: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.6)',
   },
   actions: {
     flexDirection: 'row',
@@ -188,7 +184,6 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(16),
-    backgroundColor: 'rgba(193,244,12,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },

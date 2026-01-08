@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { apiClient } from '@/core/api';
 import {
@@ -17,11 +17,10 @@ import {
   typography,
   cardTokens,
   interactiveStates,
+  layout,
 } from '@/shared/theme';
 import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
 import { SeriesHeartButton, SeriesProgressBadge } from '@/shared/components';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Use cardTokens for consistent values
 const COVER_SIZE = cardTokens.stackedCovers.size;
@@ -30,10 +29,8 @@ const FAN_ROTATION = cardTokens.stackedCovers.rotation;
 const FAN_VERTICAL_OFFSET = 6;
 const MAX_VISIBLE_BOOKS = cardTokens.stackedCovers.maxCount;
 
-// Card width calculation (2-column grid with padding and gap)
-const PADDING = spacing.lg;
+// Gap between cards
 const GAP = spacing.md;
-const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
 
 /** Book status for progress tracking - matches home/types.ts */
 export type BookStatus = 'done' | 'current' | 'not-started';
@@ -48,10 +45,9 @@ export interface EnhancedSeriesData {
   currentBookIndex?: number;
 }
 
-/** Book type for series */
+/** Book type for series - minimal interface for any book-like object */
 export interface SeriesBook {
   id: string;
-  [key: string]: unknown;
 }
 
 /** Series data structure */
@@ -86,6 +82,11 @@ function SeriesCardComponent({
 }: SeriesCardProps) {
   const themeColors = useThemeColors();
   const isDarkMode = useIsDarkMode();
+  const { width: screenWidth } = useWindowDimensions();
+
+  // Calculate card width dynamically for 2-column grid
+  // Uses layout.screenPaddingH to match HomeScreen padding
+  const cardWidth = (screenWidth - layout.screenPaddingH * 2 - GAP) / 2;
 
   // Calculate progress counts from enhancedData when showProgress is true
   const progressCounts = useMemo(() => {
@@ -112,7 +113,7 @@ function SeriesCardComponent({
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: cardBgColor }]}
+      style={[styles.card, { backgroundColor: cardBgColor, width: cardWidth }]}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={interactiveStates.press.opacity}
@@ -201,7 +202,7 @@ export const SeriesCard = memo(SeriesCardComponent);
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
+    // width set dynamically via cardWidth prop
     padding: spacing.md,
     borderRadius: radius.lg,
   },

@@ -17,7 +17,7 @@ import Slider from '@react-native-community/slider';
 import { X, Bookmark } from 'lucide-react-native';
 import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
-import { colors, spacing, radius, scale, layout } from '@/shared/theme';
+import { spacing, radius, scale, layout, useThemeColors, accentColors } from '@/shared/theme';
 
 // =============================================================================
 // CONSTANTS
@@ -38,6 +38,8 @@ interface SleepTimerSheetProps {
 // =============================================================================
 
 export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
+  const themeColors = useThemeColors();
+
   // Player store state
   const sleepTimer = usePlayerStore((s) => s.sleepTimer);
   const position = usePlayerStore((s) => s.position);
@@ -134,14 +136,14 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sleep Timer</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Sleep Timer</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <X size={24} color={colors.textPrimary} strokeWidth={2} />
+          <X size={24} color={themeColors.text} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       {/* Value Display */}
-      <Text style={styles.valueText}>{displayValue}</Text>
+      <Text style={[styles.valueText, { color: themeColors.text }]}>{displayValue}</Text>
 
       {/* Slider */}
       <View style={styles.sliderContainer}>
@@ -155,16 +157,16 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
             setSliderValue(value);
             setEndOfChapter(false);
           }}
-          minimumTrackTintColor={colors.accent}
-          maximumTrackTintColor={colors.progressTrack}
-          thumbTintColor={colors.accent}
+          minimumTrackTintColor={accentColors.gold}
+          maximumTrackTintColor={themeColors.border}
+          thumbTintColor={accentColors.gold}
         />
         <View style={styles.sliderLabels}>
-          <Text style={styles.sliderLabel}>Off</Text>
-          <Text style={styles.sliderLabel}>30m</Text>
-          <Text style={styles.sliderLabel}>1h</Text>
-          <Text style={styles.sliderLabel}>1.5h</Text>
-          <Text style={styles.sliderLabel}>2h</Text>
+          <Text style={[styles.sliderLabel, { color: themeColors.textTertiary }]}>Off</Text>
+          <Text style={[styles.sliderLabel, { color: themeColors.textTertiary }]}>30m</Text>
+          <Text style={[styles.sliderLabel, { color: themeColors.textTertiary }]}>1h</Text>
+          <Text style={[styles.sliderLabel, { color: themeColors.textTertiary }]}>1.5h</Text>
+          <Text style={[styles.sliderLabel, { color: themeColors.textTertiary }]}>2h</Text>
         </View>
       </View>
 
@@ -177,14 +179,16 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
               key={preset}
               style={[
                 styles.presetButton,
-                isActive && styles.presetButtonActive,
+                { backgroundColor: themeColors.card },
+                isActive && { backgroundColor: accentColors.gold },
               ]}
               onPress={() => handlePresetPress(preset)}
               activeOpacity={0.7}
             >
               <Text style={[
                 styles.presetText,
-                isActive && styles.presetTextActive,
+                { color: themeColors.text },
+                isActive && { color: themeColors.background },
               ]}>
                 {preset < 60 ? `${preset}m` : `${preset / 60}h`}
               </Text>
@@ -197,25 +201,28 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
       <TouchableOpacity
         style={[
           styles.endOfChapterButton,
-          endOfChapter && styles.endOfChapterButtonActive,
+          { backgroundColor: themeColors.card },
+          endOfChapter && { backgroundColor: accentColors.gold },
         ]}
         onPress={handleEndOfChapterPress}
         activeOpacity={0.7}
       >
         <Bookmark
           size={20}
-          color={endOfChapter ? '#000' : '#FFF'}
+          color={endOfChapter ? '#000' : themeColors.text}
           strokeWidth={2}
         />
         <Text style={[
           styles.endOfChapterText,
-          endOfChapter && styles.endOfChapterTextActive,
+          { color: themeColors.text },
+          endOfChapter && { color: themeColors.background },
         ]}>
           End of Chapter
         </Text>
         {chapterRemaining > 0 && (
           <Text style={[
             styles.endOfChapterEstimate,
+            { color: themeColors.textTertiary },
             endOfChapter && styles.endOfChapterEstimateActive,
           ]}>
             (~{chapterRemaining}m)
@@ -231,7 +238,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
             onPress={handleClear}
             activeOpacity={0.7}
           >
-            <Text style={styles.cancelButtonText}>Cancel Timer</Text>
+            <Text style={[styles.cancelButtonText, { color: accentColors.red }]}>Cancel Timer</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
@@ -242,7 +249,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
           onPress={sliderValue > 0 || endOfChapter ? handleApply : handleClear}
           activeOpacity={0.7}
         >
-          <Text style={styles.applyButtonText}>
+          <Text style={[styles.applyButtonText, { color: themeColors.background }]}>
             {sliderValue > 0 || endOfChapter ? 'Start Timer' : 'Turn Off'}
           </Text>
         </TouchableOpacity>
@@ -268,7 +275,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
   closeButton: {
     width: layout.minTouchTarget,
@@ -279,7 +286,7 @@ const styles = StyleSheet.create({
   valueText: {
     fontSize: scale(42),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginBottom: spacing.md,
   },
@@ -298,7 +305,7 @@ const styles = StyleSheet.create({
   },
   sliderLabel: {
     fontSize: 11,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   presetRow: {
     flexDirection: 'row',
@@ -309,20 +316,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     alignItems: 'center',
   },
-  presetButtonActive: {
-    backgroundColor: colors.accent,
-  },
+  // presetButtonActive set inline
   presetText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
-  presetTextActive: {
-    color: colors.backgroundPrimary,
-  },
+  // presetTextActive set inline
   endOfChapterButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -330,23 +333,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: 14,
     borderRadius: radius.md,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
     marginBottom: spacing.md,
   },
-  endOfChapterButtonActive: {
-    backgroundColor: colors.accent,
-  },
+  // endOfChapterButtonActive set inline
   endOfChapterText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
   },
-  endOfChapterTextActive: {
-    color: colors.backgroundPrimary,
-  },
+  // endOfChapterTextActive set inline
   endOfChapterEstimate: {
     fontSize: 13,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   endOfChapterEstimateActive: {
     color: 'rgba(0,0,0,0.5)',
@@ -365,13 +364,13 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.error,
+    // color set via accentColors in JSX
   },
   applyButton: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: accentColors.gold,
     alignItems: 'center',
   },
   applyButtonSmall: {
@@ -380,7 +379,7 @@ const styles = StyleSheet.create({
   applyButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.backgroundPrimary,
+    // color set via themeColors in JSX
   },
 });
 

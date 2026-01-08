@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { scale, layout } from '@/shared/theme';
+import { useColors } from '@/shared/theme/themeStore';
 
 interface QuickFilterChipsProps {
   chips: string[];
@@ -27,9 +28,11 @@ interface ChipProps {
   label: string;
   isSelected: boolean;
   onPress: () => void;
+  accentColor: string;
+  textOnAccent: string;
 }
 
-const Chip = React.memo(function Chip({ label, isSelected, onPress }: ChipProps) {
+const Chip = React.memo(function Chip({ label, isSelected, onPress, accentColor, textOnAccent }: ChipProps) {
   const handlePress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
@@ -39,14 +42,14 @@ const Chip = React.memo(function Chip({ label, isSelected, onPress }: ChipProps)
     <TouchableOpacity
       style={[
         styles.chip,
-        isSelected && styles.chipSelected,
+        isSelected && { backgroundColor: accentColor, borderColor: accentColor },
       ]}
       onPress={handlePress}
       activeOpacity={0.7}
     >
       <Text style={[
         styles.chipText,
-        isSelected && styles.chipTextSelected,
+        isSelected && { color: textOnAccent, fontWeight: '600' },
       ]}>
         {label}
       </Text>
@@ -59,6 +62,10 @@ export function QuickFilterChips({
   selectedChip,
   onSelect,
 }: QuickFilterChipsProps) {
+  const colors = useColors();
+  const accent = colors.accent.primary;
+  const textOnAccent = colors.accent.textOnAccent;
+
   return (
     <ScrollView
       horizontal
@@ -72,6 +79,8 @@ export function QuickFilterChips({
           label={chip}
           isSelected={selectedChip === chip}
           onPress={() => onSelect(chip)}
+          accentColor={accent}
+          textOnAccent={textOnAccent}
         />
       ))}
     </ScrollView>
@@ -96,17 +105,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.4)',
     backgroundColor: 'transparent',
   },
-  chipSelected: {
-    backgroundColor: '#E53935',
-    borderColor: '#E53935',
-  },
+  // chipSelected backgroundColor/borderColor now set dynamically via accentColor prop
   chipText: {
     fontSize: scale(14),
     fontWeight: '500',
     color: 'rgba(255,255,255,0.7)',
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
   },
 });

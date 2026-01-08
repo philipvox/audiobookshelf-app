@@ -23,7 +23,7 @@ import { useCoverUrl } from '@/core/cache';
 import type { LibraryItem } from '@/core/types';
 import { ScoredBook } from '../types';
 import { Icon } from '@/shared/components/Icon';
-import { colors, spacing, radius, formatDuration } from '@/shared/theme';
+import { spacing, radius, formatDuration, useThemeColors, accentColors } from '@/shared/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -41,11 +41,11 @@ interface MoodBookCardProps {
 /**
  * Get match quality label and color
  */
-function getMatchQuality(percent: number): { label: string; color: string } {
-  if (percent >= 80) return { label: 'Great Match', color: colors.success };
-  if (percent >= 60) return { label: 'Good Match', color: colors.accent };
-  if (percent >= 40) return { label: 'Partial', color: colors.warning };
-  return { label: '', color: colors.textTertiary };
+function getMatchQuality(percent: number, themeColors: ReturnType<typeof useThemeColors>): { label: string; color: string } {
+  if (percent >= 80) return { label: 'Great Match', color: accentColors.green };
+  if (percent >= 60) return { label: 'Good Match', color: accentColors.gold };
+  if (percent >= 40) return { label: 'Partial', color: accentColors.orange };
+  return { label: '', color: themeColors.textTertiary };
 }
 
 /**
@@ -80,6 +80,7 @@ export function MoodBookCard({
   onPress,
   width = 140,
 }: MoodBookCardProps) {
+  const themeColors = useThemeColors();
   const metadata = (item.media?.metadata as any) || {};
   const title = metadata.title || 'Unknown Title';
   const author = metadata.authorName || 'Unknown Author';
@@ -105,7 +106,7 @@ export function MoodBookCard({
   };
 
   const matchQuality = scoreData
-    ? getMatchQuality(scoreData.matchPercent)
+    ? getMatchQuality(scoreData.matchPercent, themeColors)
     : null;
 
   const matchedDimensions = scoreData ? getMatchedDimensions(scoreData) : [];
@@ -118,7 +119,7 @@ export function MoodBookCard({
       style={[styles.container, { width }, animatedStyle]}
     >
       {/* Cover */}
-      <View style={[styles.coverContainer, { width, height: width }]}>
+      <View style={[styles.coverContainer, { width, height: width, backgroundColor: themeColors.backgroundTertiary }]}>
         <Image
           source={{ uri: coverUrl }}
           style={styles.cover}
@@ -130,7 +131,7 @@ export function MoodBookCard({
           <View
             style={[
               styles.matchBadge,
-              { backgroundColor: matchQuality?.color || colors.accent },
+              { backgroundColor: matchQuality?.color || accentColors.gold },
             ]}
           >
             <Text style={styles.matchPercent}>{scoreData.matchPercent}%</Text>
@@ -140,29 +141,29 @@ export function MoodBookCard({
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
           {title}
         </Text>
-        <Text style={styles.author} numberOfLines={1}>
+        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
           {author}
         </Text>
-        <Text style={styles.duration}>
+        <Text style={[styles.duration, { color: themeColors.textTertiary }]}>
           {formatDuration.short(duration)}
         </Text>
         {/* Match attribution icons */}
         {matchedDimensions.length > 0 && (
           <View style={styles.matchTags}>
             {matchedDimensions.slice(0, 3).map((dim, i) => (
-              <View key={dim.label} style={styles.matchTag}>
+              <View key={dim.label} style={[styles.matchTag, { backgroundColor: themeColors.backgroundTertiary }]}>
                 <Icon
                   name={dim.icon}
                   size={10}
-                  color={colors.textTertiary}
+                  color={themeColors.textTertiary}
                 />
               </View>
             ))}
             {matchedDimensions.length > 3 && (
-              <Text style={styles.moreMatches}>
+              <Text style={[styles.moreMatches, { color: themeColors.textTertiary }]}>
                 +{matchedDimensions.length - 3}
               </Text>
             )}
@@ -180,7 +181,7 @@ const styles = StyleSheet.create({
   coverContainer: {
     borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   cover: {
@@ -206,18 +207,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     lineHeight: 17,
     marginBottom: 2,
   },
   author: {
     fontSize: 12,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginBottom: 2,
   },
   duration: {
     fontSize: 11,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   matchTags: {
     flexDirection: 'row',
@@ -229,13 +230,13 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },
   moreMatches: {
     fontSize: 9,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
     fontWeight: '500',
   },
 });

@@ -41,7 +41,6 @@ export function CompletedTab({
           book={book}
           onPress={() => onBookPress(book.id)}
           onPlay={() => onBookPlay(book)}
-          showIndicator
           isMarkedFinished={isMarkedFinished(book.id)}
         />
       ))}

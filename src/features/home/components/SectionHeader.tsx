@@ -8,8 +8,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { scale } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, useThemeColors } from '@/shared/theme';
 import { SectionHeaderProps } from '../types';
 
 // NN/g: Larger section headers for clear content hierarchy

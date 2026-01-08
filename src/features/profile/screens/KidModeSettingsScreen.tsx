@@ -36,7 +36,7 @@ import {
   KeyRound,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, spacing, typography, fontWeight } from '@/shared/theme';
+import { scale, spacing, typography, fontWeight } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { PinInput } from '@/shared/components/PinInput';
@@ -55,14 +55,13 @@ import {
   MAX_PIN_ATTEMPTS,
 } from '@/shared/stores/kidModeStore';
 
-const ACCENT = accentColors.gold;
 const DANGER = '#FF3B30';
 const SUCCESS = '#34C759';
 
 // Helper to create theme-aware colors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -127,14 +126,14 @@ function AddItemInput({ placeholder, onAdd, colors }: AddItemInputProps) {
         style={[styles.addButton, { borderColor: colors.border }]}
         onPress={() => setIsAdding(true)}
       >
-        <Plus size={16} color={ACCENT} />
-        <Text style={[styles.addButtonText, { color: ACCENT }]}>Add</Text>
+        <Plus size={16} color={colors.accent} />
+        <Text style={[styles.addButtonText, { color: colors.accent }]}>Add</Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={[styles.addInputContainer, { borderColor: ACCENT }]}>
+    <View style={[styles.addInputContainer, { borderColor: colors.accent }]}>
       <TextInput
         style={[styles.addInput, { color: colors.text }]}
         placeholder={placeholder}
@@ -177,7 +176,7 @@ function SectionHeader({
   return (
     <View style={styles.sectionHeaderContainer}>
       <View style={styles.sectionHeaderRow}>
-        {Icon && <Icon size={16} color={ACCENT} style={{ marginRight: 6 }} />}
+        {Icon && <Icon size={16} color={colors.accent} style={{ marginRight: 6 }} />}
         <Text style={[styles.sectionHeader, { color: colors.text }]}>{title}</Text>
       </View>
       {subtitle && (
@@ -512,7 +511,7 @@ export function KidModeSettingsScreen() {
         {/* Master Toggle */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.masterToggleRow}>
-            <View style={[styles.iconContainer, { backgroundColor: ACCENT }]}>
+            <View style={[styles.iconContainer, { backgroundColor: colors.accent }]}>
               <Baby size={scale(20)} color="#000" strokeWidth={2} />
             </View>
             <View style={styles.masterToggleContent}>
@@ -524,7 +523,7 @@ export function KidModeSettingsScreen() {
             <Switch
               value={enabled}
               onValueChange={handleToggle}
-              trackColor={{ false: colors.border, true: ACCENT }}
+              trackColor={{ false: colors.border, true: colors.accent }}
               thumbColor="#fff"
             />
           </View>
@@ -582,7 +581,7 @@ export function KidModeSettingsScreen() {
                 <>
                   <View style={styles.pinStatusRow}>
                     <View style={[styles.pinIconContainer, { backgroundColor: 'rgba(243,182,12,0.15)' }]}>
-                      <Lock size={scale(18)} color={ACCENT} strokeWidth={2} />
+                      <Lock size={scale(18)} color={colors.accent} strokeWidth={2} />
                     </View>
                     <View style={styles.pinRowContent}>
                       <Text style={[styles.pinRowLabel, { color: colors.text }]}>PIN Protected</Text>
@@ -605,8 +604,8 @@ export function KidModeSettingsScreen() {
                       }}
                       activeOpacity={0.7}
                     >
-                      <KeyRound size={16} color={ACCENT} />
-                      <Text style={[styles.pinActionButtonText, { color: ACCENT }]}>
+                      <KeyRound size={16} color={colors.accent} />
+                      <Text style={[styles.pinActionButtonText, { color: colors.accent }]}>
                         Change PIN
                       </Text>
                     </TouchableOpacity>
@@ -657,7 +656,7 @@ export function KidModeSettingsScreen() {
                 haptics.selection();
                 setUseAgeFiltering(value);
               }}
-              trackColor={{ false: colors.border, true: ACCENT }}
+              trackColor={{ false: colors.border, true: colors.accent }}
               thumbColor="#fff"
             />
           </View>
@@ -681,7 +680,7 @@ export function KidModeSettingsScreen() {
                       key={category}
                       style={[
                         styles.categoryOption,
-                        { borderColor: isSelected ? ACCENT : colors.border },
+                        { borderColor: isSelected ? colors.accent : colors.border },
                         isSelected && { backgroundColor: 'rgba(243,182,12,0.15)' },
                         isPastMax && { opacity: 0.4 },
                       ]}
@@ -693,7 +692,7 @@ export function KidModeSettingsScreen() {
                       <Text
                         style={[
                           styles.categoryOptionLabel,
-                          { color: isSelected ? ACCENT : colors.text },
+                          { color: isSelected ? colors.accent : colors.text },
                           isSelected && { fontWeight: '700' },
                         ]}
                       >
@@ -731,7 +730,7 @@ export function KidModeSettingsScreen() {
                 haptics.selection();
                 setUseRatingFiltering(value);
               }}
-              trackColor={{ false: colors.border, true: ACCENT }}
+              trackColor={{ false: colors.border, true: colors.accent }}
               thumbColor="#fff"
             />
           </View>
@@ -755,7 +754,7 @@ export function KidModeSettingsScreen() {
                       key={rating}
                       style={[
                         styles.ratingOption,
-                        { borderColor: isSelected ? ACCENT : colors.border },
+                        { borderColor: isSelected ? colors.accent : colors.border },
                         isSelected && { backgroundColor: 'rgba(243,182,12,0.15)' },
                         isPastMax && { opacity: 0.4 },
                       ]}
@@ -767,7 +766,7 @@ export function KidModeSettingsScreen() {
                       <Text
                         style={[
                           styles.ratingOptionLabel,
-                          { color: isSelected ? ACCENT : colors.text },
+                          { color: isSelected ? colors.accent : colors.text },
                           isSelected && { fontWeight: '700' },
                         ]}
                       >
@@ -776,7 +775,7 @@ export function KidModeSettingsScreen() {
                       <Text
                         style={[
                           styles.ratingOptionAge,
-                          { color: isSelected ? ACCENT : colors.textTertiary },
+                          { color: isSelected ? colors.accent : colors.textTertiary },
                         ]}
                       >
                         {rating === 'g' ? 'All Ages' : rating === 'pg' ? '8+' : rating === 'pg-13' ? '13+' : '17+'}
@@ -815,7 +814,7 @@ export function KidModeSettingsScreen() {
                 haptics.selection();
                 setUseAllowedGenresTags(value);
               }}
-              trackColor={{ false: colors.border, true: ACCENT }}
+              trackColor={{ false: colors.border, true: colors.accent }}
               thumbColor="#fff"
             />
           </View>
@@ -953,7 +952,7 @@ export function KidModeSettingsScreen() {
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View style={[styles.modalIconContainer, { backgroundColor: 'rgba(243,182,12,0.15)' }]}>
-                <Lock size={scale(32)} color={ACCENT} strokeWidth={2} />
+                <Lock size={scale(32)} color={colors.accent} strokeWidth={2} />
               </View>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
                 {getPinModalTitle()}
@@ -1023,7 +1022,7 @@ export function KidModeSettingsScreen() {
                   style={[
                     styles.modalButton,
                     styles.modalConfirmButton,
-                    { backgroundColor: ACCENT },
+                    { backgroundColor: colors.accent },
                     (pinModalMode === 'set' && !isConfirmStep && pinValue.length !== 4) && styles.modalButtonDisabled,
                   ]}
                   onPress={handlePinSubmit}

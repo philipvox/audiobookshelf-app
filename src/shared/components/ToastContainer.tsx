@@ -28,7 +28,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react-native';
 import { useToastStore, Toast, ToastType } from '@/shared/hooks/useToast';
-import { scale, spacing, colors, radius } from '@/shared/theme';
+import { scale, spacing, radius, useThemeColors } from '@/shared/theme';
 
 // ============================================================================
 // CONSTANTS
@@ -58,6 +58,7 @@ interface ToastItemProps {
 }
 
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
+  const themeColors = useThemeColors();
   const Icon = TOAST_ICONS[toast.type];
   const iconColor = TOAST_COLORS[toast.type];
 
@@ -65,10 +66,10 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
     <Animated.View
       entering={SlideInUp.duration(250)}
       exiting={FadeOut.duration(200)}
-      style={[styles.toast, { borderLeftColor: iconColor }]}
+      style={[styles.toast, { borderLeftColor: iconColor, backgroundColor: themeColors.backgroundSecondary }]}
     >
       <Icon size={scale(20)} color={iconColor} />
-      <Text style={styles.message} numberOfLines={3}>
+      <Text style={[styles.message, { color: themeColors.text }]} numberOfLines={3}>
         {toast.message}
       </Text>
       <TouchableOpacity
@@ -76,7 +77,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.dismissButton}
       >
-        <X size={scale(16)} color={colors.textSecondary} />
+        <X size={scale(16)} color={themeColors.textSecondary} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundSecondary,
+    // backgroundColor set via themeColors in JSX
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   message: {
     flex: 1,
     fontSize: scale(14),
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     lineHeight: scale(20),
   },
   dismissButton: {

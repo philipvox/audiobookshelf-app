@@ -13,7 +13,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Library } from 'lucide-react-native';
-import { colors, radius, cardTokens, scale } from '@/shared/theme';
+import { radius, cardTokens, scale, useThemeColors } from '@/shared/theme';
 
 interface StackedCoversProps {
   /** Cover URLs (first 2-3 will be used) */
@@ -39,11 +39,12 @@ export function StackedCovers({
   bookIds,
   size = cardTokens.stackedCovers.size,
   offset = cardTokens.stackedCovers.offset,
-  maxCovers = cardTokens.stackedCovers.count,
+  maxCovers = cardTokens.stackedCovers.maxCount,
   variant = 'horizontal',
   borderRadius = radius.sm,
   style,
 }: StackedCoversProps) {
+  const themeColors = useThemeColors();
   // Memoize cover data with stable keys to prevent flickering
   const coverData = useMemo(() => {
     const result: Array<{ url: string; key: string }> = [];
@@ -64,8 +65,8 @@ export function StackedCovers({
   // If no covers, show placeholder
   if (count === 0) {
     return (
-      <View style={[styles.placeholder, { width: size, height: size, borderRadius }, style]}>
-        <Library size={size * 0.4} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+      <View style={[styles.placeholder, { width: size, height: size, borderRadius, backgroundColor: themeColors.backgroundTertiary }, style]}>
+        <Library size={size * 0.4} color={themeColors.textTertiary} strokeWidth={1.5} />
       </View>
     );
   }
@@ -97,6 +98,7 @@ export function StackedCovers({
                 height: size * 1.5, // 2:3 aspect ratio
                 borderRadius,
                 zIndex: index, // Last cover on top
+                backgroundColor: themeColors.backgroundTertiary,
                 ...coverStyle,
               },
             ]}
@@ -118,7 +120,7 @@ const styles = StyleSheet.create({
   coverWrapper: {
     position: 'absolute',
     overflow: 'hidden',
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     shadowColor: '#000',
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 0.3,
@@ -130,10 +132,10 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   placeholderCover: {
-    backgroundColor: colors.backgroundElevated,
+    // backgroundColor set via themeColors in JSX
   },
   placeholder: {
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -90,8 +90,8 @@ export function usePopularContent(props: UsePopularContentProps) {
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     const items = processItems(filtered);
     if (!items) return null;
-    return { id: 'not_started', type: 'first_listens', title: getTitle('Not Started', 'Ready to Start'),
-      subtitle: hasMoodSession ? 'Matching your mood' : 'Waiting in your library', items, totalCount: filtered.length,
+    return { id: 'not_started', type: 'first_listens', title: getTitle('Not Started', 'Next in Your Series'),
+      subtitle: hasMoodSession ? 'Matching your mood' : 'Start your next adventure', items, totalCount: filtered.length,
       seeAllRoute: 'FilteredBooks', filterType: hasMoodSession ? 'mood_matched' : 'not_started',
       filterParams: { genre: selectedGenre !== 'All' ? selectedGenre : undefined },
       priority: 5, refreshPolicy: 'daily', displayMode: 'carousel' };

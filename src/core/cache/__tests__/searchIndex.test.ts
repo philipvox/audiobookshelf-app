@@ -30,7 +30,7 @@ function createMockItem(overrides: Partial<{
       tracks: [],
       chapters: [],
     },
-  } as LibraryItem;
+  } as unknown as LibraryItem;
 }
 
 describe('SearchIndex', () => {

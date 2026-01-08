@@ -19,12 +19,11 @@ import { BookOpen, CheckCircle, Check, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePlayerStore } from '../stores/playerStore';
 import { getCoverUrl } from '@/core/cache';
-import { colors, scale } from '@/shared/theme';
-
-const ACCENT = colors.accent;
+import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 export function BookCompletionSheet() {
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
 
   const showCompletionSheet = usePlayerStore((s) => s.showCompletionSheet);
   const completionSheetBook = usePlayerStore((s) => s.completionSheetBook);
@@ -60,46 +59,46 @@ export function BookCompletionSheet() {
     >
       <Pressable style={styles.overlay} onPress={dismissCompletionSheet}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
+          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: themeColors.surfaceElevated }]}
           onPress={() => {}}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: themeColors.border }]} />
           </View>
 
           {/* Book Info */}
           <View style={styles.bookInfo}>
             {coverUrl ? (
-              <Image source={{ uri: coverUrl }} style={styles.cover} />
+              <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} />
             ) : (
-              <View style={[styles.cover, styles.coverPlaceholder]}>
-                <BookOpen size={scale(32)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+              <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.backgroundSecondary }]}>
+                <BookOpen size={scale(32)} color={themeColors.textTertiary} strokeWidth={1.5} />
               </View>
             )}
             <View style={styles.titleContainer}>
-              <Text style={styles.congrats}>You finished</Text>
-              <Text style={styles.title} numberOfLines={2}>{title}</Text>
-              <Text style={styles.author} numberOfLines={1}>{author}</Text>
+              <Text style={[styles.congrats, { color: accentColors.gold }]}>You finished</Text>
+              <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>{title}</Text>
+              <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
             </View>
           </View>
 
           {/* Celebration Icon */}
           <View style={styles.celebrationContainer}>
-            <View style={styles.celebrationCircle}>
-              <CheckCircle size={scale(48)} color={ACCENT} strokeWidth={2} />
+            <View style={[styles.celebrationCircle, { backgroundColor: `${accentColors.gold}25` }]}>
+              <CheckCircle size={scale(48)} color={accentColors.gold} strokeWidth={2} />
             </View>
           </View>
 
           {/* Actions */}
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.primaryButton}
+              style={[styles.primaryButton, { backgroundColor: accentColors.gold }]}
               onPress={handleMarkFinished}
               activeOpacity={0.8}
             >
-              <Check size={scale(20)} color="#000" strokeWidth={2.5} />
-              <Text style={styles.primaryButtonText}>Mark as Finished</Text>
+              <Check size={scale(20)} color={themeColors.background} strokeWidth={2.5} />
+              <Text style={[styles.primaryButtonText, { color: themeColors.background }]}>Mark as Finished</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -107,8 +106,8 @@ export function BookCompletionSheet() {
               onPress={handleKeepListening}
               activeOpacity={0.7}
             >
-              <RotateCcw size={scale(18)} color={ACCENT} strokeWidth={2} />
-              <Text style={styles.secondaryButtonText}>Listen Again</Text>
+              <RotateCcw size={scale(18)} color={accentColors.gold} strokeWidth={2} />
+              <Text style={[styles.secondaryButtonText, { color: accentColors.gold }]}>Listen Again</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -116,7 +115,7 @@ export function BookCompletionSheet() {
               onPress={dismissCompletionSheet}
               activeOpacity={0.7}
             >
-              <Text style={styles.dismissButtonText}>Close</Text>
+              <Text style={[styles.dismissButtonText, { color: themeColors.textTertiary }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -132,7 +131,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#1c1c1e',
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
     paddingTop: scale(8),
@@ -145,7 +143,6 @@ const styles = StyleSheet.create({
   handle: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: scale(2),
   },
   bookInfo: {
@@ -158,7 +155,6 @@ const styles = StyleSheet.create({
     width: scale(72),
     height: scale(72),
     borderRadius: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   coverPlaceholder: {
     justifyContent: 'center',
@@ -169,19 +165,16 @@ const styles = StyleSheet.create({
   },
   congrats: {
     fontSize: scale(13),
-    color: ACCENT,
     fontWeight: '600',
     marginBottom: scale(4),
   },
   title: {
     fontSize: scale(17),
     fontWeight: '600',
-    color: '#fff',
     marginBottom: scale(4),
   },
   author: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.6)',
   },
   celebrationContainer: {
     alignItems: 'center',
@@ -191,7 +184,6 @@ const styles = StyleSheet.create({
     width: scale(80),
     height: scale(80),
     borderRadius: scale(40),
-    backgroundColor: 'rgba(244,182,12,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -203,13 +195,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: ACCENT,
     paddingVertical: scale(14),
     borderRadius: scale(12),
     gap: scale(8),
   },
   primaryButtonText: {
-    color: '#000',
     fontSize: scale(16),
     fontWeight: '600',
   },
@@ -221,7 +211,6 @@ const styles = StyleSheet.create({
     gap: scale(8),
   },
   secondaryButtonText: {
-    color: ACCENT,
     fontSize: scale(15),
     fontWeight: '500',
   },
@@ -230,7 +219,6 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
   },
   dismissButtonText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: scale(15),
   },
 });

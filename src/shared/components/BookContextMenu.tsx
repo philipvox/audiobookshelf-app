@@ -34,8 +34,18 @@ import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
 import { useWishlistStore, useIsOnWishlist } from '@/features/wishlist';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { scale, spacing, radius, accentColors } from '@/shared/theme';
+import { useColors, ThemeColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 import type { LibraryItem } from '@/core/types';
+
+// Helper to extract semantic colors
+function getSemanticColors(c: ThemeColors) {
+  return {
+    error: c.semantic.error,
+    accent: accentColors.gold,
+  };
+}
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -54,30 +64,32 @@ interface MenuItemProps {
   onPress: () => void;
   variant?: 'default' | 'accent' | 'danger';
   disabled?: boolean;
+  themeColors: ReturnType<typeof useThemeColors>;
+  semanticColors: { error: string; accent: string };
 }
 
-function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', disabled }: MenuItemProps) {
+function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', disabled, themeColors, semanticColors }: MenuItemProps) {
   const getIconColor = () => {
-    if (disabled) return 'rgba(255,255,255,0.3)';
+    if (disabled) return themeColors.textTertiary;
     switch (variant) {
       case 'accent':
-        return colors.accent;
+        return semanticColors.accent;
       case 'danger':
-        return '#FF453A';
+        return semanticColors.error;
       default:
-        return '#fff';
+        return themeColors.text;
     }
   };
 
   const getTextColor = () => {
-    if (disabled) return 'rgba(255,255,255,0.3)';
+    if (disabled) return themeColors.textTertiary;
     switch (variant) {
       case 'accent':
-        return colors.accent;
+        return semanticColors.accent;
       case 'danger':
-        return '#FF453A';
+        return semanticColors.error;
       default:
-        return '#fff';
+        return themeColors.text;
     }
   };
 
@@ -93,12 +105,12 @@ function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', d
       disabled={disabled}
       activeOpacity={0.7}
     >
-      <View style={styles.menuItemIcon}>
+      <View style={[styles.menuItemIcon, { backgroundColor: themeColors.surfaceElevated }]}>
         <Icon size={scale(20)} color={getIconColor()} strokeWidth={2} />
       </View>
       <View style={styles.menuItemContent}>
         <Text style={[styles.menuItemLabel, { color: getTextColor() }]}>{label}</Text>
-        {sublabel && <Text style={styles.menuItemSublabel}>{sublabel}</Text>}
+        {sublabel && <Text style={[styles.menuItemSublabel, { color: themeColors.textTertiary }]}>{sublabel}</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -111,6 +123,9 @@ export function BookContextMenu({
   onViewDetails,
   onPlay,
 }: BookContextMenuProps) {
+  const themeColors = useThemeColors();
+  const fullThemeColors = useColors();
+  const semanticColors = getSemanticColors(fullThemeColors);
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -244,22 +259,22 @@ export function BookContextMenu({
             <Animated.View
               style={[
                 styles.sheet,
-                { paddingBottom: insets.bottom + spacing.md },
+                { paddingBottom: insets.bottom + spacing.md, backgroundColor: themeColors.surfaceElevated },
                 { transform: [{ translateY: slideAnim }] },
               ]}
             >
               {/* Handle bar */}
-              <View style={styles.handleBar} />
+              <View style={[styles.handleBar, { backgroundColor: themeColors.border }]} />
 
               {/* Book header */}
-              <View style={styles.header}>
-                <Image source={coverUrl} style={styles.cover} contentFit="cover" />
+              <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
+                <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.background }]} contentFit="cover" />
                 <View style={styles.headerInfo}>
-                  <Text style={styles.title} numberOfLines={2}>{title}</Text>
-                  <Text style={styles.author} numberOfLines={1}>{author}</Text>
+                  <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>{title}</Text>
+                  <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
                 </View>
-                <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                  <X size={scale(20)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+                <TouchableOpacity style={[styles.closeButton, { backgroundColor: themeColors.backgroundSecondary }]} onPress={handleClose}>
+                  <X size={scale(20)} color={themeColors.textSecondary} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
 
@@ -273,6 +288,8 @@ export function BookContextMenu({
                     sublabel="Start listening now"
                     onPress={handlePlay}
                     variant="accent"
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
 
@@ -283,6 +300,8 @@ export function BookContextMenu({
                     label="Download"
                     sublabel="Save for offline listening"
                     onPress={handleDownload}
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
                 {isDownloading && (
@@ -292,6 +311,8 @@ export function BookContextMenu({
                     sublabel="Stop the current download"
                     onPress={handleCancelDownload}
                     variant="danger"
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
                 {isDownloaded && (
@@ -301,6 +322,8 @@ export function BookContextMenu({
                     sublabel="Remove from device"
                     onPress={handleDeleteDownload}
                     variant="danger"
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
 
@@ -312,6 +335,8 @@ export function BookContextMenu({
                     sublabel={isInQueue ? 'Already in your queue' : 'Listen to this next'}
                     onPress={handleQueueToggle}
                     variant={isInQueue ? 'accent' : 'default'}
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
 
@@ -322,6 +347,8 @@ export function BookContextMenu({
                   sublabel={isOnWishlist ? 'Already saved' : 'Save for later'}
                   onPress={handleWishlistToggle}
                   variant={isOnWishlist ? 'accent' : 'default'}
+                  themeColors={themeColors}
+                  semanticColors={semanticColors}
                 />
 
                 {/* View Details */}
@@ -331,6 +358,8 @@ export function BookContextMenu({
                     label="View Details"
                     sublabel="See full book information"
                     onPress={handleViewDetails}
+                    themeColors={themeColors}
+                    semanticColors={semanticColors}
                   />
                 )}
               </View>
@@ -349,7 +378,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.backgroundElevated,
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
     paddingTop: spacing.sm,
@@ -358,7 +386,6 @@ const styles = StyleSheet.create({
   handleBar: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: scale(2),
     alignSelf: 'center',
     marginBottom: spacing.md,
@@ -368,14 +395,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
     marginBottom: spacing.sm,
   },
   cover: {
     width: scale(50),
     height: scale(50),
     borderRadius: radius.sm,
-    backgroundColor: colors.backgroundTertiary,
   },
   headerInfo: {
     flex: 1,
@@ -385,18 +410,15 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(15),
     fontWeight: '600',
-    color: '#fff',
     marginBottom: scale(2),
   },
   author: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.6)',
   },
   closeButton: {
     width: scale(36),
     height: scale(36),
     borderRadius: scale(18),
-    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -415,7 +437,6 @@ const styles = StyleSheet.create({
     width: scale(40),
     height: scale(40),
     borderRadius: scale(10),
-    backgroundColor: 'rgba(255,255,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
@@ -430,7 +451,6 @@ const styles = StyleSheet.create({
   },
   menuItemSublabel: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
   },
 });
 

@@ -12,7 +12,9 @@
  */
 
 // Try to import Sentry, but don't fail if not installed
-let Sentry: typeof import('@sentry/react-native') | null = null;
+// Using 'any' type since @sentry/react-native may not be installed
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Sentry: any = null;
 
 try {
   // Dynamic require to avoid build errors if Sentry isn't installed
@@ -56,7 +58,8 @@ export function initSentry(): void {
       sendDefaultPii: false,
 
       // Add context before sending
-      beforeSend(event) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      beforeSend(event: any) {
         // Could add user ID, server URL (sanitized), etc.
         return event;
       },

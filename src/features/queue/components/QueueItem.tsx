@@ -10,14 +10,7 @@ import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { colors, scale } from '@/shared/theme';
-
-const COLORS = {
-  textPrimary: colors.textPrimary,
-  textSecondary: colors.textSecondary,
-  accent: colors.success,
-  cardBg: colors.cardBackground,
-};
+import { scale, useThemeColors, accentColors } from '@/shared/theme';
 
 // Drag handle icon
 const DragIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -52,6 +45,7 @@ interface QueueItemProps {
 }
 
 export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemProps) {
+  const themeColors = useThemeColors();
   const coverUrl = useCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Untitled';
@@ -64,34 +58,34 @@ export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemPr
   const durationText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.backgroundSecondary }]}>
       {/* Drag handle */}
       <Pressable style={styles.dragHandle} onLongPress={onDragStart}>
-        <DragIcon size={scale(18)} color={COLORS.textSecondary} />
+        <DragIcon size={scale(18)} color={themeColors.textSecondary} />
       </Pressable>
 
       {/* Position number */}
       <View style={styles.positionContainer}>
-        <Text style={styles.positionNumber}>{position + 1}</Text>
+        <Text style={[styles.positionNumber, { color: accentColors.gold }]}>{position + 1}</Text>
       </View>
 
       {/* Cover */}
-      <Image source={coverUrl} style={styles.cover} contentFit="cover" />
+      <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} contentFit="cover" />
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={styles.author} numberOfLines={1}>
+        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
           {author}
         </Text>
-        <Text style={styles.duration}>{durationText}</Text>
+        <Text style={[styles.duration, { color: themeColors.textSecondary }]}>{durationText}</Text>
       </View>
 
       {/* Remove button */}
       <Pressable style={styles.removeButton} onPress={onRemove}>
-        <RemoveIcon size={scale(18)} color={COLORS.textSecondary} />
+        <RemoveIcon size={scale(18)} color={themeColors.textSecondary} />
       </Pressable>
     </View>
   );
@@ -103,7 +97,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: scale(10),
     paddingHorizontal: scale(12),
-    backgroundColor: COLORS.cardBg,
     borderRadius: scale(12),
     marginBottom: scale(8),
     gap: scale(10),
@@ -118,13 +111,11 @@ const styles = StyleSheet.create({
   positionNumber: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: COLORS.accent,
   },
   cover: {
     width: scale(50),
     height: scale(50),
     borderRadius: scale(6),
-    backgroundColor: '#262626',
   },
   info: {
     flex: 1,
@@ -132,17 +123,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: COLORS.textPrimary,
     marginBottom: scale(2),
   },
   author: {
     fontSize: scale(12),
-    color: COLORS.textSecondary,
     marginBottom: scale(2),
   },
   duration: {
     fontSize: scale(11),
-    color: COLORS.textSecondary,
   },
   removeButton: {
     padding: scale(8),

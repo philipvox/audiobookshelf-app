@@ -15,8 +15,7 @@ import {
 } from 'react-native';
 import { X, Delete } from 'lucide-react-native';
 import { haptics } from '@/core/native/haptics';
-import { colors, spacing, scale, wp, hp } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { spacing, scale, wp, hp, useThemeColors } from '@/shared/theme';
 
 // =============================================================================
 // TYPES
@@ -232,7 +231,7 @@ export function NumericInputModal({
 
           {/* Error */}
           {error && (
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={[styles.errorText, { color: themeColors.error }]}>{error}</Text>
           )}
 
           {/* Range hint */}
@@ -405,7 +404,6 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.xs,
   },
   errorText: {
-    color: '#E53935',
     fontSize: scale(13),
     textAlign: 'center',
     marginBottom: spacing.sm,

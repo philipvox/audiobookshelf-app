@@ -25,7 +25,7 @@ import Animated, {
   withTiming,
   useFrameCallback,
 } from 'react-native-reanimated';
-import { colors, wp, layout } from '@/shared/theme';
+import { wp, layout, useThemeColors } from '@/shared/theme';
 import { DURATION, SCALE, CD_ROTATION, EASING } from '@/shared/animation';
 
 // Home disc is 70% of screen width (from layout.homeDiscRatio)
@@ -56,7 +56,8 @@ const CDDisc: React.FC<{
   size: number;
   isPlaying: boolean;
   playbackRate: number;
-}> = ({ coverUrl, size, isPlaying, playbackRate }) => {
+  themeColors: ReturnType<typeof useThemeColors>;
+}> = ({ coverUrl, size, isPlaying, playbackRate, themeColors }) => {
   const rotation = useSharedValue(0);
   const baseDegreesPerMs = useSharedValue(0);
   const lastFrameTime = useSharedValue(Date.now());
@@ -108,7 +109,7 @@ const CDDisc: React.FC<{
           contentPosition="top"
         />
       ) : (
-        <View style={[styles.discCover, { backgroundColor: colors.backgroundTertiary, borderRadius: size / 2 }]} />
+        <View style={[styles.discCover, { backgroundColor: themeColors.backgroundSecondary, borderRadius: size / 2 }]} />
       )}
     </Animated.View>
   );
@@ -122,6 +123,7 @@ export function HomeDiscSection({
   bookTitle,
   authorName,
 }: HomeDiscSectionProps) {
+  const themeColors = useThemeColors();
   const scaleAnim = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -132,8 +134,8 @@ export function HomeDiscSection({
   if (!coverUrl) {
     return (
       <View style={styles.emptyContainer}>
-        <View style={[styles.emptyDisc, { width: HOME_DISC_SIZE, height: HOME_DISC_SIZE }]}>
-          <View style={styles.emptyCenter} />
+        <View style={[styles.emptyDisc, { width: HOME_DISC_SIZE, height: HOME_DISC_SIZE, backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+          <View style={[styles.emptyCenter, { backgroundColor: themeColors.card }]} />
         </View>
       </View>
     );
@@ -168,6 +170,7 @@ export function HomeDiscSection({
             size={HOME_DISC_SIZE}
             isPlaying={isPlaying}
             playbackRate={playbackRate}
+            themeColors={themeColors}
           />
 
           {/* Chrome spindle center - static (doesn't rotate) */}
@@ -189,7 +192,7 @@ export function HomeDiscSection({
                 {/* Highlight reflection */}
                 <View style={styles.spindleHighlight} />
                 {/* Center hole */}
-                <View style={styles.spindleCenter} />
+                <View style={[styles.spindleCenter, { backgroundColor: themeColors.backgroundSecondary }]} />
               </View>
             </View>
           </View>
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
     width: HOLE_SIZE,
     height: HOLE_SIZE,
     borderRadius: HOLE_SIZE / 2,
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
   },
 
   // Empty state
@@ -280,9 +283,8 @@ const styles = StyleSheet.create({
   },
   emptyDisc: {
     borderRadius: HOME_DISC_SIZE / 2,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor and borderColor set via themeColors in JSX
     borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -290,7 +292,7 @@ const styles = StyleSheet.create({
     width: HOLE_SIZE,
     height: HOLE_SIZE,
     borderRadius: HOLE_SIZE / 2,
-    backgroundColor: colors.cardBackground,
+    // backgroundColor set via themeColors in JSX
   },
 });
 

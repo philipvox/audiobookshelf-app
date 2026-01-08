@@ -12,7 +12,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { lightColors, darkColors, type ThemeColors } from './colors';
+import {
+  type ThemeColors,
+  type AccentTheme,
+  getThemeColors,
+  themePresets,
+} from './colors';
 import { spacing, layout, radius, elevation, scale } from './spacing';
 import { typography, fontSize } from './typography';
 
@@ -21,10 +26,13 @@ import { typography, fontSize } from './typography';
 // =============================================================================
 
 export type ThemeMode = 'light' | 'dark';
+export type { AccentTheme };
 
 interface ThemeState {
   mode: ThemeMode;
+  accentTheme: AccentTheme;
   setMode: (mode: ThemeMode) => void;
+  setAccentTheme: (theme: AccentTheme) => void;
   toggleMode: () => void;
 }
 
@@ -36,9 +44,14 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
       mode: 'light', // Default to light mode
+      accentTheme: 'red', // Default to classic red
 
       setMode: (mode: ThemeMode) => {
         set({ mode });
+      },
+
+      setAccentTheme: (accentTheme: AccentTheme) => {
+        set({ accentTheme });
       },
 
       toggleMode: () => {
@@ -76,11 +89,13 @@ export const useThemeStore = create<ThemeState>()(
  */
 export function useTheme() {
   const mode = useThemeStore((state) => state.mode);
+  const accentTheme = useThemeStore((state) => state.accentTheme);
   const setMode = useThemeStore((state) => state.setMode);
+  const setAccentTheme = useThemeStore((state) => state.setAccentTheme);
   const toggleMode = useThemeStore((state) => state.toggleMode);
 
-  const colors: ThemeColors = mode === 'light' ? lightColors : darkColors;
   const isDark = mode === 'dark';
+  const colors: ThemeColors = getThemeColors(accentTheme, isDark);
 
   return {
     // Colors
@@ -88,8 +103,12 @@ export function useTheme() {
     // Mode info
     mode,
     isDark,
+    // Accent theme
+    accentTheme,
+    accentThemeName: themePresets[accentTheme].name,
     // Mode setters
     setMode,
+    setAccentTheme,
     toggleMode,
     // Design tokens (convenience exports)
     spacing,
@@ -114,7 +133,8 @@ export function useTheme() {
  */
 export function useColors(): ThemeColors {
   const mode = useThemeStore((state) => state.mode);
-  return mode === 'light' ? lightColors : darkColors;
+  const accentTheme = useThemeStore((state) => state.accentTheme);
+  return getThemeColors(accentTheme, mode === 'dark');
 }
 
 /**
@@ -153,45 +173,47 @@ export function useIsDarkMode(): boolean {
 // =============================================================================
 
 /**
+ * Helper to create legacy flat color structure from ThemeColors
+ */
+function createLegacyColors(colors: ThemeColors, isDark: boolean) {
+  return {
+    background: colors.background.primary,
+    backgroundSecondary: colors.background.secondary,
+    backgroundTertiary: colors.background.tertiary,
+    text: colors.text.primary,
+    textSecondary: colors.text.secondary,
+    textTertiary: colors.text.tertiary,
+    accent: colors.accent.primary,
+    border: colors.border.default,
+    tabActive: colors.text.primary,
+    tabInactive: colors.text.tertiary,
+    surfaceElevated: colors.background.elevated,
+    card: colors.surface.card,
+    statusBar: (isDark ? 'light-content' : 'dark-content') as 'light-content' | 'dark-content',
+    // Semantic colors
+    error: colors.semantic.error,
+    warning: colors.semantic.warning,
+    success: colors.semantic.success,
+  };
+}
+
+/**
  * @deprecated Use `useTheme()` or `useColors()` instead
- * Legacy basic theme colors - limited subset
+ * Legacy basic theme colors - static fallback (uses default red accent)
  */
 export const themeColors = {
-  light: {
-    background: '#FFFFFF',
-    backgroundSecondary: '#F5F5F5',
-    text: '#000000',
-    textSecondary: 'rgba(0,0,0,0.5)',
-    textTertiary: 'rgba(0,0,0,0.25)',
-    accent: '#F3B60C',
-    border: 'rgba(0,0,0,0.1)',
-    tabActive: '#000000',
-    tabInactive: 'rgba(0,0,0,0.25)',
-    surfaceElevated: '#FFFFFF',
-    card: 'rgba(0,0,0,0.03)',
-    statusBar: 'dark-content' as const,
-  },
-  dark: {
-    background: '#000000',
-    backgroundSecondary: '#1A1A1A',
-    text: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.7)',
-    textTertiary: 'rgba(255,255,255,0.4)',
-    accent: '#F3B60C',
-    border: 'rgba(255,255,255,0.1)',
-    tabActive: '#FFFFFF',
-    tabInactive: 'rgba(255,255,255,0.25)',
-    surfaceElevated: '#262626',
-    card: 'rgba(255,255,255,0.05)',
-    statusBar: 'light-content' as const,
-  },
+  light: createLegacyColors(getThemeColors('red', false), false),
+  dark: createLegacyColors(getThemeColors('red', true), true),
 };
 
 /**
  * @deprecated Use `useTheme()` or `useColors()` instead
- * Legacy hook for basic theme colors
+ * Legacy hook for basic theme colors - now accent-aware
  */
 export function useThemeColors() {
   const mode = useThemeStore((state) => state.mode);
-  return themeColors[mode];
+  const accentTheme = useThemeStore((state) => state.accentTheme);
+  const isDark = mode === 'dark';
+  const colors = getThemeColors(accentTheme, isDark);
+  return createLegacyColors(colors, isDark);
 }

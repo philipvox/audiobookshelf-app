@@ -836,7 +836,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             logPositionSources({
               session: serverPosition,
               localProgress: localData?.currentTime || 0,
-              resolution: resolution.reason,
               finalPosition: resolution.position,
             });
 

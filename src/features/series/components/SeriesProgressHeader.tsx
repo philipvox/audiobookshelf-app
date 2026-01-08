@@ -20,9 +20,9 @@ import { Image } from 'expo-image';
 import { Trophy, RefreshCw, Play, CheckCircle } from 'lucide-react-native';
 import { LibraryItem } from '@/core/types';
 import { useCoverUrl } from '@/core/cache';
-import { colors, scale, spacing, radius } from '@/shared/theme';
+import { scale, spacing, radius, accentColors } from '@/shared/theme';
 
-const ACCENT = colors.accent;
+const ACCENT = accentColors.gold;
 const ACCENT_DIM = 'rgba(243,182,12,0.5)';
 
 interface SeriesProgressHeaderProps {

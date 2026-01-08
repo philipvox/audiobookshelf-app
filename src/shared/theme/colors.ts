@@ -4,6 +4,11 @@
  * Complete color design tokens for light and dark themes.
  * Single source of truth for ALL colors in the app.
  *
+ * Now supports three accent themes:
+ *   - 'red' (current default)
+ *   - 'electric' (Swiss minimal blue)
+ *   - 'lime' (high contrast lime)
+ *
  * Usage:
  *   import { useTheme } from '@/shared/theme';
  *   const { colors } = useTheme();
@@ -11,7 +16,55 @@
  */
 
 // =============================================================================
-// ACCENT COLORS (Same in both themes)
+// ACCENT THEME DEFINITIONS
+// =============================================================================
+
+export type AccentTheme = 'red' | 'electric' | 'lime';
+
+/**
+ * Accent color palettes for each theme variant
+ */
+export const accentThemes = {
+  red: {
+    primary: '#E53935',
+    primaryDark: '#C62828',
+    primaryLight: '#EF5350',
+    primarySubtle: 'rgba(229, 57, 53, 0.15)',
+    // For dark mode text/badges that need to be lighter
+    onDark: '#EF5350',
+    onDarkSubtle: 'rgba(239, 83, 80, 0.20)',
+    // For light mode backgrounds
+    lightBg: '#FFEBEE',
+    lightBgSubtle: '#FFF5F5',
+    // Text color when accent is used as background
+    textOnAccent: '#FFFFFF',
+  },
+  electric: {
+    primary: '#0146F5',
+    primaryDark: '#0035C4',
+    primaryLight: '#6496FF',
+    primarySubtle: 'rgba(1, 70, 245, 0.10)',
+    onDark: '#6496FF',
+    onDarkSubtle: 'rgba(100, 150, 255, 0.20)',
+    lightBg: '#E8EEFF',
+    lightBgSubtle: '#F5F7FF',
+    textOnAccent: '#FFFFFF',
+  },
+  lime: {
+    primary: '#BFFF00',
+    primaryDark: '#9ACD00',
+    primaryLight: '#D4FF4D',
+    primarySubtle: 'rgba(191, 255, 0, 0.15)',
+    onDark: '#BFFF00',
+    onDarkSubtle: 'rgba(191, 255, 0, 0.20)',
+    lightBg: '#F7FFE0',
+    lightBgSubtle: '#FCFFF5',
+    textOnAccent: '#000000',
+  },
+} as const;
+
+// =============================================================================
+// ACCENT COLORS (Same in both themes - kept for backwards compatibility)
 // =============================================================================
 
 export const accentColors = {
@@ -29,13 +82,22 @@ export const accentColors = {
   redLight: '#EF5350',
   blue: '#0146F5',
   blueLight: '#64B5F6',
+  /** Green accent - for success/positive states */
+  green: '#4CAF50',
+  greenLight: '#66BB6A',
+  /** Orange accent - for warning/partial states */
+  orange: '#FF9800',
+  orangeLight: '#FFA726',
+  /** Lime accent - for lime theme */
+  lime: '#BFFF00',
+  limeLight: '#D4FF4D',
 } as const;
 
 // =============================================================================
-// LIGHT THEME COLORS
+// HELPER: Generate theme colors based on accent
 // =============================================================================
 
-export const lightColors = {
+const createLightColors = (accent: typeof accentThemes[AccentTheme]) => ({
   // Backgrounds
   background: {
     primary: '#FFFFFF',
@@ -60,7 +122,7 @@ export const lightColors = {
     tertiary: 'rgba(0,0,0,0.50)',
     disabled: 'rgba(0,0,0,0.30)',
     inverse: '#FFFFFF',
-    accent: '#E53935',
+    accent: accent.primary,
   },
 
   // Icons
@@ -68,8 +130,9 @@ export const lightColors = {
     primary: '#000000',
     secondary: 'rgba(0,0,0,0.60)',
     tertiary: 'rgba(0,0,0,0.40)',
-    accent: '#E53935',
+    accent: accent.primary,
     inverse: '#FFFFFF',
+    disabled: 'rgba(0,0,0,0.25)',
   },
 
   // Borders
@@ -89,52 +152,66 @@ export const lightColors = {
     secondaryBorder: '#000000',
     ghost: 'transparent',
     ghostText: '#000000',
+    accent: accent.primary,
+    accentText: accent.primary === '#BFFF00' ? '#000000' : '#FFFFFF',
     destructive: '#E53935',
     destructiveText: '#FFFFFF',
     disabled: 'rgba(0,0,0,0.12)',
     disabledText: 'rgba(0,0,0,0.30)',
   },
 
-  // Player (stays dark for cinematic feel in light mode)
+  // Player (respects light/dark mode)
   player: {
-    background: '#000000',
-    backgroundSecondary: '#1A1A1A',
-    backgroundTertiary: '#262626',
-    surface: '#1A1A1A',
-    surfaceRaised: '#262626',
-    text: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.70)',
-    textTertiary: 'rgba(255,255,255,0.50)',
-    textMuted: 'rgba(255,255,255,0.30)',
-    control: '#FFFFFF',
-    controlSecondary: 'rgba(255,255,255,0.60)',
-    controlMuted: 'rgba(255,255,255,0.40)',
-    accent: '#E53935',
-    accentRed: '#E53935',
-    border: 'rgba(255,255,255,0.10)',
-    borderStrong: 'rgba(255,255,255,0.20)',
-    disc: '#1A1A1A',
-    discLabel: '#262626',
-    discGroove: 'rgba(255,255,255,0.05)',
-    discRing: '#6B6B6B',
-    overlay: 'rgba(0,0,0,0.50)',
-    overlayHeavy: 'rgba(0,0,0,0.70)',
-    sheetBackground: '#1C1C1E',
-    sheetHandle: 'rgba(255,255,255,0.30)',
-    tickDefault: 'rgba(255,255,255,0.40)',
-    tickActive: '#E53935',
-    markerColor: '#E53935',
-    // Standard controls (when shown over light backgrounds)
+    background: '#FFFFFF',
+    backgroundSecondary: '#F5F5F5',
+    backgroundTertiary: '#EEEEEE',
+    surface: '#F5F5F5',
+    surfaceRaised: '#FFFFFF',
+    text: '#000000',
+    textSecondary: 'rgba(0,0,0,0.70)',
+    textTertiary: 'rgba(0,0,0,0.50)',
+    textMuted: 'rgba(0,0,0,0.30)',
+    control: '#000000',
+    controlSecondary: 'rgba(0,0,0,0.60)',
+    controlMuted: 'rgba(0,0,0,0.40)',
+    accent: accent.primary,
+    accentRed: '#E53935', // Keep red for specific use cases
+    border: 'rgba(0,0,0,0.10)',
+    borderStrong: 'rgba(0,0,0,0.20)',
+    disc: '#F5F5F5',
+    discLabel: '#EEEEEE',
+    discGroove: 'rgba(0,0,0,0.05)',
+    discRing: '#CCCCCC',
+    overlay: 'rgba(255,255,255,0.50)',
+    overlayHeavy: 'rgba(255,255,255,0.70)',
+    sheetBackground: '#FFFFFF',
+    sheetHandle: 'rgba(0,0,0,0.30)',
+    tickDefault: 'rgba(0,0,0,0.40)',
+    tickActive: accent.primary,
+    markerColor: accent.primary,
+    // Standard controls (light mode)
     standardControlsBg: '#FFFFFF',
     standardControlsText: '#000000',
     standardControlsIcon: '#000000',
+    // Floating widget (control bar in light mode)
+    widgetBackground: 'rgba(0,0,0,0)',
+    widgetIcon: '#1A1A1A',
+    widgetDivider: 'rgba(0,0,0,0.1)',
+    widgetTrack: '#D4D4D4',
+    widgetTimeLabel: '#1A1A1A',
+    widgetBorder: 'rgba(0,0,0,0.15)',
+    widgetButtonBg: '#FFFFFF',
+    // Gradient colors (light mode - white fades)
+    gradientStart: 'rgba(255,255,255,0.6)',
+    gradientMid: 'rgba(255,255,255,0.4)',
+    gradientEnd: 'transparent',
   },
 
   // Progress
   progress: {
     track: 'rgba(0,0,0,0.10)',
-    fill: '#E53935',
-    buffer: 'rgba(229,57,53,0.30)',
+    fill: accent.primary,
+    buffer: accent.primarySubtle,
   },
 
   // Navigation
@@ -145,7 +222,7 @@ export const lightColors = {
     inactive: 'rgba(0,0,0,0.40)',
   },
 
-  // Semantic
+  // Semantic (these stay consistent across accent themes)
   semantic: {
     success: '#4CAF50',
     successLight: '#E8F5E9',
@@ -163,18 +240,24 @@ export const lightColors = {
     sleepTimer: '#FF6B6B',
     downloaded: '#34C759',
     downloading: '#000000',
-    streaming: '#6496FF',  // Cloud/streaming badge
-    bookmark: '#0146F5',
-    bookmarkStem: '#64B5F6',
+    streaming: '#6496FF',
+    bookmark: accent.primary,
+    bookmarkStem: accent.primaryLight,
   },
 
   // Queue specific
   queue: {
     background: '#FFFFFF',
     itemBackground: '#F5F5F5',
-    nowPlaying: 'rgba(0,0,0,0.05)',
+    nowPlaying: accent.primarySubtle,
     handle: 'rgba(0,0,0,0.20)',
     divider: 'rgba(0,0,0,0.08)',
+    text: '#000000',
+    subtext: 'rgba(0,0,0,0.60)',
+    badge: 'rgba(0,0,0,0.08)',
+    item: '#F5F5F5',
+    itemActive: 'rgba(0,0,0,0.10)',
+    border: 'rgba(0,0,0,0.08)',
   },
 
   // Search specific
@@ -182,7 +265,7 @@ export const lightColors = {
     inputBackground: '#F5F5F5',
     inputBorder: 'rgba(0,0,0,0.10)',
     placeholder: 'rgba(0,0,0,0.40)',
-    highlight: 'rgba(0,0,0,0.10)',
+    highlight: accent.primarySubtle,
   },
 
   // Overlays
@@ -198,20 +281,29 @@ export const lightColors = {
     border: 'rgba(0,0,0,0.10)',
   },
 
+  // Accent (for direct access)
+  accent: {
+    primary: accent.primary,
+    primaryDark: accent.primaryDark,
+    primaryLight: accent.primaryLight,
+    primarySubtle: accent.primarySubtle,
+    onDark: accent.onDark,
+    onDarkSubtle: accent.onDarkSubtle,
+    lightBg: accent.lightBg,
+    lightBgSubtle: accent.lightBgSubtle,
+    textOnAccent: accent.textOnAccent,
+  },
+
   // System
   statusBar: 'dark-content' as const,
   statusBarBg: '#FFFFFF',
-} as const;
+});
 
-// =============================================================================
-// DARK THEME COLORS
-// =============================================================================
-
-export const darkColors = {
+const createDarkColors = (accent: typeof accentThemes[AccentTheme]) => ({
   // Backgrounds
   background: {
     primary: '#000000',
-    secondary: '#1A1A1A',
+    secondary: '#000000',
     tertiary: '#262626',
     elevated: '#2C2C2C',
   },
@@ -232,7 +324,7 @@ export const darkColors = {
     tertiary: 'rgba(255,255,255,0.50)',
     disabled: 'rgba(255,255,255,0.30)',
     inverse: '#000000',
-    accent: '#E53935',
+    accent: accent.onDark,
   },
 
   // Icons
@@ -240,8 +332,9 @@ export const darkColors = {
     primary: '#FFFFFF',
     secondary: 'rgba(255,255,255,0.70)',
     tertiary: 'rgba(255,255,255,0.50)',
-    accent: '#E53935',
+    accent: accent.onDark,
     inverse: '#000000',
+    disabled: 'rgba(255,255,255,0.25)',
   },
 
   // Borders
@@ -261,6 +354,8 @@ export const darkColors = {
     secondaryBorder: '#FFFFFF',
     ghost: 'transparent',
     ghostText: '#FFFFFF',
+    accent: accent.primary,
+    accentText: accent.primary === '#BFFF00' ? '#000000' : '#FFFFFF',
     destructive: '#E53935',
     destructiveText: '#FFFFFF',
     disabled: 'rgba(255,255,255,0.12)',
@@ -281,8 +376,8 @@ export const darkColors = {
     control: '#FFFFFF',
     controlSecondary: 'rgba(255,255,255,0.60)',
     controlMuted: 'rgba(255,255,255,0.40)',
-    accent: '#E53935',
-    accentRed: '#E53935',
+    accent: accent.primary,
+    accentRed: '#E53935', // Keep red for specific use cases
     border: 'rgba(255,255,255,0.10)',
     borderStrong: 'rgba(255,255,255,0.20)',
     disc: '#1A1A1A',
@@ -294,19 +389,31 @@ export const darkColors = {
     sheetBackground: '#1C1C1E',
     sheetHandle: 'rgba(255,255,255,0.30)',
     tickDefault: 'rgba(255,255,255,0.40)',
-    tickActive: '#E53935',
-    markerColor: '#E53935',
+    tickActive: accent.primary,
+    markerColor: accent.primary,
     // Standard controls (dark mode)
     standardControlsBg: '#000000',
     standardControlsText: '#FFFFFF',
     standardControlsIcon: '#FFFFFF',
+    // Floating widget (control bar over artwork in dark mode - transparent)
+    widgetBackground: 'transparent',
+    widgetIcon: '#FFFFFF',
+    widgetDivider: 'rgba(255,255,255,0.15)',
+    widgetTrack: 'rgba(255,255,255,0.2)',
+    widgetTimeLabel: '#FFFFFF',
+    widgetBorder: 'rgba(255,255,255,0.2)',
+    widgetButtonBg: 'transparent',
+    // Gradient colors (dark mode - black fades)
+    gradientStart: 'rgba(0,0,0,0.6)',
+    gradientMid: 'rgba(0,0,0,0.4)',
+    gradientEnd: 'transparent',
   },
 
   // Progress
   progress: {
     track: 'rgba(255,255,255,0.10)',
-    fill: '#E53935',
-    buffer: 'rgba(229,57,53,0.30)',
+    fill: accent.primary,
+    buffer: accent.onDarkSubtle,
   },
 
   // Navigation
@@ -335,18 +442,24 @@ export const darkColors = {
     sleepTimer: '#FF6B6B',
     downloaded: '#34C759',
     downloading: '#FFFFFF',
-    streaming: '#6496FF',  // Cloud/streaming badge
-    bookmark: '#0146F5',
-    bookmarkStem: '#64B5F6',
+    streaming: '#6496FF',
+    bookmark: accent.primary,
+    bookmarkStem: accent.primaryLight,
   },
 
   // Queue specific
   queue: {
     background: '#1A1A1A',
     itemBackground: '#262626',
-    nowPlaying: 'rgba(255,255,255,0.08)',
+    nowPlaying: accent.onDarkSubtle,
     handle: 'rgba(255,255,255,0.30)',
     divider: 'rgba(255,255,255,0.08)',
+    text: '#FFFFFF',
+    subtext: 'rgba(255,255,255,0.60)',
+    badge: 'rgba(255,255,255,0.12)',
+    item: '#262626',
+    itemActive: 'rgba(255,255,255,0.10)',
+    border: 'rgba(255,255,255,0.08)',
   },
 
   // Search specific
@@ -354,7 +467,7 @@ export const darkColors = {
     inputBackground: '#1A1A1A',
     inputBorder: 'rgba(255,255,255,0.10)',
     placeholder: 'rgba(255,255,255,0.40)',
-    highlight: 'rgba(255,255,255,0.15)',
+    highlight: accent.onDarkSubtle,
   },
 
   // Overlays
@@ -370,9 +483,85 @@ export const darkColors = {
     border: 'rgba(255,255,255,0.20)',
   },
 
+  // Accent (for direct access)
+  accent: {
+    primary: accent.primary,
+    primaryDark: accent.primaryDark,
+    primaryLight: accent.primaryLight,
+    primarySubtle: accent.primarySubtle,
+    onDark: accent.onDark,
+    onDarkSubtle: accent.onDarkSubtle,
+    lightBg: accent.lightBg,
+    lightBgSubtle: accent.lightBgSubtle,
+    textOnAccent: accent.textOnAccent,
+  },
+
   // System
   statusBar: 'light-content' as const,
   statusBarBg: '#000000',
+});
+
+// =============================================================================
+// GENERATED THEME COLORS
+// =============================================================================
+
+/** Light theme with Red accent (default) */
+export const lightColors = createLightColors(accentThemes.red);
+
+/** Dark theme with Red accent (default) */
+export const darkColors = createDarkColors(accentThemes.red);
+
+/** Light theme with Electric Blue accent */
+export const lightColorsElectric = createLightColors(accentThemes.electric);
+
+/** Dark theme with Electric Blue accent */
+export const darkColorsElectric = createDarkColors(accentThemes.electric);
+
+/** Light theme with Lime accent */
+export const lightColorsLime = createLightColors(accentThemes.lime);
+
+/** Dark theme with Lime accent */
+export const darkColorsLime = createDarkColors(accentThemes.lime);
+
+// =============================================================================
+// THEME GETTER HELPER
+// =============================================================================
+
+/**
+ * Get colors for a specific accent theme and mode
+ * @param accentTheme - 'red' | 'electric' | 'lime'
+ * @param isDark - Whether dark mode is active
+ */
+export const getThemeColors = (accentTheme: AccentTheme, isDark: boolean) => {
+  const accent = accentThemes[accentTheme];
+  return isDark ? createDarkColors(accent) : createLightColors(accent);
+};
+
+/**
+ * All available theme combinations for easy access
+ */
+export const themePresets = {
+  red: {
+    light: lightColors,
+    dark: darkColors,
+    accent: accentThemes.red,
+    name: 'Classic Red',
+    description: 'The original Secret Library accent',
+  },
+  electric: {
+    light: lightColorsElectric,
+    dark: darkColorsElectric,
+    accent: accentThemes.electric,
+    name: 'Electric Blue',
+    description: 'Swiss minimal - white does the work',
+  },
+  lime: {
+    light: lightColorsLime,
+    dark: darkColorsLime,
+    accent: accentThemes.lime,
+    name: 'Lime',
+    description: 'High contrast, high energy',
+  },
 } as const;
 
 // =============================================================================
@@ -452,8 +641,10 @@ export const colors = {
 // TYPES
 // =============================================================================
 
-export type ThemeColors = typeof lightColors;
-export type LightColors = typeof lightColors;
-export type DarkColors = typeof darkColors;
+export type LightColors = ReturnType<typeof createLightColors>;
+export type DarkColors = ReturnType<typeof createDarkColors>;
+/** Theme colors - can be either light or dark theme */
+export type ThemeColors = LightColors | DarkColors;
 export type Colors = typeof colors;
 export type ColorKey = keyof typeof colors;
+export type AccentThemeConfig = typeof accentThemes[AccentTheme];

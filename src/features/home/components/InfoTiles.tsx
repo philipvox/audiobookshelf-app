@@ -9,7 +9,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { colors, scale } from '@/shared/theme';
+import { scale, useThemeColors, accentColors } from '@/shared/theme';
 
 interface InfoTilesProps {
   title: string;
@@ -106,6 +106,8 @@ export function InfoTiles({
   seekDirection,
   isPlaying = false,
 }: InfoTilesProps) {
+  const themeColors = useThemeColors();
+
   const formatSleepTimer = (minutes?: number | null): string => {
     if (minutes === null || minutes === undefined || minutes === 0) return '∞';
     // If value seems to be in seconds (> 120), convert it
@@ -143,7 +145,7 @@ export function InfoTiles({
         </View>
         
         {/* Actual text layer */}
-        <Text style={styles.titleText} numberOfLines={2}>
+        <Text style={[styles.titleText, { color: themeColors.text }]} numberOfLines={2}>
           {title}
         </Text>
         <TouchableOpacity
@@ -155,8 +157,8 @@ export function InfoTiles({
           accessibilityRole="button"
           accessibilityHint="Double tap to view chapters"
         >
-          <Text style={styles.chapterText}>{chapterLine1}</Text>
-          <Text style={styles.chapterText}>{chapterLine2}</Text>
+          <Text style={[styles.chapterText, { color: themeColors.text }]}>{chapterLine1}</Text>
+          <Text style={[styles.chapterText, { color: themeColors.text }]}>{chapterLine2}</Text>
         </TouchableOpacity>
       </View>
 
@@ -174,11 +176,11 @@ export function InfoTiles({
           accessibilityRole="button"
         >
           {isSeeking && seekDelta !== undefined && seekDelta !== 0 ? (
-            <Text style={[styles.timeText, styles.seekDeltaText]}>
+            <Text style={[styles.timeText, styles.seekDeltaText, { color: accentColors.gold }]}>
               {formatSeekDelta(seekDelta)}
             </Text>
           ) : (
-            <Text style={styles.timeText}>{timeRemaining || '00:00:00'}</Text>
+            <Text style={[styles.timeText, { color: themeColors.text }]}>{timeRemaining || '00:00:00'}</Text>
           )}
           {isPlaying && !isSeeking && <PixelPlayIcon />}
         </TouchableOpacity>
@@ -190,7 +192,7 @@ export function InfoTiles({
             accessibilityRole="button"
             accessibilityHint="Double tap to change playback speed"
           >
-            <Text style={styles.speedText}>{speedText}</Text>
+            <Text style={[styles.speedText, { color: themeColors.text }]}>{speedText}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onSleepPress}
@@ -199,7 +201,7 @@ export function InfoTiles({
             accessibilityRole="button"
             accessibilityHint="Double tap to set sleep timer"
           >
-            <Text style={styles.sleepTimerText}>{sleepTimerText}</Text>
+            <Text style={[styles.sleepTimerText, { color: accentColors.red }]}>{sleepTimerText}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -253,7 +255,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     lineHeight: scale(LINE_HEIGHT),
     // Subtle glow on main text
     textShadowColor: 'rgba(255, 255, 255, 0.5)',
@@ -267,7 +269,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     lineHeight: scale(LINE_HEIGHT),
     textAlign: 'right',
     // Subtle glow
@@ -283,7 +285,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     lineHeight: scale(LINE_HEIGHT),
     // Subtle glow
     textShadowColor: 'rgba(255, 255, 255, 0.5)',
@@ -291,7 +293,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   seekDeltaText: {
-    color: colors.accent, // Golden yellow like PlayerScreen
+    // color set via accentColors.gold in JSX
     textShadowColor: 'rgba(244, 182, 12, 1)',
   },
   bottomRow: {
@@ -303,7 +305,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    color: colors.textPrimary,
+    // color set via themeColors.text in JSX
     lineHeight: scale(LINE_HEIGHT),
     // Subtle glow
     textShadowColor: 'rgba(255, 255, 255, 0.5)',
@@ -314,7 +316,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    color: colors.sleepTimer,
+    // color set via accentColors.red in JSX
     lineHeight: scale(LINE_HEIGHT),
     // Red glow for timer
     textShadowColor: 'rgba(241, 40, 2, 0.5)',

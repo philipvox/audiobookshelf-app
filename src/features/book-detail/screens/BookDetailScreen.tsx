@@ -91,6 +91,7 @@ export function BookDetailScreen() {
 
   // Theme colors - supports light/dark mode
   const themeColors = useColors();
+  // const themeColors = usePlayerColors();
   const { isDark } = useThemeMode();
   const COLORS = {
     background: themeColors.background.primary,
@@ -360,6 +361,16 @@ export function BookDetailScreen() {
   const metadata = book.media.metadata as any;
   const title = metadata.title || 'Unknown Title';
 
+  // Dynamic title font size and lines - shorter titles get bigger fonts and stay on 1 line
+  const { titleFontSize, titleLines } = useMemo(() => {
+    const len = title.length;
+    if (len <= 12) return { titleFontSize: scale(48), titleLines: 1 };
+    if (len <= 18) return { titleFontSize: scale(44), titleLines: 1 };
+    if (len <= 25) return { titleFontSize: scale(38), titleLines: 1 };
+    if (len <= 35) return { titleFontSize: scale(36), titleLines: 2 };
+    return { titleFontSize: scale(32), titleLines: 2 };
+  }, [title]);
+
   // Author: try authorName, then authors array (expanded), then fallback
   let author = metadata.authorName || '';
   if (!author && metadata.authors?.length > 0) {
@@ -468,21 +479,14 @@ export function BookDetailScreen() {
         {coverUrl && (
           <View style={styles.heroBackground}>
             <Image
-              source={apiClient.getItemCoverUrl(bookId, { width: 800 })}
+              source={coverUrl}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              blurRadius={Platform.OS === 'ios' ? 0 : 0}
-              // blurRadius={25}
             />
-            {/* BlurView for Android */}
-            <BlurView intensity={0} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-            {/* Smooth fade at bottom */}
+            {/* Fade to background at bottom */}
             <LinearGradient
-              colors={isDark
-                ? ['transparent', 'transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', COLORS.background]
-                : ['transparent', 'transparent', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)', COLORS.background]
-              }
-              locations={[0, 0.5, 0.6, 0.8, .9]}
+              colors={['transparent', themeColors.background.primary]}
+              locations={[0.3, 1]}
               style={StyleSheet.absoluteFill}
             />
           </View>
@@ -493,11 +497,11 @@ export function BookDetailScreen() {
         <TouchableOpacity
           style={[styles.backButton, { top: insets.top + scale(8) }]}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
+          activeOpacity={0.7}
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <ChevronLeft size={scale(24)} color={COLORS.textPrimary} strokeWidth={2.5} />
+          <ChevronLeft size={scale(20)} color="#FFFFFF" strokeWidth={2.5} />
         </TouchableOpacity>
 
         {/* Genre Tags - horizontally scrollable, full width */}
@@ -555,7 +559,7 @@ export function BookDetailScreen() {
             <Text style={[styles.statsText, { color: COLORS.textTertiary }]}>{formatDuration(duration)}</Text>
             <Text style={[styles.statsDot, { color: COLORS.textTertiary }]}>·</Text>
             <List size={scale(14)} color={COLORS.textTertiary} strokeWidth={2} />
-            <Text style={[styles.statsText, { color: COLORS.textTertiary }]}>{chapters.length} chapters</Text>
+            <Text style={[styles.statsText, { color: COLORS.textTertiary }]}>{chapters.length} ch</Text>
             {series && (
               <>
                 <Text style={[styles.statsDot, { color: COLORS.textTertiary }]}>·</Text>
@@ -582,10 +586,10 @@ export function BookDetailScreen() {
         {/* Title - scales to fit */}
         <View style={styles.titleContainer}>
           <Text
-            style={[styles.title, { color: COLORS.textPrimary }]}
-            numberOfLines={2}
+            style={[styles.title, { color: COLORS.textPrimary, fontSize: titleFontSize }]}
+            numberOfLines={titleLines}
             adjustsFontSizeToFit
-            minimumFontScale={0.6}
+            minimumFontScale={0.7}
           >
             {title}
           </Text>
@@ -737,7 +741,7 @@ export function BookDetailScreen() {
               style={[styles.tab, activeTab === 'chapters' && { borderBottomColor: COLORS.textPrimary }]}
               onPress={() => setActiveTab('chapters')}
               accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === 'chapters' }}
+              accessibilityState={{ selected: activeTab === 'chapters' }}i
               accessibilityLabel="Chapters"
             >
               <Text style={[styles.tabText, { color: COLORS.textTertiary }, activeTab === 'chapters' && { color: COLORS.textPrimary, fontWeight: '600' }]}>
@@ -826,7 +830,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: scale(550), // Covers hero area
+    height: scale(600), // Covers hero area
   },
   loadingContainer: {
     flex: 1,
@@ -848,6 +852,7 @@ const styles = StyleSheet.create({
     height: COVER_SIZE,
     alignSelf: 'center',
     marginTop: scale(16),
+    marginBottom: scale(80),
     borderRadius: radius.md,
     overflow: 'hidden',
     // Drop shadow
@@ -865,9 +870,14 @@ const styles = StyleSheet.create({
   // Back button - absolute positioned
   backButton: {
     position: 'absolute',
+    // top: 19,
     left: scale(12),
-    width: scale(44),
-    height: scale(44),
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 30,
@@ -897,7 +907,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(8),
-    paddingLeft: scale(56),
+    paddingLeft: scale(68),
     paddingRight: scale(16),
   },
   heroGenreTag: {
@@ -906,7 +916,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(20),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   heroGenreTagText: {
     fontSize: scale(13),
@@ -917,11 +927,11 @@ const styles = StyleSheet.create({
   // Title - same width as button section
   titleContainer: {
     paddingHorizontal: scale(20),
-    paddingTop: scale(4),
-    marginBottom: scale(12),
+    paddingTop: scale(2),
+    marginBottom: scale(20),
   },
   title: {
-    fontSize: scale(32),
+    fontSize: scale(38),
     fontWeight: '700',
     textAlign: 'center',
   },
@@ -929,25 +939,26 @@ const styles = StyleSheet.create({
   // Credits - author & narrator centered side by side
   creditContainer: {
     paddingHorizontal: scale(20),
-    marginBottom: scale(16),
+    marginBottom: scale(25),
+    alignItems: 'center',
   },
   creditRow: {
     flexDirection: 'row',
-    gap: scale(20),
+    justifyContent: 'center',
+    gap: scale(40),
   },
   creditCell: {
-    flex: 1,
     alignItems: 'center',
   },
   creditLabel: {
-    fontSize: scale(11),
+    fontSize: scale(10),
     fontWeight: '500',
     textTransform: 'capitalize',
-    marginBottom: scale(4),
+    marginBottom: scale(0),
     textAlign: 'center',
   },
   creditValue: {
-    fontSize: scale(15),
+    fontSize: scale(13),
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -955,8 +966,8 @@ const styles = StyleSheet.create({
   // Stats Row - duration & chapters
   statsContainer: {
     alignItems: 'center',
-    marginTop: scale(8),
-    marginBottom: scale(8),
+    marginTop: scale(0),
+    marginBottom: scale(10),
   },
   statsRow: {
     flexDirection: 'row',
@@ -964,7 +975,7 @@ const styles = StyleSheet.create({
     gap: scale(6),
   },
   statsText: {
-    fontSize: scale(13),
+    fontSize: scale(12),
     fontWeight: '500',
   },
   statsDot: {
@@ -979,19 +990,22 @@ const styles = StyleSheet.create({
   // Button Container
   buttonContainer: {
     paddingHorizontal: scale(20),
+    alignItems: 'center',
   },
   buttonRow: {
     flexDirection: 'row',
     gap: scale(10),
+    justifyContent: 'center',
+    width: '100%',
   },
 
   // Action Button - outline style (Download)
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: scale(48),
+    paddingHorizontal: scale(24),
     borderRadius: scale(24),
     borderWidth: 1.5,
     backgroundColor: 'transparent',
@@ -1004,11 +1018,11 @@ const styles = StyleSheet.create({
 
   // Primary Button - filled (Play/Stream)
   primaryButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: scale(48),
+    paddingHorizontal: scale(32),
     borderRadius: scale(24),
     gap: scale(8),
   },

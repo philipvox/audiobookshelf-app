@@ -8,13 +8,12 @@ import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
-
-const VIBRANT_RED = '#E53935';
-const GRAY = 'rgba(128,128,128,0.6)';
+import { accentColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 const HeartIcon = ({
   size = 24,
-  color = VIBRANT_RED,
+  color = accentColors.red,
   filled = false,
 }: {
   size?: number;
@@ -47,8 +46,8 @@ export interface SeriesHeartButtonProps {
 export function SeriesHeartButton({
   seriesName,
   size = 24,
-  activeColor = VIBRANT_RED,
-  inactiveColor = GRAY,
+  activeColor,
+  inactiveColor,
   style,
   hitSlop = 8,
   onToggle,
@@ -56,9 +55,14 @@ export function SeriesHeartButton({
   animated = true,
   showCircle = false,
 }: SeriesHeartButtonProps) {
+  const themeColors = useThemeColors();
   const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
   const isFavorite = isSeriesFavorite(seriesName);
   const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Use props or theme-aware defaults
+  const effectiveActiveColor = activeColor || accentColors.red;
+  const effectiveInactiveColor = inactiveColor || themeColors.textTertiary;
 
   const handlePress = useCallback(() => {
     if (disabled) return;
@@ -94,13 +98,13 @@ export function SeriesHeartButton({
     }
   }, [seriesName, isFavorite, addSeriesToFavorites, removeSeriesFromFavorites, onToggle, disabled, animated, scaleAnim]);
 
-  const color = isFavorite ? activeColor : inactiveColor;
+  const color = isFavorite ? effectiveActiveColor : effectiveInactiveColor;
   const circleSize = size + 10;
 
-  // For circle mode: white heart on red bg when active, black border no fill when inactive
-  const circleHeartColor = isFavorite ? '#FFFFFF' : inactiveColor;
-  const circleBgColor = isFavorite ? activeColor : 'transparent';
-  const circleBorderColor = isFavorite ? 'transparent' : 'rgba(0,0,0,0.3)';
+  // For circle mode: inverse text on active bg when active, border when inactive
+  const circleHeartColor = isFavorite ? themeColors.background : effectiveInactiveColor;
+  const circleBgColor = isFavorite ? effectiveActiveColor : 'transparent';
+  const circleBorderColor = isFavorite ? 'transparent' : themeColors.border;
 
   const heartContent = animated ? (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>

@@ -27,15 +27,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, radius, wp, hp, scale } from '@/shared/theme';
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-/** Light theme colors for skeleton */
-const SKELETON_BG = 'rgba(0, 0, 0, 0.08)';
-const SHIMMER_COLOR = 'rgba(255, 255, 255, 0.5)';
+import { spacing, radius, wp, hp, scale, useThemeColors } from '@/shared/theme';
 
 /** Animation duration in ms */
 const SHIMMER_DURATION = 1200;
@@ -60,6 +52,7 @@ interface ShimmerProps {
 }
 
 export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps) {
+  const themeColors = useThemeColors();
   const translateX = useSharedValue(-1);
 
   useEffect(() => {
@@ -84,6 +77,10 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
     };
   });
 
+  // Theme-aware skeleton colors
+  const skeletonBg = themeColors.backgroundSecondary;
+  const shimmerColor = `${themeColors.text}15`;
+
   return (
     <View
       style={[
@@ -91,7 +88,7 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
           width,
           height,
           borderRadius,
-          backgroundColor: SKELETON_BG,
+          backgroundColor: skeletonBg,
           overflow: 'hidden',
         },
         style,
@@ -101,7 +98,7 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
         <LinearGradient
           colors={[
             'transparent',
-            SHIMMER_COLOR,
+            shimmerColor,
             'transparent',
           ]}
           start={{ x: 0, y: 0.5 }}

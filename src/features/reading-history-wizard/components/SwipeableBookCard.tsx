@@ -22,7 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { getCoverUrl } from '@/core/cache';
-import { colors, scale, spacing } from '@/shared/theme';
+import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.85;
@@ -46,6 +46,7 @@ export function SwipeableBookCard({
   onSwipeLeft,
   onSwipeRight,
 }: SwipeableBookCardProps) {
+  const themeColors = useThemeColors();
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const rotation = useSharedValue(0);
@@ -124,7 +125,7 @@ export function SwipeableBookCard({
 
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View style={[styles.card, cardStyle]}>
+      <Animated.View style={[styles.card, { backgroundColor: themeColors.backgroundSecondary }, cardStyle]}>
         {/* Cover Image */}
         {coverUrl ? (
           <Image
@@ -133,7 +134,7 @@ export function SwipeableBookCard({
             contentFit="cover"
           />
         ) : (
-          <View style={[styles.cover, styles.coverPlaceholder]}>
+          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.backgroundSecondary }]}>
             <Book
               size={scale(80)}
               color="rgba(255,255,255,0.3)"
@@ -150,16 +151,16 @@ export function SwipeableBookCard({
 
         {/* Book Info */}
         <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={2}>
+          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
             {title}
           </Text>
           {authorName && (
-            <Text style={styles.author} numberOfLines={1}>
+            <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
               {authorName}
             </Text>
           )}
           {seriesName && (
-            <Text style={styles.series} numberOfLines={1}>
+            <Text style={[styles.series, { color: accentColors.gold }]} numberOfLines={1}>
               {seriesName}
             </Text>
           )}
@@ -167,7 +168,7 @@ export function SwipeableBookCard({
 
         {/* Swipe indicators */}
         <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
-          <View style={styles.overlayBadge}>
+          <View style={[styles.overlayBadge, { backgroundColor: accentColors.gold }]}>
             <Check size={scale(40)} color="#000" strokeWidth={3} />
             <Text style={styles.overlayText}>FINISHED</Text>
           </View>
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
     borderRadius: scale(20),
     overflow: 'hidden',
-    backgroundColor: colors.backgroundSecondary,
+    // backgroundColor set via themeColors in JSX
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
   coverPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.backgroundTertiary,
+    // backgroundColor set via themeColors in JSX
   },
   gradient: {
     position: 'absolute',
@@ -223,17 +224,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(22),
     fontWeight: '700',
-    color: colors.textPrimary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   author: {
     fontSize: scale(16),
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     marginBottom: spacing.xs,
   },
   series: {
     fontSize: scale(14),
-    color: colors.accent,
+    // color set via accentColors in JSX
     fontStyle: 'italic',
   },
   overlay: {
@@ -248,7 +249,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(244, 67, 54, 0.3)',
   },
   overlayBadge: {
-    backgroundColor: colors.accent,
+    // backgroundColor set via accentColors in JSX
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     borderRadius: scale(12),

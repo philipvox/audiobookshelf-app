@@ -25,7 +25,8 @@ import {
   getTimeRemainingFromExpiry,
 } from '../stores/moodSessionStore';
 import { Icon } from '@/shared/components/Icon';
-import { colors, spacing, radius } from '@/shared/theme';
+import { spacing, radius, useThemeColors } from '@/shared/theme';
+import { useColors } from '@/shared/theme/themeStore';
 
 interface QuickTuneBarProps {
   /** Active session to display */
@@ -41,17 +42,20 @@ interface FilterChipProps {
   icon: string;
   iconSet: string;
   active?: boolean;
+  themeColors: ReturnType<typeof useThemeColors>;
+  accentColor: string;
+  textOnAccent: string;
 }
 
-function FilterChip({ label, icon, iconSet, active = true }: FilterChipProps) {
+function FilterChip({ label, icon, iconSet, active = true, themeColors, accentColor, textOnAccent }: FilterChipProps) {
   return (
-    <View style={[styles.filterChip, active && styles.filterChipActive]}>
+    <View style={[styles.filterChip, active && { backgroundColor: accentColor }]}>
       <Icon
         name={icon as any}
         size={14}
-        color={active ? '#000' : colors.textSecondary}
+        color={active ? textOnAccent : themeColors.textSecondary}
       />
-      <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
+      <Text style={[styles.filterChipLabel, { color: themeColors.textSecondary }, active && { color: textOnAccent }]}>
         {label}
       </Text>
     </View>
@@ -63,6 +67,10 @@ export function QuickTuneBar({
   onEditPress,
   onClear,
 }: QuickTuneBarProps) {
+  const themeColors = useThemeColors();
+  const colors = useColors();
+  const accent = colors.accent.primary;
+  const textOnAccent = colors.accent.textOnAccent;
   const { expiresAt, clearSession } = useSessionInfo();
 
   // Calculate time remaining locally to avoid infinite re-renders
@@ -98,7 +106,7 @@ export function QuickTuneBar({
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(200)}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: themeColors.backgroundSecondary, borderColor: themeColors.border }]}
     >
       {/* Timer and Edit */}
       <View style={styles.header}>
@@ -106,9 +114,9 @@ export function QuickTuneBar({
           <Icon
             name="Clock"
             size={14}
-            color={colors.textTertiary}
+            color={themeColors.textTertiary}
           />
-          <Text style={styles.timerText}>
+          <Text style={[styles.timerText, { color: themeColors.textTertiary }]}>
             {formatTimeRemaining(timeRemaining)}
           </Text>
         </View>
@@ -122,9 +130,9 @@ export function QuickTuneBar({
               <Icon
                 name="SlidersHorizontal"
                 size={18}
-                color={colors.accent}
+                color={accent}
               />
-              <Text style={styles.editText}>Edit</Text>
+              <Text style={[styles.editText, { color: accent }]}>Edit</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -135,7 +143,7 @@ export function QuickTuneBar({
             <Icon
               name="XCircle"
               size={18}
-              color={colors.textTertiary}
+              color={themeColors.textTertiary}
             />
           </TouchableOpacity>
         </View>
@@ -154,6 +162,9 @@ export function QuickTuneBar({
             icon={moodConfig.icon}
             iconSet={moodConfig.iconSet}
             active
+            themeColors={themeColors}
+            accentColor={accent}
+            textOnAccent={textOnAccent}
           />
         )}
 
@@ -163,6 +174,9 @@ export function QuickTuneBar({
             label={paceConfig.label}
             icon={paceConfig.icon}
             iconSet={paceConfig.iconSet}
+            themeColors={themeColors}
+            accentColor={accent}
+            textOnAccent={textOnAccent}
           />
         )}
 
@@ -172,6 +186,9 @@ export function QuickTuneBar({
             label={weightConfig.label}
             icon={weightConfig.icon}
             iconSet={weightConfig.iconSet}
+            themeColors={themeColors}
+            accentColor={accent}
+            textOnAccent={textOnAccent}
           />
         )}
 
@@ -181,6 +198,9 @@ export function QuickTuneBar({
             label={worldConfig.label}
             icon={worldConfig.icon}
             iconSet={worldConfig.iconSet}
+            themeColors={themeColors}
+            accentColor={accent}
+            textOnAccent={textOnAccent}
           />
         )}
 
@@ -190,6 +210,9 @@ export function QuickTuneBar({
             label={lengthConfig.label}
             icon={lengthConfig.icon}
             iconSet={lengthConfig.iconSet}
+            themeColors={themeColors}
+            accentColor={accent}
+            textOnAccent={textOnAccent}
           />
         )}
       </ScrollView>
@@ -199,13 +222,13 @@ export function QuickTuneBar({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.backgroundSecondary,
+    // backgroundColor set via themeColors in JSX
     borderRadius: radius.lg,
     padding: spacing.sm,
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    // borderColor set via themeColors in JSX
   },
   header: {
     flexDirection: 'row',
@@ -221,7 +244,7 @@ const styles = StyleSheet.create({
   },
   timerText: {
     fontSize: 12,
-    color: colors.textTertiary,
+    // color set via themeColors in JSX
   },
   headerActions: {
     flexDirection: 'row',
@@ -235,7 +258,7 @@ const styles = StyleSheet.create({
   },
   editText: {
     fontSize: 13,
-    color: colors.accent,
+    // color set dynamically via accent in JSX
     fontWeight: '500',
   },
   clearButton: {
@@ -255,15 +278,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     gap: 4,
   },
-  filterChipActive: {
-    backgroundColor: colors.accent,
-  },
   filterChipLabel: {
     fontSize: 12,
-    color: colors.textSecondary,
+    // color set via themeColors in JSX
     fontWeight: '500',
-  },
-  filterChipLabelActive: {
-    color: '#000',
   },
 });

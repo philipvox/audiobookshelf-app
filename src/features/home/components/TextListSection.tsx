@@ -33,8 +33,7 @@ import { LibraryItem } from '@/core/types';
 import { getCoverUrl } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { logger } from '@/shared/utils/logger';
-import { colors, wp, hp, moderateScale, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { wp, hp, moderateScale, spacing, radius, useThemeColors, useIsDarkMode } from '@/shared/theme';
 import { SeriesHeartButton } from '@/shared/components';
 import { SeriesWithBooks } from '../types';
 

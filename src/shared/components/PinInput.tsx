@@ -22,10 +22,8 @@ import { useThemeColors } from '@/shared/theme';
 // CONSTANTS
 // ============================================================================
 
-const ACCENT = accentColors.gold;
 const DOT_SIZE = scale(18);
 const CELL_SIZE = scale(56);
-const ERROR_COLOR = '#FF3B30';
 
 // ============================================================================
 // TYPES
@@ -116,9 +114,9 @@ export const PinInput: React.FC<PinInputProps> = ({
                 styles.cell,
                 {
                   backgroundColor: error
-                    ? 'rgba(255,59,48,0.08)'
+                    ? `${themeColors.error}15`
                     : isFilled
-                      ? 'rgba(243,182,12,0.12)'
+                      ? `${accentColors.gold}20`
                       : themeColors.border,
                 },
                 isActive && styles.cellActive,
@@ -130,7 +128,7 @@ export const PinInput: React.FC<PinInputProps> = ({
                   <View
                     style={[
                       styles.filledDot,
-                      { backgroundColor: error ? ERROR_COLOR : ACCENT },
+                      { backgroundColor: error ? themeColors.error : accentColors.gold },
                     ]}
                   />
                 ) : (
@@ -144,10 +142,10 @@ export const PinInput: React.FC<PinInputProps> = ({
                     styles.emptyDot,
                     {
                       backgroundColor: error
-                        ? 'rgba(255,59,48,0.3)'
+                        ? `${themeColors.error}50`
                         : isActive
-                          ? ACCENT
-                          : 'rgba(255,255,255,0.2)',
+                          ? accentColors.gold
+                          : themeColors.textTertiary,
                     },
                     isActive && styles.emptyDotActive,
                   ]}

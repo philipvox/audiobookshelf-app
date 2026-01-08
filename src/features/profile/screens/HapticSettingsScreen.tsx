@@ -32,17 +32,15 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, typography, fontWeight, spacing } from '@/shared/theme';
+import { scale, typography, fontWeight, spacing } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { useHapticSettingsStore } from '../stores/hapticSettingsStore';
 
-const ACCENT = accentColors.gold;
-
 // Helper to create theme-aware colors from nested ThemeColors
 function createColors(c: ThemeColors) {
   return {
-    accent: ACCENT,
+    accent: c.accent.primary,
     background: c.background.secondary,
     text: c.text.primary,
     textSecondary: c.text.secondary,
@@ -91,7 +89,7 @@ function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, disabled,
       <Switch
         value={switchValue}
         onValueChange={handleChange}
-        trackColor={{ false: colors.border, true: ACCENT }}
+        trackColor={{ false: colors.border, true: colors.accent }}
         thumbColor="#fff"
         disabled={disabled}
       />

@@ -475,10 +475,10 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         // Fast path 2: Word prefix matches
         // FIX 5: Include author and narrator (e.g., "sand" matches "Sanderson")
         if (
-          title.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
-          author.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
-          narrator.split(/\s+/).some(w => w.startsWith(lowerQuery)) ||
-          series.split(/\s+/).some(w => w.startsWith(lowerQuery))
+          title.split(/\s+/).some((w: string) => w.startsWith(lowerQuery)) ||
+          author.split(/\s+/).some((w: string) => w.startsWith(lowerQuery)) ||
+          narrator.split(/\s+/).some((w: string) => w.startsWith(lowerQuery)) ||
+          series.split(/\s+/).some((w: string) => w.startsWith(lowerQuery))
         ) {
           return true;
         }

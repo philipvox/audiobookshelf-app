@@ -10,16 +10,17 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useNetInfo } from '@react-native-community/netinfo';
 import {
-  colors,
   spacing,
   radius,
   layout,
   typography,
   scale,
+  useThemeColors,
+  accentColors,
 } from '@/shared/theme';
 
-// Icon components
-const WifiOffIcon = ({ size = 48, color = colors.error }: { size?: number; color?: string }) => (
+// Icon components - color defaults provided by component, not by icons
+const WifiOffIcon = ({ size = 48, color }: { size?: number; color: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M1 9l2 2a14.5 14.5 0 0118 0l2-2A17.5 17.5 0 001 9z"
@@ -45,7 +46,7 @@ const WifiOffIcon = ({ size = 48, color = colors.error }: { size?: number; color
   </Svg>
 );
 
-const AlertIcon = ({ size = 48, color = colors.error }: { size?: number; color?: string }) => (
+const AlertIcon = ({ size = 48, color }: { size?: number; color: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
@@ -59,7 +60,7 @@ const AlertIcon = ({ size = 48, color = colors.error }: { size?: number; color?:
   </Svg>
 );
 
-const ServerIcon = ({ size = 48, color = colors.error }: { size?: number; color?: string }) => (
+const ServerIcon = ({ size = 48, color }: { size?: number; color: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M2 5a2 2 0 012-2h16a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2V5z"
@@ -98,33 +99,47 @@ interface ErrorViewProps {
 }
 
 // NN/g: Error messages should be specific and offer clear solutions
-const ERROR_CONTENT: Record<ErrorType, { icon: React.ReactNode; title: string; message: string }> = {
+const ERROR_CONTENT: Record<ErrorType, { iconType: 'wifi' | 'server' | 'alert'; title: string; message: string }> = {
   network: {
-    icon: <WifiOffIcon size={scale(56)} />,
+    iconType: 'wifi',
     title: 'No Internet Connection',
     message: 'Check your Wi-Fi or cellular connection and try again.',
   },
   server: {
-    icon: <ServerIcon size={scale(56)} />,
+    iconType: 'server',
     title: 'Server Unavailable',
     message: 'The server is not responding. It may be down for maintenance.',
   },
   auth: {
-    icon: <AlertIcon size={scale(56)} />,
+    iconType: 'alert',
     title: 'Session Expired',
     message: 'Please sign in again to continue.',
   },
   notFound: {
-    icon: <AlertIcon size={scale(56)} />,
+    iconType: 'alert',
     title: 'Content Not Found',
     message: 'This item may have been moved or deleted.',
   },
   generic: {
-    icon: <AlertIcon size={scale(56)} />,
+    iconType: 'alert',
     title: 'Something Went Wrong',
     message: 'An unexpected error occurred. Please try again.',
   },
 };
+
+// Helper to get icon component with theme color
+function getErrorIcon(iconType: 'wifi' | 'server' | 'alert', color: string) {
+  const size = scale(56);
+  switch (iconType) {
+    case 'wifi':
+      return <WifiOffIcon size={size} color={color} />;
+    case 'server':
+      return <ServerIcon size={size} color={color} />;
+    case 'alert':
+    default:
+      return <AlertIcon size={size} color={color} />;
+  }
+}
 
 /**
  * Display an error message with retry and secondary action options.
@@ -140,6 +155,8 @@ export function ErrorView({
   secondaryLabel = 'Go Back',
   isRetrying = false,
 }: ErrorViewProps) {
+  const themeColors = useThemeColors();
+
   // Auto-detect offline state
   const netInfo = useNetInfo();
   const isOffline = netInfo.isConnected === false;
@@ -152,27 +169,27 @@ export function ErrorView({
   const displayMessage = message || content.message;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       {/* Icon */}
       <View style={styles.iconContainer}>
-        {content.icon}
+        {getErrorIcon(content.iconType, themeColors.error)}
       </View>
 
       {/* Title */}
-      <Text style={styles.title}>{displayTitle}</Text>
+      <Text style={[styles.title, { color: themeColors.text }]}>{displayTitle}</Text>
 
       {/* Message */}
-      <Text style={styles.message}>{displayMessage}</Text>
+      <Text style={[styles.message, { color: themeColors.textSecondary }]}>{displayMessage}</Text>
 
       {/* Actions */}
       <View style={styles.actions}>
         {onRetry && (
           <Pressable
-            style={[styles.primaryButton, isRetrying && styles.buttonDisabled]}
+            style={[styles.primaryButton, { backgroundColor: accentColors.gold }, isRetrying && styles.buttonDisabled]}
             onPress={onRetry}
             disabled={isRetrying}
           >
-            <Text style={styles.primaryButtonText}>
+            <Text style={[styles.primaryButtonText, { color: themeColors.background }]}>
               {isRetrying ? 'Retrying...' : retryLabel}
             </Text>
           </Pressable>
@@ -180,19 +197,19 @@ export function ErrorView({
 
         {onSecondaryAction && (
           <Pressable
-            style={styles.secondaryButton}
+            style={[styles.secondaryButton, { backgroundColor: themeColors.backgroundSecondary }]}
             onPress={onSecondaryAction}
           >
-            <Text style={styles.secondaryButtonText}>{secondaryLabel}</Text>
+            <Text style={[styles.secondaryButtonText, { color: themeColors.textSecondary }]}>{secondaryLabel}</Text>
           </Pressable>
         )}
       </View>
 
       {/* Offline indicator */}
       {isOffline && (
-        <View style={styles.offlineIndicator}>
-          <View style={styles.offlineDot} />
-          <Text style={styles.offlineText}>Offline</Text>
+        <View style={[styles.offlineIndicator, { backgroundColor: `${themeColors.error}25` }]}>
+          <View style={[styles.offlineDot, { backgroundColor: themeColors.error }]} />
+          <Text style={[styles.offlineText, { color: themeColors.error }]}>Offline</Text>
         </View>
       )}
     </View>
@@ -204,7 +221,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     padding: spacing.xxl,
   },
   iconContainer: {
@@ -214,13 +230,11 @@ const styles = StyleSheet.create({
   title: {
     ...typography.displaySmall,
     fontWeight: '700',
-    color: '#000000',
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   message: {
     ...typography.bodyMedium,
-    color: 'rgba(0,0,0,0.6)',
     textAlign: 'center',
     maxWidth: scale(280),
     marginBottom: spacing['3xl'],
@@ -232,7 +246,6 @@ const styles = StyleSheet.create({
   },
   // NN/g: 44px minimum touch targets
   primaryButton: {
-    backgroundColor: colors.accent,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xxl,
     borderRadius: radius.card,
@@ -246,7 +259,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     ...typography.labelLarge,
     fontWeight: '600',
-    color: colors.backgroundPrimary,
   },
   secondaryButton: {
     paddingVertical: spacing.lg,
@@ -255,12 +267,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: layout.minTouchTarget,
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.05)',
   },
   secondaryButtonText: {
     ...typography.labelLarge,
     fontWeight: '500',
-    color: 'rgba(0,0,0,0.6)',
   },
   offlineIndicator: {
     flexDirection: 'row',
@@ -268,18 +278,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxl,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    backgroundColor: 'rgba(255, 59, 48, 0.15)',
     borderRadius: spacing.xl,
   },
   offlineDot: {
     width: spacing.sm,
     height: spacing.sm,
     borderRadius: spacing.xs,
-    backgroundColor: colors.error,
     marginRight: spacing.xs,
   },
   offlineText: {
     ...typography.labelMedium,
-    color: colors.error,
   },
 });

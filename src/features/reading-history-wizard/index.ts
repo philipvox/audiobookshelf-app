@@ -18,13 +18,12 @@ export type { SortOption } from './components/SortSheet';
 // Store
 export {
   useGalleryStore,
-  useIsBookMarked,
-  useMarkedCount,
   useCurrentView,
+  useFilters,
+  useHasActiveFilters,
+  useActiveFilterCount,
 } from './stores/galleryStore';
 export type {
-  MarkedBook,
-  UndoAction,
   FilterState,
   DurationFilter,
   SyncStatusFilter,

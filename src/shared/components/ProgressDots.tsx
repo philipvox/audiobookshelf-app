@@ -11,11 +11,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, scale, spacing } from '@/shared/theme';
-
-const ACCENT = colors.accent;
-const ACCENT_DIM = 'rgba(243, 182, 12, 0.5)';
-const DOT_INACTIVE = 'rgba(255, 255, 255, 0.25)';
+import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
 
 type DotStatus = 'completed' | 'in_progress' | 'not_started';
 
@@ -37,15 +33,15 @@ interface ProgressDotsProps {
 /**
  * Single progress dot
  */
-function Dot({ status, size }: { status: DotStatus; size: number }) {
+function Dot({ status, size, inactiveColor }: { status: DotStatus; size: number; inactiveColor: string }) {
   const getColor = () => {
     switch (status) {
       case 'completed':
-        return ACCENT;
+        return accentColors.gold;
       case 'in_progress':
-        return ACCENT_DIM;
+        return `${accentColors.gold}80`;
       default:
-        return DOT_INACTIVE;
+        return inactiveColor;
     }
   };
 
@@ -75,11 +71,14 @@ export function ProgressDots({
   dotSize = 6,
   showCount = true,
 }: ProgressDotsProps) {
+  const themeColors = useThemeColors();
+  const inactiveColor = themeColors.textTertiary;
+
   // For large series (>maxDots), just show count
   if (total > maxDots) {
     return (
       <View style={styles.container}>
-        <Text style={styles.countText}>
+        <Text style={[styles.countText, { color: accentColors.gold }]}>
           {completed}/{total}
         </Text>
       </View>
@@ -101,13 +100,13 @@ export function ProgressDots({
   return (
     <View style={styles.container}>
       {showCount && (
-        <Text style={styles.countText}>
+        <Text style={[styles.countText, { color: accentColors.gold }]}>
           {completed}/{total}
         </Text>
       )}
       <View style={styles.dotsContainer}>
         {dotStatuses.map((status, index) => (
-          <Dot key={index} status={status} size={dotSize} />
+          <Dot key={index} status={status} size={dotSize} inactiveColor={inactiveColor} />
         ))}
       </View>
     </View>
@@ -131,7 +130,6 @@ const styles = StyleSheet.create({
   countText: {
     fontSize: scale(11),
     fontWeight: '600',
-    color: ACCENT,
   },
 });
 

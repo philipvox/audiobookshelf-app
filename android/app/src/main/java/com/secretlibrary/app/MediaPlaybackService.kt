@@ -36,6 +36,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
         const val ROOT_ID = "root"
         const val CONTINUE_LISTENING_ID = "continue_listening"
         const val DOWNLOADS_ID = "downloads"
+        const val RECENTLY_ADDED_ID = "recently_added"
         const val LIBRARY_ID = "library"
 
         // Empty root for untrusted clients
@@ -66,6 +67,9 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
         super.onCreate()
         Log.d(TAG, "MediaPlaybackService onCreate")
 
+        // Register with AndroidAutoModule so RN can update our state
+        AndroidAutoModule.mediaPlaybackService = this
+
         // Create a media session
         mediaSession = MediaSessionCompat(this, TAG).apply {
             // Set flags for handling media buttons and transport controls
@@ -84,7 +88,9 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
                     PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                     PlaybackStateCompat.ACTION_SEEK_TO or
                     PlaybackStateCompat.ACTION_FAST_FORWARD or
-                    PlaybackStateCompat.ACTION_REWIND
+                    PlaybackStateCompat.ACTION_REWIND or
+                    PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH or
+                    PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
                 )
             setPlaybackState(playbackStateBuilder.build())
 
@@ -115,6 +121,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
         serviceScope.cancel()
         mediaSession?.release()
         mediaSession = null
+        // Unregister from AndroidAutoModule
+        AndroidAutoModule.mediaPlaybackService = null
         super.onDestroy()
     }
 
@@ -146,7 +154,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
 
             when (parentId) {
                 ROOT_ID -> {
-                    // Root level - show browsable categories
+                    // Root level - show browsable categories (YouTube Music style)
                     items.add(createBrowsableItem(
                         CONTINUE_LISTENING_ID,
                         "Continue Listening",
@@ -156,6 +164,16 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
                         DOWNLOADS_ID,
                         "Downloads",
                         "Books available offline"
+                    ))
+                    items.add(createBrowsableItem(
+                        RECENTLY_ADDED_ID,
+                        "Recently Added",
+                        "New books in your library"
+                    ))
+                    items.add(createBrowsableItem(
+                        LIBRARY_ID,
+                        "Library",
+                        "Browse all books"
                     ))
                 }
 
@@ -185,6 +203,21 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
                             "empty_downloads",
                             "No downloads yet",
                             "Download books in the app"
+                        ))
+                    }
+                }
+
+                RECENTLY_ADDED_ID -> {
+                    // Map to "recently-added" section from JSON
+                    val sectionItems = cachedBrowseData["recently-added"] ?: emptyList()
+                    if (sectionItems.isNotEmpty()) {
+                        items.addAll(sectionItems)
+                        Log.d(TAG, "Added ${sectionItems.size} recently added items")
+                    } else {
+                        items.add(createPlayableItem(
+                            "empty_recent",
+                            "No recent books",
+                            "Add books to your library"
                         ))
                     }
                 }
@@ -232,6 +265,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
                         notifyChildrenChanged(ROOT_ID)
                         notifyChildrenChanged(CONTINUE_LISTENING_ID)
                         notifyChildrenChanged(DOWNLOADS_ID)
+                        notifyChildrenChanged(RECENTLY_ADDED_ID)
                         notifyChildrenChanged(LIBRARY_ID)
                     }
                 }
@@ -453,15 +487,22 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
                 }
             }
         }
+
+        override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+            Log.d(TAG, "onPlayFromSearch: $query")
+            // Handle voice search - "Play [book name]"
+            query?.let {
+                if (it.isNotBlank()) {
+                    sendCommandToApp("search", it)
+                }
+            }
+        }
     }
 
     private fun sendCommandToApp(command: String, param: String? = null) {
         Log.d(TAG, "Sending command to app: $command, param: $param")
-        val intent = Intent("com.secretlibrary.app.MEDIA_COMMAND").apply {
-            putExtra("command", command)
-            param?.let { putExtra("param", it) }
-        }
-        sendBroadcast(intent)
+        // Use direct method call instead of broadcast to avoid Android 8+ restrictions
+        AndroidAutoModule.forwardCommand(command, param)
     }
 
     /**

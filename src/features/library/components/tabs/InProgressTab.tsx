@@ -2,7 +2,7 @@
  * src/features/library/components/tabs/InProgressTab.tsx
  *
  * In Progress tab content for MyLibraryScreen.
- * Shows hero card, in-progress books, and series in progress.
+ * Shows continue listening cards in a horizontal scroll with progress bars.
  */
 
 import React, { useMemo } from 'react';
@@ -12,11 +12,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Play } from 'lucide-react-native';
 import { SectionHeader } from '@/features/home/components/SectionHeader';
 import { LibraryEmptyState } from '../LibraryEmptyState';
-import { BookRow } from '../BookRow';
 import { FannedSeriesCard } from '../FannedSeriesCard';
+import { BookRow } from '../BookRow';
 import { apiClient } from '@/core/api';
 import { useLibraryCache } from '@/core/cache';
-import { scale, spacing } from '@/shared/theme';
+import { scale } from '@/shared/theme';
 import { useThemeColors } from '@/shared/theme/themeStore';
 import { EnrichedBook, formatTimeRemaining, FannedSeriesCardData } from '../../types';
 
@@ -42,24 +42,22 @@ export function InProgressTab({
   const themeColors = useThemeColors();
   const { getSeries } = useLibraryCache();
 
-  // Filter to only in-progress books
-  const inProgressItems = useMemo(() => {
-    return books.filter(b => b.progress > 0 && b.progress < 0.95);
+  // Books come from Continue Listening API - already filtered for in-progress
+  // Just sort by most recently played
+  const sortedItems = useMemo(() => {
+    return [...books].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
   }, [books]);
 
-  if (inProgressItems.length === 0) {
+  if (sortedItems.length === 0) {
     return <LibraryEmptyState tab="in-progress" onAction={onBrowse} />;
   }
-
-  // Sort by most recently played
-  const sortedItems = [...inProgressItems].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
   const heroItem = sortedItems[0];
   const otherItems = sortedItems.slice(1);
 
   // Group in-progress items by series
   const inProgressSeriesData = useMemo<FannedSeriesCardData[]>(() => {
     const seriesMap = new Map<string, EnrichedBook[]>();
-    for (const book of inProgressItems) {
+    for (const book of sortedItems) {
       if (book.seriesName) {
         const existing = seriesMap.get(book.seriesName) || [];
         existing.push(book);
@@ -77,7 +75,7 @@ export function InProgressTab({
           bookCount: seriesInfo?.books?.length || bks.length,
         };
       });
-  }, [inProgressItems, getSeries]);
+  }, [sortedItems, getSeries]);
 
   return (
     <View>
@@ -131,7 +129,6 @@ export function InProgressTab({
               book={book}
               onPress={() => onBookPress(book.id)}
               onPlay={() => onBookPlay(book)}
-              showIndicator
               isMarkedFinished={isMarkedFinished(book.id)}
             />
           ))}

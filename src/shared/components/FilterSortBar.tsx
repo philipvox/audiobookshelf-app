@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
 import { Icon } from './Icon';
-import { colors, spacing, radius } from '@/shared/theme';
+import { spacing, radius, scale, accentColors } from '@/shared/theme';
+import { useThemeColors } from '@/shared/theme/themeStore';
 
 export type SortOption = 'name-asc' | 'name-desc' | 'bookCount-asc' | 'bookCount-desc';
 
@@ -29,6 +30,7 @@ export function FilterSortBar({
   onGenreChange,
   showGenreFilter = false,
 }: FilterSortBarProps) {
+  const themeColors = useThemeColors();
   const [showSortModal, setShowSortModal] = useState(false);
   const [showGenreModal, setShowGenreModal] = useState(false);
 
@@ -36,43 +38,43 @@ export function FilterSortBar({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.button} onPress={() => setShowSortModal(true)}>
-        <Icon name="ArrowUpDown" size={18} color={colors.textSecondary} />
-        <Text style={styles.buttonText}>{currentSortLabel}</Text>
-        <Icon name="ChevronDown" size={16} color={colors.textTertiary} />
+      <TouchableOpacity style={[styles.button, { backgroundColor: themeColors.backgroundSecondary }]} onPress={() => setShowSortModal(true)}>
+        <Icon name="ArrowUpDown" size={18} color={themeColors.textSecondary} />
+        <Text style={[styles.buttonText, { color: themeColors.textSecondary }]}>{currentSortLabel}</Text>
+        <Icon name="ChevronDown" size={16} color={themeColors.textTertiary} />
       </TouchableOpacity>
 
       {showGenreFilter && genres.length > 0 && (
         <TouchableOpacity
-          style={[styles.button, selectedGenre && styles.buttonActive]}
+          style={[styles.button, { backgroundColor: selectedGenre ? accentColors.gold : themeColors.backgroundSecondary }]}
           onPress={() => setShowGenreModal(true)}
         >
-          <Icon name="Filter" size={18} color={selectedGenre ? '#fff' : colors.textSecondary} />
-          <Text style={[styles.buttonText, selectedGenre && styles.buttonTextActive]}>
+          <Icon name="Filter" size={18} color={selectedGenre ? themeColors.background : themeColors.textSecondary} />
+          <Text style={[styles.buttonText, { color: selectedGenre ? themeColors.background : themeColors.textSecondary }]}>
             {selectedGenre || 'Genre'}
           </Text>
-          <Icon name="ChevronDown" size={16} color={selectedGenre ? '#fff' : colors.textTertiary} />
+          <Icon name="ChevronDown" size={16} color={selectedGenre ? themeColors.background : themeColors.textTertiary} />
         </TouchableOpacity>
       )}
 
       <Modal visible={showSortModal} transparent animationType="fade" onRequestClose={() => setShowSortModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowSortModal(false)}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Sort By</Text>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated }]}>
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Sort By</Text>
             {SORT_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.value}
-                style={[styles.modalOption, sortBy === option.value && styles.modalOptionActive]}
+                style={[styles.modalOption, { borderBottomColor: themeColors.border }, sortBy === option.value && { backgroundColor: `${accentColors.gold}20` }]}
                 onPress={() => {
                   onSortChange(option.value);
                   setShowSortModal(false);
                 }}
               >
-                <Text style={[styles.modalOptionText, sortBy === option.value && styles.modalOptionTextActive]}>
+                <Text style={[styles.modalOptionText, { color: themeColors.text }, sortBy === option.value && { color: accentColors.gold, fontWeight: '600' }]}>
                   {option.label}
                 </Text>
                 {sortBy === option.value && (
-                  <Icon name="Check" size={20} color={colors.accent} />
+                  <Icon name="Check" size={20} color={accentColors.gold} />
                 )}
               </TouchableOpacity>
             ))}
@@ -82,33 +84,33 @@ export function FilterSortBar({
 
       <Modal visible={showGenreModal} transparent animationType="fade" onRequestClose={() => setShowGenreModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowGenreModal(false)}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filter by Genre</Text>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated }]}>
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Filter by Genre</Text>
             <ScrollView style={styles.genreScroll}>
               <TouchableOpacity
-                style={[styles.modalOption, !selectedGenre && styles.modalOptionActive]}
+                style={[styles.modalOption, { borderBottomColor: themeColors.border }, !selectedGenre && { backgroundColor: `${accentColors.gold}20` }]}
                 onPress={() => {
                   onGenreChange?.(null);
                   setShowGenreModal(false);
                 }}
               >
-                <Text style={[styles.modalOptionText, !selectedGenre && styles.modalOptionTextActive]}>All Genres</Text>
-                {!selectedGenre && <Icon name="Check" size={20} color={colors.accent} />}
+                <Text style={[styles.modalOptionText, { color: themeColors.text }, !selectedGenre && { color: accentColors.gold, fontWeight: '600' }]}>All Genres</Text>
+                {!selectedGenre && <Icon name="Check" size={20} color={accentColors.gold} />}
               </TouchableOpacity>
               {genres.map((genre) => (
                 <TouchableOpacity
                   key={genre}
-                  style={[styles.modalOption, selectedGenre === genre && styles.modalOptionActive]}
+                  style={[styles.modalOption, { borderBottomColor: themeColors.border }, selectedGenre === genre && { backgroundColor: `${accentColors.gold}20` }]}
                   onPress={() => {
                     onGenreChange?.(genre);
                     setShowGenreModal(false);
                   }}
                 >
-                  <Text style={[styles.modalOptionText, selectedGenre === genre && styles.modalOptionTextActive]}>
+                  <Text style={[styles.modalOptionText, { color: themeColors.text }, selectedGenre === genre && { color: accentColors.gold, fontWeight: '600' }]}>
                     {genre}
                   </Text>
                   {selectedGenre === genre && (
-                    <Icon name="Check" size={20} color={colors.accent} />
+                    <Icon name="Check" size={20} color={accentColors.gold} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -132,19 +134,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.xl,
-    backgroundColor: colors.progressTrack,
-    gap: 4,
-  },
-  buttonActive: {
-    backgroundColor: colors.accent,
+    gap: scale(4),
   },
   buttonText: {
-    fontSize: 13,
+    fontSize: scale(13),
     fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  buttonTextActive: {
-    color: '#fff',
   },
   modalOverlay: {
     flex: 1,
@@ -155,14 +149,12 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '80%',
     maxHeight: '70%',
-    backgroundColor: colors.backgroundPrimary,
     borderRadius: radius.lg,
     padding: spacing.md,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: scale(18),
     fontWeight: '700',
-    color: colors.textPrimary,
     marginBottom: spacing.md,
     textAlign: 'center',
   },
@@ -175,17 +167,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  modalOptionActive: {
-    backgroundColor: colors.accentSubtle,
   },
   modalOptionText: {
-    fontSize: 16,
-    color: colors.textPrimary,
-  },
-  modalOptionTextActive: {
-    color: colors.accent,
-    fontWeight: '600',
+    fontSize: scale(16),
   },
 });

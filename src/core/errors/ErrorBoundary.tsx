@@ -16,6 +16,7 @@ import {
 import { AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react-native';
 import { errorService, wrapError } from './errorService';
 import { AppError } from './types';
+import { useThemeColors, ThemeColors, accentColors, scale, spacing } from '@/shared/theme';
 
 
 interface ErrorBoundaryProps {
@@ -98,22 +99,24 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
  * Full-screen error view for screen-level errors
  */
 function ScreenErrorView({ error, onRetry }: { error: AppError; onRetry: () => void }) {
-  return (
-    <View style={styles.screenContainer}>
-      <AlertCircle size={64} color="#ff4444" strokeWidth={1.5} />
-      <Text style={styles.screenTitle}>Something went wrong</Text>
-      <Text style={styles.screenMessage}>{error.userMessage}</Text>
+  const themeColors = useThemeColors();
 
-      <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-        <RefreshCw size={20} color="#000" strokeWidth={2} />
-        <Text style={styles.retryButtonText}>Try Again</Text>
+  return (
+    <View style={[styles.screenContainer, { backgroundColor: themeColors.background }]}>
+      <AlertCircle size={64} color={themeColors.error} strokeWidth={1.5} />
+      <Text style={[styles.screenTitle, { color: themeColors.text }]}>Something went wrong</Text>
+      <Text style={[styles.screenMessage, { color: themeColors.textSecondary }]}>{error.userMessage}</Text>
+
+      <TouchableOpacity style={[styles.retryButton, { backgroundColor: accentColors.gold }]} onPress={onRetry}>
+        <RefreshCw size={20} color={themeColors.background} strokeWidth={2} />
+        <Text style={[styles.retryButtonText, { color: themeColors.background }]}>Try Again</Text>
       </TouchableOpacity>
 
       {__DEV__ && (
-        <View style={styles.devInfo}>
-          <Text style={styles.devText}>Code: {error.code}</Text>
-          <Text style={styles.devText}>Category: {error.category}</Text>
-          <Text style={styles.devText} numberOfLines={3}>
+        <View style={[styles.devInfo, { backgroundColor: themeColors.surfaceElevated }]}>
+          <Text style={[styles.devText, { color: themeColors.textTertiary }]}>Code: {error.code}</Text>
+          <Text style={[styles.devText, { color: themeColors.textTertiary }]}>Category: {error.category}</Text>
+          <Text style={[styles.devText, { color: themeColors.textTertiary }]} numberOfLines={3}>
             {error.message}
           </Text>
         </View>
@@ -126,16 +129,18 @@ function ScreenErrorView({ error, onRetry }: { error: AppError; onRetry: () => v
  * Inline error view for component-level errors
  */
 function ComponentErrorView({ error, onRetry }: { error: AppError; onRetry: () => void }) {
+  const themeColors = useThemeColors();
+
   return (
-    <View style={styles.componentContainer}>
+    <View style={[styles.componentContainer, { backgroundColor: `${themeColors.warning}15` }]}>
       <View style={styles.componentContent}>
-        <AlertTriangle size={24} color="#ff9800" strokeWidth={2} />
+        <AlertTriangle size={24} color={themeColors.warning} strokeWidth={2} />
         <View style={styles.componentText}>
-          <Text style={styles.componentMessage} numberOfLines={2}>
+          <Text style={[styles.componentMessage, { color: themeColors.textSecondary }]} numberOfLines={2}>
             {error.userMessage}
           </Text>
           <TouchableOpacity onPress={onRetry}>
-            <Text style={styles.componentRetry}>Tap to retry</Text>
+            <Text style={[styles.componentRetry, { color: accentColors.gold }]}>Tap to retry</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -166,76 +171,66 @@ const styles = StyleSheet.create({
   // Screen-level error
   screenContainer: {
     flex: 1,
-    backgroundColor: '#121212',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: scale(24),
   },
   screenTitle: {
-    fontSize: 20,
+    fontSize: scale(20),
     fontWeight: '600',
-    color: '#fff',
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   screenMessage: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: scale(14),
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: scale(20),
+    marginBottom: spacing.xl,
   },
   retryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4B60C',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 24,
-    gap: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: scale(24),
+    gap: spacing.sm,
   },
   retryButtonText: {
-    fontSize: 14,
+    fontSize: scale(14),
     fontWeight: '600',
-    color: '#000',
   },
   devInfo: {
-    marginTop: 32,
-    padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 8,
+    marginTop: spacing.xxl,
+    padding: spacing.lg,
+    borderRadius: scale(8),
     width: '100%',
-    maxWidth: 300,
+    maxWidth: scale(300),
   },
   devText: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 4,
+    fontSize: scale(11),
+    marginBottom: spacing.xs,
   },
 
   // Component-level error
   componentContainer: {
-    backgroundColor: 'rgba(255,152,0,0.1)',
-    borderRadius: 8,
-    padding: 12,
-    margin: 8,
+    borderRadius: scale(8),
+    padding: spacing.md,
+    margin: spacing.sm,
   },
   componentContent: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: spacing.md,
   },
   componentText: {
     flex: 1,
   },
   componentMessage: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 4,
+    fontSize: scale(13),
+    marginBottom: spacing.xs,
   },
   componentRetry: {
-    fontSize: 12,
-    color: '#F4B60C',
+    fontSize: scale(12),
     fontWeight: '500',
   },
 });
