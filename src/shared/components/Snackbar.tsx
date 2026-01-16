@@ -23,7 +23,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { spacing, radius, scale, useThemeColors, ThemeColors } from '@/shared/theme';
+import { spacing, radius, scale, useTheme, ThemeColors } from '@/shared/theme';
 import { BOTTOM_NAV_HEIGHT, MINI_PLAYER_HEIGHT } from '@/constants/layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -56,31 +56,31 @@ export interface SnackbarProps {
 // ============================================================================
 
 // Get snackbar colors based on theme
-function getSnackbarColors(themeColors: ReturnType<typeof useThemeColors>) {
+function getSnackbarColors(colors: ThemeColors) {
   return {
     info: {
-      background: themeColors.surfaceElevated,
-      border: themeColors.border,
-      text: themeColors.text,
-      action: themeColors.accent,
+      background: colors.background.elevated,
+      border: colors.border.default,
+      text: colors.text.primary,
+      action: colors.accent.primary,
     },
     success: {
-      background: `${themeColors.success}25`,
-      border: `${themeColors.success}50`,
-      text: themeColors.text,
-      action: themeColors.success,
+      background: `${colors.status.success}25`,
+      border: `${colors.status.success}50`,
+      text: colors.text.primary,
+      action: colors.status.success,
     },
     warning: {
-      background: `${themeColors.warning}25`,
-      border: `${themeColors.warning}50`,
-      text: themeColors.text,
-      action: themeColors.warning,
+      background: `${colors.status.warning}25`,
+      border: `${colors.status.warning}50`,
+      text: colors.text.primary,
+      action: colors.status.warning,
     },
     error: {
-      background: `${themeColors.error}25`,
-      border: `${themeColors.error}50`,
-      text: themeColors.text,
-      action: themeColors.error,
+      background: `${colors.status.error}25`,
+      border: `${colors.status.error}50`,
+      text: colors.text.primary,
+      action: colors.status.error,
     },
   };
 }
@@ -100,13 +100,13 @@ export function Snackbar({
   type = 'info',
 }: SnackbarProps) {
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const translateY = useSharedValue(100);
   const opacity = useSharedValue(0);
   // Track when snackbar is fully hidden (avoids reading .value during render)
   const [isHidden, setIsHidden] = useState(!visible);
 
-  const snackbarColors = getSnackbarColors(themeColors);
+  const snackbarColors = getSnackbarColors(colors);
   const typeColors = snackbarColors[type];
 
   // Calculate bottom position (above tab bar + mini player)

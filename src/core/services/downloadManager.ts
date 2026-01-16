@@ -9,7 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { sqliteCache } from './sqliteCache';
 import { networkMonitor, NetworkState } from './networkMonitor';
 import { apiClient } from '@/core/api';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata, BookChapter } from '@/core/types';
 import { formatBytes } from '@/shared/utils/format';
 import { haptics } from '@/core/native/haptics';
 import { trackEvent } from '@/core/monitoring';
@@ -17,6 +17,32 @@ import { eventBus } from '@/core/events';
 import { generateAndCacheTicks } from '@/features/player/services/tickCache';
 import { ChapterInput } from '@/features/player/utils/tickGenerator';
 import { logger } from '@/shared/utils/logger';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item || !isBookMedia(item.media)) return null;
+  return item.media.metadata;
+}
+
+// Helper to get book title
+function getBookTitle(item: LibraryItem | null | undefined): string {
+  return getBookMetadata(item)?.title || 'Unknown';
+}
+
+// Audio file type (from audioFiles array)
+interface AudioFileInfo {
+  ino: string;
+  metadata?: {
+    filename?: string;
+    ext?: string;  // Original file extension (e.g., '.mp3', '.m4a')
+    size?: number;
+  };
+}
 
 // =============================================================================
 // LOGGING
@@ -85,11 +111,6 @@ class DownloadManager {
   // Throttle notifications to avoid excessive UI updates
   private lastNotifyTime = 0;
   private readonly NOTIFY_THROTTLE_MS = 500; // Notify UI every 500ms max
-
-  // Cache for failed API fetches to avoid repeated requests for deleted books
-  // Maps itemId -> timestamp of last failed fetch
-  private failedFetchCache: Map<string, number> = new Map();
-  private readonly FAILED_FETCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
   // Directory for downloaded files
   private readonly DOWNLOAD_DIR = `${FileSystem.documentDirectory}audiobooks/`;
@@ -182,7 +203,7 @@ class DownloadManager {
     for (const item of downloading) {
       await sqliteCache.setDownload({
         ...item,
-        status: 'waiting_wifi' as any,
+        status: 'waiting_wifi',
       });
     }
 
@@ -193,7 +214,7 @@ class DownloadManager {
    * Resume downloads that were waiting for WiFi
    */
   private async resumeWaitingDownloads(): Promise<void> {
-    const waiting = await sqliteCache.getDownloadsByStatus('waiting_wifi' as any);
+    const waiting = await sqliteCache.getDownloadsByStatus('waiting_wifi');
     if (waiting.length > 0) {
       log(`Resuming ${waiting.length} downloads that were waiting for WiFi...`);
       for (const download of waiting) {
@@ -225,7 +246,7 @@ class DownloadManager {
     overrideCellular = false
   ): Promise<{ success: boolean; reason?: string }> {
     const itemId = item.id;
-    const title = (item.media?.metadata as any)?.title || 'Unknown';
+    const title = getBookTitle(item);
 
     log(`Queueing download: "${title}" (${itemId}) with priority ${priority}`);
 
@@ -262,12 +283,13 @@ class DownloadManager {
     log(`Adding to download database with ${initialStatus} status...`);
     await sqliteCache.setDownload({
       itemId,
-      status: initialStatus as any,
+      status: initialStatus,
       progress: 0,
       filePath: null,
       fileSize: null,
       downloadedAt: null,
       error: null,
+      userPaused: false,
     });
 
     // Add to queue (only if pending, not waiting)
@@ -353,27 +375,51 @@ class DownloadManager {
   async pauseDownload(itemId: string): Promise<void> {
     log(`Pausing download: ${itemId}`);
 
-    const download = this.activeDownloads.get(itemId);
-    if (download) {
-      await download.pauseAsync();
-      this.activeDownloads.delete(itemId);
+    // CRITICAL: Update DB status FIRST, before calling pauseAsync()
+    // This prevents race condition where retry loop checks DB before we update it
+    const existingDownload = await sqliteCache.getDownload(itemId);
 
-      const currentProgress = (await sqliteCache.getDownload(itemId))?.progress || 0;
-      log(`Download paused at ${(currentProgress * 100).toFixed(1)}%`);
+    if (existingDownload && (existingDownload.status === 'downloading' || existingDownload.status === 'pending')) {
+      // Get progress from memory (most up-to-date) or fall back to DB
+      const memoryProgress = this.progressInfo.get(itemId);
+      let currentProgress = existingDownload.progress || 0;
+
+      // If we have in-memory progress with totalBytes, calculate real progress
+      if (memoryProgress && memoryProgress.totalBytes > 0) {
+        const calculatedProgress = memoryProgress.bytesDownloaded / memoryProgress.totalBytes;
+        // Use the higher of the two (progress should only increase)
+        currentProgress = Math.max(currentProgress, calculatedProgress);
+      }
+
+      log(`Setting status to 'paused' at ${(currentProgress * 100).toFixed(1)}%`);
 
       await sqliteCache.setDownload({
         itemId,
         status: 'paused',
         progress: currentProgress,
-        filePath: null,
-        fileSize: null,
-        downloadedAt: null,
+        filePath: existingDownload.filePath, // Preserve existing values
+        fileSize: existingDownload.fileSize,
+        downloadedAt: existingDownload.downloadedAt,
         error: null,
+        userPaused: true, // User explicitly paused - don't auto-resume
       });
 
+      // Remove from queue if pending
+      await sqliteCache.removeFromDownloadQueue(itemId);
+    }
+
+    // NOW pause the actual download (after DB is updated)
+    const download = this.activeDownloads.get(itemId);
+    if (download) {
+      await download.pauseAsync();
+      this.activeDownloads.delete(itemId);
+      log(`Download paused: ${itemId}`);
+    }
+
+    if (existingDownload && (existingDownload.status === 'downloading' || existingDownload.status === 'pending')) {
       this.notifyListeners();
-    } else {
-      logWarn(`No active download found to pause: ${itemId}`);
+    } else if (!existingDownload) {
+      logWarn(`No download found to pause: ${itemId}`);
     }
   }
 
@@ -389,6 +435,7 @@ class DownloadManager {
       await sqliteCache.setDownload({
         ...download,
         status: 'pending',
+        userPaused: false, // Clear user pause flag on resume
       });
       await sqliteCache.addToDownloadQueue(itemId, 10); // High priority for resumed
       log(`Added to queue with high priority`);
@@ -399,6 +446,7 @@ class DownloadManager {
         ...download,
         status: 'pending',
         error: null,
+        userPaused: false, // Clear user pause flag on retry
       });
       await sqliteCache.addToDownloadQueue(itemId, 10);
       this.processQueue();
@@ -420,6 +468,7 @@ class DownloadManager {
 
   /**
    * Get download status for an item
+   * NOTE: This method only returns cached metadata - it does NOT make API calls.
    */
   async getDownloadStatus(itemId: string): Promise<DownloadTask | null> {
     const record = await sqliteCache.getDownload(itemId);
@@ -435,33 +484,13 @@ class DownloadManager {
       error: record.error || undefined,
     };
 
-    // Include library item for completed downloads
+    // Include library item for completed downloads (from cache only)
     if (record.status === 'complete') {
-      let libraryItem = await sqliteCache.getLibraryItem(itemId);
-
-      // If not in cache, try to fetch from API (with cooldown for failed fetches)
-      if (!libraryItem) {
-        const lastFailedFetch = this.failedFetchCache.get(itemId);
-        const shouldTryFetch = !lastFailedFetch ||
-          (Date.now() - lastFailedFetch) > this.FAILED_FETCH_COOLDOWN_MS;
-
-        if (shouldTryFetch) {
-          try {
-            libraryItem = await apiClient.getItem(itemId);
-            logVerbose(`Fetched missing library item from API: ${itemId}`);
-            // Clear from failed cache on success
-            this.failedFetchCache.delete(itemId);
-          } catch (err) {
-            // Add to failed cache to prevent repeated attempts
-            this.failedFetchCache.set(itemId, Date.now());
-            logWarn(`Failed to fetch library item ${itemId} from API (cached for 5 min):`, err);
-          }
-        }
-      }
-
+      const libraryItem = await sqliteCache.getLibraryItem(itemId);
       if (libraryItem) {
         task.libraryItem = libraryItem;
       }
+      // If not in cache, just skip - don't make API calls here
     }
 
     return task;
@@ -469,11 +498,13 @@ class DownloadManager {
 
   /**
    * Get all downloads
+   * NOTE: This method only returns cached metadata - it does NOT make API calls.
+   * Metadata should be cached when the download is queued or started.
    */
   async getAllDownloads(): Promise<DownloadTask[]> {
     const records = await sqliteCache.getAllDownloads();
 
-    // Fetch library items for completed downloads
+    // Build tasks from cached data only - no API calls
     const tasks = await Promise.all(
       records.map(async (r) => {
         const progressInfo = this.progressInfo.get(r.itemId);
@@ -486,33 +517,14 @@ class DownloadManager {
           error: r.error || undefined,
         };
 
-        // Include library item for completed downloads
+        // Include library item for completed downloads (from cache only)
         if (r.status === 'complete') {
-          let libraryItem = await sqliteCache.getLibraryItem(r.itemId);
-
-          // If not in cache, try to fetch from API (with cooldown for failed fetches)
-          if (!libraryItem) {
-            const lastFailedFetch = this.failedFetchCache.get(r.itemId);
-            const shouldTryFetch = !lastFailedFetch ||
-              (Date.now() - lastFailedFetch) > this.FAILED_FETCH_COOLDOWN_MS;
-
-            if (shouldTryFetch) {
-              try {
-                libraryItem = await apiClient.getItem(r.itemId);
-                logVerbose(`Fetched missing library item from API: ${r.itemId}`);
-                // Clear from failed cache on success
-                this.failedFetchCache.delete(r.itemId);
-              } catch (err) {
-                // Add to failed cache to prevent repeated attempts
-                this.failedFetchCache.set(r.itemId, Date.now());
-                logWarn(`Failed to fetch library item ${r.itemId} from API (cached for 5 min):`, err);
-              }
-            }
-          }
-
+          const libraryItem = await sqliteCache.getLibraryItem(r.itemId);
           if (libraryItem) {
             task.libraryItem = libraryItem;
           }
+          // If not in cache, just skip - don't make API calls here
+          // The metadata should have been cached when the download was queued
         }
 
         return task;
@@ -757,7 +769,7 @@ class DownloadManager {
         return;
       }
 
-      const title = (item.media?.metadata as any)?.title || 'Unknown';
+      const title = getBookTitle(item);
       log(`Starting download for: "${title}"`);
 
       // Remove from queue before starting
@@ -839,6 +851,12 @@ class DownloadManager {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (!result) {
+          // Check if download was paused by user - if so, don't treat as error
+          const downloadStatus = await sqliteCache.getDownload(itemId);
+          if (downloadStatus?.status === 'paused') {
+            log(`Download was paused by user, stopping retry loop`);
+            throw new Error('DOWNLOAD_PAUSED'); // Special error to break retry loop
+          }
           throw new Error('Download returned null');
         }
 
@@ -849,6 +867,12 @@ class DownloadManager {
       } catch (error) {
         if (waitingInterval) clearInterval(waitingInterval);
         lastError = error instanceof Error ? error : new Error('Download failed');
+
+        // If download was paused, don't retry - exit immediately
+        if (lastError.message === 'DOWNLOAD_PAUSED') {
+          throw lastError; // Re-throw to exit the function
+        }
+
         logWarn(`Attempt ${attempt + 1} failed: ${lastError.message}`);
 
         // Exponential backoff before retry
@@ -866,7 +890,7 @@ class DownloadManager {
   private async startDownload(item: LibraryItem): Promise<void> {
     const itemId = item.id;
     const destDir = this.getLocalPath(itemId);
-    const title = (item.media?.metadata as any)?.title || 'Unknown';
+    const title = getBookTitle(item);
     const startTime = Date.now();
 
     log(`═══════════════════════════════════════════════════════`);
@@ -886,7 +910,7 @@ class DownloadManager {
 
       // Get auth info from apiClient
       const serverUrl = apiClient.getBaseURL();
-      const token = (apiClient as any).getAuthToken?.() || (apiClient as any).authToken || '';
+      const token = apiClient.getAuthToken();
 
       log(`Server URL: ${serverUrl}`);
       log(`Token available: ${token ? 'Yes' : 'NO - MISSING!'}`);
@@ -900,8 +924,10 @@ class DownloadManager {
       log(`Fetching full item details from API...`);
       const fullItem = await apiClient.getItem(itemId);
 
-      // Get audio files to download (cast to any for audioFiles access)
-      const audioFiles = (fullItem.media as any)?.audioFiles || [];
+      // Get audio files to download
+      const audioFiles: AudioFileInfo[] = isBookMedia(fullItem.media)
+        ? (fullItem.media.audioFiles as AudioFileInfo[])
+        : [];
       log(`Audio files found: ${audioFiles.length}`);
 
       if (audioFiles.length === 0) {
@@ -925,12 +951,16 @@ class DownloadManager {
       for (let i = 0; i < audioFiles.length; i++) {
         const file = audioFiles[i];
         const fileUrl = `${serverUrl}/api/items/${itemId}/file/${file.ino}`;
-        const destPath = `${destDir}${i.toString().padStart(3, '0')}_${file.ino}.m4a`;
+        // Use original extension to avoid Android codec detection issues
+        // Android's ExoPlayer may fail if extension doesn't match actual codec
+        const ext = file.metadata?.ext || '.m4a';
+        const destPath = `${destDir}${i.toString().padStart(3, '0')}_${file.ino}${ext}`;
         const fileSize = file.metadata?.size || 0;
 
         log(`───────────────────────────────────────────────────────`);
         log(`File ${i + 1}/${audioFiles.length}: ${file.metadata?.filename || file.ino}`);
-        log(`Size: ${formatBytes(fileSize)}`);
+        log(`Extension: ${ext}, Size: ${formatBytes(fileSize)}`);
+        log(`Dest: ${destPath}`);
 
         const currentDownloadedSize = downloadedSize;
         const currentIndex = i;
@@ -994,11 +1024,11 @@ class DownloadManager {
 
       // Pre-generate and cache timeline ticks for downloaded book
       try {
-        const bookChapters = fullItem.media?.chapters || [];
+        const bookChapters: BookChapter[] = fullItem.media?.chapters || [];
         const bookDuration = fullItem.media?.duration || 0;
 
         if (bookDuration > 0 && bookChapters.length > 0) {
-          const chapterInputs: ChapterInput[] = bookChapters.map((ch: any, i: number) => ({
+          const chapterInputs: ChapterInput[] = bookChapters.map((ch, i) => ({
             start: ch.start || 0,
             end: ch.end || bookChapters[i + 1]?.start || bookDuration,
             displayTitle: ch.title,
@@ -1026,6 +1056,16 @@ class DownloadManager {
       this.activeDownloads.delete(itemId);
       this.progressInfo.delete(itemId); // Clear in-memory progress
       const message = error instanceof Error ? error.message : 'Download failed';
+
+      // Handle user-paused downloads gracefully - don't mark as failed
+      if (message === 'DOWNLOAD_PAUSED') {
+        log(`Download paused by user: "${title}" - not marking as failed`);
+        this.notifyListeners();
+        // Process next item in queue (the paused one should already be removed)
+        this.processQueue();
+        return;
+      }
+
       await sqliteCache.failDownload(itemId, message);
       this.notifyListeners();
 
@@ -1076,7 +1116,7 @@ class DownloadManager {
   private async downloadCover(item: LibraryItem, destDir: string): Promise<void> {
     try {
       const serverUrl = apiClient.getBaseURL();
-      const token = (apiClient as any).getAuthToken?.() || (apiClient as any).authToken || '';
+      const token = apiClient.getAuthToken();
       if (!serverUrl || !token) {
         logVerbose('Skipping cover download - not authenticated');
         return;
@@ -1119,9 +1159,19 @@ class DownloadManager {
 
     const paused = await sqliteCache.getDownloadsByStatus('paused');
     if (paused.length > 0) {
-      log(`Found ${paused.length} paused downloads, adding to queue...`);
-      for (const download of paused) {
-        await sqliteCache.addToDownloadQueue(download.itemId, 5);
+      // Only auto-resume downloads that weren't explicitly paused by user
+      const systemPaused = paused.filter((d) => !d.userPaused);
+      const userPaused = paused.filter((d) => d.userPaused);
+
+      if (userPaused.length > 0) {
+        log(`Skipping ${userPaused.length} user-paused downloads (won't auto-resume)`);
+      }
+
+      if (systemPaused.length > 0) {
+        log(`Found ${systemPaused.length} system-paused downloads, adding to queue...`);
+        for (const download of systemPaused) {
+          await sqliteCache.addToDownloadQueue(download.itemId, 5);
+        }
       }
     }
 

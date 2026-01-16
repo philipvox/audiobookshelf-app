@@ -15,7 +15,7 @@ import {
   layout,
   typography,
   scale,
-  useThemeColors,
+  useTheme,
   accentColors,
 } from '@/shared/theme';
 
@@ -155,7 +155,7 @@ export function ErrorView({
   secondaryLabel = 'Go Back',
   isRetrying = false,
 }: ErrorViewProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // Auto-detect offline state
   const netInfo = useNetInfo();
@@ -169,27 +169,27 @@ export function ErrorView({
   const displayMessage = message || content.message;
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       {/* Icon */}
       <View style={styles.iconContainer}>
-        {getErrorIcon(content.iconType, themeColors.error)}
+        {getErrorIcon(content.iconType, colors.status.error)}
       </View>
 
       {/* Title */}
-      <Text style={[styles.title, { color: themeColors.text }]}>{displayTitle}</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]}>{displayTitle}</Text>
 
       {/* Message */}
-      <Text style={[styles.message, { color: themeColors.textSecondary }]}>{displayMessage}</Text>
+      <Text style={[styles.message, { color: colors.text.secondary }]}>{displayMessage}</Text>
 
       {/* Actions */}
       <View style={styles.actions}>
         {onRetry && (
           <Pressable
-            style={[styles.primaryButton, { backgroundColor: accentColors.gold }, isRetrying && styles.buttonDisabled]}
+            style={[styles.primaryButton, { backgroundColor: colors.accent.primary }, isRetrying && styles.buttonDisabled]}
             onPress={onRetry}
             disabled={isRetrying}
           >
-            <Text style={[styles.primaryButtonText, { color: themeColors.background }]}>
+            <Text style={[styles.primaryButtonText, { color: colors.background.primary }]}>
               {isRetrying ? 'Retrying...' : retryLabel}
             </Text>
           </Pressable>
@@ -197,19 +197,19 @@ export function ErrorView({
 
         {onSecondaryAction && (
           <Pressable
-            style={[styles.secondaryButton, { backgroundColor: themeColors.backgroundSecondary }]}
+            style={[styles.secondaryButton, { backgroundColor: colors.background.secondary }]}
             onPress={onSecondaryAction}
           >
-            <Text style={[styles.secondaryButtonText, { color: themeColors.textSecondary }]}>{secondaryLabel}</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.text.secondary }]}>{secondaryLabel}</Text>
           </Pressable>
         )}
       </View>
 
       {/* Offline indicator */}
       {isOffline && (
-        <View style={[styles.offlineIndicator, { backgroundColor: `${themeColors.error}25` }]}>
-          <View style={[styles.offlineDot, { backgroundColor: themeColors.error }]} />
-          <Text style={[styles.offlineText, { color: themeColors.error }]}>Offline</Text>
+        <View style={[styles.offlineIndicator, { backgroundColor: `${colors.status.error}25` }]}>
+          <View style={[styles.offlineDot, { backgroundColor: colors.status.error }]} />
+          <Text style={[styles.offlineText, { color: colors.status.error }]}>Offline</Text>
         </View>
       )}
     </View>

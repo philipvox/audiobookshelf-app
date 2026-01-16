@@ -20,7 +20,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import CassettePlayer from '../components/CassettePlayer';
-import { wp, hp, accentColors, useThemeColors } from '@/shared/theme';
+import { wp, hp, useTheme } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 const SCREEN_HEIGHT = hp(100);
@@ -32,13 +32,13 @@ const CASSETTE_SCALE = (SCREEN_WIDTH * 0.85 * 0.8) / 263;
 const SAMPLE_COVER = 'https://covers.openlibrary.org/b/isbn/9780590353427-L.jpg';
 
 export function CassetteTestScreen() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const navigation = useNavigation();
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       {/* Blurred background (like HomeScreen) */}
       <View style={styles.backgroundContainer}>
         <Image
@@ -50,7 +50,7 @@ export function CassetteTestScreen() {
         <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="dark" />
         <View style={styles.brightnessOverlay} />
         <LinearGradient
-          colors={['transparent', 'transparent', themeColors.background]}
+          colors={['transparent', 'transparent', colors.background.primary]}
           locations={[0, 0.4, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -61,10 +61,10 @@ export function CassetteTestScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Svg width={24} height={24} viewBox="0 0 24 24">
-              <Path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth={2} fill="none" />
+              <Path d="M15 18l-6-6 6-6" stroke={colors.text.primary} strokeWidth={2} fill="none" />
             </Svg>
           </TouchableOpacity>
-          <Text style={styles.title}>Cassette Test</Text>
+          <Text style={[styles.title, { color: colors.text.primary }]}>Cassette Test</Text>
           <View style={styles.backButton} />
         </View>
 
@@ -75,7 +75,7 @@ export function CassetteTestScreen() {
         >
           {/* Cassette Player - With Cover */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>With Cover Image</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>With Cover Image</Text>
             <CassettePlayer
               scale={CASSETTE_SCALE}
               coverUrl={SAMPLE_COVER}
@@ -85,12 +85,12 @@ export function CassetteTestScreen() {
           </View>
 
           {/* Divider */}
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: colors.border.light }]} />
 
           {/* Controlled Mode Preview */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Controlled Mode</Text>
-            <Text style={styles.subtitle}>External progress: {(progress * 100).toFixed(0)}%</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>Controlled Mode</Text>
+            <Text style={[styles.subtitle, { color: colors.text.tertiary }]}>External progress: {(progress * 100).toFixed(0)}%</Text>
 
             {/* Mini cassette controlled externally */}
             <View style={styles.miniCassette}>
@@ -106,45 +106,49 @@ export function CassetteTestScreen() {
             {/* External controls */}
             <View style={styles.externalControls}>
               <TouchableOpacity
-                style={styles.extBtn}
+                style={[styles.extBtn, { backgroundColor: colors.surface.card, borderColor: colors.border.light }]}
                 onPress={() => setProgress(Math.max(0, progress - 0.1))}
               >
-                <Text style={styles.extBtnText}>- 10%</Text>
+                <Text style={[styles.extBtnText, { color: colors.text.primary }]}>- 10%</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.extBtn, isPlaying && styles.extBtnActive]}
+                style={[
+                  styles.extBtn,
+                  { backgroundColor: colors.surface.card, borderColor: colors.border.light },
+                  isPlaying && { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary },
+                ]}
                 onPress={() => setIsPlaying(!isPlaying)}
               >
-                <Text style={[styles.extBtnText, isPlaying && styles.extBtnTextActive]}>
+                <Text style={[styles.extBtnText, { color: colors.text.primary }, isPlaying && { color: colors.accent.textOnAccent }]}>
                   {isPlaying ? 'Stop' : 'Spin'}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.extBtn}
+                style={[styles.extBtn, { backgroundColor: colors.surface.card, borderColor: colors.border.light }]}
                 onPress={() => setProgress(Math.min(1, progress + 0.1))}
               >
-                <Text style={styles.extBtnText}>+ 10%</Text>
+                <Text style={[styles.extBtnText, { color: colors.text.primary }]}>+ 10%</Text>
               </TouchableOpacity>
             </View>
 
             {/* Progress presets */}
             <View style={styles.presets}>
-              <TouchableOpacity style={styles.presetBtn} onPress={() => setProgress(0)}>
-                <Text style={styles.presetText}>0%</Text>
+              <TouchableOpacity style={[styles.presetBtn, { backgroundColor: colors.surface.card }]} onPress={() => setProgress(0)}>
+                <Text style={[styles.presetText, { color: colors.text.tertiary }]}>0%</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.presetBtn} onPress={() => setProgress(0.25)}>
-                <Text style={styles.presetText}>25%</Text>
+              <TouchableOpacity style={[styles.presetBtn, { backgroundColor: colors.surface.card }]} onPress={() => setProgress(0.25)}>
+                <Text style={[styles.presetText, { color: colors.text.tertiary }]}>25%</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.presetBtn} onPress={() => setProgress(0.5)}>
-                <Text style={styles.presetText}>50%</Text>
+              <TouchableOpacity style={[styles.presetBtn, { backgroundColor: colors.surface.card }]} onPress={() => setProgress(0.5)}>
+                <Text style={[styles.presetText, { color: colors.text.tertiary }]}>50%</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.presetBtn} onPress={() => setProgress(0.75)}>
-                <Text style={styles.presetText}>75%</Text>
+              <TouchableOpacity style={[styles.presetBtn, { backgroundColor: colors.surface.card }]} onPress={() => setProgress(0.75)}>
+                <Text style={[styles.presetText, { color: colors.text.tertiary }]}>75%</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.presetBtn} onPress={() => setProgress(1)}>
-                <Text style={styles.presetText}>100%</Text>
+              <TouchableOpacity style={[styles.presetBtn, { backgroundColor: colors.surface.card }]} onPress={() => setProgress(1)}>
+                <Text style={[styles.presetText, { color: colors.text.tertiary }]}>100%</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -199,7 +203,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    // color set dynamically via inline style
   },
   scrollView: {
     flex: 1,
@@ -214,17 +218,17 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    // color set dynamically via inline style
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+    // color set dynamically via inline style
     marginBottom: 20,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // backgroundColor set dynamically via inline style
     marginVertical: 40,
     marginHorizontal: 40,
   },
@@ -239,22 +243,15 @@ const styles = StyleSheet.create({
   extBtn: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    // backgroundColor set dynamically via inline style
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  extBtnActive: {
-    backgroundColor: '#F4B60C',
-    borderColor: '#F4B60C',
+    // borderColor set dynamically via inline style
   },
   extBtnText: {
-    color: '#fff',
+    // color set dynamically via inline style
     fontSize: 14,
     fontWeight: '500',
-  },
-  extBtnTextActive: {
-    color: '#000',
   },
   presets: {
     flexDirection: 'row',
@@ -264,11 +261,11 @@ const styles = StyleSheet.create({
   presetBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    // backgroundColor set dynamically via inline style
     borderRadius: 6,
   },
   presetText: {
-    color: 'rgba(255,255,255,0.6)',
+    // color set dynamically via inline style
     fontSize: 12,
   },
 });

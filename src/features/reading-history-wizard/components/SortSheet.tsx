@@ -16,22 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { wp, hp, moderateScale } from '@/shared/theme';
-
-// =============================================================================
-// COLORS
-// =============================================================================
-
-const COLORS = {
-  accent: '#F3B60C',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-  surface: 'rgba(255, 255, 255, 0.05)',
-  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
-  background: '#0A0A0A',
-  scrim: 'rgba(0, 0, 0, 0.6)',
-};
+import { wp, hp, moderateScale, useTheme, colors } from '@/shared/theme';
 
 // =============================================================================
 // TYPES
@@ -67,23 +52,31 @@ interface SortOptionRowProps {
   isSelected: boolean;
   onPress: () => void;
   isLast?: boolean;
+  themeColors: ReturnType<typeof useTheme>['colors'];
 }
 
-function SortOptionRow({ label, isSelected, onPress, isLast }: SortOptionRowProps) {
+function SortOptionRow({ label, isSelected, onPress, isLast, themeColors }: SortOptionRowProps) {
   return (
     <TouchableOpacity
-      style={[styles.optionRow, !isLast && styles.optionRowBorder]}
+      style={[
+        styles.optionRow,
+        !isLast && [styles.optionRowBorder, { borderBottomColor: themeColors.border.default }],
+      ]}
       onPress={() => {
         Haptics.selectionAsync();
         onPress();
       }}
       activeOpacity={0.7}
     >
-      <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+      <Text style={[
+        styles.optionText,
+        { color: themeColors.text.primary },
+        isSelected && { color: colors.accent.primary, fontWeight: '600' },
+      ]}>
         {label}
       </Text>
       {isSelected && (
-        <Check size={wp(5)} color={COLORS.accent} strokeWidth={2.5} />
+        <Check size={wp(5)} color={colors.accent.primary} strokeWidth={2.5} />
       )}
     </TouchableOpacity>
   );
@@ -100,6 +93,7 @@ export function SortSheet({
   onSelectSort,
 }: SortSheetProps) {
   const insets = useSafeAreaInsets();
+  const { colors: themeColors } = useTheme();
 
   const handleSelect = (option: SortOption) => {
     onSelectSort(option);
@@ -116,25 +110,31 @@ export function SortSheet({
       onRequestClose={onClose}
     >
       <Animated.View
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: themeColors.overlay.medium }]}
         entering={FadeIn.duration(200)}
         exiting={FadeOut.duration(150)}
       >
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
 
         <Animated.View
-          style={[styles.sheet, { paddingBottom: insets.bottom + hp(2) }]}
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: themeColors.background.primary,
+              paddingBottom: insets.bottom + hp(2),
+            },
+          ]}
           entering={SlideInDown.springify().damping(20)}
           exiting={SlideOutDown.duration(200)}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: themeColors.text.tertiary }]} />
           </View>
 
           {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Sort By</Text>
+          <View style={[styles.header, { borderBottomColor: themeColors.border.default }]}>
+            <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>Sort By</Text>
           </View>
 
           {/* Options */}
@@ -146,6 +146,7 @@ export function SortSheet({
                 isSelected={currentSort === option.id}
                 onPress={() => handleSelect(option.id)}
                 isLast={index === SORT_OPTIONS.length - 1}
+                themeColors={themeColors}
               />
             ))}
           </View>
@@ -162,14 +163,14 @@ export function SortSheet({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: COLORS.scrim,
+    // backgroundColor set via theme in JSX
     justifyContent: 'flex-end',
   },
   backdrop: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: COLORS.background,
+    // backgroundColor set via theme in JSX
     borderTopLeftRadius: wp(5),
     borderTopRightRadius: wp(5),
   },
@@ -180,19 +181,19 @@ const styles = StyleSheet.create({
   handle: {
     width: wp(9),
     height: hp(0.5),
-    backgroundColor: COLORS.textTertiary,
+    // backgroundColor set via theme in JSX
     borderRadius: hp(0.25),
   },
   header: {
     alignItems: 'center',
     paddingBottom: hp(2),
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceBorder,
+    // borderBottomColor set via theme in JSX
   },
   headerTitle: {
     fontSize: moderateScale(18),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via theme in JSX
   },
   options: {
     paddingHorizontal: wp(5.5),
@@ -206,16 +207,12 @@ const styles = StyleSheet.create({
   },
   optionRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceBorder,
+    // borderBottomColor set via theme in JSX
   },
   optionText: {
     fontSize: moderateScale(15),
     fontWeight: '400',
-    color: COLORS.textPrimary,
-  },
-  optionTextSelected: {
-    color: COLORS.accent,
-    fontWeight: '600',
+    // color set via theme in JSX
   },
 });
 

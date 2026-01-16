@@ -14,8 +14,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Icon } from '@/shared/components/Icon';
 import { useLibraryCache, getAllGenres } from '@/core/cache';
-import { scale, wp, spacing, radius, layout } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, wp, spacing, radius, layout, useTheme } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = scale(10);
@@ -59,7 +58,7 @@ const CategoryCard = React.memo(function CategoryCard({ category, onPress, textC
 
 export function CategoryGrid() {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { isLoaded } = useLibraryCache();
 
   const categories = useMemo((): BrowseCategory[] => {
@@ -86,7 +85,7 @@ export function CategoryGrid() {
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: themeColors.text }]}>Browse</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]}>Browse</Text>
 
       <View style={styles.grid}>
         {categories.map((category) => (
@@ -94,9 +93,9 @@ export function CategoryGrid() {
             key={category.id}
             category={category}
             onPress={() => handleCategoryPress(category)}
-            textColor={themeColors.text}
-            textTertiaryColor={themeColors.textTertiary}
-            bgColor={themeColors.backgroundSecondary}
+            textColor={colors.text.primary}
+            textTertiaryColor={colors.text.tertiary}
+            bgColor={colors.background.secondary}
           />
         ))}
       </View>

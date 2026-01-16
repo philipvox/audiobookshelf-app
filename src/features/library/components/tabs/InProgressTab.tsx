@@ -16,8 +16,7 @@ import { FannedSeriesCard } from '../FannedSeriesCard';
 import { BookRow } from '../BookRow';
 import { apiClient } from '@/core/api';
 import { useLibraryCache } from '@/core/cache';
-import { scale } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, useTheme } from '@/shared/theme';
 import { EnrichedBook, formatTimeRemaining, FannedSeriesCardData } from '../../types';
 
 interface InProgressTabProps {
@@ -39,7 +38,7 @@ export function InProgressTab({
   isMarkedFinished,
   onBrowse,
 }: InProgressTabProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { getSeries } = useLibraryCache();
 
   // Books come from Continue Listening API - already filtered for in-progress
@@ -110,10 +109,10 @@ export function InProgressTab({
               </View>
             </View>
             <TouchableOpacity
-              style={[styles.heroPlayButton, { backgroundColor: themeColors.background }]}
+              style={[styles.heroPlayButton, { backgroundColor: colors.background.primary }]}
               onPress={() => onResumeBook(heroItem)}
             >
-              <Play size={scale(28)} color={themeColors.text} fill={themeColors.text} strokeWidth={0} />
+              <Play size={scale(28)} color={colors.text.primary} fill={colors.text.primary} strokeWidth={0} />
             </TouchableOpacity>
           </TouchableOpacity>
         </View>

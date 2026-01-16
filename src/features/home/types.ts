@@ -54,6 +54,13 @@ export interface SeriesWithBooks {
 export type HeroBookState = 'in-progress' | 'almost-done' | 'final-chapter' | 'just-finished';
 
 /**
+ * Home screen view mode
+ * - 'discover': Shows books not yet in user's library (default)
+ * - 'lastPlayed': Shows recently played books regardless of library status
+ */
+export type HomeViewMode = 'discover' | 'lastPlayed';
+
+/**
  * Enhanced book data for the Hero Card component
  * Used to display the primary resume target on the home screen
  */
@@ -138,6 +145,14 @@ export interface UseHomeDataReturn {
   seriesInProgress: EnhancedSeriesData[];
   /** Books with 0% progress, sorted by dateAdded */
   recentlyAdded: LibraryItem[];
+
+  // View Mode - discover (add to library) vs lastPlayed
+  /** Current view mode */
+  viewMode: HomeViewMode;
+  /** Toggle between discover and lastPlayed */
+  toggleViewMode: () => void;
+  /** Books not in user's library for discover view */
+  discoverBooks: LibraryItem[];
 
   // Loading states
   isLoading: boolean;

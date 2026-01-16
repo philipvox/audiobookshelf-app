@@ -58,8 +58,14 @@ describe('isBookComplete', () => {
     expect(isBookComplete(3564, 3600)).toBe(true);
   });
 
-  it('returns false at 98%', () => {
-    expect(isBookComplete(3528, 3600)).toBe(false);
+  it('returns true at 98% (above 95% threshold)', () => {
+    // Default threshold is 0.95 (95%), so 98% is complete
+    expect(isBookComplete(3528, 3600)).toBe(true);
+  });
+
+  it('returns false at 94%', () => {
+    // 94% is below the 95% default threshold
+    expect(isBookComplete(3384, 3600)).toBe(false);
   });
 
   it('uses custom threshold', () => {

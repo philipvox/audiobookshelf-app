@@ -4,7 +4,18 @@
  * Type definitions for the Discover page based on UX spec
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 
 // Row types for content carousels
 export type RowType =
@@ -135,19 +146,19 @@ export function libraryItemToBookSummary(
     lastPlayedAt?: number;
   }
 ): BookSummary {
-  const metadata = (item.media?.metadata as any) || {};
-  const media = item.media as any;
+  const metadata = getBookMetadata(item);
+  const duration = isBookMedia(item.media) ? item.media.duration || 0 : 0;
 
   return {
     id: item.id,
-    title: metadata.title || 'Untitled',
-    author: metadata.authorName || metadata.authors?.[0]?.name || '',
-    narrator: metadata.narratorName || metadata.narrators?.[0] || undefined,
+    title: metadata?.title || 'Untitled',
+    author: metadata?.authorName || metadata?.authors?.[0]?.name || '',
+    narrator: metadata?.narratorName || metadata?.narrators?.[0] || undefined,
     coverUrl,
-    duration: media?.duration || 0,
-    rating: metadata.rating || undefined,
-    ratingCount: metadata.ratingCount || undefined,
-    genres: metadata.genres || [],
+    duration,
+    rating: metadata?.rating || undefined,
+    ratingCount: metadata?.ratingCount || undefined,
+    genres: metadata?.genres || [],
     addedDate: item.addedAt || 0,
     progress: options?.progress,
     isDownloaded: options?.isDownloaded || false,

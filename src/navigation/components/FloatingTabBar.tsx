@@ -13,17 +13,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayerStore } from '@/features/player';
 import { useShallow } from 'zustand/react/shallow';
-import { spacing } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
-import { lightColors, darkColors } from '@/shared/theme/colors';
+import { spacing, useTheme } from '@/shared/theme';
+import { darkColors } from '@/shared/theme/colors';
 
 // =============================================================================
 // THEME COLORS - Uses theme tokens from colors.ts
 // =============================================================================
 
 function useNavColors() {
-  const isDark = useIsDarkMode();
-  const colors = isDark ? darkColors : lightColors;
+  const { colors } = useTheme();
 
   return {
     background: colors.nav.background,

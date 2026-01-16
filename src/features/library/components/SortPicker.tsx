@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import { ChevronDown, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { scale, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 
 export type SortOption =
   | 'recently-played'
@@ -45,8 +44,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accent = colors.accent.primary;
   const [isOpen, setIsOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -66,12 +64,12 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
           onPress={() => setIsOpen(true)}
           activeOpacity={0.7}
         >
-          <Text style={[styles.sortLabel, { color: themeColors.textTertiary }]}>Sort: </Text>
-          <Text style={[styles.sortValue, { color: themeColors.textSecondary }]}>{selectedLabel}</Text>
-          <ChevronDown size={16} color={themeColors.textTertiary} strokeWidth={2} />
+          <Text style={[styles.sortLabel, { color: colors.text.tertiary }]}>Sort: </Text>
+          <Text style={[styles.sortValue, { color: colors.text.secondary }]}>{selectedLabel}</Text>
+          <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
         </TouchableOpacity>
 
-        <Text style={[styles.bookCount, { color: themeColors.textTertiary }]}>
+        <Text style={[styles.bookCount, { color: colors.text.tertiary }]}>
           {bookCount} {bookCount === 1 ? 'book' : 'books'}
         </Text>
       </View>
@@ -83,9 +81,9 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
         onRequestClose={() => setIsOpen(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated, paddingBottom: insets.bottom + 20 }]}>
-            <View style={[styles.modalHandle, { backgroundColor: themeColors.textTertiary }]} />
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Sort By</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.background.elevated, paddingBottom: insets.bottom + 20 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: colors.text.tertiary }]} />
+            <Text style={[styles.modalTitle, { color: colors.text.primary }]}>Sort By</Text>
 
             {SORT_OPTIONS.map((option) => {
               const isSelected = selected === option.value;
@@ -97,7 +95,7 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
                   onPress={() => handleSelect(option.value)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.optionText, { color: themeColors.textSecondary }, isSelected && { color: accent, fontWeight: '600' }]}>
+                  <Text style={[styles.optionText, { color: colors.text.secondary }, isSelected && { color: accent, fontWeight: '600' }]}>
                     {option.label}
                   </Text>
                   {isSelected && (

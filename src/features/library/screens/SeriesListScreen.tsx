@@ -2,6 +2,7 @@
  * src/features/library/screens/SeriesListScreen.tsx
  *
  * Browse all series with favorite series shown first.
+ * Uses color dots instead of cover images (Secret Library design).
  * Uses library cache for instant loading.
  */
 
@@ -13,34 +14,30 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   TextInput,
+  Pressable,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllSeries } from '@/core/cache';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
-import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { SeriesHeartButton } from '@/shared/components';
+import { SeriesHeartButton, SkullRefreshControl, TopNav, TopNavBackIcon, BookIcon } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { wp, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
+import { scale, useTheme } from '@/shared/theme';
+import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+// MIGRATED: Now using new spine system via adapter
+import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
 
-const SCREEN_WIDTH = wp(100);
 const PADDING = 16;
-const GAP = 12;
-const COLUMNS = 2;
-const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / COLUMNS;
-
-// Fanned cover dimensions
-const COVER_SIZE = 60;
-const FAN_OFFSET = 18;
-const FAN_ROTATION = 8;
-const FAN_VERTICAL_OFFSET = 6; // Center is higher, sides lower
-const MAX_VISIBLE_BOOKS = 5;
 const MAX_PROGRESS_DOTS = 8;
+const MAX_COLOR_DOTS = 8;
+
+// Get deterministic color for a book based on its ID
+function getBookDotColor(bookId: string): string {
+  const hash = hashString(bookId);
+  return SPINE_COLOR_PALETTE[hash % SPINE_COLOR_PALETTE.length];
+}
 
 // Progress dot component
 function ProgressDot({ status, size = 5, accent, accentDim }: { status: 'completed' | 'in_progress' | 'not_started'; size?: number; accent: string; accentDim: string }) {
@@ -108,9 +105,7 @@ type SortDirection = 'asc' | 'desc';
 export function SeriesListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
-  const isDarkMode = useIsDarkMode();
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const accent = colors.accent.primary;
   const accentDim = accent + '80'; // 50% opacity
   const inputRef = useRef<TextInput>(null);
@@ -211,98 +206,98 @@ export function SeriesListScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
-        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
-        </TouchableOpacity>
-        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
-          <Icon name="Search" size={18} color={themeColors.textTertiary} />
-          <TextInput
-            ref={inputRef}
-            style={[styles.searchInput, { color: themeColors.text }]}
-            placeholder="Search series..."
-            placeholderTextColor={themeColors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
+
+      {/* TopNav with skull logo and integrated search bar */}
+      <TopNav
+        variant={isDark ? 'dark' : 'light'}
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        style={{ backgroundColor: colors.background.primary }}
+        pills={[
+          {
+            key: 'series',
+            label: 'Series',
+            icon: <BookIcon size={10} color={colors.text.primary} />,
+          },
+        ]}
+        circleButtons={[
+          {
+            key: 'back',
+            icon: <TopNavBackIcon color={colors.text.primary} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+        searchBar={{
+          value: searchQuery,
+          onChangeText: setSearchQuery,
+          placeholder: 'Search series...',
+          inputRef: inputRef as React.RefObject<TextInput>,
+        }}
+      />
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{sortedSeries.length} series</Text>
+        <Text style={[styles.resultCount, { color: colors.text.secondary }]}>{sortedSeries.length} series</Text>
         <View style={styles.sortButtons}>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'name' && { backgroundColor: accent }]}
+            style={[styles.sortButton, { backgroundColor: colors.border.default }, sortBy === 'name' && { backgroundColor: accent }]}
             onPress={() => handleSortPress('name')}
           >
             <Icon
               name={sortBy === 'name' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'ArrowUpDown'}
               size={14}
-              color={sortBy === 'name' ? '#000' : themeColors.textSecondary}
+              color={sortBy === 'name' ? colors.text.inverse : colors.text.secondary}
 
             />
-            <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === 'name' && styles.sortButtonTextActive]}>
+            <Text style={[styles.sortButtonText, { color: colors.text.secondary }, sortBy === 'name' && [styles.sortButtonTextActive, { color: colors.text.inverse }]]}>
               {sortBy === 'name' ? (sortDirection === 'asc' ? 'A-Z' : 'Z-A') : 'Name'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === 'bookCount' && { backgroundColor: accent }]}
+            style={[styles.sortButton, { backgroundColor: colors.border.default }, sortBy === 'bookCount' && { backgroundColor: accent }]}
             onPress={() => handleSortPress('bookCount')}
           >
             <Icon
               name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'Library'}
               size={14}
-              color={sortBy === 'bookCount' ? '#000' : themeColors.textSecondary}
+              color={sortBy === 'bookCount' ? colors.text.inverse : colors.text.secondary}
             />
-            <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === 'bookCount' && styles.sortButtonTextActive]}>Books</Text>
+            <Text style={[styles.sortButtonText, { color: colors.text.secondary }, sortBy === 'bookCount' && [styles.sortButtonTextActive, { color: colors.text.inverse }]]}>Books</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <FlatList
-        data={sortedSeries}
-        keyExtractor={(item) => item.name}
-        numColumns={2}
-        contentContainerStyle={[styles.grid, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
-        columnWrapperStyle={styles.columnWrapper}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={accent}
-          />
-        }
+      <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+        <FlatList
+          data={sortedSeries}
+          keyExtractor={(item) => item.name}
+          contentContainerStyle={[styles.list, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={7}
         renderItem={({ item: series }) => {
           const isFavorite = favoriteSeriesNames.includes(series.name);
-          const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
-          const numCovers = bookCovers.length;
+
+          // Get color dots from book IDs
+          const bookIds = series.books.slice(0, MAX_COLOR_DOTS).map(b => b.id);
+          const colorDots = bookIds.map(getBookDotColor);
 
           // Calculate progress
           const progress = getSeriesProgress(series.books);
@@ -312,121 +307,102 @@ export function SeriesListScreen() {
           const dotsToShow = Math.min(series.bookCount, MAX_PROGRESS_DOTS);
           const showMoreIndicator = series.bookCount > MAX_PROGRESS_DOTS;
 
+          // Get author from first book (only BookMetadata has authorName)
+          const metadata = series.books[0]?.media?.metadata;
+          const author = metadata && 'authorName' in metadata ? metadata.authorName || '' : '';
+
           return (
-            <TouchableOpacity
+            <Pressable
               style={[
                 styles.seriesCard,
-                { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+                isDark ? styles.cardDark : styles.cardLight,
               ]}
               onPress={() => handleSeriesPress(series.name)}
-              activeOpacity={0.7}
             >
-              {/* Heart button - top right */}
-              <SeriesHeartButton
-                seriesName={series.name}
-                size={10}
-                showCircle
-                style={styles.heartButton}
-              />
+              {/* Left side: Name, author, count */}
+              <View style={styles.seriesCardLeft}>
+                <Text
+                  style={[styles.seriesName, isDark && styles.seriesNameDark]}
+                  numberOfLines={2}
+                >
+                  {series.name}
+                </Text>
 
-              {/* Fanned covers - rotated stack */}
-              <View style={styles.coverFan}>
-                {numCovers > 0 ? (
-                  <View style={[
-                    styles.fanContainer,
-                    // Dynamic width based on number of covers for centering
-                    { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }
-                  ]}>
-                    {bookCovers.map((coverUrl, idx) => {
-                      // Fan rotation: left books tilt left, right books tilt right
-                      const middleIndex = (numCovers - 1) / 2;
-                      const rotation = (idx - middleIndex) * FAN_ROTATION;
-                      // Z-index: center is highest, sides go down
-                      const distanceFromCenter = Math.abs(idx - middleIndex);
-                      const zIndex = numCovers - Math.floor(distanceFromCenter);
-                      // Scale: center is biggest, sides get smaller
-                      const scaleValue = 1 - (distanceFromCenter * 0.12);
-                      const coverSize = COVER_SIZE * scaleValue;
-                      // Vertical offset: center the smaller covers, then push sides down
-                      const sizeOffset = (COVER_SIZE - coverSize) / 2;
-                      const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
+                {author && (
+                  <Text style={styles.authorText} numberOfLines={1}>
+                    {author}
+                  </Text>
+                )}
 
-                      // Horizontal offset: account for size difference to center smaller covers
-                      const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
+                <Text style={styles.bookCountText}>
+                  {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
+                </Text>
 
-                      return (
-                        <Image
-                          key={idx}
-                          source={coverUrl}
-                          style={[
-                            styles.fanCover,
-                            {
-                              width: coverSize,
-                              height: coverSize,
-                              left: horizontalOffset,
-                              top: verticalOffset,
-                              zIndex,
-                              transform: [{ rotate: `${rotation}deg` }],
-                            },
-                          ]}
-                          contentFit="cover"
-                          transition={150}
-                        />
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <View style={[styles.fanPlaceholder, { backgroundColor: accent + '30' }]}>
-                    <Icon name="Library" size={40} color={accent} />
+                {/* Progress Row - only show if there's progress */}
+                {hasProgress && (
+                  <View style={styles.progressRow}>
+                    <View style={styles.progressDots}>
+                      {Array.from({ length: dotsToShow }).map((_, i) => {
+                        let status: 'completed' | 'in_progress' | 'not_started';
+                        if (i < progress.completed) {
+                          status = 'completed';
+                        } else if (i < progress.completed + progress.inProgress) {
+                          status = 'in_progress';
+                        } else {
+                          status = 'not_started';
+                        }
+                        return <ProgressDot key={i} status={status} accent={accent} accentDim={accentDim} />;
+                      })}
+                      {showMoreIndicator && (
+                        <Text style={[styles.moreText, { color: colors.text.tertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.progressCount, { color: accent }]}>
+                      {progress.completed}/{series.bookCount}
+                    </Text>
                   </View>
                 )}
-                {/* Complete badge */}
-                {isComplete && (
-                  <View style={[styles.completeBadge, { backgroundColor: accent }]}>
-                    <Icon name="Check" size={10} color="#000" />
-                  </View>
+
+                {/* Remaining time - only show if there's progress */}
+                {hasProgress && remainingDuration > 0 && (
+                  <Text style={styles.remainingText}>
+                    ~{formatDurationShort(remainingDuration)} left
+                  </Text>
                 )}
               </View>
 
-              <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>{series.name}</Text>
-
-              {/* Progress dots - only show if there's progress */}
-              {hasProgress && (
-                <View style={styles.progressRow}>
-                  <View style={styles.progressDots}>
-                    {Array.from({ length: dotsToShow }).map((_, i) => {
-                      let status: 'completed' | 'in_progress' | 'not_started';
-                      if (i < progress.completed) {
-                        status = 'completed';
-                      } else if (i < progress.completed + progress.inProgress) {
-                        status = 'in_progress';
-                      } else {
-                        status = 'not_started';
-                      }
-                      return <ProgressDot key={i} status={status} accent={accent} accentDim={accentDim} />;
-                    })}
-                    {showMoreIndicator && (
-                      <Text style={[styles.moreText, { color: themeColors.textTertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
-                    )}
+              {/* Right side: Color dots + complete badge + heart */}
+              <View style={styles.seriesCardRight}>
+                {/* Complete badge */}
+                {isComplete && (
+                  <View style={[styles.completeBadge, { backgroundColor: accent }]}>
+                    <Icon name="Check" size={10} color={colors.text.inverse} />
                   </View>
-                  <Text style={[styles.progressCount, { color: accent }]}>
-                    {progress.completed}/{series.bookCount}
-                  </Text>
+                )}
+
+                {/* Color Dots */}
+                <View style={styles.colorDotsRow}>
+                  {colorDots.map((color, index) => (
+                    <View
+                      key={`${index}-${color}`}
+                      style={[styles.colorDot, { backgroundColor: color }]}
+                    />
+                  ))}
                 </View>
-              )}
 
-              {/* Book count or remaining time */}
-              <Text style={[styles.bookCountText, { color: themeColors.textSecondary }]} numberOfLines={1}>
-                {hasProgress && remainingDuration > 0
-                  ? `~${formatDurationShort(remainingDuration)} left`
-                  : `${series.bookCount} ${series.bookCount === 1 ? 'book' : 'books'}`
-                }
-              </Text>
-
-            </TouchableOpacity>
+                {/* Heart button */}
+                <SeriesHeartButton
+                  seriesName={series.name}
+                  size={10}
+                  showCircle
+                  style={{ marginTop: 8 }}
+                />
+              </View>
+            </Pressable>
           );
         }}
-      />
+        />
+      </SkullRefreshControl>
     </View>
   );
 }
@@ -434,39 +410,6 @@ export function SeriesListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via themeColors.background in JSX
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  headerButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    // backgroundColor set via themeColors.border in JSX
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 40,
-  },
-  searchInput: {
-    flex: 1,
-    // color set via themeColors.text in JSX
-    fontSize: 15,
-    marginLeft: 8,
-    paddingVertical: 0,
-  },
-  clearButton: {
-    padding: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -474,7 +417,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    // color set via themeColors.textSecondary in JSX
     fontSize: 16,
   },
   sortBar: {
@@ -485,7 +427,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   resultCount: {
-    // color set via themeColors.textSecondary in JSX
     fontSize: 14,
   },
   sortButtons: {
@@ -499,82 +440,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    // backgroundColor set via themeColors.border in JSX
-  },
-  sortButtonActive: {
-    // backgroundColor set dynamically via accent in JSX
   },
   sortButtonText: {
     fontSize: 12,
-    // color set via themeColors.textSecondary in JSX
     fontWeight: '500',
   },
   sortButtonTextActive: {
-    color: '#000', // Intentional: black on gold
+    // color applied inline
   },
-  grid: {
+  list: {
     paddingHorizontal: PADDING,
   },
-  columnWrapper: {
-    gap: GAP,
-    marginBottom: GAP,
-  },
   seriesCard: {
-    width: CARD_WIDTH,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-  },
-  coverFan: {
-    height: COVER_SIZE + 10, // Extra space for rotation
-    marginBottom: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fanContainer: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     position: 'relative',
-    height: COVER_SIZE,
-    // width set dynamically based on number of covers
   },
-  fanCover: {
-    position: 'absolute',
-    width: COVER_SIZE,
-    height: COVER_SIZE,
-    borderRadius: 5,
-    backgroundColor: 'rgba(128,128,128,0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 1, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
+  cardLight: {
+    backgroundColor: secretLibraryColors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
   },
-  fanPlaceholder: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
-    borderRadius: 5,
-    // backgroundColor set dynamically via accent in JSX
-    justifyContent: 'center',
-    alignItems: 'center',
+  cardDark: {
+    backgroundColor: secretLibraryColors.black,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  seriesCardLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  seriesCardRight: {
+    alignItems: 'flex-end',
   },
   seriesName: {
-    fontSize: 15,
-    fontWeight: '600',
-    // color set via themeColors.text in JSX
-    lineHeight: 20,
-    textAlign: 'center',
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(17),
+    color: secretLibraryColors.black,
+    lineHeight: scale(22),
+    marginBottom: 4,
   },
-  heartButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
+  seriesNameDark: {
+    color: secretLibraryColors.white,
+  },
+  authorText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: secretLibraryColors.gray,
+    marginBottom: 2,
+  },
+  bookCountText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: secretLibraryColors.gray,
+  },
+  colorDotsRow: {
+    flexDirection: 'row',
+    gap: 3,
+    flexWrap: 'wrap',
+    marginTop: 8,
+    maxWidth: 100,
+  },
+  colorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
   },
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    marginBottom: 2,
     gap: 8,
+    marginTop: 6,
   },
   progressDots: {
     flexDirection: 'row',
@@ -582,36 +522,27 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   moreText: {
-    fontSize: 9,
-    // color set via themeColors.textTertiary in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(8),
     marginLeft: 2,
   },
   progressCount: {
-    fontSize: 10,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
     fontWeight: '600',
-    // color set dynamically via accent in JSX
   },
-  bookCountText: {
-    fontSize: 13,
-    // color set via themeColors.textSecondary in JSX
-    marginTop: 2,
-    textAlign: 'center',
+  remainingText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: secretLibraryColors.gray,
+    marginTop: 4,
   },
   completeBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
     width: 18,
     height: 18,
     borderRadius: 9,
-    // backgroundColor set dynamically via accent in JSX
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
+    marginBottom: 4,
   },
 });

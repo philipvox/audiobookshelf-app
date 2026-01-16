@@ -23,9 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueue, useQueueStore } from '../stores/queueStore';
 import { SwipeableQueueItem } from '../components/SwipeableQueueItem';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, spacing, radius, useThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.gold;
+import { scale, spacing, radius, useTheme, ACCENT } from '@/shared/theme';
 
 // Format duration to human readable
 function formatDuration(seconds: number): string {
@@ -40,7 +38,7 @@ function formatDuration(seconds: number): string {
 export function QueueScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const queue = useQueue();
   const removeFromQueue = useQueueStore((state) => state.removeFromQueue);
   const reorderQueue = useQueueStore((state) => state.reorderQueue);
@@ -113,29 +111,29 @@ export function QueueScreen() {
   // Empty state
   if (queue.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+      <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+        <StatusBar barStyle={colors.statusBar} backgroundColor={colors.background.primary} />
 
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <ChevronLeft size={scale(24)} color={themeColors.text} strokeWidth={2} />
+            <ChevronLeft size={scale(24)} color={colors.text.primary} strokeWidth={2} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Queue</Text>
+          <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Queue</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         {/* Empty State */}
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIcon, { backgroundColor: themeColors.border }]}>
-            <Headphones size={scale(48)} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <View style={[styles.emptyIcon, { backgroundColor: colors.border.default }]}>
+            <Headphones size={scale(48)} color={colors.text.tertiary} strokeWidth={1.5} />
           </View>
-          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Nothing in your queue</Text>
-          <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>Nothing in your queue</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.text.secondary }]}>
             Add books from your library to plan your listening journey.
           </Text>
           <TouchableOpacity style={styles.browseButton} onPress={handleBrowseLibrary}>
-            <Text style={styles.browseButtonText}>Browse Library</Text>
+            <Text style={[styles.browseButtonText, { color: colors.text.inverse }]}>Browse Library</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -143,22 +141,22 @@ export function QueueScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.background.primary} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(12) }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <ChevronLeft size={scale(24)} color={themeColors.text} strokeWidth={2} />
+          <ChevronLeft size={scale(24)} color={colors.text.primary} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Queue</Text>
+        <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Queue</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       {/* Stats Header */}
-      <View style={[styles.statsHeader, { backgroundColor: themeColors.border }]}>
+      <View style={[styles.statsHeader, { backgroundColor: colors.border.default }]}>
         <View style={styles.statsInfo}>
-          <Text style={[styles.statsText, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.statsText, { color: colors.text.secondary }]}>
             {queue.length} book{queue.length !== 1 ? 's' : ''} · {formatDuration(totalDuration)} total
           </Text>
         </View>
@@ -188,7 +186,7 @@ export function QueueScreen() {
         )}
         ListFooterComponent={
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: themeColors.textTertiary }]}>
+            <Text style={[styles.footerText, { color: colors.text.tertiary }]}>
               Swipe left to remove · Tap ▲ to play next
             </Text>
           </View>
@@ -201,7 +199,7 @@ export function QueueScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via themeColors.background in JSX
+    // backgroundColor set via colors.background.primary in JSX
   },
   header: {
     flexDirection: 'row',
@@ -219,7 +217,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: scale(18),
     fontWeight: '600',
-    // color set via themeColors.text in JSX
+    // color set via colors.text.primary in JSX
     textAlign: 'center',
   },
   headerSpacer: {
@@ -233,7 +231,7 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     marginHorizontal: scale(16),
     marginBottom: scale(8),
-    // backgroundColor set via themeColors.border in JSX
+    // backgroundColor set via colors.border.default in JSX
     borderRadius: scale(10),
   },
   statsInfo: {
@@ -241,7 +239,7 @@ const styles = StyleSheet.create({
   },
   statsText: {
     fontSize: scale(14),
-    // color set via themeColors.textSecondary in JSX
+    // color set via colors.text.secondary in JSX
   },
   clearButton: {
     paddingHorizontal: scale(12),
@@ -269,7 +267,7 @@ const styles = StyleSheet.create({
     width: scale(80),
     height: scale(80),
     borderRadius: scale(40),
-    // backgroundColor set via themeColors.border in JSX
+    // backgroundColor set via colors.border.default in JSX
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(20),
@@ -277,12 +275,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    // color set via themeColors.text in JSX
+    // color set via colors.text.primary in JSX
     marginBottom: scale(8),
   },
   emptySubtitle: {
     fontSize: scale(14),
-    // color set via themeColors.textSecondary in JSX
+    // color set via colors.text.secondary in JSX
     textAlign: 'center',
     lineHeight: scale(20),
     marginBottom: scale(24),
@@ -296,7 +294,7 @@ const styles = StyleSheet.create({
   browseButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#000', // Intentional: black text on gold accent
+    // color set via inline style with colors.text.inverse (black on gold accent)
   },
   footer: {
     alignItems: 'center',
@@ -304,6 +302,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: scale(12),
-    // color set via themeColors.textTertiary in JSX
+    // color set via colors.text.tertiary in JSX
   },
 });

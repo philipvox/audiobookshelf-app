@@ -13,7 +13,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Library } from 'lucide-react-native';
-import { radius, cardTokens, scale, useThemeColors } from '@/shared/theme';
+import { radius, cardTokens, scale, useTheme } from '@/shared/theme';
 
 interface StackedCoversProps {
   /** Cover URLs (first 2-3 will be used) */
@@ -44,7 +44,7 @@ export function StackedCovers({
   borderRadius = radius.sm,
   style,
 }: StackedCoversProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   // Memoize cover data with stable keys to prevent flickering
   const coverData = useMemo(() => {
     const result: Array<{ url: string; key: string }> = [];
@@ -65,8 +65,8 @@ export function StackedCovers({
   // If no covers, show placeholder
   if (count === 0) {
     return (
-      <View style={[styles.placeholder, { width: size, height: size, borderRadius, backgroundColor: themeColors.backgroundTertiary }, style]}>
-        <Library size={size * 0.4} color={themeColors.textTertiary} strokeWidth={1.5} />
+      <View style={[styles.placeholder, { width: size, height: size, borderRadius, backgroundColor: colors.background.tertiary }, style]}>
+        <Library size={size * 0.4} color={colors.text.tertiary} strokeWidth={1.5} />
       </View>
     );
   }
@@ -98,7 +98,7 @@ export function StackedCovers({
                 height: size * 1.5, // 2:3 aspect ratio
                 borderRadius,
                 zIndex: index, // Last cover on top
-                backgroundColor: themeColors.backgroundTertiary,
+                backgroundColor: colors.background.tertiary,
                 ...coverStyle,
               },
             ]}

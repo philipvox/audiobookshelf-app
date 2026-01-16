@@ -17,9 +17,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
 import { getSeriesNavigationInfo } from '@/core/cache';
-import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.gold;
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 
 interface SeriesNavigatorProps {
   book: LibraryItem;
@@ -60,7 +58,7 @@ function getSeriesFromMetadata(book: LibraryItem): {
 }
 
 export function SeriesNavigator({ book }: SeriesNavigatorProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
 
   // Get series info from book metadata (always available if book has series)
@@ -131,8 +129,8 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
       >
         {previousBook ? (
           <>
-            <ChevronLeft size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
-            <Text style={[styles.arrowText, { color: themeColors.textSecondary }]}>{getPreviousLabel()}</Text>
+            <ChevronLeft size={scale(16)} color={colors.text.secondary} strokeWidth={2} />
+            <Text style={[styles.arrowText, { color: colors.text.secondary }]}>{getPreviousLabel()}</Text>
           </>
         ) : (
           <View style={styles.arrowPlaceholder} />
@@ -148,10 +146,10 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
         accessibilityRole="button"
         accessibilityHint="Double tap to view series details"
       >
-        <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={1}>
+        <Text style={[styles.seriesName, { color: colors.text.primary }]} numberOfLines={1}>
           {seriesName}
         </Text>
-        <Text style={[styles.seriesPosition, { color: themeColors.textSecondary }]}>
+        <Text style={[styles.seriesPosition, { color: colors.text.secondary }]}>
           #{Math.floor(currentSequence)}{totalBooks > 0 ? ` of ${totalBooks}` : ''}
         </Text>
       </TouchableOpacity>
@@ -169,8 +167,8 @@ export function SeriesNavigator({ book }: SeriesNavigatorProps) {
       >
         {nextBook ? (
           <>
-            <Text style={[styles.arrowText, { color: themeColors.textSecondary }]}>{getNextLabel()}</Text>
-            <ChevronRight size={scale(16)} color={themeColors.textSecondary} strokeWidth={2} />
+            <Text style={[styles.arrowText, { color: colors.text.secondary }]}>{getNextLabel()}</Text>
+            <ChevronRight size={scale(16)} color={colors.text.secondary} strokeWidth={2} />
           </>
         ) : (
           <View style={styles.arrowPlaceholder} />

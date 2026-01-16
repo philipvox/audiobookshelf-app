@@ -43,7 +43,7 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      mode: 'light', // Default to light mode
+      mode: 'dark', // Default to dark mode
       accentTheme: 'red', // Default to classic red
 
       setMode: (mode: ThemeMode) => {

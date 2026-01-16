@@ -27,6 +27,7 @@ import Svg, {
   ClipPath,
   Image as SvgImage,
 } from 'react-native-svg';
+import { useTheme, accentColors } from '@/shared/theme';
 
 interface CassettePlayerProps {
   /** Cover image URL to display in the card */
@@ -86,6 +87,7 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
   scale: scaleProp = 1,
   hideControls = false,
 }) => {
+  const { colors } = useTheme();
   const isControlled = externalProgress !== undefined;
 
   const [internalProgress, setInternalProgress] = useState(0);
@@ -305,7 +307,7 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
                 d="M8.79 0C3.936 0 0 3.936 0 8.79V271.21C0 276.064 3.936 280 8.79 280H254.21C259.064 280 263 276.064 263 271.21V8.79C263 3.936 259.064 0 254.21 0H8.79ZM45.42 203C31.381 203 20 214.381 20 228.42C20 242.459 31.381 253.84 45.42 253.84H217.58C231.619 253.84 243 242.459 243 228.42C243 214.381 231.619 203 217.58 203H45.42Z"
                 fillRule="evenodd"
                 clipRule="evenodd"
-                fill="#3a3a3a"
+                fill={colors.background.tertiary}
               />
             </Svg>
           )}
@@ -522,44 +524,44 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
             <Pressable
               style={({ pressed }) => [
                 styles.controlBtn,
-                { width: s(53), height: s(56), borderRadius: s(5) },
-                pressed && styles.controlBtnPressed,
+                { width: s(53), height: s(56), borderRadius: s(5), backgroundColor: colors.surface.raised, borderColor: colors.border.light },
+                pressed && [styles.controlBtnPressed, { backgroundColor: colors.surface.card }],
               ]}
               onPressIn={startRewind}
               onPressOut={stopAll}
             >
               <Svg width={s(24)} height={s(24)} viewBox="0 0 24 24">
-                <Path d="M11 12L17 7v10l-6-5zm-6 0l6-5v10l-6-5z" fill="#ffffff" />
+                <Path d="M11 12L17 7v10l-6-5zm-6 0l6-5v10l-6-5z" fill={colors.icon.primary} />
               </Svg>
             </Pressable>
 
             <Pressable
               style={({ pressed }) => [
                 styles.controlBtn,
-                { width: s(53), height: s(56), borderRadius: s(5) },
-                pressed && styles.controlBtnPressed,
+                { width: s(53), height: s(56), borderRadius: s(5), backgroundColor: colors.surface.raised, borderColor: colors.border.light },
+                pressed && [styles.controlBtnPressed, { backgroundColor: colors.surface.card }],
               ]}
               onPressIn={startFastForward}
               onPressOut={stopAll}
             >
               <Svg width={s(24)} height={s(24)} viewBox="0 0 24 24">
-                <Path d="M13 12L7 17V7l6 5zm6 0l-6 5V7l6 5z" fill="#ffffff" />
+                <Path d="M13 12L7 17V7l6 5zm6 0l-6 5V7l6 5z" fill={colors.icon.primary} />
               </Svg>
             </Pressable>
 
             <Pressable
               style={({ pressed }) => [
                 styles.playBtn,
-                { width: s(53), height: s(56), borderRadius: s(5) },
-                pressed && styles.playBtnPressed,
+                { width: s(53), height: s(56), borderRadius: s(5), backgroundColor: colors.surface.card, borderColor: colors.border.default },
+                pressed && [styles.playBtnPressed, { backgroundColor: colors.surface.cardHover }],
               ]}
               onPress={togglePlay}
             >
               <Svg width={s(24)} height={s(24)} viewBox="0 0 24 24">
                 {isPlaying ? (
-                  <Path d="M6 4h4v16H6zm8 0h4v16h-4z" fill="#F4B60C" />
+                  <Path d="M6 4h4v16H6zm8 0h4v16h-4z" fill={colors.accent.primary} />
                 ) : (
-                  <Path d="M8 5v14l11-7z" fill="#F4B60C" />
+                  <Path d="M8 5v14l11-7z" fill={colors.accent.primary} />
                 )}
               </Svg>
             </Pressable>
@@ -567,7 +569,7 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
         )}
 
         {showControls && (
-          <Text style={[styles.status, { bottom: s(-30), fontSize: s(11) }]}>
+          <Text style={[styles.status, { bottom: s(-30), fontSize: s(11), color: colors.text.tertiary }]}>
             {status.toUpperCase()}
           </Text>
         )}
@@ -606,7 +608,7 @@ const styles = StyleSheet.create({
   placeholderCover: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#3a3a3a',
+    // backgroundColor set via themeColors in JSX
   },
 
   // Cassette area
@@ -654,26 +656,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   controlBtn: {
-    backgroundColor: 'rgba(38, 38, 38, 0.95)',
+    // backgroundColor and borderColor set via themeColors in JSX
     borderWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   controlBtnPressed: {
     transform: [{ scale: 0.95 }],
-    backgroundColor: 'rgba(50, 50, 50, 0.95)',
+    // backgroundColor set via themeColors in JSX
   },
   playBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    // backgroundColor and borderColor set via themeColors in JSX
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   playBtnPressed: {
     transform: [{ scale: 0.95 }],
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    // backgroundColor set via themeColors in JSX
   },
 
   // Status
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: '#666666',
+    // color set via themeColors in JSX
     letterSpacing: 2,
   },
 });

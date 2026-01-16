@@ -16,7 +16,7 @@ import {
 import { Icon } from '@/shared/components/Icon';
 import { formatDuration } from '@/shared/utils/format';
 import { shareWeeklyStats, shareStreak, shareMilestone } from '../services/shareService';
-import { wp, accentColors, useThemeColors } from '@/shared/theme';
+import { wp, accentColors, useTheme } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 
@@ -52,17 +52,17 @@ export function ShareStatsCard({
   allTimeStats,
   onClose,
 }: ShareStatsCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const cardRef = useRef<View>(null);
 
   // Share card colors (derived from theme)
   const COLORS = {
-    background: themeColors.backgroundTertiary,
+    background: colors.background.tertiary,
     cardGradientStart: '#16213E',
     cardGradientEnd: '#0F3460',
-    accent: accentColors.gold,
-    text: themeColors.text,
-    textSecondary: themeColors.textSecondary,
+    accent: colors.accent.primary,
+    text: colors.text.primary,
+    textSecondary: colors.text.secondary,
   };
 
   const handleShare = useCallback(async () => {

@@ -37,18 +37,15 @@ import { sqliteCache } from '@/core/services/sqliteCache';
 import { LibraryItem } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, scale, wp } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, wp, useTheme, ACCENT } from '@/shared/theme';
 
-// Type for the flat theme colors returned by useThemeColors()
-type FlatThemeColors = ReturnType<typeof useThemeColors>;
+// Type for the theme colors object structure
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
 import { Snackbar, useSnackbar, EmptyState } from '@/shared/components';
 
 // ============================================================================
 // DESIGN TOKENS - Base values, theme-specific colors passed via props/context
 // ============================================================================
-
-const ACCENT = accentColors.gold;
 
 // Static accent-related colors (not theme dependent)
 const STATIC_COLORS = {
@@ -60,17 +57,18 @@ const STATIC_COLORS = {
 };
 
 // Helper to create theme-aware COLORS object
-function createColors(themeColors: FlatThemeColors) {
+function createColors(themeColors: ThemeColors) {
   return {
     ...STATIC_COLORS,
-    background: themeColors.background,
-    storageFree: themeColors.border,
-    progressTrack: themeColors.border,
-    textPrimary: themeColors.text,
-    textSecondary: themeColors.textSecondary,
-    textTertiary: themeColors.textTertiary,
-    cardBackground: themeColors.border,
-    cardBorder: themeColors.border,
+    background: themeColors.background.primary,
+    storageFree: themeColors.border.default,
+    progressTrack: themeColors.border.default,
+    textPrimary: themeColors.text.primary,
+    textSecondary: themeColors.text.secondary,
+    textTertiary: themeColors.text.tertiary,
+    cardBackground: themeColors.border.default,
+    cardBorder: themeColors.border.default,
+    statusBar: themeColors.statusBar,
   };
 }
 
@@ -389,7 +387,7 @@ function SectionHeader({ title, count, actionLabel, onAction, actionColor, color
 export function DownloadsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors: themeColors } = useTheme();
   const colors = createColors(themeColors);
   const { downloads, deleteDownload, pauseDownload, resumeDownload, cancelDownload } = useDownloads();
 
@@ -547,7 +545,7 @@ export function DownloadsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>

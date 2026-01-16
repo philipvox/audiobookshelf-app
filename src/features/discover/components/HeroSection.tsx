@@ -18,8 +18,7 @@ import { Image } from 'expo-image';
 import { Play, Pause, Check, Download } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
-import { scale, spacing, radius, layout, elevation } from '@/shared/theme';
-import { useThemeColors, useColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, layout, elevation, useTheme } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { usePlayerStore } from '@/features/player';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
@@ -45,8 +44,7 @@ interface HeroSectionProps {
 
 export function HeroSection({ hero }: HeroSectionProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accentColor = colors.accent.primary;
   const loadBook = usePlayerStore((s) => s.loadBook);
   const play = usePlayerStore((s) => s.play);
@@ -210,7 +208,7 @@ export function HeroSection({ hero }: HeroSectionProps) {
                 <ActivityIndicator size="small" color="rgba(0,0,0,0.7)" />
               </View>
             ) : isDownloaded ? (
-              <Check size={scale(18)} color="#34C759" strokeWidth={2.5} />
+              <Check size={scale(18)} color={colors.feature.downloaded} strokeWidth={2.5} />
             ) : (
               <Download size={scale(20)} color="rgba(0,0,0,0.7)" strokeWidth={2} />
             )}
@@ -228,9 +226,9 @@ export function HeroSection({ hero }: HeroSectionProps) {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             {isCurrentlyPlaying ? (
-              <Pause size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
+              <Pause size={scale(18)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
             ) : (
-              <Play size={scale(18)} color="#000" fill="#000" strokeWidth={0} style={{ marginLeft: scale(2) }} />
+              <Play size={scale(18)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} style={{ marginLeft: scale(2) }} />
             )}
           </TouchableOpacity>
 
@@ -253,17 +251,17 @@ export function HeroSection({ hero }: HeroSectionProps) {
 
       {/* Title below cover - tappable */}
       <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
-        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
+        <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={2}>
           {book.title}
         </Text>
       </TouchableOpacity>
 
       {/* Credits row: Written by / Read by - tappable names */}
       <View style={styles.creditsRow}>
-        <Text style={[styles.creditText, { color: themeColors.textSecondary }]}>
+        <Text style={[styles.creditText, { color: colors.text.secondary }]}>
           Written by{' '}
           <Text
-            style={[styles.creditName, { color: themeColors.text }]}
+            style={[styles.creditName, { color: colors.text.primary }]}
             onPress={handleAuthorPress}
           >
             {book.author}
@@ -271,11 +269,11 @@ export function HeroSection({ hero }: HeroSectionProps) {
         </Text>
         {narrator && (
           <>
-            <View style={[styles.creditDivider, { backgroundColor: themeColors.border }]} />
-            <Text style={[styles.creditText, { color: themeColors.textSecondary }]}>
+            <View style={[styles.creditDivider, { backgroundColor: colors.border.default }]} />
+            <Text style={[styles.creditText, { color: colors.text.secondary }]}>
               Read by{' '}
               <Text
-                style={[styles.creditName, { color: themeColors.text }]}
+                style={[styles.creditName, { color: colors.text.primary }]}
                 onPress={handleNarratorPress}
               >
                 {narrator}

@@ -34,16 +34,14 @@ import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
 import { useWishlistStore, useIsOnWishlist } from '@/features/wishlist';
-import { scale, spacing, radius, accentColors } from '@/shared/theme';
-import { useColors, ThemeColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, accentColors, useTheme, colors, type ThemeColors } from '@/shared/theme';
 import type { LibraryItem } from '@/core/types';
 
 // Helper to extract semantic colors
 function getSemanticColors(c: ThemeColors) {
   return {
     error: c.semantic.error,
-    accent: accentColors.gold,
+    accent: colors.accent.primary,
   };
 }
 
@@ -64,32 +62,32 @@ interface MenuItemProps {
   onPress: () => void;
   variant?: 'default' | 'accent' | 'danger';
   disabled?: boolean;
-  themeColors: ReturnType<typeof useThemeColors>;
+  colors: ThemeColors;
   semanticColors: { error: string; accent: string };
 }
 
-function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', disabled, themeColors, semanticColors }: MenuItemProps) {
+function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', disabled, colors, semanticColors }: MenuItemProps) {
   const getIconColor = () => {
-    if (disabled) return themeColors.textTertiary;
+    if (disabled) return colors.text.tertiary;
     switch (variant) {
       case 'accent':
         return semanticColors.accent;
       case 'danger':
         return semanticColors.error;
       default:
-        return themeColors.text;
+        return colors.text.primary;
     }
   };
 
   const getTextColor = () => {
-    if (disabled) return themeColors.textTertiary;
+    if (disabled) return colors.text.tertiary;
     switch (variant) {
       case 'accent':
         return semanticColors.accent;
       case 'danger':
         return semanticColors.error;
       default:
-        return themeColors.text;
+        return colors.text.primary;
     }
   };
 
@@ -105,12 +103,12 @@ function MenuItem({ icon: Icon, label, sublabel, onPress, variant = 'default', d
       disabled={disabled}
       activeOpacity={0.7}
     >
-      <View style={[styles.menuItemIcon, { backgroundColor: themeColors.surfaceElevated }]}>
+      <View style={[styles.menuItemIcon, { backgroundColor: colors.background.elevated }]}>
         <Icon size={scale(20)} color={getIconColor()} strokeWidth={2} />
       </View>
       <View style={styles.menuItemContent}>
         <Text style={[styles.menuItemLabel, { color: getTextColor() }]}>{label}</Text>
-        {sublabel && <Text style={[styles.menuItemSublabel, { color: themeColors.textTertiary }]}>{sublabel}</Text>}
+        {sublabel && <Text style={[styles.menuItemSublabel, { color: colors.text.tertiary }]}>{sublabel}</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -123,9 +121,8 @@ export function BookContextMenu({
   onViewDetails,
   onPlay,
 }: BookContextMenuProps) {
-  const themeColors = useThemeColors();
-  const fullThemeColors = useColors();
-  const semanticColors = getSemanticColors(fullThemeColors);
+  const { colors } = useTheme();
+  const semanticColors = getSemanticColors(colors);
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -259,22 +256,22 @@ export function BookContextMenu({
             <Animated.View
               style={[
                 styles.sheet,
-                { paddingBottom: insets.bottom + spacing.md, backgroundColor: themeColors.surfaceElevated },
+                { paddingBottom: insets.bottom + spacing.md, backgroundColor: colors.background.elevated },
                 { transform: [{ translateY: slideAnim }] },
               ]}
             >
               {/* Handle bar */}
-              <View style={[styles.handleBar, { backgroundColor: themeColors.border }]} />
+              <View style={[styles.handleBar, { backgroundColor: colors.border.default }]} />
 
               {/* Book header */}
-              <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
-                <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.background }]} contentFit="cover" />
+              <View style={[styles.header, { borderBottomColor: colors.border.default }]}>
+                <Image source={coverUrl} style={[styles.cover, { backgroundColor: colors.background.primary }]} contentFit="cover" />
                 <View style={styles.headerInfo}>
-                  <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>{title}</Text>
-                  <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
+                  <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={2}>{title}</Text>
+                  <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>{author}</Text>
                 </View>
-                <TouchableOpacity style={[styles.closeButton, { backgroundColor: themeColors.backgroundSecondary }]} onPress={handleClose}>
-                  <X size={scale(20)} color={themeColors.textSecondary} strokeWidth={2} />
+                <TouchableOpacity style={[styles.closeButton, { backgroundColor: colors.background.secondary }]} onPress={handleClose}>
+                  <X size={scale(20)} color={colors.text.secondary} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
 
@@ -288,7 +285,7 @@ export function BookContextMenu({
                     sublabel="Start listening now"
                     onPress={handlePlay}
                     variant="accent"
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}
@@ -300,7 +297,7 @@ export function BookContextMenu({
                     label="Download"
                     sublabel="Save for offline listening"
                     onPress={handleDownload}
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}
@@ -311,7 +308,7 @@ export function BookContextMenu({
                     sublabel="Stop the current download"
                     onPress={handleCancelDownload}
                     variant="danger"
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}
@@ -322,7 +319,7 @@ export function BookContextMenu({
                     sublabel="Remove from device"
                     onPress={handleDeleteDownload}
                     variant="danger"
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}
@@ -335,7 +332,7 @@ export function BookContextMenu({
                     sublabel={isInQueue ? 'Already in your queue' : 'Listen to this next'}
                     onPress={handleQueueToggle}
                     variant={isInQueue ? 'accent' : 'default'}
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}
@@ -347,7 +344,7 @@ export function BookContextMenu({
                   sublabel={isOnWishlist ? 'Already saved' : 'Save for later'}
                   onPress={handleWishlistToggle}
                   variant={isOnWishlist ? 'accent' : 'default'}
-                  themeColors={themeColors}
+                  colors={colors}
                   semanticColors={semanticColors}
                 />
 
@@ -358,7 +355,7 @@ export function BookContextMenu({
                     label="View Details"
                     sublabel="See full book information"
                     onPress={handleViewDetails}
-                    themeColors={themeColors}
+                    colors={colors}
                     semanticColors={semanticColors}
                   />
                 )}

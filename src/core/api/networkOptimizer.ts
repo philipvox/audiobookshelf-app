@@ -187,7 +187,7 @@ async function withRetry<T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await requestFn();
-    } catch (error: any) {
+    } catch (error) {
       lastError = error;
 
       if (attempt === maxRetries || !retryOn(error)) {

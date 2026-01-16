@@ -109,16 +109,30 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
         clearInterval(sleepTimerInterval);
       }
 
-      let endTime = Date.now() + minutes * 60 * 1000;
+      // Set initial timer value
+      const initialSeconds = minutes * 60;
+      set({ sleepTimer: initialSeconds });
 
       // Track last remaining for warning detection
-      let lastRemaining = minutes * 60;
+      let lastRemaining = initialSeconds;
 
+      // IMPORTANT: Use state-based countdown, not fixed endTime
+      // This allows extendSleepTimer to work correctly by updating state
       const interval = setInterval(async () => {
-        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+        // Read current timer value from state (allows extensions to work)
+        const currentTimer = get().sleepTimer;
+        if (currentTimer === null) {
+          clearInterval(interval);
+          return;
+        }
+
+        // Decrement by 1 second
+        const remaining = Math.max(0, currentTimer - 1);
 
         if (remaining <= 0) {
           clearInterval(interval);
+
+          log('Sleep timer expired - calling onExpire callback');
 
           // Haptic feedback for timer expiration
           haptics.sleepTimerExpired();
@@ -160,7 +174,7 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
         }
       }, 1000);
 
-      set({ sleepTimer: minutes * 60, sleepTimerInterval: interval });
+      set({ sleepTimerInterval: interval });
     },
 
     extendSleepTimer: (minutes: number) => {

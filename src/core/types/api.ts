@@ -73,14 +73,37 @@ export interface SearchQuery {
 }
 
 /**
+ * Search result item wrappers (API returns wrapped objects)
+ */
+export interface BookSearchResult {
+  libraryItem: LibraryItem;
+  matchKey?: string;
+  matchText?: string;
+}
+
+export interface SeriesSearchResult {
+  series: Series;
+  books: BookSearchResult[];
+}
+
+export interface AuthorSearchResult {
+  id: string;
+  name: string;
+}
+
+export interface NarratorSearchResult {
+  name: string;
+}
+
+/**
  * Search results
  */
 export interface SearchResults {
-  book: LibraryItem[];
-  series: Series[];
-  authors: Author[];
-  tags: string[];
-  narrators: string[];
+  book?: BookSearchResult[];
+  series?: SeriesSearchResult[];
+  authors?: AuthorSearchResult[];
+  narrators?: NarratorSearchResult[];
+  tags?: string[];
 }
 
 /**

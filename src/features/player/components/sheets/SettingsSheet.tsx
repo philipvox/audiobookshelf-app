@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
 import { X, Moon, Gauge, Bookmark, Trash2 } from 'lucide-react-native';
-import { scale, spacing, layout, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, layout, useTheme } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { SPEED_QUICK_OPTIONS, SLEEP_QUICK_OPTIONS, SCREEN_WIDTH } from '../../constants/playerConstants';
 
@@ -42,7 +42,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   onOpenBookmarks,
   onClose,
 }) => {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   // Custom speed input state
   const isSpeedQuickOption = SPEED_QUICK_OPTIONS.includes(playbackRate);
   const [customSpeedInput, setCustomSpeedInput] = useState(
@@ -93,23 +93,23 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   }, [customSleepInput, setSleepTimer]);
 
   return (
-    <View style={[styles.sheet, { backgroundColor: themeColors.surfaceElevated }]}>
+    <View style={[styles.sheet, { backgroundColor: colors.background.elevated }]}>
       <View style={styles.sheetHeader}>
-        <Text style={[styles.sheetTitle, { color: themeColors.text }]}>Settings</Text>
+        <Text style={[styles.sheetTitle, { color: colors.text.primary }]}>Settings</Text>
         <TouchableOpacity onPress={onClose} style={styles.sheetClose}>
-          <X size={24} color={themeColors.text} strokeWidth={2} />
+          <X size={24} color={colors.text.primary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       {/* Progress Bar: Book/Chapter Toggle */}
       <View style={styles.settingsSection}>
-        <Text style={[styles.settingsSectionTitle, { color: themeColors.textTertiary }]}>Progress Bar</Text>
+        <Text style={[styles.settingsSectionTitle, { color: colors.text.tertiary }]}>Progress Bar</Text>
         <View style={styles.toggleRow}>
           <TouchableOpacity
             style={[
               styles.toggleOption,
-              { backgroundColor: themeColors.backgroundSecondary },
-              progressMode === 'book' && { backgroundColor: themeColors.text },
+              { backgroundColor: colors.background.secondary },
+              progressMode === 'book' && { backgroundColor: colors.text.primary },
             ]}
             onPress={() => {
               setProgressMode('book');
@@ -118,15 +118,15 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
           >
             <Text style={[
               styles.toggleOptionText,
-              { color: themeColors.textSecondary },
-              progressMode === 'book' && { color: themeColors.background, fontWeight: '600' },
+              { color: colors.text.secondary },
+              progressMode === 'book' && { color: colors.background.primary, fontWeight: '600' },
             ]}>Book</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.toggleOption,
-              { backgroundColor: themeColors.backgroundSecondary },
-              progressMode === 'chapter' && { backgroundColor: themeColors.text },
+              { backgroundColor: colors.background.secondary },
+              progressMode === 'chapter' && { backgroundColor: colors.text.primary },
             ]}
             onPress={() => {
               setProgressMode('chapter');
@@ -135,8 +135,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
           >
             <Text style={[
               styles.toggleOptionText,
-              { color: themeColors.textSecondary },
-              progressMode === 'chapter' && { color: themeColors.background, fontWeight: '600' },
+              { color: colors.text.secondary },
+              progressMode === 'chapter' && { color: colors.background.primary, fontWeight: '600' },
             ]}>Chapter</Text>
           </TouchableOpacity>
         </View>
@@ -145,9 +145,9 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       {/* Speed */}
       <View style={styles.settingsSection}>
         <View style={styles.settingsTitleRow}>
-          <Gauge size={16} color={themeColors.textTertiary} strokeWidth={2} />
-          <Text style={[styles.settingsSectionTitle, { marginBottom: 0, marginLeft: 6, color: themeColors.textTertiary }]}>Speed</Text>
-          <Text style={[styles.settingStatusText, { color: themeColors.text }]}>{playbackRate}x</Text>
+          <Gauge size={16} color={colors.text.tertiary} strokeWidth={2} />
+          <Text style={[styles.settingsSectionTitle, { marginBottom: 0, marginLeft: 6, color: colors.text.tertiary }]}>Speed</Text>
+          <Text style={[styles.settingStatusText, { color: colors.text.primary }]}>{playbackRate}x</Text>
         </View>
         <View style={styles.optionsRow}>
           {SPEED_QUICK_OPTIONS.map((speed) => (
@@ -155,8 +155,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
               key={speed}
               style={[
                 styles.quickOption,
-                { backgroundColor: themeColors.backgroundSecondary },
-                playbackRate === speed && { backgroundColor: themeColors.text },
+                { backgroundColor: colors.background.secondary },
+                playbackRate === speed && { backgroundColor: colors.text.primary },
               ]}
               onPress={() => {
                 setPlaybackRate(speed);
@@ -165,22 +165,22 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             >
               <Text style={[
                 styles.quickOptionText,
-                { color: themeColors.textSecondary },
-                playbackRate === speed && { color: themeColors.background, fontWeight: '600' },
+                { color: colors.text.secondary },
+                playbackRate === speed && { color: colors.background.primary, fontWeight: '600' },
               ]}>
                 {speed}x
               </Text>
             </TouchableOpacity>
           ))}
-          <View style={[styles.customInputContainer, { backgroundColor: themeColors.backgroundSecondary, borderColor: themeColors.border }]}>
+          <View style={[styles.customInputContainer, { backgroundColor: colors.background.secondary, borderColor: colors.border.default }]}>
             <TextInput
-              style={[styles.customInput, { color: themeColors.text }]}
+              style={[styles.customInput, { color: colors.text.primary }]}
               value={customSpeedInput}
               onChangeText={setCustomSpeedInput}
               onSubmitEditing={handleCustomSpeedSubmit}
               onBlur={handleCustomSpeedSubmit}
               placeholder="0.1-4"
-              placeholderTextColor={themeColors.textTertiary}
+              placeholderTextColor={colors.text.tertiary}
               keyboardType="decimal-pad"
               returnKeyType="done"
             />
@@ -191,9 +191,9 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       {/* Sleep Timer */}
       <View style={styles.settingsSection}>
         <View style={styles.settingsTitleRow}>
-          <Moon size={16} color={themeColors.textTertiary} strokeWidth={2} />
-          <Text style={[styles.settingsSectionTitle, { marginBottom: 0, marginLeft: 6, color: themeColors.textTertiary }]}>Sleep Timer</Text>
-          <Text style={[styles.settingStatusText, { color: sleepTimer ? accentColors.red : themeColors.text }]}>
+          <Moon size={16} color={colors.text.tertiary} strokeWidth={2} />
+          <Text style={[styles.settingsSectionTitle, { marginBottom: 0, marginLeft: 6, color: colors.text.tertiary }]}>Sleep Timer</Text>
+          <Text style={[styles.settingStatusText, { color: sleepTimer ? colors.accent.primary : colors.text.primary }]}>
             {sleepTimer ? `${Math.ceil(sleepTimer / 60)}m` : 'Off'}
           </Text>
           {sleepTimer && (
@@ -204,7 +204,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                 haptics.selection();
               }}
             >
-              <X size={14} color={accentColors.red} strokeWidth={2.5} />
+              <X size={14} color={colors.accent.primary} strokeWidth={2.5} />
             </TouchableOpacity>
           )}
         </View>
@@ -214,8 +214,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
               key={mins}
               style={[
                 styles.quickOption,
-                { backgroundColor: themeColors.backgroundSecondary },
-                sleepTimer !== null && Math.ceil(sleepTimer / 60) === mins ? { backgroundColor: themeColors.text } : undefined,
+                { backgroundColor: colors.background.secondary },
+                sleepTimer !== null && Math.ceil(sleepTimer / 60) === mins ? { backgroundColor: colors.text.primary } : undefined,
               ]}
               onPress={() => {
                 setSleepTimer(mins);
@@ -224,22 +224,22 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             >
               <Text style={[
                 styles.quickOptionText,
-                { color: themeColors.textSecondary },
-                sleepTimer !== null && Math.ceil(sleepTimer / 60) === mins ? { color: themeColors.background, fontWeight: '600' as const } : undefined,
+                { color: colors.text.secondary },
+                sleepTimer !== null && Math.ceil(sleepTimer / 60) === mins ? { color: colors.background.primary, fontWeight: '600' as const } : undefined,
               ]}>
                 {mins >= 60 ? `${mins / 60}h` : `${mins}m`}
               </Text>
             </TouchableOpacity>
           ))}
-          <View style={[styles.customInputContainer, { backgroundColor: themeColors.backgroundSecondary, borderColor: themeColors.border }]}>
+          <View style={[styles.customInputContainer, { backgroundColor: colors.background.secondary, borderColor: colors.border.default }]}>
             <TextInput
-              style={[styles.customInput, { color: themeColors.text }]}
+              style={[styles.customInput, { color: colors.text.primary }]}
               value={customSleepInput}
               onChangeText={setCustomSleepInput}
               onSubmitEditing={handleCustomSleepSubmit}
               onBlur={handleCustomSleepSubmit}
               placeholder="min"
-              placeholderTextColor={themeColors.textTertiary}
+              placeholderTextColor={colors.text.tertiary}
               keyboardType="number-pad"
               returnKeyType="done"
             />
@@ -250,23 +250,23 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       {/* Action Buttons - Stacked */}
       <View style={styles.settingsActionsColumn}>
         <TouchableOpacity
-          style={[styles.settingsActionButtonFull, { backgroundColor: themeColors.backgroundSecondary }]}
+          style={[styles.settingsActionButtonFull, { backgroundColor: colors.background.secondary }]}
           onPress={() => {
             haptics.selection();
             onOpenBookmarks();
           }}
         >
-          <Bookmark size={18} color={themeColors.text} strokeWidth={2} />
-          <Text style={[styles.settingsActionText, { color: themeColors.text }]}>Bookmarks</Text>
+          <Bookmark size={18} color={colors.text.primary} strokeWidth={2} />
+          <Text style={[styles.settingsActionText, { color: colors.text.primary }]}>Bookmarks</Text>
           {bookmarksCount > 0 && (
-            <View style={[styles.settingsActionBadge, { backgroundColor: themeColors.text }]}>
-              <Text style={[styles.settingsActionBadgeText, { color: themeColors.background }]}>{bookmarksCount}</Text>
+            <View style={[styles.settingsActionBadge, { backgroundColor: colors.text.primary }]}>
+              <Text style={[styles.settingsActionBadgeText, { color: colors.background.primary }]}>{bookmarksCount}</Text>
             </View>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.settingsActionButtonFull, { backgroundColor: themeColors.backgroundSecondary }, queueCount === 0 && styles.settingsActionButtonDisabled]}
+          style={[styles.settingsActionButtonFull, { backgroundColor: colors.background.secondary }, queueCount === 0 && styles.settingsActionButtonDisabled]}
           onPress={() => {
             if (queueCount > 0) {
               haptics.impact('medium');
@@ -274,13 +274,13 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             }
           }}
         >
-          <Trash2 size={18} color={queueCount > 0 ? themeColors.text : themeColors.textTertiary} strokeWidth={2} />
-          <Text style={[styles.settingsActionText, { color: themeColors.text }, queueCount === 0 && { color: themeColors.textTertiary }]}>
+          <Trash2 size={18} color={queueCount > 0 ? colors.text.primary : colors.text.tertiary} strokeWidth={2} />
+          <Text style={[styles.settingsActionText, { color: colors.text.primary }, queueCount === 0 && { color: colors.text.tertiary }]}>
             Clear Queue
           </Text>
           {queueCount > 0 && (
-            <View style={[styles.settingsActionBadge, { backgroundColor: themeColors.text }]}>
-              <Text style={[styles.settingsActionBadgeText, { color: themeColors.background }]}>{queueCount}</Text>
+            <View style={[styles.settingsActionBadge, { backgroundColor: colors.text.primary }]}>
+              <Text style={[styles.settingsActionBadgeText, { color: colors.background.primary }]}>{queueCount}</Text>
             </View>
           )}
         </TouchableOpacity>

@@ -16,7 +16,7 @@ import {
 import { AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react-native';
 import { errorService, wrapError } from './errorService';
 import { AppError } from './types';
-import { useThemeColors, ThemeColors, accentColors, scale, spacing } from '@/shared/theme';
+import { useTheme, accentColors, scale, spacing } from '@/shared/theme';
 
 
 interface ErrorBoundaryProps {
@@ -99,24 +99,24 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
  * Full-screen error view for screen-level errors
  */
 function ScreenErrorView({ error, onRetry }: { error: AppError; onRetry: () => void }) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.screenContainer, { backgroundColor: themeColors.background }]}>
-      <AlertCircle size={64} color={themeColors.error} strokeWidth={1.5} />
-      <Text style={[styles.screenTitle, { color: themeColors.text }]}>Something went wrong</Text>
-      <Text style={[styles.screenMessage, { color: themeColors.textSecondary }]}>{error.userMessage}</Text>
+    <View style={[styles.screenContainer, { backgroundColor: colors.background.primary }]}>
+      <AlertCircle size={64} color={colors.status.error} strokeWidth={1.5} />
+      <Text style={[styles.screenTitle, { color: colors.text.primary }]}>Something went wrong</Text>
+      <Text style={[styles.screenMessage, { color: colors.text.secondary }]}>{error.userMessage}</Text>
 
       <TouchableOpacity style={[styles.retryButton, { backgroundColor: accentColors.gold }]} onPress={onRetry}>
-        <RefreshCw size={20} color={themeColors.background} strokeWidth={2} />
-        <Text style={[styles.retryButtonText, { color: themeColors.background }]}>Try Again</Text>
+        <RefreshCw size={20} color={colors.background.primary} strokeWidth={2} />
+        <Text style={[styles.retryButtonText, { color: colors.background.primary }]}>Try Again</Text>
       </TouchableOpacity>
 
       {__DEV__ && (
-        <View style={[styles.devInfo, { backgroundColor: themeColors.surfaceElevated }]}>
-          <Text style={[styles.devText, { color: themeColors.textTertiary }]}>Code: {error.code}</Text>
-          <Text style={[styles.devText, { color: themeColors.textTertiary }]}>Category: {error.category}</Text>
-          <Text style={[styles.devText, { color: themeColors.textTertiary }]} numberOfLines={3}>
+        <View style={[styles.devInfo, { backgroundColor: colors.background.elevated }]}>
+          <Text style={[styles.devText, { color: colors.text.tertiary }]}>Code: {error.code}</Text>
+          <Text style={[styles.devText, { color: colors.text.tertiary }]}>Category: {error.category}</Text>
+          <Text style={[styles.devText, { color: colors.text.tertiary }]} numberOfLines={3}>
             {error.message}
           </Text>
         </View>
@@ -129,14 +129,14 @@ function ScreenErrorView({ error, onRetry }: { error: AppError; onRetry: () => v
  * Inline error view for component-level errors
  */
 function ComponentErrorView({ error, onRetry }: { error: AppError; onRetry: () => void }) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.componentContainer, { backgroundColor: `${themeColors.warning}15` }]}>
+    <View style={[styles.componentContainer, { backgroundColor: `${colors.status.warning}15` }]}>
       <View style={styles.componentContent}>
-        <AlertTriangle size={24} color={themeColors.warning} strokeWidth={2} />
+        <AlertTriangle size={24} color={colors.status.warning} strokeWidth={2} />
         <View style={styles.componentText}>
-          <Text style={[styles.componentMessage, { color: themeColors.textSecondary }]} numberOfLines={2}>
+          <Text style={[styles.componentMessage, { color: colors.text.secondary }]} numberOfLines={2}>
             {error.userMessage}
           </Text>
           <TouchableOpacity onPress={onRetry}>

@@ -22,7 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { getCoverUrl } from '@/core/cache';
-import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, useTheme } from '@/shared/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.85;
@@ -46,7 +46,7 @@ export function SwipeableBookCard({
   onSwipeLeft,
   onSwipeRight,
 }: SwipeableBookCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const rotation = useSharedValue(0);
@@ -125,7 +125,7 @@ export function SwipeableBookCard({
 
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View style={[styles.card, { backgroundColor: themeColors.backgroundSecondary }, cardStyle]}>
+      <Animated.View style={[styles.card, { backgroundColor: colors.background.secondary }, cardStyle]}>
         {/* Cover Image */}
         {coverUrl ? (
           <Image
@@ -134,7 +134,7 @@ export function SwipeableBookCard({
             contentFit="cover"
           />
         ) : (
-          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.backgroundSecondary }]}>
+          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: colors.background.secondary }]}>
             <Book
               size={scale(80)}
               color="rgba(255,255,255,0.3)"
@@ -151,16 +151,16 @@ export function SwipeableBookCard({
 
         {/* Book Info */}
         <View style={styles.info}>
-          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
+          <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={2}>
             {title}
           </Text>
           {authorName && (
-            <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
+            <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>
               {authorName}
             </Text>
           )}
           {seriesName && (
-            <Text style={[styles.series, { color: accentColors.gold }]} numberOfLines={1}>
+            <Text style={[styles.series, { color: colors.accent.primary }]} numberOfLines={1}>
               {seriesName}
             </Text>
           )}
@@ -168,16 +168,16 @@ export function SwipeableBookCard({
 
         {/* Swipe indicators */}
         <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
-          <View style={[styles.overlayBadge, { backgroundColor: accentColors.gold }]}>
-            <Check size={scale(40)} color="#000" strokeWidth={3} />
-            <Text style={styles.overlayText}>FINISHED</Text>
+          <View style={[styles.overlayBadge, { backgroundColor: colors.accent.primary }]}>
+            <Check size={scale(40)} color={colors.text.inverse} strokeWidth={3} />
+            <Text style={[styles.overlayText, { color: colors.text.inverse }]}>FINISHED</Text>
           </View>
         </Animated.View>
 
         <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayStyle]}>
           <View style={[styles.overlayBadge, styles.skipBadge]}>
-            <X size={scale(40)} color="#fff" strokeWidth={2.5} />
-            <Text style={[styles.overlayText, styles.skipText]}>SKIP</Text>
+            <X size={scale(40)} color={colors.text.primary} strokeWidth={2.5} />
+            <Text style={[styles.overlayText, styles.skipText, { color: colors.text.primary }]}>SKIP</Text>
           </View>
         </Animated.View>
       </Animated.View>
@@ -256,20 +256,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     transform: [{ rotate: '-15deg' }],
     borderWidth: 3,
-    borderColor: '#000',
+    borderColor: 'transparent', // Color set via theme in JSX
   },
   skipBadge: {
     backgroundColor: 'rgba(244, 67, 54, 0.9)',
-    borderColor: '#fff',
+    // borderColor set via theme in JSX
   },
   overlayText: {
     fontSize: scale(18),
     fontWeight: '800',
-    color: '#000',
+    // color set via theme in JSX
     marginTop: spacing.xs,
   },
   skipText: {
-    color: '#fff',
+    // color set via theme in JSX
   },
 });
 

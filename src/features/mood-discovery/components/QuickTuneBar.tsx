@@ -25,8 +25,7 @@ import {
   getTimeRemainingFromExpiry,
 } from '../stores/moodSessionStore';
 import { Icon } from '@/shared/components/Icon';
-import { spacing, radius, useThemeColors } from '@/shared/theme';
-import { useColors } from '@/shared/theme/themeStore';
+import { spacing, radius, useTheme, type ThemeColors } from '@/shared/theme';
 
 interface QuickTuneBarProps {
   /** Active session to display */
@@ -42,20 +41,20 @@ interface FilterChipProps {
   icon: string;
   iconSet: string;
   active?: boolean;
-  themeColors: ReturnType<typeof useThemeColors>;
+  colors: ThemeColors;
   accentColor: string;
   textOnAccent: string;
 }
 
-function FilterChip({ label, icon, iconSet, active = true, themeColors, accentColor, textOnAccent }: FilterChipProps) {
+function FilterChip({ label, icon, iconSet, active = true, colors, accentColor, textOnAccent }: FilterChipProps) {
   return (
     <View style={[styles.filterChip, active && { backgroundColor: accentColor }]}>
       <Icon
         name={icon as any}
         size={14}
-        color={active ? textOnAccent : themeColors.textSecondary}
+        color={active ? textOnAccent : colors.text.secondary}
       />
-      <Text style={[styles.filterChipLabel, { color: themeColors.textSecondary }, active && { color: textOnAccent }]}>
+      <Text style={[styles.filterChipLabel, { color: colors.text.secondary }, active && { color: textOnAccent }]}>
         {label}
       </Text>
     </View>
@@ -67,8 +66,7 @@ export function QuickTuneBar({
   onEditPress,
   onClear,
 }: QuickTuneBarProps) {
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accent = colors.accent.primary;
   const textOnAccent = colors.accent.textOnAccent;
   const { expiresAt, clearSession } = useSessionInfo();
@@ -106,7 +104,7 @@ export function QuickTuneBar({
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(200)}
-      style={[styles.container, { backgroundColor: themeColors.backgroundSecondary, borderColor: themeColors.border }]}
+      style={[styles.container, { backgroundColor: colors.background.secondary, borderColor: colors.border.default }]}
     >
       {/* Timer and Edit */}
       <View style={styles.header}>
@@ -114,9 +112,9 @@ export function QuickTuneBar({
           <Icon
             name="Clock"
             size={14}
-            color={themeColors.textTertiary}
+            color={colors.text.tertiary}
           />
-          <Text style={[styles.timerText, { color: themeColors.textTertiary }]}>
+          <Text style={[styles.timerText, { color: colors.text.tertiary }]}>
             {formatTimeRemaining(timeRemaining)}
           </Text>
         </View>
@@ -143,7 +141,7 @@ export function QuickTuneBar({
             <Icon
               name="XCircle"
               size={18}
-              color={themeColors.textTertiary}
+              color={colors.text.tertiary}
             />
           </TouchableOpacity>
         </View>
@@ -162,7 +160,7 @@ export function QuickTuneBar({
             icon={moodConfig.icon}
             iconSet={moodConfig.iconSet}
             active
-            themeColors={themeColors}
+            colors={colors}
             accentColor={accent}
             textOnAccent={textOnAccent}
           />
@@ -174,7 +172,7 @@ export function QuickTuneBar({
             label={paceConfig.label}
             icon={paceConfig.icon}
             iconSet={paceConfig.iconSet}
-            themeColors={themeColors}
+            colors={colors}
             accentColor={accent}
             textOnAccent={textOnAccent}
           />
@@ -186,7 +184,7 @@ export function QuickTuneBar({
             label={weightConfig.label}
             icon={weightConfig.icon}
             iconSet={weightConfig.iconSet}
-            themeColors={themeColors}
+            colors={colors}
             accentColor={accent}
             textOnAccent={textOnAccent}
           />
@@ -198,7 +196,7 @@ export function QuickTuneBar({
             label={worldConfig.label}
             icon={worldConfig.icon}
             iconSet={worldConfig.iconSet}
-            themeColors={themeColors}
+            colors={colors}
             accentColor={accent}
             textOnAccent={textOnAccent}
           />
@@ -210,7 +208,7 @@ export function QuickTuneBar({
             label={lengthConfig.label}
             icon={lengthConfig.icon}
             iconSet={lengthConfig.iconSet}
-            themeColors={themeColors}
+            colors={colors}
             accentColor={accent}
             textOnAccent={textOnAccent}
           />

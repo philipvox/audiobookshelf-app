@@ -15,8 +15,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { View, TextInput, Text, StyleSheet, Pressable, Animated } from 'react-native';
-import { scale, spacing, accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme';
+import { scale, spacing, accentColors, useTheme } from '@/shared/theme';
 
 // ============================================================================
 // CONSTANTS
@@ -59,7 +58,7 @@ export const PinInput: React.FC<PinInputProps> = ({
   disabled = false,
   error = false,
 }) => {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -114,10 +113,10 @@ export const PinInput: React.FC<PinInputProps> = ({
                 styles.cell,
                 {
                   backgroundColor: error
-                    ? `${themeColors.error}15`
+                    ? `${colors.status.error}15`
                     : isFilled
-                      ? `${accentColors.gold}20`
-                      : themeColors.border,
+                      ? `${colors.accent.primary}20`
+                      : colors.border.default,
                 },
                 isActive && styles.cellActive,
                 disabled && styles.cellDisabled,
@@ -128,11 +127,11 @@ export const PinInput: React.FC<PinInputProps> = ({
                   <View
                     style={[
                       styles.filledDot,
-                      { backgroundColor: error ? themeColors.error : accentColors.gold },
+                      { backgroundColor: error ? colors.status.error : colors.accent.primary },
                     ]}
                   />
                 ) : (
-                  <Text style={[styles.digitText, { color: themeColors.text }]}>
+                  <Text style={[styles.digitText, { color: colors.text.primary }]}>
                     {value[index]}
                   </Text>
                 )
@@ -142,10 +141,10 @@ export const PinInput: React.FC<PinInputProps> = ({
                     styles.emptyDot,
                     {
                       backgroundColor: error
-                        ? `${themeColors.error}50`
+                        ? `${colors.status.error}50`
                         : isActive
-                          ? accentColors.gold
-                          : themeColors.textTertiary,
+                          ? colors.accent.primary
+                          : colors.text.tertiary,
                     },
                     isActive && styles.emptyDotActive,
                   ]}

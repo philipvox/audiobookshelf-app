@@ -9,7 +9,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { scale, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, useTheme } from '@/shared/theme';
 
 interface InfoTilesProps {
   title: string;
@@ -29,33 +29,33 @@ interface InfoTilesProps {
 }
 
 // 8-bit pixel play icon component
-function PixelPlayIcon() {
+function PixelPlayIcon({ color }: { color: string }) {
   const pixelSize = scale(3);
   return (
     <View style={pixelPlayStyles.container}>
       {/* Row 1: 1 pixel */}
       <View style={pixelPlayStyles.row}>
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
       </View>
       {/* Row 2: 2 pixels */}
       <View style={pixelPlayStyles.row}>
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
       </View>
       {/* Row 3: 3 pixels */}
       <View style={pixelPlayStyles.row}>
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
       </View>
       {/* Row 4: 2 pixels */}
       <View style={pixelPlayStyles.row}>
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
       </View>
       {/* Row 5: 1 pixel */}
       <View style={pixelPlayStyles.row}>
-        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize }]} />
+        <View style={[pixelPlayStyles.pixel, { width: pixelSize, height: pixelSize, backgroundColor: color, shadowColor: color }]} />
       </View>
     </View>
   );
@@ -69,9 +69,8 @@ const pixelPlayStyles = StyleSheet.create({
     flexDirection: 'row',
   },
   pixel: {
-    backgroundColor: '#FFFFFF',
+    // backgroundColor and shadowColor set via props in JSX for theme support
     // Glow effect
-    shadowColor: '#FFFFFF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 2,
@@ -106,7 +105,7 @@ export function InfoTiles({
   seekDirection,
   isPlaying = false,
 }: InfoTilesProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   const formatSleepTimer = (minutes?: number | null): string => {
     if (minutes === null || minutes === undefined || minutes === 0) return '∞';
@@ -145,7 +144,7 @@ export function InfoTiles({
         </View>
         
         {/* Actual text layer */}
-        <Text style={[styles.titleText, { color: themeColors.text }]} numberOfLines={2}>
+        <Text style={[styles.titleText, { color: colors.text.primary }]} numberOfLines={2}>
           {title}
         </Text>
         <TouchableOpacity
@@ -157,8 +156,8 @@ export function InfoTiles({
           accessibilityRole="button"
           accessibilityHint="Double tap to view chapters"
         >
-          <Text style={[styles.chapterText, { color: themeColors.text }]}>{chapterLine1}</Text>
-          <Text style={[styles.chapterText, { color: themeColors.text }]}>{chapterLine2}</Text>
+          <Text style={[styles.chapterText, { color: colors.text.primary }]}>{chapterLine1}</Text>
+          <Text style={[styles.chapterText, { color: colors.text.primary }]}>{chapterLine2}</Text>
         </TouchableOpacity>
       </View>
 
@@ -176,13 +175,13 @@ export function InfoTiles({
           accessibilityRole="button"
         >
           {isSeeking && seekDelta !== undefined && seekDelta !== 0 ? (
-            <Text style={[styles.timeText, styles.seekDeltaText, { color: accentColors.gold }]}>
+            <Text style={[styles.timeText, styles.seekDeltaText, { color: colors.accent.primary }]}>
               {formatSeekDelta(seekDelta)}
             </Text>
           ) : (
-            <Text style={[styles.timeText, { color: themeColors.text }]}>{timeRemaining || '00:00:00'}</Text>
+            <Text style={[styles.timeText, { color: colors.text.primary }]}>{timeRemaining || '00:00:00'}</Text>
           )}
-          {isPlaying && !isSeeking && <PixelPlayIcon />}
+          {isPlaying && !isSeeking && <PixelPlayIcon color={colors.text.primary} />}
         </TouchableOpacity>
         <View style={styles.bottomRow}>
           <TouchableOpacity
@@ -192,7 +191,7 @@ export function InfoTiles({
             accessibilityRole="button"
             accessibilityHint="Double tap to change playback speed"
           >
-            <Text style={[styles.speedText, { color: themeColors.text }]}>{speedText}</Text>
+            <Text style={[styles.speedText, { color: colors.text.primary }]}>{speedText}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onSleepPress}
@@ -201,7 +200,7 @@ export function InfoTiles({
             accessibilityRole="button"
             accessibilityHint="Double tap to set sleep timer"
           >
-            <Text style={[styles.sleepTimerText, { color: accentColors.red }]}>{sleepTimerText}</Text>
+            <Text style={[styles.sleepTimerText, { color: colors.accent.primary }]}>{sleepTimerText}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -293,7 +292,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   seekDeltaText: {
-    // color set via accentColors.gold in JSX
+    // color set via colors.accent.primary in JSX
     textShadowColor: 'rgba(244, 182, 12, 1)',
   },
   bottomRow: {
@@ -316,7 +315,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PixelOperator',
     fontSize: scale(FONT_SIZE),
     fontWeight: '400',
-    // color set via accentColors.red in JSX
+    // color set via colors.accent.primary in JSX
     lineHeight: scale(LINE_HEIGHT),
     // Red glow for timer
     textShadowColor: 'rgba(241, 40, 2, 0.5)',

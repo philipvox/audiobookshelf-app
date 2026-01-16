@@ -8,7 +8,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Image, type ImageSource } from 'expo-image';
 import { X, Bookmark as BookmarkIcon, Play, Trash2 } from 'lucide-react-native';
-import { scale, spacing, layout, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, layout, useTheme } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { formatTime, formatBookmarkDate } from '../../utils/timeFormatters';
 import type { Bookmark } from '../../stores/bookmarksStore';
@@ -32,38 +32,38 @@ export const BookmarksSheet: React.FC<BookmarksSheetProps> = ({
   onEditBookmark,
   onDeleteBookmark,
 }) => {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.sheet, { backgroundColor: themeColors.surfaceElevated }]}>
+    <View style={[styles.sheet, { backgroundColor: colors.background.elevated }]}>
       <View style={styles.sheetHeader}>
         <TouchableOpacity
           onPress={onGoBack}
           style={styles.sheetBackButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={[styles.sheetBackText, { color: themeColors.textSecondary }]}>← Settings</Text>
+          <Text style={[styles.sheetBackText, { color: colors.text.secondary }]}>← Settings</Text>
         </TouchableOpacity>
-        <Text style={[styles.sheetTitle, { color: themeColors.text }]}>Bookmarks</Text>
+        <Text style={[styles.sheetTitle, { color: colors.text.primary }]}>Bookmarks</Text>
         <TouchableOpacity onPress={onClose} style={styles.sheetClose}>
-          <X size={24} color={themeColors.text} strokeWidth={2} />
+          <X size={24} color={colors.text.primary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
       <ScrollView style={styles.bookmarksScrollView} showsVerticalScrollIndicator={false}>
         {bookmarks.length === 0 ? (
           <View style={styles.bookmarksEmpty}>
-            <BookmarkIcon size={48} color={themeColors.textTertiary} strokeWidth={1.5} />
-            <Text style={[styles.bookmarksEmptyText, { color: themeColors.text }]}>No bookmarks yet</Text>
-            <Text style={[styles.bookmarksEmptySubtext, { color: themeColors.textSecondary }]}>
+            <BookmarkIcon size={48} color={colors.text.tertiary} strokeWidth={1.5} />
+            <Text style={[styles.bookmarksEmptyText, { color: colors.text.primary }]}>No bookmarks yet</Text>
+            <Text style={[styles.bookmarksEmptySubtext, { color: colors.text.secondary }]}>
               Tap the bookmark button while listening to save your place.
             </Text>
-            <Text style={[styles.bookmarksEmptyHint, { color: themeColors.textTertiary }]}>
+            <Text style={[styles.bookmarksEmptyHint, { color: colors.text.tertiary }]}>
               Perfect for favorite quotes, important passages, or where you left off.
             </Text>
           </View>
         ) : (
           bookmarks.map((bookmark) => (
-            <View key={bookmark.id} style={[styles.bookmarkCard, { backgroundColor: themeColors.backgroundSecondary }]}>
+            <View key={bookmark.id} style={[styles.bookmarkCard, { backgroundColor: colors.background.secondary }]}>
               {/* Main content - tap to play */}
               <TouchableOpacity
                 style={styles.bookmarkCardContent}
@@ -86,18 +86,18 @@ export const BookmarksSheet: React.FC<BookmarksSheetProps> = ({
                   />
                 )}
                 <View style={styles.bookmarkInfo}>
-                  <Text style={[styles.bookmarkChapter, { color: themeColors.text }]} numberOfLines={1}>
+                  <Text style={[styles.bookmarkChapter, { color: colors.text.primary }]} numberOfLines={1}>
                     {bookmark.chapterTitle || 'Unknown Chapter'}
                   </Text>
-                  <Text style={[styles.bookmarkTime, { color: accentColors.red }]}>
+                  <Text style={[styles.bookmarkTime, { color: colors.accent.primary }]}>
                     {formatTime(bookmark.time)}
                   </Text>
                   {bookmark.note && (
-                    <Text style={[styles.bookmarkNote, { color: themeColors.textSecondary }]} numberOfLines={2}>
+                    <Text style={[styles.bookmarkNote, { color: colors.text.secondary }]} numberOfLines={2}>
                       "{bookmark.note}"
                     </Text>
                   )}
-                  <Text style={[styles.bookmarkDate, { color: themeColors.textTertiary }]}>
+                  <Text style={[styles.bookmarkDate, { color: colors.text.tertiary }]}>
                     {formatBookmarkDate(bookmark.createdAt)}
                   </Text>
                 </View>
@@ -106,23 +106,23 @@ export const BookmarksSheet: React.FC<BookmarksSheetProps> = ({
               {/* Action buttons */}
               <View style={styles.bookmarkActions}>
                 <TouchableOpacity
-                  style={[styles.bookmarkPlayButton, { backgroundColor: themeColors.text }]}
+                  style={[styles.bookmarkPlayButton, { backgroundColor: colors.text.primary }]}
                   onPress={() => {
                     onSeekTo(bookmark.time);
                     haptics.selection();
                     onClose();
                   }}
                 >
-                  <Play size={16} color={themeColors.background} fill={themeColors.background} />
+                  <Play size={16} color={colors.background.primary} fill={colors.background.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.bookmarkDeleteButton, { backgroundColor: `${themeColors.text}10` }]}
+                  style={[styles.bookmarkDeleteButton, { backgroundColor: `${colors.text.primary}10` }]}
                   onPress={() => {
                     onDeleteBookmark(bookmark);
                     haptics.impact('light');
                   }}
                 >
-                  <Trash2 size={16} color={themeColors.textTertiary} />
+                  <Trash2 size={16} color={colors.text.tertiary} />
                 </TouchableOpacity>
               </View>
             </View>

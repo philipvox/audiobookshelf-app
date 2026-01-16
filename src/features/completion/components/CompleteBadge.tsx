@@ -9,9 +9,8 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Check, CheckCircle } from 'lucide-react-native';
 import { useIsComplete } from '../stores/completionStore';
-import { scale, accentColors } from '@/shared/theme';
+import { scale, useTheme, ACCENT } from '@/shared/theme';
 
-const ACCENT = accentColors.gold;
 
 interface CompleteBadgeProps {
   bookId: string;
@@ -27,6 +26,7 @@ interface CompleteBadgeProps {
  */
 export function CompleteBadge({ bookId, size = 'medium', style }: CompleteBadgeProps) {
   const isComplete = useIsComplete(bookId);
+  const { colors } = useTheme();
 
   if (!isComplete) {
     return null;
@@ -64,7 +64,7 @@ export function CompleteBadge({ bookId, size = 'medium', style }: CompleteBadgeP
         style,
       ]}
     >
-      <Check size={config.icon} color="#000" strokeWidth={3} />
+      <Check size={config.icon} color={colors.text.inverse} strokeWidth={3} />
     </View>
   );
 }
@@ -76,6 +76,7 @@ export function CompleteBadge({ bookId, size = 'medium', style }: CompleteBadgeP
  */
 export function CompleteBadgeOverlay({ bookId, size = 'medium', style }: CompleteBadgeProps) {
   const isComplete = useIsComplete(bookId);
+  const { colors } = useTheme();
 
   if (!isComplete) {
     return null;
@@ -109,7 +110,7 @@ export function CompleteBadgeOverlay({ bookId, size = 'medium', style }: Complet
           },
         ]}
       >
-        <CheckCircle size={config.icon} color={ACCENT} strokeWidth={2} />
+        <CheckCircle size={config.icon} color={colors.accent.primary} strokeWidth={2} />
       </View>
     </View>
   );
@@ -122,6 +123,7 @@ export function CompleteBadgeOverlay({ bookId, size = 'medium', style }: Complet
  */
 export function CompleteBanner({ bookId, style }: Omit<CompleteBadgeProps, 'size'>) {
   const isComplete = useIsComplete(bookId);
+  const { colors } = useTheme();
 
   if (!isComplete) {
     return null;
@@ -129,7 +131,7 @@ export function CompleteBanner({ bookId, style }: Omit<CompleteBadgeProps, 'size
 
   return (
     <View style={[styles.banner, style]}>
-      <CheckCircle size={scale(12)} color="#000" strokeWidth={2} />
+      <CheckCircle size={scale(12)} color={colors.text.inverse} strokeWidth={2} />
     </View>
   );
 }

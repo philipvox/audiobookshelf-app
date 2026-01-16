@@ -31,17 +31,34 @@ import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
-import { HeartButton, SeriesHeartButton, SearchResultsSkeleton, AuthorRowSkeleton } from '@/shared/components';
-import { BookCard } from '@/shared/components/BookCard';
-import { LibraryItem } from '@/core/types';
+import { HeartButton, SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon } from '@/shared/components';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
-import { useTheme, wp, spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
+import { wp, spacing, radius, scale, useSecretLibraryColors } from '@/shared/theme';
+import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
 import { filterForKidMode } from '@/shared/utils/kidModeFilter';
 import { logger } from '@/shared/utils/logger';
 import { useToast } from '@/shared/hooks/useToast';
+import { useBrowseCounts } from '@/features/browse';
+import { SeriesCard } from '@/features/browse/components/SeriesCard';
+import { QuickBrowseGrid, type QuickBrowseCategory } from '../components/QuickBrowseGrid';
+import { BookSimpleRow } from '../components/BookSimpleRow';
+import { SearchFilterSheet, type SearchFilterState, type AvailableFilters } from '../components/SearchFilterSheet';
+import { DURATION_RANGES, type DurationRangeId } from '@/features/browse/hooks/useBrowseCounts';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = spacing.sm;
@@ -64,30 +81,13 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Series card constants - fanned cover design (matches genre cards)
+// Series card constants
 const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
 const SERIES_COVER_WIDTH = 65;
 const SERIES_COVER_HEIGHT = 95;
-// Fanned cover dimensions matching SeriesListScreen
 const COVER_SIZE = 60;
-const FAN_OFFSET = 18;
-const FAN_ROTATION = 8;
-const FAN_VERTICAL_OFFSET = 6;
-const MAX_VISIBLE_BOOKS = 5;
 
 type SortOption = 'title' | 'author' | 'dateAdded' | 'duration';
-type FilterTab = 'all' | 'genres' | 'authors' | 'series' | 'duration';
-
-// Quick duration filters
-const DURATION_FILTERS = [
-  { label: 'Any', min: undefined, max: undefined },
-  { label: '< 5h', min: undefined, max: 5 },
-  { label: '5-10h', min: 5, max: 10 },
-  { label: '10-20h', min: 10, max: 20 },
-  { label: '20h+', min: 20, max: undefined },
-];
-
-// SeriesCard component is now defined inside SearchScreen to access styles
 
 type SearchScreenParams = {
   genre?: string;
@@ -100,20 +100,23 @@ export function SearchScreen() {
   const inputRef = useRef<TextInput>(null);
   const { loadBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
 
-  // Theme-aware colors
-  const { colors: themeColors } = useTheme();
-  const storeColors = useThemeColors();
+  // Theme-aware colors (Secret Library design system)
+  const colors = useSecretLibraryColors();
   const isDarkMode = useIsDarkMode();
-  const BG_COLOR = storeColors.background;
-  // In dark mode, use transparent/subtle backgrounds - content floats on black
-  const CARD_COLOR = isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5';
-  const SURFACE_ELEVATED = isDarkMode ? 'rgba(255,255,255,0.08)' : '#FFFFFF';
-  const colorsHook = useColors();
-  const ACCENT = colorsHook.accent.primary; // Dynamic accent from theme
-  const TEXT_PRIMARY = storeColors.text;
-  const TEXT_SECONDARY = storeColors.textSecondary;
-  const TEXT_TERTIARY = storeColors.textTertiary;
-  const BORDER_DEFAULT = storeColors.border;
+
+  // Map to legacy color names for compatibility with existing styles
+  const BG_COLOR = colors.white; // Main background (#FFFFFF light, #0f0f0f dark)
+  const CARD_COLOR = colors.grayLight; // Card backgrounds
+  const SURFACE_ELEVATED = colors.cream; // Elevated surfaces
+  const ACCENT = isDarkMode ? colors.white : colors.black; // Theme-aligned neutral accent (no red/gold)
+  const TEXT_PRIMARY = colors.black; // Primary text
+  const TEXT_SECONDARY = colors.gray; // Secondary text
+  const TEXT_TERTIARY = colors.textMuted; // Tertiary/muted text
+  const TEXT_INVERSE = colors.white; // Inverse text (on dark backgrounds)
+  const BORDER_DEFAULT = colors.grayLine; // Default border
+
+  // Browse counts for Quick Browse section
+  const browseCounts = useBrowseCounts();
 
   // Theme-aware styles
   const styles = useMemo(() => createStyles({
@@ -124,89 +127,14 @@ export function SearchScreen() {
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     TEXT_TERTIARY,
+    TEXT_INVERSE,
     BORDER_DEFAULT,
     isDarkMode,
-  }), [BG_COLOR, CARD_COLOR, SURFACE_ELEVATED, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY, BORDER_DEFAULT, isDarkMode]);
-
-  // SeriesCard component - fanned cover design (matches SeriesListScreen)
-  const SeriesCard = useCallback(({
-    series,
-    onPress,
-  }: {
-    series: { name: string; bookCount: number; books: LibraryItem[] };
-    onPress: () => void;
-  }) => {
-    const bookCovers = series.books.slice(0, MAX_VISIBLE_BOOKS).map(b => apiClient.getItemCoverUrl(b.id));
-    const numCovers = bookCovers.length;
-
-    return (
-      <TouchableOpacity
-        style={styles.seriesCard}
-        onPress={onPress}
-        activeOpacity={0.7}
-        accessibilityLabel={`${series.name}, ${series.bookCount} books`}
-        accessibilityRole="button"
-      >
-        {/* Heart button - top right */}
-        <SeriesHeartButton
-          seriesName={series.name}
-          size={10}
-          showCircle
-          style={styles.seriesHeartButton}
-        />
-
-        {/* Fanned cover stack */}
-        <View style={styles.coverFan}>
-          {numCovers > 0 ? (
-            <View style={[styles.fanContainer, { width: COVER_SIZE + (numCovers - 1) * FAN_OFFSET }]}>
-              {bookCovers.map((coverUrl, idx) => {
-                const middleIndex = (numCovers - 1) / 2;
-                const rotation = (idx - middleIndex) * FAN_ROTATION;
-                const distanceFromCenter = Math.abs(idx - middleIndex);
-                const zIndex = numCovers - Math.floor(distanceFromCenter);
-                const scaleValue = 1 - (distanceFromCenter * 0.12);
-                const coverSize = COVER_SIZE * scaleValue;
-                const sizeOffset = (COVER_SIZE - coverSize) / 2;
-                const verticalOffset = sizeOffset + (distanceFromCenter * FAN_VERTICAL_OFFSET);
-                const horizontalOffset = idx * FAN_OFFSET + sizeOffset;
-
-                return (
-                  <Image
-                    key={idx}
-                    source={coverUrl}
-                    style={[
-                      styles.fanCover,
-                      {
-                        width: coverSize,
-                        height: coverSize,
-                        left: horizontalOffset,
-                        top: verticalOffset,
-                        zIndex,
-                        transform: [{ rotate: `${rotation}deg` }],
-                      },
-                    ]}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.fanPlaceholder} />
-          )}
-        </View>
-
-        {/* Series Info */}
-        <Text style={styles.seriesName} numberOfLines={2}>{series.name}</Text>
-        <Text style={styles.seriesCount}>{series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}</Text>
-      </TouchableOpacity>
-    );
-  }, [styles]);
+  }), [BG_COLOR, CARD_COLOR, SURFACE_ELEVATED, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY, TEXT_INVERSE, BORDER_DEFAULT, isDarkMode]);
 
   // Search state
   const [query, setQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [activeFilterTab, setActiveFilterTab] = useState<FilterTab>('all');
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Debounced query for search (300ms delay per research)
@@ -224,8 +152,20 @@ export function SearchScreen() {
     return route.params?.genre ? [route.params.genre] : [];
   });
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
+  const [selectedNarrators, setSelectedNarrators] = useState<string[]>([]);
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
-  const [durationFilter, setDurationFilter] = useState<{ min?: number; max?: number }>({});
+  const [durationRangeId, setDurationRangeId] = useState<DurationRangeId | null>(null);
+
+  // Compute duration filter from range ID
+  const durationFilter = useMemo(() => {
+    if (!durationRangeId) return {};
+    const range = DURATION_RANGES.find((r) => r.id === durationRangeId);
+    if (!range) return {};
+    return {
+      min: range.min > 0 ? range.min / 3600 : undefined,
+      max: range.max < Infinity ? range.max / 3600 : undefined,
+    };
+  }, [durationRangeId]);
 
   // Sort state
   const [sortBy, setSortBy] = useState<SortOption>('title');
@@ -326,7 +266,7 @@ export function SearchScreen() {
 
   // Check if we have any active search/filters (use debounced for results)
   const hasActiveSearch = debouncedQuery.trim().length > 0 || selectedGenres.length > 0 ||
-    selectedAuthors.length > 0 || selectedSeries.length > 0 ||
+    selectedAuthors.length > 0 || selectedNarrators.length > 0 || selectedSeries.length > 0 ||
     durationFilter.min !== undefined || durationFilter.max !== undefined;
 
   // Filter book results with fuzzy matching
@@ -397,9 +337,8 @@ export function SearchScreen() {
     const books = filteredBooks
       .slice(0, 2)
       .map(book => {
-        const metadata = book.media?.metadata as any;
-        const media = book.media as any;
-        const duration = media?.duration || 0;
+        const metadata = getBookMetadata(book);
+        const duration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
         const hours = Math.floor(duration / 3600);
         const mins = Math.floor((duration % 3600) / 60);
         const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -462,24 +401,81 @@ export function SearchScreen() {
     let count = 0;
     if (selectedGenres.length > 0) count++;
     if (selectedAuthors.length > 0) count++;
+    if (selectedNarrators.length > 0) count++;
     if (selectedSeries.length > 0) count++;
-    if (durationFilter.min || durationFilter.max) count++;
+    if (durationRangeId !== null) count++;
     return count;
-  }, [selectedGenres, selectedAuthors, selectedSeries, durationFilter]);
+  }, [selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationRangeId]);
+
+  // Build available filters for the filter sheet
+  const availableFilters: AvailableFilters = useMemo(() => ({
+    genres: allGenres.map((g) => ({ id: g, name: g, count: 0 })),
+    authors: allAuthors.map((a) => ({ id: a.name, name: a.name, count: a.bookCount })),
+    narrators: allNarrators.map((n) => ({ id: n.name, name: n.name, count: n.bookCount })),
+    series: allSeries.map((s) => ({ id: s.name, name: s.name, count: s.bookCount })),
+  }), [allGenres, allAuthors, allNarrators, allSeries]);
+
+  // Current filter state for the filter sheet
+  const currentFilterState: SearchFilterState = useMemo(() => ({
+    genres: selectedGenres,
+    authors: selectedAuthors,
+    narrators: selectedNarrators,
+    series: selectedSeries,
+    duration: durationRangeId,
+    sortBy,
+    sortOrder,
+  }), [selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationRangeId, sortBy, sortOrder]);
+
+  // Handle filter sheet apply
+  const handleApplyFilters = useCallback((filters: SearchFilterState) => {
+    setSelectedGenres(filters.genres);
+    setSelectedAuthors(filters.authors);
+    setSelectedNarrators(filters.narrators);
+    setSelectedSeries(filters.series);
+    setDurationRangeId(filters.duration);
+    setSortBy(filters.sortBy);
+    setSortOrder(filters.sortOrder);
+  }, []);
 
   const handleBack = () => {
     navigation.goBack();
   };
 
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
+
   const handleClear = () => {
     setQuery('');
     setSelectedGenres([]);
     setSelectedAuthors([]);
+    setSelectedNarrators([]);
     setSelectedSeries([]);
-    setDurationFilter({});
+    setDurationRangeId(null);
     setHasCommittedSearch(false);
     inputRef.current?.focus();
   };
+
+  // Handle Quick Browse category press
+  const handleQuickBrowseCategory = useCallback((category: QuickBrowseCategory) => {
+    switch (category) {
+      case 'genres':
+        navigation.navigate('GenresList');
+        break;
+      case 'authors':
+        navigation.navigate('AuthorsList');
+        break;
+      case 'series':
+        navigation.navigate('SeriesList');
+        break;
+      case 'narrators':
+        navigation.navigate('NarratorsList');
+        break;
+      case 'duration':
+        navigation.navigate('DurationFilter');
+        break;
+    }
+  }, [navigation]);
 
   const handleSearch = () => {
     if (query.trim()) {
@@ -585,33 +581,6 @@ export function SearchScreen() {
     navigation.navigate('SeriesDetail', { seriesName });
   };
 
-  const toggleGenre = (genre: string) => {
-    setSelectedGenres(prev =>
-      prev.includes(genre) ? prev.filter(g => g !== genre) : [...prev, genre]
-    );
-  };
-
-  const toggleAuthor = (author: string) => {
-    setSelectedAuthors(prev =>
-      prev.includes(author) ? prev.filter(a => a !== author) : [...prev, author]
-    );
-  };
-
-  const toggleSeries = (series: string) => {
-    setSelectedSeries(prev =>
-      prev.includes(series) ? prev.filter(s => s !== series) : [...prev, series]
-    );
-  };
-
-  const handleSort = (option: SortOption) => {
-    if (sortBy === option) {
-      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(option);
-      setSortOrder('asc');
-    }
-  };
-
   // Get initials for avatar
   const getInitials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
@@ -619,187 +588,65 @@ export function SearchScreen() {
   const hasResults = bookResults.length > 0 || seriesResults.length > 0 ||
     authorResults.length > 0 || narratorResults.length > 0;
 
+  // Header colors based on theme
+  const headerBg = colors.isDark ? staticColors.black : staticColors.cream;
+  const headerIconColor = colors.isDark ? staticColors.white : staticColors.black;
+  const headerBorderColor = colors.isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle={storeColors.statusBar} backgroundColor={BG_COLOR} />
+    <View style={[styles.container, { backgroundColor: colors.white }]}>
+      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={headerBg} />
 
-      {/* Header - stays above autocomplete overlay */}
-      <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + 10, zIndex: 30, backgroundColor: BG_COLOR }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-        >
-          <Icon name="ChevronLeft" size={24} color={TEXT_PRIMARY} />
-        </TouchableOpacity>
+      {/* Safe area for top nav - matches theme */}
+      <View style={{ height: insets.top, backgroundColor: headerBg }} />
 
-        <View style={styles.searchContainer}>
-          <Icon name="Search" size={18} color={TEXT_TERTIARY} />
-          <TextInput
-            ref={inputRef}
-            style={styles.searchInput}
-            placeholder="Search books, authors, series..."
-            placeholderTextColor={TEXT_TERTIARY}
-            value={query}
-            onChangeText={(text) => {
-              setQuery(text);
-              setHasCommittedSearch(false);
-            }}
-            onSubmitEditing={handleSearch}
-            onFocus={handleInputFocus}
-            onBlur={handleInputBlur}
-            autoFocus
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Search"
-            accessibilityHint="Search books, authors, series, or narrators"
-          />
-          {(query.length > 0 || activeFilterCount > 0) && (
+      {/* TopNav with skull logo and integrated search bar - theme-aware */}
+      <TopNav
+        variant={colors.isDark ? 'dark' : 'light'}
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        includeSafeArea={false}
+        style={{ backgroundColor: headerBg, zIndex: 30 }}
+        circleButtons={[
+          {
+            key: 'back',
+            icon: <TopNavBackIcon color={headerIconColor} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+        searchBar={{
+          value: query,
+          onChangeText: (text) => {
+            setQuery(text);
+            setHasCommittedSearch(false);
+          },
+          placeholder: 'Search books, authors, series...',
+          onSubmitEditing: handleSearch,
+          onFocus: handleInputFocus,
+          onBlur: handleInputBlur,
+          autoFocus: true,
+          inputRef: inputRef as React.RefObject<TextInput>,
+          rightElement: (
             <TouchableOpacity
-              onPress={handleClear}
-              style={styles.clearButton}
-              accessibilityLabel="Clear search"
+              style={[
+                styles.filterButton,
+                { borderColor: headerBorderColor },
+                activeFilterCount > 0 && styles.filterButtonActive,
+              ]}
+              onPress={() => setShowFilterSheet(true)}
+              accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
               accessibilityRole="button"
             >
-              <Icon name="XCircle" size={18} color={TEXT_TERTIARY} />
+              <Icon name="SlidersHorizontal" size={18} color={activeFilterCount > 0 ? (colors.isDark ? staticColors.black : staticColors.white) : headerIconColor} />
+              {activeFilterCount > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.filterButton, showFilters && styles.filterButtonActive]}
-          onPress={() => setShowFilters(!showFilters)}
-          accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: showFilters }}
-        >
-          <Icon name="Settings" size={20} color={showFilters ? '#000' : TEXT_PRIMARY} />
-          {activeFilterCount > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Panel */}
-      {showFilters && (
-        <View style={styles.filterPanel}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs}>
-            {(['all', 'genres', 'authors', 'series', 'duration'] as FilterTab[]).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.filterTab, activeFilterTab === tab && styles.filterTabActive]}
-                onPress={() => setActiveFilterTab(tab)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: activeFilterTab === tab }}
-                accessibilityLabel={tab.charAt(0).toUpperCase() + tab.slice(1)}
-              >
-                <Text style={[styles.filterTabText, activeFilterTab === tab && styles.filterTabTextActive]}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {activeFilterTab === 'all' && (
-            <View style={styles.sortSection}>
-              <Text style={styles.sortLabel}>Sort by:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {(['title', 'author', 'dateAdded', 'duration'] as SortOption[]).map(option => (
-                  <TouchableOpacity
-                    key={option}
-                    style={[styles.sortChip, sortBy === option && styles.sortChipActive]}
-                    onPress={() => handleSort(option)}
-                  >
-                    <Text style={[styles.sortChipText, sortBy === option && styles.sortChipTextActive]}>
-                      {option === 'dateAdded' ? 'Date' : option.charAt(0).toUpperCase() + option.slice(1)}
-                    </Text>
-                    {sortBy === option && (
-                      <Icon name={sortOrder === 'asc' ? 'ArrowUp' : 'ArrowDown'} size={12} color="#000" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {activeFilterTab === 'genres' && (
-            <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.chipGrid}>
-                {allGenres.map(genre => (
-                  <TouchableOpacity
-                    key={genre}
-                    style={[styles.chip, selectedGenres.includes(genre) && styles.chipActive]}
-                    onPress={() => toggleGenre(genre)}
-                  >
-                    <Text style={[styles.chipText, selectedGenres.includes(genre) && styles.chipTextActive]}>
-                      {genre}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          )}
-
-          {activeFilterTab === 'authors' && (
-            <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.chipGrid}>
-                {allAuthors.slice(0, 50).map(author => (
-                  <TouchableOpacity
-                    key={author.name}
-                    style={[styles.chip, selectedAuthors.includes(author.name) && styles.chipActive]}
-                    onPress={() => toggleAuthor(author.name)}
-                  >
-                    <Text style={[styles.chipText, selectedAuthors.includes(author.name) && styles.chipTextActive]}>
-                      {author.name} ({author.bookCount})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          )}
-
-          {activeFilterTab === 'series' && (
-            <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.chipGrid}>
-                {allSeries.slice(0, 50).map(series => (
-                  <TouchableOpacity
-                    key={series.name}
-                    style={[styles.chip, selectedSeries.includes(series.name) && styles.chipActive]}
-                    onPress={() => toggleSeries(series.name)}
-                  >
-                    <Text style={[styles.chipText, selectedSeries.includes(series.name) && styles.chipTextActive]}>
-                      {series.name} ({series.bookCount})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          )}
-
-          {activeFilterTab === 'duration' && (
-            <View style={styles.durationFilters}>
-              {DURATION_FILTERS.map((df, idx) => {
-                const isActive = durationFilter.min === df.min && durationFilter.max === df.max;
-                return (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[styles.durationChip, isActive && styles.durationChipActive]}
-                    onPress={() => setDurationFilter({ min: df.min, max: df.max })}
-                  >
-                    <Text style={[styles.durationChipText, isActive && styles.durationChipTextActive]}>
-                      {df.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      )}
+          ),
+        }}
+      />
 
       {/* Autocomplete Overlay (with author thumbnails for enhanced discoverability) */}
       {showAutocomplete && (
@@ -807,7 +654,7 @@ export function SearchScreen() {
           {/* Darkened background per Baymard research */}
           <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} />
 
-          <View style={[styles.autocompleteContainer, { top: insets.top + TOP_NAV_HEIGHT + 10 + 44 + 12 }]}>
+          <View style={[styles.autocompleteContainer, { top: insets.top + 64 }]}>
             {/* Books */}
             {autocompleteSuggestions.books.length > 0 && (
               <View style={styles.autocompleteSectionContainer}>
@@ -981,30 +828,11 @@ export function SearchScreen() {
               </View>
             )}
 
-            {/* Quick browse section */}
-            <View style={styles.quickBrowse}>
-              <Text style={styles.quickBrowseTitle}>Quick Browse</Text>
-              <View style={styles.quickBrowseRow}>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('GenresList')}>
-                  <Icon name="Layers" size={24} color={ACCENT} />
-                  <Text style={styles.quickBrowseItemText}>Genres</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('AuthorsList')}>
-                  <Icon name="User" size={24} color={ACCENT} />
-                  <Text style={styles.quickBrowseItemText}>Authors</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.quickBrowseRow}>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('SeriesList')}>
-                  <Icon name="Library" size={24} color={ACCENT} />
-                  <Text style={styles.quickBrowseItemText}>Series</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBrowseItem} onPress={() => navigation.navigate('NarratorList')}>
-                  <Icon name="Mic" size={24} color={ACCENT} />
-                  <Text style={styles.quickBrowseItemText}>Narrators</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            {/* Quick browse grid */}
+            <QuickBrowseGrid
+              onCategoryPress={handleQuickBrowseCategory}
+              onBrowsePagePress={() => navigation.navigate('BrowsePage')}
+            />
           </View>
         )}
 
@@ -1058,6 +886,13 @@ export function SearchScreen() {
                   <Icon name="Library" size={20} color={ACCENT} />
                   <Text style={styles.browseRecoveryText}>Series</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.browseRecoveryItem}
+                  onPress={() => navigation.navigate('DurationFilter')}
+                >
+                  <Icon name="Clock" size={20} color={ACCENT} />
+                  <Text style={styles.browseRecoveryText}>Duration</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -1077,44 +912,67 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Books</Text>
               {bookResults.length > 5 && (
-                <Text style={styles.sectionCount}>{bookResults.length} results</Text>
+                <TouchableOpacity>
+                  <Text style={styles.viewAllText}>VIEW ALL</Text>
+                </TouchableOpacity>
               )}
             </View>
             <View>
-              {bookResults.slice(0, 5).map(book => (
-                <BookCard
-                  key={book.id}
-                  book={book}
-                  onPress={() => handleBookPress(book)}
-                  onPlayPress={() => handlePlayBook(book)}
-                  showListeningProgress={false}
-                  layout="search"
-                  showPlayOverlay={true}
-                />
-              ))}
+              {bookResults.slice(0, 10).map((book, index) => {
+                const metadata = getBookMetadata(book);
+                const duration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
+                const subtitle = metadata?.authorName || metadata?.authors?.[0]?.name || '';
+                return (
+                  <BookSimpleRow
+                    key={book.id}
+                    id={book.id}
+                    title={metadata?.title || 'Unknown'}
+                    subtitle={subtitle}
+                    duration={duration}
+                    showSeparator={index < bookResults.slice(0, 10).length - 1}
+                    onPress={() => handleBookPress(book)}
+                  />
+                );
+              })}
             </View>
           </View>
         )}
 
-        {/* Series Section (top 2 with fanned covers) */}
+        {/* Series Section (text-based list with color dots) */}
         {hasActiveSearch && seriesResults.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Series</Text>
-              {seriesResults.length > 2 && (
+              {seriesResults.length > 3 && (
                 <TouchableOpacity onPress={() => navigation.navigate('SeriesList')}>
-                  <Text style={styles.viewAllText}>View All</Text>
+                  <Text style={styles.viewAllText}>VIEW ALL</Text>
                 </TouchableOpacity>
               )}
             </View>
-            <View style={styles.seriesRow}>
-              {seriesResults.slice(0, 2).map(series => (
-                <SeriesCard
-                  key={series.name}
-                  series={series}
-                  onPress={() => handleSeriesPress(series.name)}
-                />
-              ))}
+            <View>
+              {seriesResults.slice(0, 5).map((series, index) => {
+                const firstBook = series.books?.[0];
+                const metadata = firstBook?.media?.metadata as BookMetadata | undefined;
+                const authorName = metadata?.authorName || metadata?.authors?.[0]?.name || '';
+                const bookIds = series.books?.map((b) => b.id) || [];
+                const isLast = index >= seriesResults.slice(0, 5).length - 1;
+
+                return (
+                  <View key={series.name}>
+                    <SeriesCard
+                      name={series.name}
+                      bookCount={series.bookCount}
+                      author={authorName}
+                      bookIds={bookIds}
+                      layout="list"
+                      onPress={() => handleSeriesPress(series.name)}
+                    />
+                    {!isLast && (
+                      <View style={styles.seriesSeparator} />
+                    )}
+                  </View>
+                );
+              })}
             </View>
           </View>
         )}
@@ -1198,6 +1056,16 @@ export function SearchScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Filter Sheet Modal */}
+      <SearchFilterSheet
+        visible={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        filters={currentFilterState}
+        onApply={handleApplyFilters}
+        availableFilters={availableFilters}
+        resultCount={bookResults.length}
+      />
     </View>
   );
 }
@@ -1211,6 +1079,7 @@ interface ThemeColors {
   TEXT_PRIMARY: string;
   TEXT_SECONDARY: string;
   TEXT_TERTIARY: string;
+  TEXT_INVERSE: string;
   BORDER_DEFAULT: string;
   isDarkMode: boolean;
 }
@@ -1221,18 +1090,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.BG_COLOR,
   },
-  header: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     gap: 8,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     flex: 1,
@@ -1256,13 +1119,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   filterButton: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5',
+    borderRadius: 18,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    // borderColor set dynamically in JSX based on theme
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterButtonActive: {
-    backgroundColor: colors.ACCENT,
+    backgroundColor: colors.isDarkMode ? '#FFFFFF' : '#000000',
+    borderColor: colors.isDarkMode ? '#FFFFFF' : '#000000',
   },
   filterBadge: {
     position: 'absolute',
@@ -1310,7 +1176,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '500',
   },
   filterTabTextActive: {
-    color: '#000',
+    color: colors.TEXT_INVERSE,
   },
   filterContent: {
     maxHeight: 150,
@@ -1339,7 +1205,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
   },
   chipTextActive: {
-    color: '#000',
+    color: colors.TEXT_INVERSE,
   },
   sortSection: {
     flexDirection: 'row',
@@ -1373,7 +1239,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
   },
   sortChipTextActive: {
-    color: '#000',
+    color: colors.TEXT_INVERSE,
   },
   durationFilters: {
     flexDirection: 'row',
@@ -1399,7 +1265,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '500',
   },
   durationChipTextActive: {
-    color: '#000',
+    color: colors.TEXT_INVERSE,
   },
 
   // Results
@@ -1431,7 +1297,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   viewAllText: {
     color: colors.TEXT_TERTIARY,
-    fontSize: 14,
+    textTransform: 'uppercase',
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    letterSpacing: 0.5,
+  },
+  seriesSeparator: {
+    height: 1,
+    backgroundColor: colors.BORDER_DEFAULT,
+    marginHorizontal: 24,
   },
   emptyStateContainer: {
     paddingHorizontal: PADDING,
@@ -1493,11 +1367,26 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   quickBrowse: {
     marginTop: 8,
   },
+  quickBrowseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   quickBrowseTitle: {
     color: colors.TEXT_PRIMARY,
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  quickBrowseViewAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  quickBrowseViewAllText: {
+    color: colors.ACCENT,
+    fontSize: 13,
+    fontWeight: '500',
   },
   quickBrowseRow: {
     flexDirection: 'row',
@@ -1517,6 +1406,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.TEXT_SECONDARY,
     fontSize: 13,
     marginTop: 8,
+  },
+  quickBrowseItemCount: {
+    color: colors.TEXT_TERTIARY,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  quickBrowseItemEmpty: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
 
   // Series row with fanned covers (matches genre cards)
@@ -1608,7 +1506,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.BORDER_DEFAULT,
   },
   entityAvatarText: {
-    color: '#000',
+    color: colors.TEXT_INVERSE,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -1695,7 +1593,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.ACCENT,
   },
   autocompleteThumbnailInitials: {
-    color: '#000000',
+    color: colors.TEXT_INVERSE,
     fontSize: 12,
     fontWeight: '700',
   },

@@ -26,7 +26,7 @@ import {
   typography,
   scale,
   iconSizes,
-  useThemeColors,
+  useTheme,
   accentColors,
 } from '@/shared/theme';
 
@@ -104,8 +104,8 @@ export function EmptyState({
   fullScreen = true,
   style,
 }: EmptyStateProps) {
-  const themeColors = useThemeColors();
-  const iconColor = themeColors.textTertiary;
+  const { colors } = useTheme();
+  const iconColor = colors.text.tertiary;
 
   const renderIcon = () => {
     if (typeof icon === 'string') {
@@ -130,26 +130,26 @@ export function EmptyState({
   };
 
   return (
-    <View style={[styles.container, fullScreen && styles.fullScreen, { backgroundColor: fullScreen ? themeColors.backgroundSecondary : 'transparent' }, style]}>
+    <View style={[styles.container, fullScreen && styles.fullScreen, { backgroundColor: fullScreen ? colors.background.secondary : 'transparent' }, style]}>
       <View style={styles.iconContainer}>
         {renderIcon()}
       </View>
 
-      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
 
       {description && (
-        <Text style={[styles.description, { color: themeColors.textTertiary }]}>{description}</Text>
+        <Text style={[styles.description, { color: colors.text.tertiary }]}>{description}</Text>
       )}
 
       {(actionTitle && onAction) && (
-        <Pressable style={[styles.actionButton, { backgroundColor: accentColors.gold }]} onPress={onAction}>
-          <Text style={[styles.actionButtonText, { color: themeColors.background }]}>{actionTitle}</Text>
+        <Pressable style={[styles.actionButton, { backgroundColor: colors.accent.primary }]} onPress={onAction}>
+          <Text style={[styles.actionButtonText, { color: colors.background.primary }]}>{actionTitle}</Text>
         </Pressable>
       )}
 
       {(secondaryActionTitle && onSecondaryAction) && (
         <Pressable style={styles.secondaryButton} onPress={onSecondaryAction}>
-          <Text style={[styles.secondaryButtonText, { color: themeColors.textSecondary }]}>{secondaryActionTitle}</Text>
+          <Text style={[styles.secondaryButtonText, { color: colors.text.secondary }]}>{secondaryActionTitle}</Text>
         </Pressable>
       )}
     </View>

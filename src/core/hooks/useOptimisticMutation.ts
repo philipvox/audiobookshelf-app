@@ -9,6 +9,22 @@
 import { useMutation, useQueryClient, QueryKey, MutationOptions } from '@tanstack/react-query';
 import { queryKeys } from '@/core/queryClient';
 
+// Context type for rollback support
+interface RollbackContext<TData> {
+  previousData: TData | undefined;
+}
+
+// Book reference in a collection
+interface CollectionBookRef {
+  id: string;
+}
+
+// Collection data for cache updates
+interface CollectionData {
+  id: string;
+  books?: CollectionBookRef[];
+}
+
 interface OptimisticMutationOptions<TData, TVariables, TContext> {
   // The mutation function that calls the API
   mutationFn: (variables: TVariables) => Promise<TData>;
@@ -63,8 +79,9 @@ export function useOptimisticMutation<TData, TVariables, TContext = { previousDa
     // On error: rollback to previous data
     onError: (error: Error, variables: TVariables, context: TContext | undefined) => {
       // Rollback to the previous value
-      if (context && (context as any).previousData !== undefined) {
-        queryClient.setQueryData(options.queryKey, (context as any).previousData);
+      const rollbackContext = context as RollbackContext<TData> | undefined;
+      if (rollbackContext && rollbackContext.previousData !== undefined) {
+        queryClient.setQueryData(options.queryKey, rollbackContext.previousData);
       }
 
       options.onError?.(error, variables, context);
@@ -144,8 +161,10 @@ export function useOptimisticCollection() {
     mutationFn: async (variables: { collectionId: string; itemId: string }) => {
       const { apiClient } = await import('@/core/api');
       const collection = await apiClient.getCollection(variables.collectionId);
-      const updatedBooks = [...(collection.books || []), { id: variables.itemId }];
-      return apiClient.updateCollection(variables.collectionId, { books: updatedBooks as any });
+      const existingBooks = (collection.books || []) as CollectionBookRef[];
+      const updatedBooks: CollectionBookRef[] = [...existingBooks, { id: variables.itemId }];
+      // API accepts book IDs for updates, even though it returns full LibraryItem[]
+      return apiClient.updateCollection(variables.collectionId, { books: updatedBooks as unknown as import('@/core/types').LibraryItem[] });
     },
 
     onMutate: async (variables) => {
@@ -154,7 +173,7 @@ export function useOptimisticCollection() {
       const previousCollections = queryClient.getQueryData(queryKeys.collections.all);
 
       // Optimistically add item to collection
-      queryClient.setQueryData(queryKeys.collections.all, (old: any[] | undefined) => {
+      queryClient.setQueryData(queryKeys.collections.all, (old: CollectionData[] | undefined) => {
         if (!old) return old;
         return old.map((collection) => {
           if (collection.id === variables.collectionId) {
@@ -185,8 +204,10 @@ export function useOptimisticCollection() {
     mutationFn: async (variables: { collectionId: string; itemId: string }) => {
       const { apiClient } = await import('@/core/api');
       const collection = await apiClient.getCollection(variables.collectionId);
-      const updatedBooks = (collection.books || []).filter((b: any) => b.id !== variables.itemId);
-      return apiClient.updateCollection(variables.collectionId, { books: updatedBooks as any });
+      const existingBooks = (collection.books || []) as CollectionBookRef[];
+      const updatedBooks: CollectionBookRef[] = existingBooks.filter((b) => b.id !== variables.itemId);
+      // API accepts book IDs for updates, even though it returns full LibraryItem[]
+      return apiClient.updateCollection(variables.collectionId, { books: updatedBooks as unknown as import('@/core/types').LibraryItem[] });
     },
 
     onMutate: async (variables) => {
@@ -195,13 +216,13 @@ export function useOptimisticCollection() {
       const previousCollections = queryClient.getQueryData(queryKeys.collections.all);
 
       // Optimistically remove item from collection
-      queryClient.setQueryData(queryKeys.collections.all, (old: any[] | undefined) => {
+      queryClient.setQueryData(queryKeys.collections.all, (old: CollectionData[] | undefined) => {
         if (!old) return old;
         return old.map((collection) => {
           if (collection.id === variables.collectionId) {
             return {
               ...collection,
-              books: (collection.books || []).filter((b: any) => b.id !== variables.itemId),
+              books: (collection.books || []).filter((b) => b.id !== variables.itemId),
             };
           }
           return collection;

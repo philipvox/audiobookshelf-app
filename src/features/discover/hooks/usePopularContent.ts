@@ -6,10 +6,26 @@
  */
 
 import { useMemo } from 'react';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { MoodSession } from '@/features/mood-discovery/types';
 import { ContentRow, BookSummary } from '../types';
 import { ONE_WEEK_MS, SHORT_BOOK_THRESHOLD, LONG_BOOK_THRESHOLD, getMoodCategoryTitle } from './discoverUtils';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
+
+// Helper to get book duration
+function getBookDuration(item: LibraryItem): number {
+  return isBookMedia(item.media) ? item.media.duration || 0 : 0;
+}
+
+// Helper to get book metadata
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 
 interface UsePopularContentProps {
   libraryItems: LibraryItem[];
@@ -58,7 +74,7 @@ export function usePopularContent(props: UsePopularContentProps) {
   const shortBooksRow = useMemo((): ContentRow | null => {
     if (!isLoaded || !libraryItems.length) return null;
     const filtered = libraryItems
-      .filter(item => { const d = (item.media as any)?.duration || 0; return d > 0 && d < SHORT_BOOK_THRESHOLD; })
+      .filter(item => { const d = getBookDuration(item); return d > 0 && d < SHORT_BOOK_THRESHOLD; })
       .filter(item => !isFinished(item.id)).filter(isSeriesAppropriate).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     const items = processItems(filtered);
     if (!items) return null;
@@ -72,9 +88,9 @@ export function usePopularContent(props: UsePopularContentProps) {
   const longBooksRow = useMemo((): ContentRow | null => {
     if (!isLoaded || !libraryItems.length) return null;
     const filtered = libraryItems
-      .filter(item => ((item.media as any)?.duration || 0) >= LONG_BOOK_THRESHOLD)
+      .filter(item => getBookDuration(item) >= LONG_BOOK_THRESHOLD)
       .filter(item => !isFinished(item.id)).filter(isSeriesAppropriate)
-      .sort((a, b) => ((b.media as any)?.duration || 0) - ((a.media as any)?.duration || 0));
+      .sort((a, b) => getBookDuration(b) - getBookDuration(a));
     const items = processItems(filtered);
     if (!items) return null;
     return { id: 'long_listens', type: 'first_listens', title: getTitle('Long Listens', 'Epic Journeys'),
@@ -101,7 +117,7 @@ export function usePopularContent(props: UsePopularContentProps) {
     if (!isLoaded || !libraryItems.length || !inProgressItems.length) return null;
     const seriesProgress = new Map<string, number>();
     for (const item of inProgressItems) {
-      const series = (item.media?.metadata as any)?.series?.[0];
+      const series = getBookMetadata(item)?.series?.[0];
       if (series?.name && series?.sequence) {
         const seq = parseFloat(series.sequence) || 0;
         if (!seriesProgress.has(series.name) || seq > seriesProgress.get(series.name)!) {
@@ -112,8 +128,8 @@ export function usePopularContent(props: UsePopularContentProps) {
     if (!seriesProgress.size) return null;
     let nextBooks = Array.from(seriesProgress.entries()).map(([name, maxSeq]) =>
       libraryItems.find(item => {
-        const s = (item.media?.metadata as any)?.series?.[0];
-        return s?.name === name && (parseFloat(s.sequence) || 0) > maxSeq && !isFinished(item.id);
+        const s = getBookMetadata(item)?.series?.[0];
+        return s?.name === name && (parseFloat(s.sequence || '0') || 0) > maxSeq && !isFinished(item.id);
       })
     ).filter((item): item is LibraryItem => !!item);
     if (hasMoodSession && moodSession) nextBooks = filterByMood(nextBooks, 20);

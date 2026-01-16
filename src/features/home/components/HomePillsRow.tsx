@@ -13,7 +13,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { List } from 'lucide-react-native';
+import { ListIcon } from '@/shared/components';
 import { wp, moderateScale, radius } from '@/shared/theme';
 import { useColors } from '@/shared/theme/themeStore';
 import { useQueueCount } from '@/features/queue/stores/queueStore';
@@ -111,10 +111,9 @@ export function HomePillsRow({
             : 'Queue is empty'}
           accessibilityRole="button"
         >
-          <List
+          <ListIcon
             size={ICON_SIZE}
             color={hasQueueItems ? colors.text.accent : colors.text.primary}
-            strokeWidth={2}
           />
           {hasQueueItems && (
             <Text style={[styles.pillText, { color: colors.text.accent }]}>

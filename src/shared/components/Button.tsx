@@ -23,9 +23,8 @@ import {
   typography,
   elevation,
   scale,
-  useThemeColors,
+  useTheme,
 } from '@/shared/theme';
-import { useColors } from '@/shared/theme/themeStore';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type ButtonSize = 'small' | 'medium' | 'large';
@@ -66,8 +65,7 @@ export function Button({
   noHaptics = false,
   accessibilityLabel,
 }: ButtonProps) {
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accentColor = colors.accent.primary;
   const textOnAccent = colors.accent.textOnAccent;
   const isDisabled = disabled || loading;
@@ -90,9 +88,9 @@ export function Button({
         };
       case 'secondary':
         return {
-          backgroundColor: themeColors.surfaceElevated,
-          borderColor: themeColors.border,
-          textColor: themeColors.text,
+          backgroundColor: colors.background.elevated,
+          borderColor: colors.border.default,
+          textColor: colors.text.primary,
         };
       case 'outline':
         return {
@@ -108,9 +106,9 @@ export function Button({
         };
       case 'danger':
         return {
-          backgroundColor: themeColors.error,
+          backgroundColor: colors.semantic.error,
           borderColor: 'transparent',
-          textColor: '#FFFFFF',
+          textColor: colors.text.inverse,
         };
       default:
         return {

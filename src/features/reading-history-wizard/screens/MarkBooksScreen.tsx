@@ -57,7 +57,7 @@ import { useLibraryCache, getAllAuthors, getAllSeries } from '@/core/cache/libra
 import { useQueueStore } from '@/features/queue/stores/queueStore';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { useTheme, accentColors, wp, hp, moderateScale, spacing } from '@/shared/theme';
+import { useTheme, accentColors, wp, hp, moderateScale, spacing, ACCENT, colors } from '@/shared/theme';
 
 // =============================================================================
 // LAYOUT CONSTANTS (from spec)
@@ -99,6 +99,7 @@ interface ThemeColorsConfig {
   textSecondary: string;
   textTertiary: string;
   textHint: string;
+  textInverse: string;
   surface: string;
   surfaceBorder: string;
   success: string;
@@ -379,9 +380,9 @@ function ActionButtons({
           onPress={() => handlePress(onFinished)}
         >
           {cardType === 'book' ? (
-            <Check size={wp(7)} color="#000000" strokeWidth={3} />
+            <Check size={wp(7)} color={COLORS.textInverse} strokeWidth={3} />
           ) : (
-            <ArrowRight size={wp(7)} color="#000000" strokeWidth={2.5} />
+            <ArrowRight size={wp(7)} color={COLORS.textInverse} strokeWidth={2.5} />
           )}
         </TouchableOpacity>
       </View>
@@ -546,9 +547,9 @@ function SwipeCard({
 
   // Badge colors
   const badgeColors: Record<CardType, { bg: string; text: string }> = {
-    book: { bg: COLORS.badgeBook, text: '#000000' },
-    author: { bg: COLORS.badgeAuthor, text: '#FFFFFF' },
-    series: { bg: COLORS.badgeSeries, text: '#FFFFFF' },
+    book: { bg: COLORS.badgeBook, text: COLORS.textInverse },
+    author: { bg: COLORS.badgeAuthor, text: COLORS.textPrimary },
+    series: { bg: COLORS.badgeSeries, text: COLORS.textPrimary },
   };
 
   const overlayText = card.type === 'book' ? '✓ FINISHED' : '→ VIEW';
@@ -652,7 +653,7 @@ function EmptyState({
   return (
     <Animated.View style={styles.emptyState} entering={FadeIn.duration(300)}>
       <View style={styles.emptyIconContainer}>
-        <PartyPopper size={moderateScale(48)} color={accentColors.primary} strokeWidth={1.5} />
+        <PartyPopper size={moderateScale(48)} color={colors.accent.primary} strokeWidth={1.5} />
       </View>
       <Text style={styles.emptyTitle}>
         {viewLevel === 'top' ? 'All caught up!' : 'Section complete!'}
@@ -691,19 +692,20 @@ export function MarkBooksScreen() {
   // Theme-aware colors
   const { colors: themeColors } = useTheme();
   const COLORS: ThemeColorsConfig = useMemo(() => ({
-    accent: accentColors.gold,
-    accentDim: 'rgba(243, 182, 12, 0.15)',
+    accent: colors.accent.primary,
+    accentDim: themeColors.accent.primarySubtle,
     textPrimary: themeColors.text.primary,
     textSecondary: themeColors.text.secondary,
     textTertiary: themeColors.text.tertiary,
-    textHint: 'rgba(255, 255, 255, 0.35)',
+    textHint: themeColors.text.disabled,
+    textInverse: themeColors.text.inverse,
     surface: themeColors.surface.default,
     surfaceBorder: themeColors.border.default,
     success: themeColors.semantic.success,
     info: themeColors.semantic.info,
-    skip: 'rgba(255, 255, 255, 0.3)',
-    badgeBook: accentColors.gold,
-    badgeAuthor: '#8B5CF6',
+    skip: themeColors.text.disabled,
+    badgeBook: themeColors.accent.primary,
+    badgeAuthor: '#8B5CF6', // Feature-specific purple - kept as-is
     badgeSeries: themeColors.semantic.info,
     background: themeColors.background.primary,
   }), [themeColors]);
@@ -1386,7 +1388,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   },
   tabTextActive: {
     fontWeight: '600',
-    color: '#000000',
+    color: COLORS.textInverse,
   },
 
   // Card Container
@@ -1490,7 +1492,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   swipeOverlayText: {
     fontSize: moderateScale(24),
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -1587,7 +1589,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   undoBadgeText: {
     fontSize: moderateScale(9),
     fontWeight: '700',
-    color: '#000000',
+    color: COLORS.textInverse,
   },
   hintsRow: {
     flexDirection: 'row',
@@ -1630,7 +1632,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   emptyButtonPrimaryText: {
     fontSize: moderateScale(16),
     fontWeight: '600',
-    color: '#000000',
+    color: COLORS.textInverse,
   },
   emptyButtonSecondary: {
     marginTop: hp(2),
@@ -1651,22 +1653,24 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
 });
 
 // Default dark theme colors (used by helper components outside main component)
+// These match the dark theme values from colors.ts
 const COLORS: ThemeColorsConfig = {
-  accent: accentColors.gold,
-  accentDim: 'rgba(243, 182, 12, 0.15)',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-  textHint: 'rgba(255, 255, 255, 0.35)',
-  surface: '#1C1C1E',
-  surfaceBorder: 'rgba(255, 255, 255, 0.1)',
-  success: '#34C759',
-  info: '#0A84FF',
-  skip: 'rgba(255, 255, 255, 0.3)',
-  badgeBook: accentColors.gold,
-  badgeAuthor: '#8B5CF6',
-  badgeSeries: '#0A84FF',
-  background: '#000000',
+  accent: ACCENT,
+  accentDim: 'rgba(229, 57, 53, 0.15)', // matches darkColors.accent.primarySubtle
+  textPrimary: '#FFFFFF', // matches darkColors.text.primary
+  textSecondary: 'rgba(255, 255, 255, 0.7)', // matches darkColors.text.secondary
+  textTertiary: 'rgba(255, 255, 255, 0.5)', // matches darkColors.text.tertiary
+  textHint: 'rgba(255, 255, 255, 0.3)', // matches darkColors.text.disabled
+  textInverse: '#000000', // matches darkColors.text.inverse
+  surface: '#1A1A1A', // matches darkColors.surface.default
+  surfaceBorder: 'rgba(255, 255, 255, 0.1)', // matches darkColors.border.default
+  success: '#66BB6A', // matches darkColors.semantic.success
+  info: '#42A5F5', // matches darkColors.semantic.info
+  skip: 'rgba(255, 255, 255, 0.3)', // matches darkColors.text.disabled
+  badgeBook: ACCENT,
+  badgeAuthor: '#8B5CF6', // Feature-specific purple - kept as-is
+  badgeSeries: '#42A5F5', // matches darkColors.semantic.info
+  background: '#000000', // matches darkColors.background.primary
 };
 
 // Default styles (used by helper components outside main component)

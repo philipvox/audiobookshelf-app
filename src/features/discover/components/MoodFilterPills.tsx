@@ -18,8 +18,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '@/shared/components/Icon';
-import { scale, layout, radius, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, layout, radius, spacing, useTheme } from '@/shared/theme';
 import {
   MoodSession,
   MOODS,
@@ -49,6 +48,7 @@ interface FilterChipProps {
   icon: string;
   iconSet?: string;
   active?: boolean;
+  activeColor?: string;
   onPress?: () => void;
 }
 
@@ -87,9 +87,13 @@ function formatFullTime(ms: number): string {
 // SUB-COMPONENTS
 // ============================================================================
 
-function FilterChip({ label, icon, active = false }: FilterChipProps) {
+function FilterChip({ label, icon, active = false, activeColor }: FilterChipProps) {
+  // These pills are on a dark/transparent overlay, so text is always white for visibility
   return (
-    <View style={[styles.filterChip, active && styles.filterChipActive]}>
+    <View style={[
+      styles.filterChip,
+      active && activeColor && { backgroundColor: activeColor, borderColor: activeColor }
+    ]}>
       <Icon
         name={icon as any}
         size={16}
@@ -112,7 +116,7 @@ export function MoodFilterPills({
   onClear,
 }: MoodFilterPillsProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { expiresAt, clearSession } = useSessionInfo();
   const [showTimerPopup, setShowTimerPopup] = useState(false);
 
@@ -284,27 +288,27 @@ export function MoodFilterPills({
           style={styles.modalOverlay}
           onPress={() => setShowTimerPopup(false)}
         >
-          <View style={[styles.timerPopup, { backgroundColor: themeColors.backgroundSecondary }]}>
-            <View style={[styles.timerPopupIcon, { backgroundColor: 'rgba(0, 0, 0, 0.08)' }]}>
+          <View style={[styles.timerPopup, { backgroundColor: colors.background.secondary }]}>
+            <View style={[styles.timerPopupIcon, { backgroundColor: colors.surface.card }]}>
               <Icon
                 name="Clock"
                 size={32}
-                color={themeColors.text}
+                color={colors.text.primary}
               />
             </View>
-            <Text style={[styles.timerPopupTitle, { color: themeColors.text }]}>Mood Session</Text>
-            <Text style={[styles.timerPopupTime, { color: themeColors.text }]}>
+            <Text style={[styles.timerPopupTitle, { color: colors.text.primary }]}>Mood Session</Text>
+            <Text style={[styles.timerPopupTime, { color: colors.text.primary }]}>
               {formatFullTime(timeRemaining)}
             </Text>
-            <Text style={[styles.timerPopupDescription, { color: themeColors.textSecondary }]}>
+            <Text style={[styles.timerPopupDescription, { color: colors.text.secondary }]}>
               Your mood preferences are temporary and will expire after 24 hours.
               This lets you discover books based on how you feel right now, not forever.
             </Text>
             <TouchableOpacity
               onPress={() => setShowTimerPopup(false)}
-              style={[styles.timerPopupButton, { backgroundColor: themeColors.text }]}
+              style={[styles.timerPopupButton, { backgroundColor: colors.text.primary }]}
             >
-              <Text style={[styles.timerPopupButtonText, { color: themeColors.background }]}>Got it</Text>
+              <Text style={[styles.timerPopupButtonText, { color: colors.background.primary }]}>Got it</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -340,6 +344,7 @@ const styles = StyleSheet.create({
   timerText: {
     fontSize: scale(12),
     fontWeight: '600',
+    // White text for dark overlay visibility
     color: '#FFFFFF',
   },
   headerActions: {
@@ -362,6 +367,7 @@ const styles = StyleSheet.create({
   editText: {
     fontSize: scale(13),
     fontWeight: '600',
+    // White text for dark overlay visibility
     color: '#FFFFFF',
   },
   clearButton: {
@@ -384,10 +390,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.4)',
     gap: spacing.sm,
   },
-  filterChipActive: {
-    backgroundColor: '#E53935',
-    borderColor: '#E53935',
-  },
+  // filterChipActive style is now applied dynamically via activeColor prop
   filterChipText: {
     fontSize: scale(14),
     fontWeight: '600',

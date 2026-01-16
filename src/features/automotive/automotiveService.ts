@@ -27,6 +27,20 @@ import {
   DEFAULT_AUTOMOTIVE_CONFIG,
 } from './types';
 import { audioLog } from '@/shared/utils/audioDebug';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
+
+// Extended metadata interface
+interface ExtendedBookMetadata extends BookMetadata {
+  narratorName?: string;
+}
+
+// Helper to get book metadata safely
+// Note: Does NOT require audioFiles - works with cache items that only have metadata
+function getBookMetadata(item: LibraryItem | null | undefined): ExtendedBookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  return item.media.metadata as ExtendedBookMetadata;
+}
 
 const log = (...args: any[]) => audioLog.audio('[Automotive]', ...args);
 
@@ -126,8 +140,8 @@ class AutomotiveService {
       // Subscribe to library cache changes to refresh lists
       this.setupLibraryCacheListener();
 
-    } catch (error: any) {
-      log('CarPlay module not available:', error.message);
+    } catch (error) {
+      log('CarPlay module not available:', getErrorMessage(error));
       log('To enable CarPlay:');
       log('1. Get CarPlay entitlement from Apple');
       log('2. Install: npm install react-native-carplay');
@@ -319,7 +333,7 @@ class AutomotiveService {
 
       // Search for matching book by title or author
       const match = libraryItems.find(item => {
-        const metadata = item.media?.metadata as any;
+        const metadata = getBookMetadata(item);
         const title = (metadata?.title || '').toLowerCase();
         const author = (metadata?.authorName || metadata?.authors?.[0]?.name || '').toLowerCase();
         const series = (metadata?.seriesName || '').toLowerCase();
@@ -332,7 +346,7 @@ class AutomotiveService {
       });
 
       if (match) {
-        log('Found match for search:', match.media?.metadata?.title);
+        log('Found match for search:', getBookMetadata(match)?.title);
         await usePlayerStore.getState().loadBook(match, {
           autoPlay: true,
           showPlayer: false,
@@ -396,7 +410,7 @@ class AutomotiveService {
         // Sync metadata when book changes
         if (book && book.id !== prevBookId) {
           prevBookId = book.id;
-          const metadata = book.media?.metadata as any;
+          const metadata = getBookMetadata(book);
           const title = metadata?.title || 'Unknown Title';
           const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
 
@@ -568,7 +582,7 @@ class AutomotiveService {
         showPlayer: false, // Don't show phone player when in car
       });
 
-      log('Item started playing:', item.media?.metadata?.title);
+      log('Item started playing:', getBookMetadata(item)?.title);
 
       // Also notify callbacks if set
       this.callbacks?.onAction({
@@ -660,17 +674,17 @@ class AutomotiveService {
       // Filter for items with progress
       const continueItems = libraryItems
         .filter(item => {
-          const progress = (item as any).userMediaProgress?.progress || 0;
+          const progress = item.userMediaProgress?.progress || 0;
           return progress > 0 && progress < 1;
         })
         .sort((a, b) => {
-          const aTime = (a as any).userMediaProgress?.lastUpdate || 0;
-          const bTime = (b as any).userMediaProgress?.lastUpdate || 0;
+          const aTime = a.userMediaProgress?.lastUpdate || 0;
+          const bTime = b.userMediaProgress?.lastUpdate || 0;
           return bTime - aTime;
         })
         .slice(0, this.config.maxListItems)
         .map((item): BrowseItem => {
-          const metadata = item.media?.metadata as any;
+          const metadata = getBookMetadata(item);
           return {
             id: item.id,
             title: metadata?.title || 'Unknown Title',
@@ -678,7 +692,7 @@ class AutomotiveService {
             imageUrl: apiClient.getItemCoverUrl(item.id),
             isPlayable: true,
             isBrowsable: false,
-            progress: (item as any).userMediaProgress?.progress || 0,
+            progress: item.userMediaProgress?.progress || 0,
           };
         });
 
@@ -701,7 +715,7 @@ class AutomotiveService {
       for (const download of completedDownloads.slice(0, this.config.maxListItems)) {
         const item = libraryItems.find(i => i.id === download.itemId);
         if (item) {
-          const metadata = item.media?.metadata as any;
+          const metadata = getBookMetadata(item);
           // Use local cover path for downloaded items (works better with Android Auto)
           const localCoverPath = `${FileSystem.documentDirectory}audiobooks/${item.id}/cover.jpg`;
           downloadedItems.push({
@@ -726,13 +740,13 @@ class AutomotiveService {
       // Recently Added section - books sorted by addedAt
       const recentlyAddedItems = [...libraryItems]
         .sort((a, b) => {
-          const aAdded = (a as any).addedAt || 0;
-          const bAdded = (b as any).addedAt || 0;
+          const aAdded = a.addedAt || 0;
+          const bAdded = b.addedAt || 0;
           return bAdded - aAdded;
         })
         .slice(0, this.config.maxListItems)
         .map((item): BrowseItem => {
-          const metadata = item.media?.metadata as any;
+          const metadata = getBookMetadata(item);
           return {
             id: item.id,
             title: metadata?.title || 'Unknown Title',
@@ -754,13 +768,13 @@ class AutomotiveService {
       // Library section - all books alphabetically
       const libraryBookItems = [...libraryItems]
         .sort((a, b) => {
-          const aTitle = (a.media?.metadata as any)?.title || '';
-          const bTitle = (b.media?.metadata as any)?.title || '';
+          const aTitle = getBookMetadata(a)?.title || '';
+          const bTitle = getBookMetadata(b)?.title || '';
           return aTitle.localeCompare(bTitle);
         })
         .slice(0, this.config.maxListItems)
         .map((item): BrowseItem => {
-          const metadata = item.media?.metadata as any;
+          const metadata = getBookMetadata(item);
           return {
             id: item.id,
             title: metadata?.title || 'Unknown Title',

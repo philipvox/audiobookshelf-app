@@ -14,8 +14,7 @@ import Animated, {
   withDelay,
   runOnJS,
 } from 'react-native-reanimated';
-import { scale, spacing, radius } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 import { useDismissedItemsStore, useLastDismissed } from '@/features/recommendations/stores/dismissedItemsStore';
 
 const TOAST_DURATION = 5000; // 5 seconds
@@ -26,7 +25,7 @@ interface DismissToastProps {
 }
 
 export function DismissToast({ onUndone }: DismissToastProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const lastDismissed = useLastDismissed();
   const undoLastDismissal = useDismissedItemsStore((s) => s.undoLastDismissal);
 
@@ -71,8 +70,8 @@ export function DismissToast({ onUndone }: DismissToastProps) {
 
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
-      <View style={[styles.toast, { backgroundColor: themeColors.backgroundSecondary }]}>
-        <Text style={[styles.message, { color: themeColors.text }]}>
+      <View style={[styles.toast, { backgroundColor: colors.background.secondary }]}>
+        <Text style={[styles.message, { color: colors.text.primary }]}>
           Removed from recommendations
         </Text>
         <TouchableOpacity
@@ -80,7 +79,7 @@ export function DismissToast({ onUndone }: DismissToastProps) {
           onPress={handleUndo}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={[styles.undoText, { color: themeColors.accent }]}>
+          <Text style={[styles.undoText, { color: colors.accent.primary }]}>
             Undo
           </Text>
         </TouchableOpacity>

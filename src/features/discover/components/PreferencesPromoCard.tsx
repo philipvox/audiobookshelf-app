@@ -20,14 +20,13 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { Sparkles, ChevronRight } from 'lucide-react-native';
-import { spacing, radius, scale, layout } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { spacing, radius, scale, layout, useTheme } from '@/shared/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function PreferencesPromoCard() {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   const scaleValue = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
@@ -54,22 +53,22 @@ export function PreferencesPromoCard() {
       onPressOut={handlePressOut}
       style={[styles.container, animatedStyle]}
     >
-      <View style={[styles.card, { backgroundColor: themeColors.backgroundSecondary }]}>
-        <View style={styles.iconContainer}>
-          <Sparkles size={scale(24)} color={themeColors.accent} />
+      <View style={[styles.card, { backgroundColor: colors.background.secondary }]}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.accent.primarySubtle }]}>
+          <Sparkles size={scale(24)} color={colors.accent.primary} />
         </View>
 
         <View style={styles.textContainer}>
-          <Text style={[styles.title, { color: themeColors.text }]}>
+          <Text style={[styles.title, { color: colors.text.primary }]}>
             Get Personalized Recommendations
           </Text>
-          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.subtitle, { color: colors.text.secondary }]}>
             Answer a few questions about your preferences
           </Text>
         </View>
 
-        <View style={[styles.arrowContainer, { backgroundColor: themeColors.accent }]}>
-          <ChevronRight size={scale(18)} color="#000" strokeWidth={2.5} />
+        <View style={[styles.arrowContainer, { backgroundColor: colors.accent.primary }]}>
+          <ChevronRight size={scale(18)} color={colors.accent.textOnAccent} strokeWidth={2.5} />
         </View>
       </View>
     </AnimatedPressable>
@@ -93,7 +92,7 @@ const styles = StyleSheet.create({
     width: scale(44),
     height: scale(44),
     borderRadius: scale(22),
-    backgroundColor: 'rgba(243, 182, 12, 0.15)',
+    // backgroundColor set dynamically via colors.accent.primarySubtle
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -69,6 +69,8 @@ export interface LibraryItem {
   libraryFiles: LibraryFile[];
   // Optional - included when API returns with progress data
   userMediaProgress?: MediaProgress;
+  // Alias for userMediaProgress (some endpoints use this name)
+  mediaProgress?: MediaProgress;
 }
 
 /**

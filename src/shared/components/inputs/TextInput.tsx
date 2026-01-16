@@ -134,11 +134,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.progressTrack,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border.light,
     minHeight: 48,
   },
   inputContainerFocused: {
-    borderColor: colors.accent,
+    borderColor: colors.accent.primary,
     borderWidth: 2,
   },
   inputContainerError: {

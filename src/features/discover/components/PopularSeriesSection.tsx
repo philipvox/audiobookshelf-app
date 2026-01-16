@@ -18,8 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 import { getAllSeries, useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { accentColors, scale, spacing, layout, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { accentColors, scale, spacing, layout, radius, useTheme } from '@/shared/theme';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
 import { SeriesHeartButton } from '@/shared/components';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -133,7 +133,7 @@ interface PopularSeriesSectionProps {
 
 export function PopularSeriesSection({ limit = 2 }: PopularSeriesSectionProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
   const { isLoaded } = useLibraryCache();
 
@@ -197,13 +197,13 @@ export function PopularSeriesSection({ limit = 2 }: PopularSeriesSectionProps) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>{sectionTitle}</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]}>{sectionTitle}</Text>
         <TouchableOpacity
           style={styles.viewAllButton}
           onPress={handleViewAll}
           activeOpacity={0.7}
         >
-          <Text style={[styles.viewAllText, { color: themeColors.textSecondary }]}>View All</Text>
+          <Text style={[styles.viewAllText, { color: colors.text.secondary }]}>View All</Text>
         </TouchableOpacity>
       </View>
 
@@ -214,8 +214,8 @@ export function PopularSeriesSection({ limit = 2 }: PopularSeriesSectionProps) {
             key={series.name}
             series={series}
             onPress={() => handleSeriesPress(series.name)}
-            textColor={themeColors.text}
-            textSecondaryColor={themeColors.textSecondary}
+            textColor={colors.text.primary}
+            textSecondaryColor={colors.text.secondary}
             cardBgColor={cardBgColor}
           />
         ))}

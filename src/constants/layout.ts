@@ -18,8 +18,8 @@ export const TOP_NAV_HEIGHT = 8;
 // Standard: iOS 49pt, Android 56dp - we use 52 + safe area padding
 export const BOTTOM_NAV_HEIGHT = 60;
 
-// Mini player height when visible (matches GlobalMiniPlayer)
-export const MINI_PLAYER_HEIGHT = scale(80);
+// Mini player height when visible (matches GlobalMiniPlayer's GLOBAL_MINI_PLAYER_HEIGHT)
+export const MINI_PLAYER_HEIGHT = scale(130);
 
 // Combined bottom spacing needed for screens
 // Nav bar + mini player + extra padding for comfortable scrolling

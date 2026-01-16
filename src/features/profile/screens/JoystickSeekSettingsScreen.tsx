@@ -61,6 +61,7 @@ function createColors(c: ThemeColors) {
     text: c.text.primary,
     textSecondary: c.text.secondary,
     textTertiary: c.text.tertiary,
+    textInverse: c.text.inverse,
     card: c.border.default,
     border: c.border.default,
     iconBg: c.border.default,
@@ -398,7 +399,7 @@ function SpeedSlider({ label, note, value, min, max, step, onChange, colors }: S
   return (
     <View style={styles.sliderContainer}>
       <View style={styles.sliderHeader}>
-        <Text style={styles.sliderLabel}>{label}</Text>
+        <Text style={[styles.sliderLabel, { color: colors.text }]}>{label}</Text>
         <Text style={[styles.sliderValue, { color: colors.accent }]}>{formatSpeedShort(localValue)}</Text>
       </View>
       <Text style={styles.sliderNote}>{note}</Text>
@@ -531,7 +532,7 @@ function TestArea({ settings, onTestPositionChange, colors }: TestAreaProps) {
 
   return (
     <View style={styles.testAreaContainer}>
-      <Text style={styles.testAreaTitle}>Test Your Settings</Text>
+      <Text style={[styles.testAreaTitle, { color: colors.text }]}>Test Your Settings</Text>
       <Text style={styles.testAreaSubtitle}>Drag from center to test</Text>
 
       <View style={styles.testAreaCircle}>
@@ -539,12 +540,12 @@ function TestArea({ settings, onTestPositionChange, colors }: TestAreaProps) {
           <Animated.View style={[styles.testButton, { backgroundColor: colors.accent, shadowColor: colors.accent }, buttonStyle]}>
             {isTesting ? (
               testDirection === 'forward' ? (
-                <SkipForward size={scale(24)} color="#000" strokeWidth={2} />
+                <SkipForward size={scale(24)} color={colors.textOnAccent} strokeWidth={2} />
               ) : (
-                <SkipBack size={scale(24)} color="#000" strokeWidth={2} />
+                <SkipBack size={scale(24)} color={colors.textOnAccent} strokeWidth={2} />
               )
             ) : (
-              <Play size={scale(24)} color="#000" fill="#000" strokeWidth={0} />
+              <Play size={scale(24)} color={colors.textOnAccent} fill={colors.textOnAccent} strokeWidth={0} />
             )}
           </Animated.View>
         </GestureDetector>
@@ -675,7 +676,7 @@ export function JoystickSeekSettingsScreen() {
                 value={enabled}
                 onValueChange={setEnabled}
                 trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor="#fff"
+                thumbColor={themeColors.text.inverse}
               />
             </View>
           </View>
@@ -752,7 +753,7 @@ export function JoystickSeekSettingsScreen() {
                     }}
                     minimumTrackTintColor={colors.accent}
                     maximumTrackTintColor={colors.border}
-                    thumbTintColor="#fff"
+                    thumbTintColor={themeColors.text.inverse}
                   />
                 </View>
 
@@ -781,7 +782,7 @@ export function JoystickSeekSettingsScreen() {
                     }}
                     minimumTrackTintColor={colors.accent}
                     maximumTrackTintColor={colors.border}
-                    thumbTintColor="#fff"
+                    thumbTintColor={themeColors.text.inverse}
                   />
                 </View>
 
@@ -800,7 +801,7 @@ export function JoystickSeekSettingsScreen() {
                     value={hapticEnabled}
                     onValueChange={setHapticEnabled}
                     trackColor={{ false: colors.border, true: colors.accent }}
-                    thumbColor="#fff"
+                    thumbColor={themeColors.text.inverse}
                   />
                 </View>
               </View>
@@ -1004,7 +1005,7 @@ const styles = StyleSheet.create({
   sliderLabel: {
     ...typography.bodyLarge,
     fontWeight: fontWeight.medium,
-    color: '#fff',
+    // color set dynamically via themeColors.text.primary in JSX
   },
   sliderValue: {
     ...typography.headlineLarge,
@@ -1058,7 +1059,7 @@ const styles = StyleSheet.create({
   testAreaTitle: {
     ...typography.bodyLarge,
     fontWeight: fontWeight.semibold,
-    color: '#fff',
+    // color set dynamically via themeColors.text.primary in JSX
     marginBottom: scale(4),
   },
   testAreaSubtitle: {

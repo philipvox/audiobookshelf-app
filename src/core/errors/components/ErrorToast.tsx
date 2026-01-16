@@ -16,7 +16,7 @@ import {
 import { Info, AlertTriangle, AlertCircle, XCircle, X, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity } from '../types';
-import { useThemeColors, scale, spacing } from '@/shared/theme';
+import { useTheme, scale, spacing, type ThemeColors } from '@/shared/theme';
 
 interface ErrorToastProps {
   error: AppError;
@@ -25,12 +25,18 @@ interface ErrorToastProps {
   duration?: number;
 }
 
-const SEVERITY_COLORS: Record<ErrorSeverity, string> = {
-  low: '#4a9eff',
-  medium: '#ff9800',
-  high: '#ff4444',
-  critical: '#d32f2f',
-};
+/**
+ * Get severity-based colors from theme semantic tokens
+ */
+function getSeverityColors(severity: ErrorSeverity, colors: ThemeColors) {
+  const severityMap = {
+    low: { color: colors.semantic.info, bg: colors.semantic.infoLight },
+    medium: { color: colors.semantic.warning, bg: colors.semantic.warningLight },
+    high: { color: colors.semantic.error, bg: colors.semantic.errorLight },
+    critical: { color: colors.semantic.error, bg: colors.semantic.error },
+  };
+  return severityMap[severity];
+}
 
 const SEVERITY_ICONS: Record<ErrorSeverity, LucideIcon> = {
   low: Info,
@@ -46,7 +52,7 @@ export function ErrorToast({
   duration = 4000,
 }: ErrorToastProps) {
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -88,7 +94,7 @@ export function ErrorToast({
     ]).start(() => onDismiss());
   };
 
-  const color = SEVERITY_COLORS[error.severity];
+  const severityColors = getSeverityColors(error.severity, colors);
   const IconComponent = SEVERITY_ICONS[error.severity];
   const hasAction = error.recovery === 'retry' || onAction;
 
@@ -103,11 +109,11 @@ export function ErrorToast({
         },
       ]}
     >
-      <View style={[styles.toast, { borderLeftColor: color, backgroundColor: themeColors.surfaceElevated }]}>
-        <IconComponent size={22} color={color} strokeWidth={2} style={styles.icon} />
+      <View style={[styles.toast, { borderLeftColor: severityColors.color, backgroundColor: colors.background.elevated }]}>
+        <IconComponent size={22} color={severityColors.color} strokeWidth={2} style={styles.icon} />
 
         <View style={styles.content}>
-          <Text style={[styles.message, { color: themeColors.text }]} numberOfLines={2}>
+          <Text style={[styles.message, { color: colors.text.primary }]} numberOfLines={2}>
             {error.userMessage}
           </Text>
         </View>
@@ -121,14 +127,14 @@ export function ErrorToast({
                 dismiss();
               }}
             >
-              <Text style={[styles.actionText, { color }]}>
+              <Text style={[styles.actionText, { color: severityColors.color }]}>
                 {error.recovery === 'retry' ? 'Retry' : 'Fix'}
               </Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.dismissButton} onPress={dismiss}>
-            <X size={20} color={themeColors.textTertiary} strokeWidth={2} />
+            <X size={20} color={colors.text.tertiary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>

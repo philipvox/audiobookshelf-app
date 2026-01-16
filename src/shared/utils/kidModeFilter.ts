@@ -5,7 +5,18 @@
  * Uses customizable allowed/blocked genres/tags and age category filtering.
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'tags' in media;
+}
 import {
   isKidModeEnabled,
   getKidModeSettings,
@@ -209,19 +220,20 @@ export function isKidFriendly(item: LibraryItem, settings?: KidModeFilterSetting
     useAllowedGenresTags,
   } = settings || getKidModeSettings();
 
-  const metadata = (item.media?.metadata as any) || {};
-  const media = item.media as any;
+  const metadata = getBookMetadata(item);
 
   // 1. Check explicit flag - block if true
-  if (metadata.explicit === true) {
+  if (metadata?.explicit === true) {
     return false;
   }
 
   // Get genres and tags from the book
-  const bookGenres: string[] = (metadata.genres || []).map((g: string) =>
+  const bookGenres: string[] = (metadata?.genres || []).map((g: string) =>
     g.toLowerCase().trim()
   );
-  const bookTags: string[] = (media?.tags || []).map((t: string) => t.toLowerCase().trim());
+  const bookTags: string[] = isBookMedia(item.media)
+    ? (item.media.tags || []).map((t: string) => t.toLowerCase().trim())
+    : [];
 
   // 2. Check for blocked genres - if ANY match, block the book
   for (const genre of bookGenres) {

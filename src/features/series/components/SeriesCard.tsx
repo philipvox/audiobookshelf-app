@@ -14,12 +14,25 @@ import { useNavigation } from '@react-navigation/native';
 import { Check } from 'lucide-react-native';
 import { SeriesInfo } from '../services/seriesAdapter';
 import { apiClient } from '@/core/api';
-import { scale, spacing, radius, elevation, cardTokens, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, radius, elevation, cardTokens, useTheme } from '@/shared/theme';
 import { StackedCovers } from '@/shared/components';
 import { formatDuration } from '@/shared/utils/format';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 
-const ACCENT = accentColors.gold;
-const ACCENT_DIM = 'rgba(243,182,12,0.5)';
+// Helper to get book metadata safely
+// Note: Does NOT require audioFiles - works with cache items that only have metadata
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  // This app only handles books, so metadata is always BookMetadata
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Helper to get book duration safely
+// Note: Does NOT require audioFiles - works with cache items that only have duration
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  return item?.media?.duration || 0;
+}
 
 interface SeriesCardProps {
   series: SeriesInfo;
@@ -34,22 +47,30 @@ interface UpNextInfo {
   id: string;
 }
 
-// Progress dot component
+// Progress dot component - uses theme colors
+interface ProgressDotProps {
+  status: 'completed' | 'in_progress' | 'not_started';
+  size?: number;
+  accentColor: string;
+  accentSubtle: string;
+  inactiveColor: string;
+}
+
 function ProgressDot({
   status,
   size = 6,
-}: {
-  status: 'completed' | 'in_progress' | 'not_started';
-  size?: number;
-}) {
+  accentColor,
+  accentSubtle,
+  inactiveColor,
+}: ProgressDotProps) {
   const getColor = () => {
     switch (status) {
       case 'completed':
-        return ACCENT;
+        return accentColor;
       case 'in_progress':
-        return ACCENT_DIM;
+        return accentSubtle;
       default:
-        return 'rgba(255,255,255,0.3)';
+        return inactiveColor;
     }
   };
 
@@ -66,8 +87,13 @@ function ProgressDot({
 }
 
 function SeriesCardComponent({ series, showProgress = true, downloadedIds }: SeriesCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
+
+  // Theme-aware accent colors
+  const accentColor = colors.accent.primary;
+  const accentSubtle = colors.accent.primarySubtle;
+  const inactiveColor = colors.border.default;
 
   const handlePress = () => {
     navigation.navigate('SeriesDetail', { seriesName: series.name });
@@ -94,8 +120,8 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
     let totalDuration = 0;
 
     series.books.forEach(book => {
-      const progress = (book as any).userMediaProgress?.progress || 0;
-      const duration = (book.media as any)?.duration || 0;
+      const progress = book.userMediaProgress?.progress || 0;
+      const duration = getBookDuration(book);
       totalDuration += duration;
       totalListened += duration * progress;
 
@@ -126,32 +152,32 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
 
     // Sort by sequence
     const sortedBooks = [...series.books].sort((a, b) => {
-      const aSeq = (a.media?.metadata as any)?.series?.[0]?.sequence || 0;
-      const bSeq = (b.media?.metadata as any)?.series?.[0]?.sequence || 0;
+      const aSeq = getBookMetadata(a)?.series?.[0]?.sequence || '0';
+      const bSeq = getBookMetadata(b)?.series?.[0]?.sequence || '0';
       return parseFloat(aSeq) - parseFloat(bSeq);
     });
 
     // First, look for a book in progress
     const inProgressBook = sortedBooks.find(book => {
-      const progress = (book as any).userMediaProgress?.progress || 0;
+      const progress = book.userMediaProgress?.progress || 0;
       return progress > 0 && progress < 0.95;
     });
 
     if (inProgressBook) {
-      const title = (inProgressBook.media?.metadata as any)?.title || 'Unknown';
-      const duration = (inProgressBook.media as any)?.duration || 0;
+      const title = getBookMetadata(inProgressBook)?.title || 'Unknown';
+      const duration = getBookDuration(inProgressBook);
       return { title, duration, id: inProgressBook.id };
     }
 
     // Then look for first not started
     const nextBook = sortedBooks.find(book => {
-      const progress = (book as any).userMediaProgress?.progress || 0;
+      const progress = book.userMediaProgress?.progress || 0;
       return progress < 0.95;
     });
 
     if (nextBook) {
-      const title = (nextBook.media?.metadata as any)?.title || 'Unknown';
-      const duration = (nextBook.media as any)?.duration || 0;
+      const title = getBookMetadata(nextBook)?.title || 'Unknown';
+      const duration = getBookDuration(nextBook);
       return { title, duration, id: nextBook.id };
     }
 
@@ -199,14 +225,14 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
 
         {/* Complete badge */}
         {isComplete && (
-          <View style={styles.completeBadge}>
-            <Check size={scale(12)} color="#000" strokeWidth={3} />
+          <View style={[styles.completeBadge, { backgroundColor: accentColor }]}>
+            <Check size={scale(12)} color={colors.text.inverse} strokeWidth={3} />
           </View>
         )}
       </View>
 
       <View style={styles.info}>
-        <Text style={[styles.name, { color: themeColors.text }]} numberOfLines={2}>
+        <Text style={[styles.name, { color: colors.text.primary }]} numberOfLines={2}>
           {series.name}
         </Text>
 
@@ -215,11 +241,11 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
           <View style={styles.progressSection}>
             {/* Progress bar */}
             <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBarBg, { backgroundColor: `${themeColors.text}15` }]}>
+              <View style={[styles.progressBarBg, { backgroundColor: colors.progress.track }]}>
                 <View
                   style={[
                     styles.progressBarFill,
-                    { width: `${completionPercent}%` }
+                    { width: `${completionPercent}%`, backgroundColor: accentColor }
                   ]}
                 />
               </View>
@@ -227,7 +253,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
 
             {/* Progress text */}
             <View style={styles.progressTextRow}>
-              <Text style={styles.progressText}>
+              <Text style={[styles.progressText, { color: accentColor }]}>
                 {isComplete ? (
                   '✓ Complete!'
                 ) : (
@@ -235,17 +261,17 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
                 )}
               </Text>
               {!isComplete && remainingText && (
-                <Text style={[styles.remainingText, { color: themeColors.textTertiary }]}>~{remainingText}</Text>
+                <Text style={[styles.remainingText, { color: colors.text.tertiary }]}>~{remainingText}</Text>
               )}
             </View>
 
             {/* Up next indicator */}
             {upNextBook && !isComplete && (
               <View style={styles.upNextContainer}>
-                <Text style={[styles.upNextText, { color: themeColors.textSecondary }]} numberOfLines={1}>
+                <Text style={[styles.upNextText, { color: colors.text.secondary }]} numberOfLines={1}>
                   ↳ Up next: {upNextBook.title}
                 </Text>
-                <Text style={[styles.upNextMeta, { color: themeColors.textTertiary }]}>
+                <Text style={[styles.upNextMeta, { color: colors.text.tertiary }]}>
                   {formatDuration(upNextBook.duration)}
                   {upNextIsDownloaded && ' · Downloaded ✓'}
                 </Text>
@@ -256,7 +282,7 @@ function SeriesCardComponent({ series, showProgress = true, downloadedIds }: Ser
 
         {/* Book count and duration - show if no progress */}
         {!hasProgress && (
-          <Text style={[styles.bookCount, { color: themeColors.textSecondary }]} numberOfLines={1}>
+          <Text style={[styles.bookCount, { color: colors.text.secondary }]} numberOfLines={1}>
             {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
             {durationText && ` • ${durationText}`}
           </Text>
@@ -297,7 +323,7 @@ const styles = StyleSheet.create({
     width: scale(24),
     height: scale(24),
     borderRadius: scale(12),
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -330,7 +356,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     borderRadius: scale(2),
   },
   progressTextRow: {
@@ -341,7 +367,7 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: scale(11),
     fontWeight: '500',
-    color: ACCENT,
+    // color set dynamically via accentColor
   },
   remainingText: {
     fontSize: scale(10),

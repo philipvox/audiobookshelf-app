@@ -14,10 +14,11 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X, AlertCircle, Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
 import { Button } from '@/shared/components';
-import { spacing, radius, scale, useThemeColors, accentColors } from '@/shared/theme';
+import { spacing, radius, scale, useTheme } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
 
 // App logo (horizontal version with text)
@@ -69,7 +70,8 @@ function normalizeServerUrl(url: string): { normalized: string; corrected: boole
 
 export function LoginScreen() {
   const { login, isLoading, error, clearError } = useAuth();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [serverUrl, setServerUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -204,7 +206,7 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: themeColors.background }]}
+      style={[styles.container, { backgroundColor: colors.background.primary, paddingTop: insets.top, paddingBottom: insets.bottom }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
@@ -215,25 +217,25 @@ export function LoginScreen() {
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>Connect to your server</Text>
+          <Text style={[styles.subtitle, { color: colors.text.secondary }]}>Connect to your server</Text>
         </View>
 
         {/* Form */}
         <View style={styles.form}>
           {/* Server URL with real-time validation */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: themeColors.text }]}>Server URL</Text>
+            <Text style={[styles.label, { color: colors.text.primary }]}>Server URL</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={[
                   styles.input,
-                  { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text },
+                  { backgroundColor: colors.background.primary, borderColor: colors.border.default, color: colors.text.primary },
                   styles.inputWithIcon,
                   urlValidation.status === 'invalid' && styles.inputError,
                   (urlValidation.status === 'valid' || urlValidation.status === 'correctable') && styles.inputValid,
                 ]}
                 placeholder="server.example.com:13378"
-                placeholderTextColor={themeColors.textTertiary}
+                placeholderTextColor={colors.text.tertiary}
                 value={serverUrl}
                 onChangeText={setServerUrl}
                 autoCapitalize="none"
@@ -244,17 +246,17 @@ export function LoginScreen() {
               {/* Validation status icon */}
               {urlValidation.status === 'valid' && (
                 <View style={styles.inputIcon}>
-                  <Check size={scale(18)} color="#30D158" strokeWidth={2.5} />
+                  <Check size={scale(18)} color={colors.semantic.success} strokeWidth={2.5} />
                 </View>
               )}
               {urlValidation.status === 'correctable' && (
                 <View style={styles.inputIcon}>
-                  <AlertCircle size={scale(18)} color={accentColors.gold} strokeWidth={2} />
+                  <AlertCircle size={scale(18)} color={colors.accent.primary} strokeWidth={2} />
                 </View>
               )}
               {urlValidation.status === 'invalid' && (
                 <View style={styles.inputIcon}>
-                  <X size={scale(18)} color="#FF453A" strokeWidth={2.5} />
+                  <X size={scale(18)} color={colors.semantic.error} strokeWidth={2.5} />
                 </View>
               )}
             </View>
@@ -264,7 +266,7 @@ export function LoginScreen() {
                 style={[
                   styles.inlineMessage,
                   urlValidation.status === 'valid' && styles.inlineMessageSuccess,
-                  urlValidation.status === 'correctable' && { color: accentColors.gold },
+                  urlValidation.status === 'correctable' && { color: colors.accent.primary },
                   urlValidation.status === 'invalid' && styles.inlineMessageError,
                 ]}
               >
@@ -275,11 +277,11 @@ export function LoginScreen() {
 
           {/* Username */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: themeColors.text }]}>Username</Text>
+            <Text style={[styles.label, { color: colors.text.primary }]}>Username</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text }]}
+              style={[styles.input, { backgroundColor: colors.background.primary, borderColor: colors.border.default, color: colors.text.primary }]}
               placeholder="Enter username"
-              placeholderTextColor={themeColors.textTertiary}
+              placeholderTextColor={colors.text.tertiary}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -290,12 +292,12 @@ export function LoginScreen() {
 
           {/* Password with visibility toggle */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: themeColors.text }]}>Password</Text>
+            <Text style={[styles.label, { color: colors.text.primary }]}>Password</Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.input, { backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text }, styles.inputWithIcon]}
+                style={[styles.input, { backgroundColor: colors.background.primary, borderColor: colors.border.default, color: colors.text.primary }, styles.inputWithIcon]}
                 placeholder="Enter password"
-                placeholderTextColor={themeColors.textTertiary}
+                placeholderTextColor={colors.text.tertiary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -309,9 +311,9 @@ export function LoginScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeOff size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <EyeOff size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
                 ) : (
-                  <Eye size={scale(18)} color={themeColors.textSecondary} strokeWidth={2} />
+                  <Eye size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
                 )}
               </TouchableOpacity>
             </View>
@@ -319,22 +321,22 @@ export function LoginScreen() {
 
           {/* URL Correction Notice */}
           {urlCorrectionMsg ? (
-            <Text style={[styles.correctionText, { color: accentColors.gold }]}>{urlCorrectionMsg}</Text>
+            <Text style={[styles.correctionText, { color: colors.accent.primary }]}>{urlCorrectionMsg}</Text>
           ) : null}
 
           {/* Validation Error */}
           {validationError ? (
-            <View style={styles.errorContainer}>
-              <AlertCircle size={scale(16)} color="#FF453A" strokeWidth={2} />
-              <Text style={styles.errorText}>{validationError}</Text>
+            <View style={[styles.errorContainer, { backgroundColor: colors.semantic.errorLight }]}>
+              <AlertCircle size={scale(16)} color={colors.semantic.error} strokeWidth={2} />
+              <Text style={[styles.errorText, { color: colors.semantic.error }]}>{validationError}</Text>
             </View>
           ) : null}
 
           {/* Auth Error (from server) */}
           {error && !validationError ? (
-            <View style={styles.errorContainer}>
-              <AlertCircle size={scale(16)} color="#FF453A" strokeWidth={2} />
-              <Text style={styles.errorText}>{error}</Text>
+            <View style={[styles.errorContainer, { backgroundColor: colors.semantic.errorLight }]}>
+              <AlertCircle size={scale(16)} color={colors.semantic.error} strokeWidth={2} />
+              <Text style={[styles.errorText, { color: colors.semantic.error }]}>{error}</Text>
             </View>
           ) : null}
 
@@ -352,7 +354,7 @@ export function LoginScreen() {
 
         {/* Help Text */}
         <View style={styles.footer}>
-          <Text style={[styles.helpText, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.helpText, { color: colors.text.secondary }]}>
             Enter your server URL and login credentials
           </Text>
         </View>
@@ -424,10 +426,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inputError: {
-    borderColor: '#FF453A',
+    // borderColor set via inline style using colors.semantic.error
   },
   inputValid: {
-    borderColor: '#30D158',
+    // borderColor set via inline style using colors.semantic.success
   },
   inlineMessage: {
     fontSize: 12,
@@ -435,11 +437,11 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   inlineMessageSuccess: {
-    color: '#30D158',
+    // color set via inline style using colors.semantic.success
   },
-  // inlineMessageWarning set inline with accentColors.gold
+  // inlineMessageWarning set inline with colors.accent.primary
   inlineMessageError: {
-    color: '#FF453A',
+    // color set via inline style using colors.semantic.error
   },
   loginButton: {
     marginTop: spacing.xs,
@@ -453,7 +455,7 @@ const styles = StyleSheet.create({
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    // backgroundColor set via inline style using colors.semantic.errorLight
     borderRadius: radius.sm,
     padding: spacing.md,
     marginTop: spacing.xs,
@@ -463,7 +465,7 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: 13,
-    color: '#FF453A',
+    // color set via inline style with colors.semantic.error
     lineHeight: 18,
   },
   footer: {

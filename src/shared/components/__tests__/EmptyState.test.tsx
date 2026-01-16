@@ -40,6 +40,27 @@ jest.mock('@/shared/theme', () => ({
     labelLarge: { fontSize: 16 },
   },
   scale: (val: number) => val,
+  iconSizes: {
+    xs: 12,
+    sm: 16,
+    md: 20,
+    lg: 24,
+    xl: 32,
+    xxl: 40,
+    xxxl: 48,
+  },
+  useTheme: () => ({
+    colors: {
+      text: { primary: '#ffffff', secondary: '#cccccc', tertiary: '#999999' },
+      background: { primary: '#000000', secondary: '#1a1a1a', tertiary: '#2a2a2a' },
+      accent: { primary: '#C1F40C' },
+    },
+    isDark: true,
+    accentTheme: 'default',
+  }),
+  accentColors: {
+    gold: '#C1F40C',
+  },
 }));
 
 describe('EmptyState', () => {

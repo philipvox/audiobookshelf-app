@@ -22,8 +22,7 @@ import Animated, {
 import { usePlayerStore } from '@/features/player';
 import { haptics } from '@/core/native/haptics';
 import { audioService } from '@/features/player/services/audioService';
-import { wp, accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { wp, accentColors, useTheme } from '@/shared/theme';
 import type { JoystickSeekSettings } from '@/features/player/stores/joystickSeekStore';
 import { calculateSeekSpeed, applyDeadzone } from '@/features/player/stores/joystickSeekStore';
 
@@ -78,17 +77,17 @@ const COVER_SIZE = 44;
 // ICONS
 // ============================================================================
 
-const RewindIcon: React.FC<{ size?: number; opacity?: number }> = ({ size = 16, opacity = 0.8 }) => (
+const RewindIcon: React.FC<{ size?: number; opacity?: number; color?: string }> = ({ size = 16, opacity = 0.8, color = '#FFFFFF' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M19 20L9 12L19 4V20Z" fill={`rgba(255,255,255,${opacity})`} />
-    <Path d="M10 20L0 12L10 4V20Z" fill={`rgba(255,255,255,${opacity})`} />
+    <Path d="M19 20L9 12L19 4V20Z" fill={color} opacity={opacity} />
+    <Path d="M10 20L0 12L10 4V20Z" fill={color} opacity={opacity} />
   </Svg>
 );
 
-const FastForwardIcon: React.FC<{ size?: number; opacity?: number }> = ({ size = 16, opacity = 0.8 }) => (
+const FastForwardIcon: React.FC<{ size?: number; opacity?: number; color?: string }> = ({ size = 16, opacity = 0.8, color = '#FFFFFF' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M5 4L15 12L5 20V4Z" fill={`rgba(255,255,255,${opacity})`} />
-    <Path d="M14 4L24 12L14 20V4Z" fill={`rgba(255,255,255,${opacity})`} />
+    <Path d="M5 4L15 12L5 20V4Z" fill={color} opacity={opacity} />
+    <Path d="M14 4L24 12L14 20V4Z" fill={color} opacity={opacity} />
   </Svg>
 );
 
@@ -186,7 +185,8 @@ export function CoverPlayButton({
   onJogStateChange,
   joystickSettings,
 }: CoverPlayButtonProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const currentBook = usePlayerStore((s) => s.currentBook);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const position = usePlayerStore((s) => s.position);
@@ -693,11 +693,11 @@ export function CoverPlayButton({
           {/* Invisible hitbox with direction icons */}
           {/* Rewind icon - shows when dragging RIGHT (backward) */}
           <Animated.View style={[styles.directionIcon, { left: -30 }, rewindIconStyle]}>
-            <RewindIcon size={20} />
+            <RewindIcon size={20} color={colors.text.primary} />
           </Animated.View>
           {/* Fast-forward icon - shows when dragging LEFT (forward) */}
           <Animated.View style={[styles.directionIcon, { right: -30 }, fastForwardIconStyle]}>
-            <FastForwardIcon size={20} />
+            <FastForwardIcon size={20} color={colors.text.primary} />
           </Animated.View>
         </Animated.View>
       </GestureDetector>
@@ -709,7 +709,7 @@ export function CoverPlayButton({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -733,13 +733,13 @@ const styles = StyleSheet.create({
   },
   darkOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: colors.overlay.light,
   },
   border: {
     position: 'absolute',
     borderRadius: BUTTON_SIZE / 2,
     borderWidth: 2,
-    borderColor: accentColors.gold,
+    borderColor: colors.accent.primary,
     backgroundColor: 'transparent',
   },
   iconOverlay: {
@@ -757,13 +757,13 @@ const styles = StyleSheet.create({
   tooltip: {
     position: 'absolute',
     top: -35,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: colors.overlay.dark,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
   },
   tooltipText: {
-    color: '#FFFFFF',
+    color: colors.text.primary,
     fontSize: 12,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
@@ -772,13 +772,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: BUTTON_SIZE + 24,
     width: SCREEN_WIDTH - 32,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: colors.overlay.dark,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   chapterTitle: {
-    color: '#FFFFFF',
+    color: colors.text.primary,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
@@ -788,25 +788,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     right: 12,
-    backgroundColor: accentColors.gold,
+    backgroundColor: colors.accent.primary,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
   },
   speedBadgeText: {
-    color: '#000000',
+    color: colors.background.primary,
     fontSize: 11,
     fontWeight: '700',
   },
   progressTrack: {
     height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.progress.track,
     borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: accentColors.gold,
+    backgroundColor: colors.accent.primary,
     borderRadius: 3,
   },
   progressLabels: {
@@ -816,19 +816,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   progressTime: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.text.secondary,
     fontSize: 12,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
   },
   progressTimeOffset: {
-    color: accentColors.gold,
+    color: colors.accent.primary,
     fontSize: 16,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   overallTime: {
-    color: 'rgba(255,255,255,0.5)',
+    color: colors.text.tertiary,
     fontSize: 11,
     fontWeight: '400',
     fontVariant: ['tabular-nums'],

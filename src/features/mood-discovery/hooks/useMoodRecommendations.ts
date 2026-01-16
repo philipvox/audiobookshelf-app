@@ -7,7 +7,12 @@
 
 import { useMemo, useDeferredValue } from 'react';
 import { useLibraryCache } from '@/core/cache/libraryCache';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 import {
   MoodSession,
   MoodScore,
@@ -57,16 +62,17 @@ const SCORE_WEIGHTS = {
 /**
  * Get metadata from a library item safely
  */
-function getMetadata(item: LibraryItem): any {
-  return (item.media?.metadata as any) || {};
+function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return {};
+  return item.media.metadata as BookMetadata;
 }
 
 /**
  * Get duration in hours from a library item
  */
 function getDurationHours(item: LibraryItem): number {
-  const duration = (item.media as any)?.duration || 0;
-  return duration / 3600;
+  if (!isBookMedia(item.media)) return 0;
+  return (item.media.duration || 0) / 3600;
 }
 
 // NOTE: Old parseThemesFromDescription and parseTropesFromDescription functions

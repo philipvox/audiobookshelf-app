@@ -11,7 +11,7 @@
 import { useMemo } from 'react';
 import { useFinishedBooks, useFinishedBookIds } from '@/core/hooks/useUserBooks';
 import { useLibraryCache } from '@/core/cache/libraryCache';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 
 /**
  * SINGLE SOURCE OF TRUTH: Threshold for considering a book "finished"
@@ -23,8 +23,9 @@ export const FINISHED_THRESHOLD = 0.95;
 /**
  * Get metadata from a library item safely
  */
-function getMetadata(item: LibraryItem): any {
-  return (item.media?.metadata as any) || {};
+function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return {};
+  return item.media.metadata as BookMetadata;
 }
 
 /**
@@ -110,7 +111,7 @@ export function useReadingHistory(): UseReadingHistoryResult {
 
     // Add books with >= 95% server progress (not yet in SQLite)
     for (const item of items) {
-      const progress = (item as any).userMediaProgress?.progress || 0;
+      const progress = item.userMediaProgress?.progress || 0;
       if (progress >= FINISHED_THRESHOLD) {
         finished.add(item.id);
       }
@@ -128,7 +129,7 @@ export function useReadingHistory(): UseReadingHistoryResult {
       // Check server progress as fallback
       const item = getItem(itemId);
       if (item) {
-        const progress = (item as any).userMediaProgress?.progress || 0;
+        const progress = item.userMediaProgress?.progress || 0;
         return progress >= FINISHED_THRESHOLD;
       }
 
@@ -141,7 +142,7 @@ export function useReadingHistory(): UseReadingHistoryResult {
     return (itemId: string): boolean => {
       const item = getItem(itemId);
       if (item) {
-        const progress = (item as any).userMediaProgress?.progress || 0;
+        const progress = item.userMediaProgress?.progress || 0;
         return progress > 0;
       }
       return false;
@@ -273,7 +274,7 @@ export function useIsBookFinished(bookId: string): boolean {
     // Check server progress
     const item = getItem(bookId);
     if (item) {
-      const progress = (item as any).userMediaProgress?.progress || 0;
+      const progress = item.userMediaProgress?.progress || 0;
       return progress >= FINISHED_THRESHOLD;
     }
 

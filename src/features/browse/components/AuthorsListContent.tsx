@@ -1,16 +1,16 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, RefreshControl } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { AuthorCard } from '@/features/author';
 import { useAuthors } from '@/features/author/hooks/useAuthors';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
-import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
+import { Loading, EmptyState, ErrorView, SkullRefreshControl } from '@/shared/components';
 import { AuthorInfo } from '@/features/author/services/authorAdapter';
-import { spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { spacing, useTheme } from '@/shared/theme';
 
 export function AuthorsListContent() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { authors, authorCount, isLoading, error, refetch } = useAuthors(
@@ -19,7 +19,7 @@ export function AuthorsListContent() {
   );
 
   if (isLoadingLibrary || isLoading) {
-    return <LoadingSpinner text="Loading authors..." />;
+    return <Loading text="Loading authors..." />;
   }
 
   if (error) {
@@ -37,7 +37,7 @@ export function AuthorsListContent() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -47,33 +47,28 @@ export function AuthorsListContent() {
         />
       </View>
 
-      <FlashList
-        data={authors}
-        renderItem={({ item }) => (
-          <View style={styles.itemWrapper}>
-            <AuthorCard author={item} />
-          </View>
-        )}
-        keyExtractor={(item: AuthorInfo) => item.id}
-        numColumns={2}
-        estimatedItemSize={200}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={refetch}
-            tintColor={accentColors.gold}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="🔍"
-            title="No authors found"
-            description={`No authors match "${searchQuery}"`}
-          />
-        }
-      />
+      <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+        <FlashList
+          data={authors}
+          renderItem={({ item }) => (
+            <View style={styles.itemWrapper}>
+              <AuthorCard author={item} />
+            </View>
+          )}
+          keyExtractor={(item: AuthorInfo) => item.id}
+          numColumns={2}
+          estimatedItemSize={200}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="🔍"
+              title="No authors found"
+              description={`No authors match "${searchQuery}"`}
+            />
+          }
+        />
+      </SkullRefreshControl>
     </View>
   );
 }

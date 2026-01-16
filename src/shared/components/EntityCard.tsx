@@ -17,7 +17,7 @@ import {
   interactiveStates,
   cardTokens,
 } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { useTheme } from '@/shared/theme';
 
 // Avatar color palette for initials
 const AVATAR_COLORS = [
@@ -73,7 +73,7 @@ function EntityCardComponent({
   imageUrl,
   onPress,
 }: EntityCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const initials = getInitials(name);
   const avatarColor = getAvatarColor(name);
 
@@ -91,7 +91,7 @@ function EntityCardComponent({
       <View
         style={[
           styles.avatarContainer,
-          { backgroundColor: themeColors.backgroundSecondary },
+          { backgroundColor: colors.background.secondary },
         ]}
       >
         {imageUrl ? (
@@ -116,13 +116,13 @@ function EntityCardComponent({
 
       <View style={styles.info}>
         <Text
-          style={[styles.name, { color: themeColors.text }]}
+          style={[styles.name, { color: colors.text.primary }]}
           numberOfLines={2}
         >
           {name}
         </Text>
         {bookCount > 0 && (
-          <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.bookCount, { color: colors.text.secondary }]}>
             {bookCount} {bookCount === 1 ? 'book' : 'books'}
           </Text>
         )}
@@ -156,7 +156,9 @@ const styles = StyleSheet.create({
   initials: {
     fontSize: scale(36),
     fontWeight: '700',
-    color: '#FFFFFF', // Always white on colored background
+    // Color is always white on colored avatar backgrounds (AVATAR_COLORS are dark hues)
+    // This is intentional contrast - not using theme token since avatar colors are fixed
+    color: '#FFFFFF',
   },
   info: {
     marginTop: spacing.xs,

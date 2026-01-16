@@ -13,7 +13,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   TextInput,
   ListRenderItem,
 } from 'react-native';
@@ -24,15 +23,27 @@ import { ChevronLeft, Search, XCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache, useCoverUrl } from '@/core/cache';
 import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useViewportPrefetch } from '@/shared/hooks/useViewportPrefetch';
+import { apiClient } from '@/core/api';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { useMoodRecommendations } from '@/features/mood-discovery/hooks/useMoodRecommendations';
 import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { CompleteBadgeOverlay } from '@/features/completion';
+import { SkullRefreshControl } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale, spacing, radius, wp, accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
-import { LibraryItem } from '@/core/types';
+import { scale, spacing, radius, wp, useTheme } from '@/shared/theme';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
+
+// Helper to get book duration
+function getBookDuration(item: LibraryItem): number {
+  return isBookMedia(item.media) ? item.media.duration || 0 : 0;
+}
 
 const PADDING = 16;
 const GAP = 10;  // Gap for 3-column layout
@@ -45,7 +56,6 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SHORT_BOOK_THRESHOLD = 5 * 60 * 60; // 5 hours
 const LONG_BOOK_THRESHOLD = 10 * 60 * 60; // 10 hours
 
-const ACCENT = accentColors.primary;
 
 // Filter types that can be passed via navigation
 export type FilterType =
@@ -64,8 +74,9 @@ export type FilteredBooksParams = {
   minMatchPercent?: number;
 };
 
-function getMetadata(item: LibraryItem): any {
-  return (item.media?.metadata as any) || {};
+function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return {};
+  return item.media.metadata as BookMetadata;
 }
 
 // Grid Book Card - matches ContentRowCarousel style
@@ -75,7 +86,7 @@ interface GridCardProps {
 }
 
 const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const coverUrl = useCoverUrl(item.id);
   const metadata = getMetadata(item);
 
@@ -84,7 +95,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCar
   // Simplified card for 3-column layout: just cover + title
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
-      <View style={[styles.coverContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
+      <View style={[styles.coverContainer, { backgroundColor: colors.background.secondary }]}>
         <Image
           source={coverUrl}
           style={styles.cover}
@@ -95,7 +106,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCar
         <CompleteBadgeOverlay bookId={item.id} size="small" />
       </View>
 
-      <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={2}>
+      <Text style={[styles.cardTitle, { color: colors.text.primary }]} numberOfLines={2}>
         {title}
       </Text>
     </TouchableOpacity>
@@ -106,7 +117,7 @@ export function FilteredBooksScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: FilteredBooksParams }, 'params'>>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors, isDark } = useTheme();
 
   const { title, filterType, genre, minMatchPercent = 20 } = route.params || {};
 
@@ -156,7 +167,7 @@ export function FilteredBooksScreen() {
       case 'short_books': {
         result = libraryItems
           .filter(item => {
-            const duration = (item.media as any)?.duration || 0;
+            const duration = getBookDuration(item);
             return duration > 0 && duration < SHORT_BOOK_THRESHOLD;
           })
           .filter(item => !isFinished(item.id))
@@ -168,14 +179,14 @@ export function FilteredBooksScreen() {
       case 'long_listens': {
         result = libraryItems
           .filter(item => {
-            const duration = (item.media as any)?.duration || 0;
+            const duration = getBookDuration(item);
             return duration >= LONG_BOOK_THRESHOLD;
           })
           .filter(item => !isFinished(item.id))
           .filter(isSeriesAppropriate)
           .sort((a, b) => {
-            const durationA = (a.media as any)?.duration || 0;
-            const durationB = (b.media as any)?.duration || 0;
+            const durationA = getBookDuration(a);
+            const durationB = getBookDuration(b);
             return durationB - durationA;
           });
         break;
@@ -207,7 +218,7 @@ export function FilteredBooksScreen() {
           const series = metadata.series?.[0];
           if (series?.name && series?.sequence) {
             const existing = seriesFromProgress.get(series.name) || 0;
-            const seq = parseFloat(series.sequence) || 0;
+            const seq = parseFloat(series.sequence || '0') || 0;
             if (seq > existing) {
               seriesFromProgress.set(series.name, seq);
             }
@@ -219,7 +230,7 @@ export function FilteredBooksScreen() {
             const metadata = getMetadata(item);
             const series = metadata.series?.[0];
             if (!series?.name || series.name !== seriesName) return false;
-            const seq = parseFloat(series.sequence) || 0;
+            const seq = parseFloat(series.sequence || '0') || 0;
             return seq > maxSeq && !isFinished(item.id);
           });
           if (nextInSeries) {
@@ -271,6 +282,17 @@ export function FilteredBooksScreen() {
     inProgressItems,
   ]);
 
+  // Prefetch covers for items about to scroll into view
+  const getCoverUrl = useCallback((item: LibraryItem) => {
+    return apiClient.getItemCoverUrl(item.id);
+  }, []);
+
+  const { onViewableItemsChanged, viewabilityConfig } = useViewportPrefetch(
+    filteredBooks,
+    getCoverUrl,
+    { prefetchAhead: 12 } // Prefetch 12 items ahead (4 rows in 3-column grid)
+  );
+
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.goBack();
@@ -313,18 +335,18 @@ export function FilteredBooksScreen() {
   // Empty state component
   const ListEmptyComponent = useMemo(() => (
     <View style={styles.emptyState}>
-      <Text style={[styles.emptyTitle, { color: themeColors.text }]}>
+      <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>
         No books found
       </Text>
-      <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
+      <Text style={[styles.emptySubtitle, { color: colors.text.secondary }]}>
         {searchQuery ? 'Try a different search term' : 'Check back later for new additions'}
       </Text>
     </View>
-  ), [themeColors.text, themeColors.textSecondary, searchQuery]);
+  ), [colors.text.primary, colors.text.secondary, searchQuery]);
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor="transparent" translucent />
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + scale(8) }]}>
@@ -333,62 +355,59 @@ export function FilteredBooksScreen() {
           style={styles.backButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <ChevronLeft size={scale(24)} color={themeColors.text} />
+          <ChevronLeft size={scale(24)} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: themeColors.text }]} numberOfLines={1}>
+        <Text style={[styles.headerTitle, { color: colors.text.primary }]} numberOfLines={1}>
           {title || 'Books'}
         </Text>
         <View style={styles.placeholder} />
       </View>
 
       {/* Search Bar */}
-      <View style={[styles.searchContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
-        <Search size={scale(18)} color={themeColors.textSecondary} />
+      <View style={[styles.searchContainer, { backgroundColor: colors.background.secondary }]}>
+        <Search size={scale(18)} color={colors.text.secondary} />
         <TextInput
-          style={[styles.searchInput, { color: themeColors.text }]}
+          style={[styles.searchInput, { color: colors.text.primary }]}
           placeholder="Search..."
-          placeholderTextColor={themeColors.textTertiary}
+          placeholderTextColor={colors.text.tertiary}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={handleClearSearch}>
-            <XCircle size={scale(18)} color={themeColors.textSecondary} />
+            <XCircle size={scale(18)} color={colors.text.secondary} />
           </TouchableOpacity>
         )}
       </View>
 
       {/* Results Count */}
-      <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>
+      <Text style={[styles.resultCount, { color: colors.text.secondary }]}>
         {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}
       </Text>
 
       {/* Virtualized Book Grid - 4 columns with optimized rendering */}
-      <FlatList
-        data={filteredBooks}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        numColumns={NUM_COLUMNS}
-        columnWrapperStyle={styles.columnWrapper}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
-        ]}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={16}
-        maxToRenderPerBatch={12}
-        windowSize={7}
-        removeClippedSubviews={false}
-        getItemLayout={getItemLayout}
-        ListEmptyComponent={ListEmptyComponent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={themeColors.text}
-          />
-        }
-      />
+      <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+        <FlatList
+          data={filteredBooks}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          numColumns={NUM_COLUMNS}
+          columnWrapperStyle={styles.columnWrapper}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={16}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews={false}
+          getItemLayout={getItemLayout}
+          ListEmptyComponent={ListEmptyComponent}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+        />
+      </SkullRefreshControl>
     </View>
   );
 }

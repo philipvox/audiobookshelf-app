@@ -23,8 +23,7 @@ import {
 } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
 import { haptics } from '@/core/native/haptics';
-import { scale, accentColors } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { scale, accentColors, useTheme, useIsDarkMode } from '@/shared/theme';
 
 // Size definitions (diameter in pt)
 const SIZES = {
@@ -75,7 +74,7 @@ export function PlayPauseButton({
   style,
   hapticFeedback = true,
 }: PlayPauseButtonProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDark = useIsDarkMode();
 
   // Get button dimensions
@@ -87,36 +86,36 @@ export function PlayPauseButton({
   const { background, iconColor } = useMemo(() => {
     switch (variant) {
       case 'primary':
-        // Gold/accent background with dark icon
+        // Accent background with contrasting icon
         return {
-          background: accentColors.gold,
-          iconColor: '#000000',
+          background: colors.accent.primary,
+          iconColor: colors.accent.textOnAccent,
         };
       case 'secondary':
         // Theme surface background with theme text icon
         return {
-          background: themeColors.surfaceElevated,
-          iconColor: themeColors.text,
+          background: colors.background.elevated,
+          iconColor: colors.text.primary,
         };
       case 'overlay':
-        // Semi-transparent dark/light background with contrasting icon
+        // Semi-transparent background with contrasting icon
         return {
           background: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.6)',
-          iconColor: isDark ? '#000000' : '#FFFFFF',
+          iconColor: colors.text.inverse,
         };
       case 'ghost':
         // No background, just icon using theme color
         return {
           background: 'transparent',
-          iconColor: themeColors.text,
+          iconColor: colors.text.primary,
         };
       default:
         return {
-          background: accentColors.gold,
-          iconColor: '#000000',
+          background: colors.accent.primary,
+          iconColor: colors.accent.textOnAccent,
         };
     }
-  }, [variant, themeColors, isDark]);
+  }, [variant, colors, isDark]);
 
   // Handle press with haptic feedback
   const handlePress = useCallback(() => {

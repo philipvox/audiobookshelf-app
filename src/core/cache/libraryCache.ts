@@ -3,27 +3,52 @@
  *
  * Persistent library cache with 30-day TTL
  * Caches entire library on startup for instant navigation
+ *
+ * STORAGE: Uses SQLite (sqliteCache) as single source of truth.
+ * (Eliminated AsyncStorage for library data to prevent divergence - P1 Fix)
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { apiClient } from '@/core/api';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { searchIndex } from './searchIndex';
 import { normalizeForSearch } from '@/features/search/utils/fuzzySearch';
 import { createLogger } from '@/shared/utils/logger';
+import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { sqliteCache } from '@/core/services/sqliteCache';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
 
 const log = createLogger('LibraryCache');
 
-const CACHE_KEY = 'library_cache_v1';
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+// Extended metadata interface with optional narrator field
+interface ExtendedBookMetadata extends BookMetadata {
+  narratorName?: string;
+}
+
+// Helper to get book metadata safely
+// Note: We check for metadata directly without requiring audioFiles,
+// since library cache items may not include audioFiles to save space
+function getBookMetadataTyped(item: LibraryItem | null | undefined): ExtendedBookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  return item.media.metadata as ExtendedBookMetadata;
+}
+
+// API author response type (from audiobookshelf server)
+interface ApiAuthor {
+  id: string;
+  name: string;
+  numBooks?: number;
+  imagePath?: string;
+  description?: string;
+}
+
 const CACHE_TTL_DAYS = 30;
 const CACHE_TTL_MS = CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
-
-interface CachedLibrary {
-  items: LibraryItem[];
-  timestamp: number;
-  libraryId: string;
-}
 
 interface AuthorInfo {
   id?: string;  // Author ID from API (if available)
@@ -49,6 +74,8 @@ interface SeriesInfo {
 interface GenreInfo {
   name: string;
   bookCount: number;
+  books: LibraryItem[];
+  totalDuration: number;  // Pre-computed for instant display
 }
 
 interface LibraryCacheState {
@@ -66,6 +93,7 @@ interface LibraryCacheState {
   narrators: Map<string, NarratorInfo>;
   series: Map<string, SeriesInfo>;
   genres: string[];
+  genresWithBooks: Map<string, GenreInfo>;
   itemsById: Map<string, LibraryItem>;
 
   // Actions
@@ -75,6 +103,7 @@ interface LibraryCacheState {
   getAuthor: (name: string) => AuthorInfo | undefined;
   getNarrator: (name: string) => NarratorInfo | undefined;
   getSeries: (name: string) => SeriesInfo | undefined;
+  getGenre: (name: string) => GenreInfo | undefined;
   searchItems: (query: string) => LibraryItem[];
   filterItems: (filters: FilterOptions) => LibraryItem[];
   clearCache: () => Promise<void>;
@@ -94,9 +123,9 @@ export interface FilterOptions {
   sortOrder?: 'asc' | 'desc';
 }
 
-// Helper to extract metadata safely
-function getMetadata(item: LibraryItem): any {
-  return (item.media?.metadata as any) || {};
+// Helper to extract metadata safely (returns empty object if not available)
+function getMetadata(item: LibraryItem): ExtendedBookMetadata {
+  return getBookMetadataTyped(item) || ({} as ExtendedBookMetadata);
 }
 
 // Build derived indexes from items
@@ -104,7 +133,7 @@ function buildIndexes(items: LibraryItem[]) {
   const authors = new Map<string, AuthorInfo>();
   const narrators = new Map<string, NarratorInfo>();
   const series = new Map<string, SeriesInfo>();
-  const genresSet = new Set<string>();
+  const genresWithBooks = new Map<string, GenreInfo>();
   const itemsById = new Map<string, LibraryItem>();
 
   for (const item of items) {
@@ -149,7 +178,13 @@ function buildIndexes(items: LibraryItem[]) {
     }
 
     // Index by series
-    const seriesName = metadata.seriesName || '';
+    // Check both seriesName and series[0].name - AudiobookShelf uses both formats
+    let seriesName = metadata.seriesName || '';
+    if (!seriesName && metadata.series?.length > 0) {
+      // Fallback to series array if seriesName not set
+      const primarySeries = metadata.series[0];
+      seriesName = typeof primarySeries === 'string' ? primarySeries : primarySeries?.name || '';
+    }
     if (seriesName) {
       // Remove sequence number for grouping
       const cleanSeriesName = seriesName.replace(/\s*#[\d.]+$/, '').trim();
@@ -166,9 +201,22 @@ function buildIndexes(items: LibraryItem[]) {
       }
     }
 
-    // Collect genres
+    // Index by genre (each book can have multiple genres)
+    const bookDuration = item.media?.duration || 0;
     for (const genre of (metadata.genres || [])) {
-      genresSet.add(genre);
+      const existing = genresWithBooks.get(genre.toLowerCase());
+      if (existing) {
+        existing.bookCount++;
+        existing.books.push(item);
+        existing.totalDuration += bookDuration;
+      } else {
+        genresWithBooks.set(genre.toLowerCase(), {
+          name: genre,
+          bookCount: 1,
+          books: [item],
+          totalDuration: bookDuration,
+        });
+      }
     }
   }
 
@@ -193,11 +241,21 @@ function buildIndexes(items: LibraryItem[]) {
     seriesInfo.books.sort((a, b) => getBookSequence(a) - getBookSequence(b));
   }
 
+  // Pre-sort books within genres by title (eliminates sort on every genre page visit)
+  for (const genreInfo of genresWithBooks.values()) {
+    genreInfo.books.sort((a, b) => {
+      const titleA = (getMetadata(a).title || '').toLowerCase();
+      const titleB = (getMetadata(b).title || '').toLowerCase();
+      return titleA.localeCompare(titleB);
+    });
+  }
+
   return {
     authors,
     narrators,
     series,
-    genres: Array.from(genresSet).sort(),
+    genres: Array.from(genresWithBooks.values()).map(g => g.name).sort(),
+    genresWithBooks,
     itemsById,
   };
 }
@@ -214,6 +272,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   narrators: new Map(),
   series: new Map(),
   genres: [],
+  genresWithBooks: new Map(),
   itemsById: new Map(),
 
   loadCache: async (libraryId: string, forceRefresh = false) => {
@@ -224,80 +283,77 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Try to load from AsyncStorage first
+      // Try to load from SQLite first (single source of truth - P1 Fix)
       if (!forceRefresh) {
-        let cached: string | null = null;
-        try {
-          cached = await AsyncStorage.getItem(CACHE_KEY);
-        } catch (cacheReadError: any) {
-          // Handle "Row too big" error on Android - cache is corrupted/too large
-          log.warn('Cache read failed (likely too large), clearing:', cacheReadError.message);
-          try {
-            await AsyncStorage.removeItem(CACHE_KEY);
-          } catch {}
-          // Continue to fetch fresh data
-        }
-        if (cached) {
-          const parsed: CachedLibrary = JSON.parse(cached);
-          const age = Date.now() - parsed.timestamp;
+        const lastSyncTime = await sqliteCache.getLastSyncTime(libraryId);
+        if (lastSyncTime) {
+          const age = Date.now() - lastSyncTime;
 
-          // Check if cache is still valid (same library, not expired)
-          if (parsed.libraryId === libraryId && age < CACHE_TTL_MS) {
-            log.debug(`Using cached data (${Math.round(age / 1000 / 60)} min old)`);
-            const indexes = buildIndexes(parsed.items);
+          // Check if cache is still valid (not expired)
+          if (age < CACHE_TTL_MS) {
+            const cachedItems = await sqliteCache.getLibraryItems(libraryId);
+            if (cachedItems.length > 0) {
+              log.debug(`Using SQLite cached data (${Math.round(age / 1000 / 60)} min old, ${cachedItems.length} items)`);
+              const indexes = buildIndexes(cachedItems);
 
-            // Fetch authors from API in background to get accurate book counts
-            apiClient.getLibraryAuthors(libraryId).then((apiAuthors) => {
-              if (apiAuthors && apiAuthors.length > 0) {
-                log.debug(`Merging ${apiAuthors.length} authors from API (background)`);
-                for (const apiAuthor of apiAuthors) {
-                  const key = apiAuthor.name.toLowerCase();
-                  const existing = indexes.authors.get(key);
-                  if (existing) {
-                    existing.id = apiAuthor.id;
-                    existing.bookCount = (apiAuthor as any).numBooks || existing.bookCount;
-                    existing.imagePath = apiAuthor.imagePath;
-                    existing.description = apiAuthor.description;
-                  } else {
-                    indexes.authors.set(key, {
-                      id: apiAuthor.id,
-                      name: apiAuthor.name,
-                      bookCount: (apiAuthor as any).numBooks || 0,
-                      books: [],
-                      imagePath: apiAuthor.imagePath,
-                      description: apiAuthor.description,
-                    });
+              // Fetch authors from API in background to get accurate book counts
+              apiClient.getLibraryAuthors(libraryId).then((response) => {
+                const apiAuthors = response as ApiAuthor[];
+                if (apiAuthors && apiAuthors.length > 0) {
+                  log.debug(`Merging ${apiAuthors.length} authors from API (background)`);
+                  for (const apiAuthor of apiAuthors) {
+                    const key = apiAuthor.name.toLowerCase();
+                    const existing = indexes.authors.get(key);
+                    if (existing) {
+                      existing.id = apiAuthor.id;
+                      existing.bookCount = apiAuthor.numBooks || existing.bookCount;
+                      existing.imagePath = apiAuthor.imagePath;
+                      existing.description = apiAuthor.description;
+                    } else {
+                      indexes.authors.set(key, {
+                        id: apiAuthor.id,
+                        name: apiAuthor.name,
+                        bookCount: apiAuthor.numBooks || 0,
+                        books: [],
+                        imagePath: apiAuthor.imagePath,
+                        description: apiAuthor.description,
+                      });
+                    }
                   }
+                  // Update state with merged authors
+                  set({ authors: indexes.authors });
                 }
-                // Update state with merged authors
-                set({ authors: indexes.authors });
-              }
-            }).catch(() => {
-              // Silently fail - will use local counts
-            });
+              }).catch(() => {
+                // Silently fail - will use local counts
+              });
 
-            // Build search index in background
-            searchIndex.build(parsed.items);
+              // Queue search index for lazy build (P2 Fix - defer until first search)
+              searchIndex.queueBuild(cachedItems);
 
-            set({
-              items: parsed.items,
-              isLoaded: true,
-              isLoading: false,
-              lastUpdated: parsed.timestamp,
-              currentLibraryId: libraryId,
-              ...indexes,
-            });
-            return;
+              // Populate spine cache for book visualizations (loads from SQLite first)
+              await useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId);
+
+              set({
+                items: cachedItems,
+                isLoaded: true,
+                isLoading: false,
+                lastUpdated: lastSyncTime,
+                currentLibraryId: libraryId,
+                ...indexes,
+              });
+              return;
+            }
           }
         }
       }
 
       // Fetch fresh data from API - items and authors in parallel
       log.debug('Fetching fresh library data for library:', libraryId);
-      const [itemsResponse, apiAuthors] = await Promise.all([
+      const [itemsResponse, authorsResponse] = await Promise.all([
         apiClient.getLibraryItems(libraryId, { limit: 100000 }),  // Large limit to fetch all books
-        apiClient.getLibraryAuthors(libraryId).catch(() => [] as any[]),
+        apiClient.getLibraryAuthors(libraryId).catch(() => [] as ApiAuthor[]),
       ]);
+      const apiAuthors = authorsResponse as ApiAuthor[];
       const items = itemsResponse?.results || [];
 
       // Build indexes from items
@@ -329,28 +385,15 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         }
       }
 
-      // Save to AsyncStorage (skip if data is too large to prevent CursorWindow errors)
-      const cacheData: CachedLibrary = {
-        items,
-        timestamp: Date.now(),
-        libraryId,
-      };
-      const cacheJson = JSON.stringify(cacheData);
-      // Android CursorWindow limit is 2MB, stay well under to be safe
-      if (cacheJson.length < 1.5 * 1024 * 1024) {
-        try {
-          await AsyncStorage.setItem(CACHE_KEY, cacheJson);
-        } catch (writeError: any) {
-          log.warn('Failed to save cache (too large?):', writeError.message);
-        }
-      } else {
-        log.warn(`Cache too large to persist (${(cacheJson.length / 1024 / 1024).toFixed(1)}MB), using in-memory only`);
-      }
+      // Save to SQLite (single source of truth - no size limit like AsyncStorage)
+      await sqliteCache.setLibraryItems(libraryId, items);
+      log.debug(`Cached ${items.length} items to SQLite, ${indexes.authors.size} authors`);
 
-      log.debug(`Cached ${items.length} items, ${indexes.authors.size} authors`);
+      // Queue search index for lazy build (P2 Fix - defer until first search)
+      searchIndex.queueBuild(items);
 
-      // Build search index
-      searchIndex.build(items);
+      // Populate spine cache for book visualizations (loads from SQLite first, saves computed items)
+      await useSpineCacheStore.getState().populateFromLibrary(items, libraryId);
 
       set({
         items,
@@ -360,11 +403,11 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         currentLibraryId: libraryId,
         ...indexes,
       });
-    } catch (error: any) {
+    } catch (error) {
       log.error('Failed to load:', error);
       set({
         isLoading: false,
-        error: error.message || 'Failed to load library',
+        error: getErrorMessage(error),
       });
     }
   },
@@ -408,6 +451,11 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     // Try without sequence number
     const cleanName = name.replace(/\s*#[\d.]+$/, '').trim();
     return get().series.get(cleanName.toLowerCase());
+  },
+
+  getGenre: (name: string) => {
+    if (!name) return undefined;
+    return get().genresWithBooks.get(name.toLowerCase());
   },
 
   searchItems: (query: string) => {
@@ -602,7 +650,10 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   },
 
   clearCache: async () => {
-    await AsyncStorage.removeItem(CACHE_KEY);
+    // Clear SQLite cache (single source of truth - P1 Fix)
+    await sqliteCache.clearAllCache();
+    // Clear spine cache as well
+    useSpineCacheStore.getState().clearCache();
     set({
       items: [],
       isLoaded: false,
@@ -646,7 +697,7 @@ export function getGenresByPopularity(): GenreInfo[] {
 
   // Count books per genre
   for (const item of items) {
-    const metadata = (item.media?.metadata as any) || {};
+    const metadata = getMetadata(item);
     const genres: string[] = metadata.genres || [];
     for (const genre of genres) {
       genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
@@ -670,7 +721,7 @@ export function getSeriesNavigationInfo(currentBook: LibraryItem): {
   previousBook: LibraryItem | null;
   nextBook: LibraryItem | null;
 } | null {
-  const metadata = (currentBook.media?.metadata as any) || {};
+  const metadata = getMetadata(currentBook);
   const seriesNameRaw = metadata.seriesName || '';
 
   if (!seriesNameRaw) return null;
@@ -712,7 +763,7 @@ export function getSeriesNavigationInfo(currentBook: LibraryItem): {
  * Returns null if the book is not in a series or there's no next book
  */
 export function getNextBookInSeries(currentBook: LibraryItem): LibraryItem | null {
-  const metadata = (currentBook.media?.metadata as any) || {};
+  const metadata = getMetadata(currentBook);
   const seriesName = metadata.seriesName || '';
 
   log.debug('[getNextBookInSeries] Input seriesName:', seriesName);
@@ -750,13 +801,13 @@ export function getNextBookInSeries(currentBook: LibraryItem): LibraryItem | nul
   // Return the next book if it exists
   if (currentIndex >= 0 && currentIndex < seriesInfo.books.length - 1) {
     const nextBook = seriesInfo.books[currentIndex + 1];
-    log.debug('[getNextBookInSeries] Found next book by index:', (nextBook.media?.metadata as any)?.title);
+    log.debug('[getNextBookInSeries] Found next book by index:', getMetadata(nextBook).title);
     return nextBook;
   }
 
   // Fallback: find next by sequence number if book wasn't found by ID
   for (const book of seriesInfo.books) {
-    const bookMetadata = (book.media?.metadata as any) || {};
+    const bookMetadata = getMetadata(book);
     const bookSeriesName = bookMetadata.seriesName || '';
     const bookSeqMatch = bookSeriesName.match(/#([\d.]+)/);
     if (bookSeqMatch) {

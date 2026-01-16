@@ -1,4 +1,4 @@
-export { SeriesDetailScreen } from './screens/SeriesDetailScreen';
+export { SecretLibrarySeriesDetailScreen } from './screens/SecretLibrarySeriesDetailScreen';
 export { SeriesCard } from './components/SeriesCard';
 export { useSeries } from './hooks/useSeries';
 export { transformSeries } from './services/seriesAdapter';

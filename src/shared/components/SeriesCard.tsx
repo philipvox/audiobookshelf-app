@@ -19,7 +19,7 @@ import {
   interactiveStates,
   layout,
 } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { useTheme, useIsDarkMode } from '@/shared/theme';
 import { SeriesHeartButton, SeriesProgressBadge } from '@/shared/components';
 
 // Use cardTokens for consistent values
@@ -80,7 +80,7 @@ function SeriesCardComponent({
   enhancedData,
   showHeart = true,
 }: SeriesCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
   const { width: screenWidth } = useWindowDimensions();
 
@@ -161,6 +161,7 @@ function SeriesCardComponent({
                       top: verticalOffset,
                       zIndex,
                       transform: [{ rotate: `${rotation}deg` }],
+                      backgroundColor: colors.background.tertiary,
                     },
                   ]}
                   contentFit="cover"
@@ -173,7 +174,7 @@ function SeriesCardComponent({
       </View>
 
       {/* Series name */}
-      <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>
+      <Text style={[styles.seriesName, { color: colors.text.primary }]} numberOfLines={2}>
         {series.name}
       </Text>
 
@@ -189,7 +190,7 @@ function SeriesCardComponent({
           />
         </View>
       ) : (
-        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>
+        <Text style={[styles.bookCount, { color: colors.text.secondary }]}>
           {bookCount} {bookCount === 1 ? 'book' : 'books'}
         </Text>
       )}
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
   fanCover: {
     position: 'absolute',
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(128,128,128,0.3)',
+    // backgroundColor set dynamically via inline styles using colors.background.tertiary
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

@@ -12,7 +12,7 @@ import {
   radius,
   scale,
   elevation,
-  useThemeColors,
+  useTheme,
   accentColors,
 } from '@/shared/theme';
 
@@ -27,7 +27,7 @@ export function CoverArtwork({
   size = scale(263),
   seriesSequence,
 }: CoverArtworkProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // Anima: 263x264 (slightly taller than wide)
   const width = size;
@@ -48,18 +48,18 @@ export function CoverArtwork({
       {coverUrl ? (
         <Image
           source={{ uri: coverUrl }}
-          style={[styles.image, { width, height, borderRadius, backgroundColor: themeColors.backgroundSecondary }]}
+          style={[styles.image, { width, height, borderRadius, backgroundColor: colors.background.secondary }]}
           contentFit="cover"
           transition={200}
         />
       ) : (
-        <View style={[styles.placeholder, { width, height, borderRadius, backgroundColor: themeColors.backgroundSecondary }]} />
+        <View style={[styles.placeholder, { width, height, borderRadius, backgroundColor: colors.background.secondary }]} />
       )}
 
       {/* Series sequence badge */}
       {seriesSequence !== undefined && (
-        <View style={[styles.seriesBadge, { backgroundColor: accentColors.gold }]}>
-          <Text style={[styles.seriesText, { color: themeColors.background }]}>#{seriesSequence}</Text>
+        <View style={[styles.seriesBadge, { backgroundColor: colors.accent.primary }]}>
+          <Text style={[styles.seriesText, { color: colors.background.primary }]}>#{seriesSequence}</Text>
         </View>
       )}
     </View>

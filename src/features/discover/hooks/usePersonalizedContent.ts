@@ -6,10 +6,25 @@
  */
 
 import { useMemo } from 'react';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { useRecommendations } from '@/features/recommendations/hooks/useRecommendations';
 import { ContentRow, BookSummary, SourceAttribution } from '../types';
 import { MAX_RECOMMENDATION_GROUPS } from './discoverUtils';
+
+// Helper to get book metadata safely
+// Note: Does NOT require audioFiles - works with cache items that only have metadata
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  // This app only handles books, so metadata is always BookMetadata
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Helper to get book duration safely
+// Note: Does NOT require audioFiles - works with cache items that only have duration
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  return item?.media?.duration || 0;
+}
 
 interface UsePersonalizedContentProps {
   libraryItems: LibraryItem[];
@@ -57,21 +72,21 @@ export function usePersonalizedContent({
     // Get user's usual genres
     const usualGenres = new Set<string>();
     libraryItems.forEach(item => {
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      if (progress > 0.1 || (item as any).userMediaProgress?.isFinished || progress >= 0.95) {
-        ((item.media?.metadata as any)?.genres || []).forEach((g: string) => usualGenres.add(g.toLowerCase()));
+      const progress = item.userMediaProgress?.progress || 0;
+      if (progress > 0.1 || item.userMediaProgress?.isFinished || progress >= 0.95) {
+        (getBookMetadata(item)?.genres || []).forEach((g: string) => usualGenres.add(g.toLowerCase()));
       }
     });
     // Find books in unexplored genres
     let serendipityItems = libraryItems.filter(item => {
-      const progress = (item as any).userMediaProgress?.progress || 0;
+      const progress = item.userMediaProgress?.progress || 0;
       if (progress > 0 || isFinished(item.id)) return false;
-      const genres: string[] = (item.media?.metadata as any)?.genres || [];
+      const genres: string[] = getBookMetadata(item)?.genres || [];
       return genres.length > 0 && !genres.some(g => usualGenres.has(g.toLowerCase()));
     }).filter(isSeriesAppropriate);
     // Sort by medium-length preference, then shuffle
-    serendipityItems.sort((a, b) => Math.abs(((a.media as any)?.duration || 0) - 12 * 3600) -
-      Math.abs(((b.media as any)?.duration || 0) - 12 * 3600));
+    serendipityItems.sort((a, b) => Math.abs(getBookDuration(a) - 12 * 3600) -
+      Math.abs(getBookDuration(b) - 12 * 3600));
     const shuffled = serendipityItems.slice(0, 20);
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));

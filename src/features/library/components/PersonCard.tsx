@@ -8,8 +8,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { User, Mic } from 'lucide-react-native';
-import { scale, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, useTheme } from '@/shared/theme';
 
 interface PersonCardProps {
   name: string;
@@ -26,7 +25,7 @@ export const PersonCard = React.memo(function PersonCard({
   type,
   onPress,
 }: PersonCardProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const Icon = type === 'author' ? User : Mic;
   const typeLabel = type === 'author' ? '' : ', narrator';
 
@@ -39,17 +38,17 @@ export const PersonCard = React.memo(function PersonCard({
       accessibilityRole="button"
       accessibilityHint={`Double tap to view ${type}`}
     >
-      <View style={[styles.personAvatar, { backgroundColor: themeColors.border }]}>
+      <View style={[styles.personAvatar, { backgroundColor: colors.border.default }]}>
         {imageUrl ? (
           <Image source={imageUrl} style={styles.personImage} contentFit="cover" />
         ) : (
-          <Icon size={scale(24)} color={themeColors.textSecondary} strokeWidth={1.5} />
+          <Icon size={scale(24)} color={colors.text.secondary} strokeWidth={1.5} />
         )}
       </View>
-      <Text style={[styles.personName, { color: themeColors.text }]} numberOfLines={1}>
+      <Text style={[styles.personName, { color: colors.text.primary }]} numberOfLines={1}>
         {name}
       </Text>
-      <Text style={[styles.personMeta, { color: themeColors.textSecondary }]}>
+      <Text style={[styles.personMeta, { color: colors.text.secondary }]}>
         {bookCount} book{bookCount !== 1 ? 's' : ''}
       </Text>
     </TouchableOpacity>

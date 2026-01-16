@@ -14,9 +14,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { ProgressDots } from './ProgressDots';
-import { scale, spacing } from '@/shared/theme';
-import { useColors, ThemeColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, useTheme, ThemeColors } from '@/shared/theme';
 
 // Helper to extract semantic colors
 function getSemanticColors(c: ThemeColors) {
@@ -62,9 +60,8 @@ export function SeriesProgressBadge({
   timeRemaining,
   compact = false,
 }: SeriesProgressBadgeProps) {
-  const themeColors = useThemeColors();
-  const fullThemeColors = useColors();
-  const semanticColors = getSemanticColors(fullThemeColors);
+  const { colors } = useTheme();
+  const semanticColors = getSemanticColors(colors);
 
   const isComplete = completed === total && total > 0;
   const hasProgress = completed > 0 || inProgress > 0;
@@ -74,7 +71,7 @@ export function SeriesProgressBadge({
     return (
       <View style={[styles.container, compact && styles.containerCompact]}>
         <View style={[styles.completeBadge, { backgroundColor: semanticColors.success }]}>
-          <Check size={scale(12)} color={themeColors.background} strokeWidth={3} />
+          <Check size={scale(12)} color={colors.background.primary} strokeWidth={3} />
         </View>
         <Text style={[styles.completeText, { color: semanticColors.success }]}>Complete</Text>
       </View>
@@ -92,7 +89,7 @@ export function SeriesProgressBadge({
           showCount={true}
         />
         {!compact && timeRemaining && timeRemaining > 0 && (
-          <Text style={[styles.timeText, { color: themeColors.textTertiary }]}>{formatTimeRemaining(timeRemaining)}</Text>
+          <Text style={[styles.timeText, { color: colors.text.tertiary }]}>{formatTimeRemaining(timeRemaining)}</Text>
         )}
       </View>
     );
@@ -101,7 +98,7 @@ export function SeriesProgressBadge({
   // No progress - show book count
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <Text style={[styles.countOnlyText, { color: themeColors.textSecondary }]}>
+      <Text style={[styles.countOnlyText, { color: colors.text.secondary }]}>
         {total} {total === 1 ? 'book' : 'books'}
       </Text>
     </View>

@@ -8,6 +8,7 @@
 
 import { apiClient } from '@/core/api';
 import { audioLog, createTimer, logSection, formatDuration } from '@/shared/utils/audioDebug';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
 
 const log = (msg: string, ...args: any[]) => audioLog.session(msg, ...args);
 
@@ -35,6 +36,7 @@ export interface PlaybackSession {
   duration: number;
   currentTime: number;
   updatedAt?: number; // Server timestamp for position resolution
+  startedAt?: number; // Session start timestamp (optional)
   audioTracks: AudioTrack[];
   chapters: SessionChapter[];
   coverPath?: string;
@@ -48,6 +50,8 @@ export interface PlaybackSession {
 class SessionService {
   private currentSession: PlaybackSession | null = null;
   private syncIntervalId: NodeJS.Timeout | null = null;
+  // Backup chapters from last session (for fallback when session is null)
+  private lastKnownChapters: SessionChapter[] = [];
 
   /**
    * Start a new playback session
@@ -110,7 +114,7 @@ class SessionService {
       log('  Chapters:', session.chapters?.length || 0);
       // FIX 3 verification: Log timestamp fields to verify server returns them
       log('  Updated At:', session.updatedAt ? new Date(session.updatedAt).toISOString() : 'NOT PRESENT');
-      log('  Started At:', (session as any).startedAt ? new Date((session as any).startedAt).toISOString() : 'NOT PRESENT');
+      log('  Started At:', session.startedAt ? new Date(session.startedAt).toISOString() : 'NOT PRESENT');
 
       if (session.audioTracks?.length) {
         log('  First track content URL:', session.audioTracks[0].contentUrl);
@@ -118,10 +122,14 @@ class SessionService {
       }
 
       this.currentSession = session;
+      // Backup chapters for fallback during race conditions
+      if (session.chapters?.length) {
+        this.lastKnownChapters = session.chapters;
+      }
       return session;
-    } catch (error: any) {
-      audioLog.error('startSession failed:', error.message);
-      audioLog.error('Stack:', error.stack);
+    } catch (error) {
+      audioLog.error('startSession failed:', getErrorMessage(error));
+      audioLog.error('Stack:', (error instanceof Error ? error.stack : undefined));
       throw error;
     }
   }
@@ -140,14 +148,7 @@ class SessionService {
     const track = tracks[trackIndex];
 
     // Get token
-    let token = '';
-    if (typeof (apiClient as any).getAuthToken === 'function') {
-      token = (apiClient as any).getAuthToken() || '';
-    } else if ((apiClient as any).authToken) {
-      token = (apiClient as any).authToken;
-    } else if ((apiClient as any).token) {
-      token = (apiClient as any).token;
-    }
+    const token = apiClient.getAuthToken() || '';
 
     log('getStreamUrl:');
     log('  Track index:', trackIndex);
@@ -172,7 +173,22 @@ class SessionService {
   }
 
   getChapters(): SessionChapter[] {
-    return this.currentSession?.chapters || [];
+    // Use current session chapters, fall back to last known chapters
+    return this.currentSession?.chapters || this.lastKnownChapters;
+  }
+
+  /**
+   * Get backup chapters (for fallback when session is null)
+   */
+  getBackupChapters(): SessionChapter[] {
+    return this.lastKnownChapters;
+  }
+
+  /**
+   * Clear backup chapters (when switching to a different book)
+   */
+  clearBackupChapters(): void {
+    this.lastKnownChapters = [];
   }
 
   getStartTime(): number {
@@ -219,8 +235,8 @@ class SessionService {
         timeListened: 0,
       });
       log('Progress synced successfully');
-    } catch (error: any) {
-      audioLog.warn('Sync failed:', error.message);
+    } catch (error) {
+      audioLog.warn('Sync failed:', getErrorMessage(error));
     }
   }
 
@@ -245,26 +261,38 @@ class SessionService {
 
   /**
    * Close session - NON-BLOCKING (fire and forget)
+   *
+   * Clears currentSession immediately to prevent new requests using stale session.
+   * Chapters are backed up in lastKnownChapters for fallback during race conditions.
    */
   closeSessionAsync(finalTime?: number): void {
     this.stopAutoSync();
 
     if (!this.currentSession) return;
 
-    const sessionId = this.currentSession.id;
+    // Capture session data before clearing
+    const sessionToClose = this.currentSession;
+    const sessionId = sessionToClose.id;
+
+    // Backup chapters before clearing (for race condition safety)
+    if (sessionToClose.chapters?.length) {
+      this.lastKnownChapters = sessionToClose.chapters;
+    }
+
     log('Closing session (async):', sessionId);
     if (finalTime !== undefined) {
       log('  Final time:', formatDuration(finalTime));
     }
 
+    // Clear immediately to prevent stale session usage
     this.currentSession = null;
 
-    // Fire and forget
+    // Fire and forget - session already cleared above
     apiClient.post(`/api/session/${sessionId}/close`, {
       currentTime: finalTime,
       timeListened: 0,
     }).catch((error) => {
-      audioLog.warn('Close session failed (non-blocking):', error.message);
+      audioLog.warn(`Close session ${sessionId} failed (non-blocking):`, error.message);
     });
   }
 
@@ -292,8 +320,8 @@ class SessionService {
         timeListened: 0,
       });
       log('Session closed successfully');
-    } catch (error: any) {
-      audioLog.warn('Close session failed:', error.message);
+    } catch (error) {
+      audioLog.warn('Close session failed:', getErrorMessage(error));
     } finally {
       this.currentSession = null;
     }

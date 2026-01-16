@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { scale, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, useTheme } from '@/shared/theme';
 
 // Drag handle icon
 const DragIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -45,7 +45,7 @@ interface QueueItemProps {
 }
 
 export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const coverUrl = useCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Untitled';
@@ -58,34 +58,34 @@ export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemPr
   const durationText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.backgroundSecondary }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.secondary }]}>
       {/* Drag handle */}
       <Pressable style={styles.dragHandle} onLongPress={onDragStart}>
-        <DragIcon size={scale(18)} color={themeColors.textSecondary} />
+        <DragIcon size={scale(18)} color={colors.text.secondary} />
       </Pressable>
 
       {/* Position number */}
       <View style={styles.positionContainer}>
-        <Text style={[styles.positionNumber, { color: accentColors.gold }]}>{position + 1}</Text>
+        <Text style={[styles.positionNumber, { color: colors.accent.primary }]}>{position + 1}</Text>
       </View>
 
       {/* Cover */}
-      <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} contentFit="cover" />
+      <Image source={coverUrl} style={[styles.cover, { backgroundColor: colors.background.secondary }]} contentFit="cover" />
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
+        <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>
           {author}
         </Text>
-        <Text style={[styles.duration, { color: themeColors.textSecondary }]}>{durationText}</Text>
+        <Text style={[styles.duration, { color: colors.text.secondary }]}>{durationText}</Text>
       </View>
 
       {/* Remove button */}
       <Pressable style={styles.removeButton} onPress={onRemove}>
-        <RemoveIcon size={scale(18)} color={themeColors.textSecondary} />
+        <RemoveIcon size={scale(18)} color={colors.text.secondary} />
       </Pressable>
     </View>
   );

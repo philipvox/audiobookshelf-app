@@ -13,7 +13,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   Alert,
   TextInput,
 } from 'react-native';
@@ -25,9 +24,8 @@ import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
-import { scale, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
-import { SectionSkeleton, BookCardSkeleton } from '@/shared/components';
+import { scale, spacing, useTheme } from '@/shared/theme';
+import { SectionSkeleton, BookCardSkeleton, SkullRefreshControl } from '@/shared/components';
 import { SortPicker, SortOption } from '../components/SortPicker';
 import { LibraryTabBar } from '../components/LibraryTabBar';
 import { LibraryEmptyState } from '../components/LibraryEmptyState';
@@ -59,7 +57,7 @@ export function MyLibraryScreen() {
   useScreenLoadTime('MyLibraryScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { loadBook } = usePlayerStore();
 
   // Tab, sort, and search state
@@ -105,7 +103,15 @@ export function MyLibraryScreen() {
     }
   }, [currentLibraryId, loadCache, refetchContinueListening]);
 
-  const handleBrowse = () => navigation.navigate('DiscoverTab');
+  const handleBrowse = () => {
+    // Use jumpTo for tab switching when already inside the tab navigator
+    const parent = navigation.getParent();
+    if (parent?.jumpTo) {
+      parent.jumpTo('DiscoverTab');
+    } else {
+      navigation.navigate('Main', { screen: 'DiscoverTab' });
+    }
+  };
   const handleBookPress = (itemId: string) => navigation.navigate('BookDetail', { id: itemId });
   const handleSeriesPress = (seriesName: string) => navigation.navigate('SeriesDetail', { seriesName });
   const handleAuthorPress = (authorName: string) => navigation.navigate('AuthorDetail', { name: authorName });
@@ -269,24 +275,24 @@ export function MyLibraryScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + scale(8) }]}>
         {/* Search Bar */}
-        <View style={[styles.searchContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
-          <Search size={scale(18)} color={themeColors.textSecondary} />
+        <View style={[styles.searchContainer, { backgroundColor: colors.background.secondary }]}>
+          <Search size={scale(18)} color={colors.text.secondary} />
           <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
+            style={[styles.searchInput, { color: colors.text.primary }]}
             placeholder="Search library..."
-            placeholderTextColor={themeColors.textSecondary}
+            placeholderTextColor={colors.text.secondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <XCircle size={scale(18)} color={themeColors.textSecondary} />
+              <XCircle size={scale(18)} color={colors.text.secondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -295,10 +301,10 @@ export function MyLibraryScreen() {
         <View style={styles.sortRow}>
           <SortPicker selected={sort} onSelect={setSort} bookCount={filteredBooks.length} />
           <TouchableOpacity
-            style={[styles.browseButton, { backgroundColor: themeColors.backgroundSecondary }]}
+            style={[styles.browseButton, { backgroundColor: colors.background.secondary }]}
             onPress={handleBrowse}
           >
-            <CompassIcon size={scale(18)} color={themeColors.text} />
+            <CompassIcon size={scale(18)} color={colors.text.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -310,36 +316,31 @@ export function MyLibraryScreen() {
       />
 
       {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={themeColors.accent}
-          />
-        }
-      >
-        {!isLoaded ? (
-          <View style={styles.skeletonContainer}>
-            <SectionSkeleton />
-            <View style={styles.skeletonRow}>
-              <BookCardSkeleton />
-              <BookCardSkeleton />
-              <BookCardSkeleton />
+      <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {!isLoaded ? (
+            <View style={styles.skeletonContainer}>
+              <SectionSkeleton />
+              <View style={styles.skeletonRow}>
+                <BookCardSkeleton />
+                <BookCardSkeleton />
+                <BookCardSkeleton />
+              </View>
             </View>
-          </View>
-        ) : !hasAnyContent ? (
-          <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
-        ) : (
-          renderTabContent()
-        )}
-      </ScrollView>
+          ) : !hasAnyContent ? (
+            <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
+          ) : (
+            renderTabContent()
+          )}
+        </ScrollView>
+      </SkullRefreshControl>
     </View>
   );
 }

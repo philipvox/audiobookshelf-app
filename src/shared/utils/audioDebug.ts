@@ -211,10 +211,11 @@ export async function testUrlAccessibility(url: string): Promise<{ accessible: b
       status: response.status,
       error: response.ok ? undefined : `HTTP ${response.status}`,
     };
-  } catch (error: any) {
+  } catch (error) {
     audioLog.network('HEAD', url);
-    audioLog.error(`URL test failed: ${error.message}`);
-    return { accessible: false, error: error.message };
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    audioLog.error(`URL test failed: ${errorMessage}`);
+    return { accessible: false, error: errorMessage };
   }
 }
 

@@ -21,12 +21,29 @@ jest.mock('@/shared/theme', () => ({
     sm: 8,
     md: 12,
     lg: 16,
+    xs: 4,
   },
   radius: {
     md: 8,
+    sm: 4,
   },
   elevation: {
     small: {},
+  },
+  scale: (val: number) => val,
+  useTheme: () => ({
+    colors: {
+      text: { primary: '#ffffff', secondary: '#cccccc', tertiary: '#999999' },
+      background: { primary: '#000000', secondary: '#1a1a1a', tertiary: '#2a2a2a' },
+      progress: { track: '#333333', fill: '#C1F40C' },
+      accent: { primary: '#C1F40C' },
+    },
+    isDark: true,
+    accentTheme: 'default',
+  }),
+  accentColors: {
+    gold: '#C1F40C',
+    primary: '#C1F40C',
   },
 }));
 

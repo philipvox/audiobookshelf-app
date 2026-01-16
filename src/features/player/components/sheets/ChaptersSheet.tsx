@@ -7,7 +7,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
-import { scale, spacing, layout, useThemeColors } from '@/shared/theme';
+import { scale, spacing, layout, useTheme } from '@/shared/theme';
 import { ChapterListItem, type ChapterListItemChapter } from '../ChapterListItem';
 import { SCREEN_HEIGHT } from '../../constants/playerConstants';
 
@@ -24,19 +24,19 @@ export const ChaptersSheet: React.FC<ChaptersSheetProps> = ({
   onChapterSelect,
   onClose,
 }) => {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.sheet, styles.chaptersSheet, { backgroundColor: themeColors.surfaceElevated }]}>
+    <View style={[styles.sheet, styles.chaptersSheet, { backgroundColor: colors.background.elevated }]}>
       <View style={styles.sheetHeader}>
-        <Text style={[styles.sheetTitle, { color: themeColors.text }]}>Chapters</Text>
+        <Text style={[styles.sheetTitle, { color: colors.text.primary }]}>Chapters</Text>
         <TouchableOpacity
           onPress={onClose}
           style={styles.sheetClose}
           accessibilityLabel="Close chapters"
           accessibilityRole="button"
         >
-          <X size={24} color={themeColors.text} strokeWidth={2} />
+          <X size={24} color={colors.text.primary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
       <ScrollView style={styles.chaptersList} showsVerticalScrollIndicator={false}>

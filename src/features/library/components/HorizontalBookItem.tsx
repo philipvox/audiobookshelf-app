@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { LibraryItem } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { usePlayerStore } from '@/features/player';
-import { spacing, radius, elevation, useThemeColors } from '@/shared/theme';
+import { spacing, radius, elevation, useTheme } from '@/shared/theme';
 import { getTitle, getAuthorName } from '@/shared/utils/metadata';
 
 interface HorizontalBookItemProps {
@@ -13,7 +13,7 @@ interface HorizontalBookItemProps {
 }
 
 export function HorizontalBookItem({ book }: HorizontalBookItemProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { loadBook } = usePlayerStore();
 
   const handlePress = async () => {
@@ -37,7 +37,7 @@ export function HorizontalBookItem({ book }: HorizontalBookItemProps) {
 
   return (
     <TouchableOpacity
-      style={[styles.container, { borderBottomColor: themeColors.border }]}
+      style={[styles.container, { borderBottomColor: colors.border.default }]}
       onPress={handlePress}
       activeOpacity={0.7}
       accessibilityLabel={`${title} by ${author}`}
@@ -45,11 +45,11 @@ export function HorizontalBookItem({ book }: HorizontalBookItemProps) {
       accessibilityHint="Double tap to view book details"
     >
       {/* Cover */}
-      <View style={[styles.coverContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
+      <View style={[styles.coverContainer, { backgroundColor: colors.background.secondary }]}>
         {coverUrl ? (
           <Image source={coverUrl} style={styles.cover} contentFit="cover" transition={200} />
         ) : (
-          <View style={[styles.cover, styles.placeholderCover, { backgroundColor: themeColors.backgroundSecondary }]}>
+          <View style={[styles.cover, styles.placeholderCover, { backgroundColor: colors.background.secondary }]}>
             <Text style={styles.placeholderText}>📖</Text>
           </View>
         )}
@@ -57,14 +57,14 @@ export function HorizontalBookItem({ book }: HorizontalBookItemProps) {
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>
+        <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={2}>
           {title}
         </Text>
-        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>
           {author}
         </Text>
         {shortDescription.length > 0 && (
-          <Text style={[styles.description, { color: themeColors.textTertiary }]} numberOfLines={2}>
+          <Text style={[styles.description, { color: colors.text.tertiary }]} numberOfLines={2}>
             {shortDescription}
           </Text>
         )}

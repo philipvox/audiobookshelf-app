@@ -1,10 +1,10 @@
 /**
  * src/shared/utils/metadata.ts
- * 
+ *
  * Utility functions for extracting metadata from LibraryItem objects.
  * The AudiobookShelf API returns metadata in a specific structure that
  * differs from what some type definitions expect.
- * 
+ *
  * Actual API structure:
  * - item.media.metadata.authorName (string)
  * - item.media.metadata.narratorName (string, may include "Narrated by" prefix)
@@ -12,8 +12,53 @@
  * - item.media.duration (number in seconds)
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
 import { formatDuration } from './format';
+
+/**
+ * Type guard for FULL book media with audioFiles.
+ *
+ * WHEN TO USE:
+ * - Playback operations that need audioFiles array
+ * - Download operations that need file URLs
+ * - Chapter access (chapters only exist on full BookMedia)
+ *
+ * WHEN NOT TO USE:
+ * - Metadata display (title, author, narrator) - use getMetadata() instead
+ * - Duration display - use getDuration() instead
+ * - Library cache items don't have audioFiles, so this will return false
+ */
+export function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+/**
+ * Get chapters from a LibraryItem.
+ * Returns empty array if item doesn't have full media data (cache items).
+ */
+export function getChapters(item: LibraryItem | null | undefined): BookMedia['chapters'] {
+  if (!item?.media || !isBookMedia(item.media)) return [];
+  return item.media.chapters || [];
+}
+
+// Extended metadata interface for narrator fields not in base type
+interface ExtendedBookMetadata extends BookMetadata {
+  narratorName?: string;
+}
+
+// Helper to get book metadata safely with extended fields
+// Note: We directly check for metadata without requiring audioFiles,
+// since library cache items may not include audioFiles to save space
+function getMetadata(item: LibraryItem | null | undefined): ExtendedBookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  return item.media.metadata as ExtendedBookMetadata;
+}
+
+// Helper to get book duration safely
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  if (!item) return 0;
+  return item.media?.duration || 0;
+}
 
 export interface BookMetadataExtracted {
   title: string;
@@ -38,33 +83,33 @@ export interface BookMetadataExtracted {
  * Extract all metadata from a LibraryItem in a normalized format
  */
 export function extractBookMetadata(item: LibraryItem | null | undefined): BookMetadataExtracted {
-  const metadata = (item?.media?.metadata as any) || {};
-  const duration = item?.media?.duration || 0;
+  const metadata = getMetadata(item);
+  const duration = getBookDuration(item);
 
   // Get author name - handle both authorName string and authors[] array
   let authorName = 'Unknown Author';
-  if (metadata.authorName) {
+  if (metadata?.authorName) {
     authorName = metadata.authorName;
-  } else if (metadata.authors?.length > 0) {
-    authorName = metadata.authors.map((a: any) => a.name).join(', ');
+  } else if (metadata?.authors?.length && metadata.authors.length > 0) {
+    authorName = metadata.authors.map((a) => a.name).join(', ');
   }
 
   // Get narrator name - handle both narratorName string and narrators[] array
   let narratorName = 'Unknown Narrator';
   let narratorNames: string[] = [];
-  if (metadata.narratorName) {
+  if (metadata?.narratorName) {
     narratorName = metadata.narratorName.replace(/^Narrated by\s*/i, '').trim();
-    narratorNames = narratorName.split(',').map((n: string) => n.trim()).filter(Boolean);
-  } else if (metadata.narrators?.length > 0) {
-    narratorNames = metadata.narrators.map((n: any) => typeof n === 'string' ? n : n.name);
+    narratorNames = narratorName.split(',').map((n) => n.trim()).filter(Boolean);
+  } else if (metadata?.narrators?.length && metadata.narrators.length > 0) {
+    narratorNames = metadata.narrators.map((n) => typeof n === 'string' ? n : n);
     narratorName = narratorNames.join(', ');
   }
 
   // Parse series info from seriesName (format: "Series Name #1") or series array
-  let seriesNameRaw = metadata.seriesName || null;
-  if (!seriesNameRaw && metadata.series?.length > 0) {
+  let seriesNameRaw = metadata?.seriesName || null;
+  if (!seriesNameRaw && metadata?.series?.length && metadata.series.length > 0) {
     const firstSeries = metadata.series[0];
-    seriesNameRaw = firstSeries.name || firstSeries.seriesName;
+    seriesNameRaw = firstSeries.name;
     if (firstSeries.sequence) {
       seriesNameRaw = `${seriesNameRaw} #${firstSeries.sequence}`;
     }
@@ -82,22 +127,22 @@ export function extractBookMetadata(item: LibraryItem | null | undefined): BookM
   }
 
   return {
-    title: metadata.title || 'Unknown Title',
-    subtitle: metadata.subtitle || null,
+    title: metadata?.title || 'Unknown Title',
+    subtitle: metadata?.subtitle || null,
     authorName,
     narratorName: narratorName || 'Unknown Narrator',
     narratorNames,
     seriesName: parsedSeriesName,
     seriesSequence,
-    description: metadata.description || '',
-    genres: metadata.genres || [],
-    publishedYear: metadata.publishedYear || null,
-    publisher: metadata.publisher || null,
+    description: metadata?.description || '',
+    genres: metadata?.genres || [],
+    publishedYear: metadata?.publishedYear || null,
+    publisher: metadata?.publisher || null,
     duration,
     durationFormatted: formatDuration(duration),
-    language: metadata.language || null,
-    isbn: metadata.isbn || null,
-    asin: metadata.asin || null,
+    language: metadata?.language || null,
+    isbn: metadata?.isbn || null,
+    asin: metadata?.asin || null,
   };
 }
 
@@ -106,11 +151,11 @@ export function extractBookMetadata(item: LibraryItem | null | undefined): BookM
  * Handles both authorName string and authors[] array formats
  */
 export function getAuthorName(item: LibraryItem | null | undefined): string {
-  const metadata = (item?.media?.metadata as any) || {};
+  const metadata = getMetadata(item);
   // Try authorName first, then authors array
-  if (metadata.authorName) return metadata.authorName;
-  if (metadata.authors?.length > 0) {
-    return metadata.authors.map((a: any) => a.name).join(', ');
+  if (metadata?.authorName) return metadata.authorName;
+  if (metadata?.authors?.length && metadata.authors.length > 0) {
+    return metadata.authors.map((a) => a.name).join(', ');
   }
   return 'Unknown Author';
 }
@@ -118,16 +163,23 @@ export function getAuthorName(item: LibraryItem | null | undefined): string {
 /**
  * Get narrator name from LibraryItem (without "Narrated by" prefix)
  * Handles both narratorName string and narrators[] array formats
+ * Also handles narrator objects with { name: string } shape
  */
 export function getNarratorName(item: LibraryItem | null | undefined): string {
-  const metadata = (item?.media?.metadata as any) || {};
+  const metadata = getMetadata(item);
   // Try narratorName first
-  if (metadata.narratorName) {
+  if (metadata?.narratorName) {
     return metadata.narratorName.replace(/^Narrated by\s*/i, '').trim();
   }
   // Then try narrators array
-  if (metadata.narrators?.length > 0) {
-    return metadata.narrators.map((n: any) => typeof n === 'string' ? n : n.name).join(', ');
+  if (metadata?.narrators?.length && metadata.narrators.length > 0) {
+    // Handle both string[] and { name: string }[] formats
+    const names = metadata.narrators.map((n: string | { name?: string }) => {
+      if (typeof n === 'string') return n;
+      if (typeof n === 'object' && n !== null && 'name' in n) return n.name;
+      return '';
+    }).filter(Boolean);
+    return names.join(', ');
   }
   return 'Unknown Narrator';
 }
@@ -135,42 +187,48 @@ export function getNarratorName(item: LibraryItem | null | undefined): string {
 /**
  * Get narrator names as array from LibraryItem
  * Handles both narratorName string and narrators[] array formats
+ * Also handles narrator objects with { name: string } shape
  */
 export function getNarratorNames(item: LibraryItem | null | undefined): string[] {
-  const metadata = (item?.media?.metadata as any) || {};
+  const metadata = getMetadata(item);
 
   // Try narrators array first (cleaner data)
-  if (metadata.narrators?.length > 0) {
-    return metadata.narrators.map((n: any) => typeof n === 'string' ? n : n.name).filter(Boolean);
+  if (metadata?.narrators?.length && metadata.narrators.length > 0) {
+    // Handle both string[] and { name: string }[] formats
+    return metadata.narrators.map((n: string | { name?: string }) => {
+      if (typeof n === 'string') return n;
+      if (typeof n === 'object' && n !== null && 'name' in n) return n.name || '';
+      return '';
+    }).filter(Boolean) as string[];
   }
 
   // Fall back to narratorName string
   const narratorName = getNarratorName(item);
   if (!narratorName || narratorName === 'Unknown Narrator') return [];
-  return narratorName.split(',').map((n: string) => n.trim()).filter(Boolean);
+  return narratorName.split(',').map((n) => n.trim()).filter(Boolean);
 }
 
 /**
  * Get description from LibraryItem
  */
 export function getDescription(item: LibraryItem | null | undefined): string {
-  const metadata = (item?.media?.metadata as any) || {};
-  return metadata.description || '';
+  const metadata = getMetadata(item);
+  return metadata?.description || '';
 }
 
 /**
  * Get title from LibraryItem
  */
 export function getTitle(item: LibraryItem | null | undefined): string {
-  const metadata = (item?.media?.metadata as any) || {};
-  return metadata.title || 'Unknown Title';
+  const metadata = getMetadata(item);
+  return metadata?.title || 'Unknown Title';
 }
 
 /**
  * Get duration in seconds from LibraryItem
  */
 export function getDuration(item: LibraryItem | null | undefined): number {
-  return item?.media?.duration || 0;
+  return getBookDuration(item);
 }
 
 /**
@@ -185,15 +243,15 @@ export function getFormattedDuration(item: LibraryItem | null | undefined): stri
  * Handles both seriesName string and series[] array formats
  */
 export function getSeriesName(item: LibraryItem | null | undefined): string | null {
-  const metadata = (item?.media?.metadata as any) || {};
+  const metadata = getMetadata(item);
 
   // Try seriesName first
-  let seriesName = metadata.seriesName || null;
+  let seriesName = metadata?.seriesName || null;
 
   // Then try series array
-  if (!seriesName && metadata.series?.length > 0) {
+  if (!seriesName && metadata?.series?.length && metadata.series.length > 0) {
     const firstSeries = metadata.series[0];
-    seriesName = firstSeries.name || firstSeries.seriesName || null;
+    seriesName = firstSeries.name || null;
   }
 
   if (!seriesName) return null;
@@ -208,15 +266,15 @@ export function getSeriesName(item: LibraryItem | null | undefined): string | nu
  * Handles both seriesName string and series[] array formats
  */
 export function getSeriesWithSequence(item: LibraryItem | null | undefined): string | null {
-  const metadata = (item?.media?.metadata as any) || {};
+  const metadata = getMetadata(item);
 
   // Try seriesName first
-  if (metadata.seriesName) return metadata.seriesName;
+  if (metadata?.seriesName) return metadata.seriesName;
 
   // Then try series array
-  if (metadata.series?.length > 0) {
+  if (metadata?.series?.length && metadata.series.length > 0) {
     const firstSeries = metadata.series[0];
-    const name = firstSeries.name || firstSeries.seriesName;
+    const name = firstSeries.name;
     if (firstSeries.sequence) {
       return `${name} #${firstSeries.sequence}`;
     }
@@ -230,16 +288,16 @@ export function getSeriesWithSequence(item: LibraryItem | null | undefined): str
  * Get published year from LibraryItem
  */
 export function getPublishedYear(item: LibraryItem | null | undefined): string | null {
-  const metadata = (item?.media?.metadata as any) || {};
-  return metadata.publishedYear || null;
+  const metadata = getMetadata(item);
+  return metadata?.publishedYear || null;
 }
 
 /**
  * Get genres from LibraryItem
  */
 export function getGenres(item: LibraryItem | null | undefined): string[] {
-  const metadata = (item?.media?.metadata as any) || {};
-  return metadata.genres || [];
+  const metadata = getMetadata(item);
+  return metadata?.genres || [];
 }
 
 /**

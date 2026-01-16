@@ -9,6 +9,7 @@
  * - Cover long press: opens book details
  * - Title tap: opens book details
  * - Shows "time since last played" (e.g., "2h ago", "3d ago")
+ * - Shows "Added X ago" for library books without progress
  */
 
 import React, { useCallback } from 'react';
@@ -21,8 +22,15 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
+import { ContinueListeningItem } from '@/shared/hooks/useContinueListening';
 import { apiClient } from '@/core/api';
+
+// Helper to get book metadata safely (accepts both LibraryItem and ContinueListeningItem)
+function getBookMetadata(item: LibraryItem | ContinueListeningItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 import { wp, hp, moderateScale } from '@/shared/theme';
 import { useColors } from '@/shared/theme/themeStore';
 import { ThemeColors } from '@/shared/theme/colors';
@@ -79,15 +87,29 @@ const PlayIcon = ({ size, color }: { size: number; color: string }) => (
   </Svg>
 );
 
+// Bookmark icon for "added to library" indicator
+const BookmarkIcon = ({ size, color }: { size: number; color: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M5 4C5 2.89543 5.89543 2 7 2H17C18.1046 2 19 2.89543 19 4V21C19 21.3746 18.7907 21.7178 18.4576 21.8892C18.1245 22.0606 17.7236 22.0315 17.4188 21.8137L12 17.8619L6.58124 21.8137C6.27642 22.0315 5.87549 22.0606 5.54242 21.8892C5.20935 21.7178 5 21.3746 5 21V4Z" />
+  </Svg>
+);
+
 interface ContinueListeningSectionProps {
-  /** List of books to display */
-  books: LibraryItem[];
+  /** List of books to display (supports both LibraryItem and ContinueListeningItem) */
+  books: (LibraryItem | ContinueListeningItem)[];
   /** Callback when cover is pressed (loads book paused) */
-  onCoverPress: (book: LibraryItem) => void;
+  onCoverPress: (book: LibraryItem | ContinueListeningItem) => void;
   /** Callback when title is pressed or cover is long-pressed (opens details) */
-  onDetailsPress: (book: LibraryItem) => void;
+  onDetailsPress: (book: LibraryItem | ContinueListeningItem) => void;
   /** Callback when "View All" is pressed */
   onViewAll: () => void;
+}
+
+/**
+ * Check if item is a ContinueListeningItem (has library membership fields)
+ */
+function isContinueListeningItem(item: LibraryItem | ContinueListeningItem): item is ContinueListeningItem {
+  return 'hasStarted' in item && 'lastInteraction' in item;
 }
 
 /**
@@ -95,6 +117,8 @@ interface ContinueListeningSectionProps {
  * - Cover tap: plays book (paused)
  * - Cover long press: opens details
  * - Title tap: opens details
+ * - Shows progress bar for in-progress books
+ * - Shows "Added" badge for library-only books
  */
 const ContinueListeningCard = ({
   book,
@@ -102,40 +126,54 @@ const ContinueListeningCard = ({
   onDetailsPress,
   colors,
 }: {
-  book: LibraryItem;
+  book: LibraryItem | ContinueListeningItem;
   onCoverPress: () => void;
   onDetailsPress: () => void;
   colors: ThemeColors;
 }) => {
   const coverUrl = apiClient.getItemCoverUrl(book.id);
-  const metadata = book.media?.metadata as any;
+  const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Unknown';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || '';
-  const progress = (book as any).userMediaProgress?.progress || 0;
+  const progress = book.userMediaProgress?.progress || 0;
+
+  // Determine if this is a library-added book vs in-progress book
+  const isLibraryItem = isContinueListeningItem(book);
+  const hasStarted = isLibraryItem ? book.hasStarted : progress > 0;
+  const isInLibrary = isLibraryItem ? book.isInLibrary : false;
+  const lastInteraction = isLibraryItem ? book.lastInteraction : undefined;
 
   // Get lastUpdate from various possible locations in the API response
-  const bookAny = book as any;
-  const rawLastUpdate =
-    bookAny.progressLastUpdate ||
-    bookAny.userMediaProgress?.lastUpdate ||
-    bookAny.mediaProgress?.lastUpdate ||
-    bookAny.recentEpisode?.progress?.lastUpdate;
-
-  // Convert to milliseconds if needed
-  // AudiobookShelf API typically returns timestamps in seconds (Unix timestamp)
   let lastUpdateMs: number | undefined;
-  if (rawLastUpdate && rawLastUpdate > 0) {
-    // If less than 10 billion, it's definitely in seconds and needs conversion
-    if (rawLastUpdate < 10000000000) {
-      lastUpdateMs = rawLastUpdate * 1000;
-    } else {
-      // Already in milliseconds
-      lastUpdateMs = rawLastUpdate;
+
+  if (lastInteraction) {
+    // Use unified lastInteraction from ContinueListeningItem
+    lastUpdateMs = lastInteraction;
+  } else {
+    const rawLastUpdate =
+      book.userMediaProgress?.lastUpdate ||
+      (book as any).mediaProgress?.lastUpdate;
+
+    if (rawLastUpdate && rawLastUpdate > 0) {
+      // If less than 10 billion, it's definitely in seconds and needs conversion
+      if (rawLastUpdate < 10000000000) {
+        lastUpdateMs = rawLastUpdate * 1000;
+      } else {
+        // Already in milliseconds
+        lastUpdateMs = rawLastUpdate;
+      }
     }
   }
 
   const hasProgress = progress > 0 && progress < 1;
   const timeAgo = lastUpdateMs ? formatTimeAgo(lastUpdateMs) : '';
+
+  // Determine label: "Added X ago" for library-only, "Played X ago" for in-progress
+  const timeLabel = hasStarted
+    ? timeAgo
+    : isInLibrary
+    ? `Added ${timeAgo}`
+    : timeAgo;
 
   return (
     <View style={styles.cardContainer}>
@@ -155,11 +193,19 @@ const ContinueListeningCard = ({
             contentFit="cover"
             transition={200}
           />
-          {/* Play overlay */}
+          {/* Play overlay - show bookmark badge for library-only books */}
           <View style={styles.playOverlay}>
-            <PlayIcon size={wp(7)} color="white" />
+            {hasStarted ? (
+              <PlayIcon size={wp(7)} color="white" />
+            ) : isInLibrary ? (
+              <View style={styles.bookmarkBadge}>
+                <BookmarkIcon size={wp(4)} color="white" />
+              </View>
+            ) : (
+              <PlayIcon size={wp(7)} color="white" />
+            )}
           </View>
-          {/* Progress bar at bottom of cover */}
+          {/* Progress bar at bottom of cover (only show if has progress) */}
           {hasProgress && (
             <View style={styles.progressBarContainer}>
               <View style={[
@@ -178,9 +224,9 @@ const ContinueListeningCard = ({
         </Text>
       </TouchableOpacity>
 
-      {/* Time since last played */}
-      {timeAgo ? (
-        <Text style={[styles.timeAgo, { color: colors.text.secondary }]}>{timeAgo}</Text>
+      {/* Time label - "Added X ago" or "X ago" */}
+      {timeLabel ? (
+        <Text style={[styles.timeAgo, { color: colors.text.secondary }]}>{timeLabel}</Text>
       ) : null}
     </View>
   );
@@ -195,7 +241,7 @@ export function ContinueListeningSection({
   const colors = useColors();
 
   const renderCard = useCallback(
-    ({ item }: { item: LibraryItem }) => (
+    ({ item }: { item: LibraryItem | ContinueListeningItem }) => (
       <ContinueListeningCard
         book={item}
         onCoverPress={() => onCoverPress(item)}
@@ -216,7 +262,7 @@ export function ContinueListeningSection({
       </Text>
 
       {/* Horizontal scroll of book cards - extends to screen edges */}
-      <FlatList
+      <FlatList<LibraryItem | ContinueListeningItem>
         data={books}
         renderItem={renderCard}
         keyExtractor={(item, index) => `${item.id}-${index}`}
@@ -263,6 +309,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.3)', // Fixed dark overlay for cover visibility
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bookmarkBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: wp(3),
+    padding: wp(1.5),
   },
   progressBarContainer: {
     position: 'absolute',

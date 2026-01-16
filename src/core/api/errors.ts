@@ -151,39 +151,44 @@ export class OfflineError extends ApiError {
   }
 }
 
+// Helper to safely check for a property on an unknown error
+function hasErrorFlag(error: unknown, flag: string): boolean {
+  return typeof error === 'object' && error !== null && flag in error && (error as Record<string, unknown>)[flag] === true;
+}
+
 /**
  * Type guard to check if error is an ApiError
  */
 export function isApiError(error: unknown): error is ApiError {
-  return error instanceof ApiError || (error as any)?.isApiError === true;
+  return error instanceof ApiError || hasErrorFlag(error, 'isApiError');
 }
 
 /**
  * Type guard for network errors
  */
 export function isNetworkError(error: unknown): error is NetworkError {
-  return error instanceof NetworkError || (error as any)?.isNetworkError === true;
+  return error instanceof NetworkError || hasErrorFlag(error, 'isNetworkError');
 }
 
 /**
  * Type guard for auth errors
  */
 export function isAuthError(error: unknown): error is AuthenticationError {
-  return error instanceof AuthenticationError || (error as any)?.isAuthError === true;
+  return error instanceof AuthenticationError || hasErrorFlag(error, 'isAuthError');
 }
 
 /**
  * Type guard for timeout errors
  */
 export function isTimeoutError(error: unknown): error is TimeoutError {
-  return error instanceof TimeoutError || (error as any)?.isTimeoutError === true;
+  return error instanceof TimeoutError || hasErrorFlag(error, 'isTimeoutError');
 }
 
 /**
  * Type guard for offline errors
  */
 export function isOfflineError(error: unknown): error is OfflineError {
-  return error instanceof OfflineError || (error as any)?.isOfflineError === true;
+  return error instanceof OfflineError || hasErrorFlag(error, 'isOfflineError');
 }
 
 /**

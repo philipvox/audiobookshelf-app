@@ -8,10 +8,17 @@
 
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { sqliteCache, QueueItem } from '@/core/services/sqliteCache';
 import { getNextBookInSeries } from '@/core/cache/libraryCache';
 import { createLogger } from '@/shared/utils/logger';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
 
 const log = createLogger('QueueStore');
 
@@ -251,10 +258,10 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
   checkAndAddSeriesBook: async (currentBook: LibraryItem) => {
     const { queue, autoplayEnabled, isInQueue } = get();
 
-    const metadata = (currentBook.media?.metadata as any) || {};
+    const metadata = getBookMetadata(currentBook);
     log.debug('checkAndAddSeriesBook called');
-    log.debug('Current book:', metadata.title);
-    log.debug('Series name:', metadata.seriesName);
+    log.debug('Current book:', metadata?.title);
+    log.debug('Series name:', metadata?.seriesName);
     log.debug(`Autoplay: ${autoplayEnabled}, Queue length: ${queue.length}`);
 
     // Only auto-add if autoplay is enabled and queue is empty
@@ -265,7 +272,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
     try {
       const nextBook = getNextBookInSeries(currentBook);
-      log.debug('getNextBookInSeries result:', nextBook ? (nextBook.media?.metadata as any)?.title : 'null');
+      log.debug('getNextBookInSeries result:', nextBook ? getBookMetadata(nextBook)?.title : 'null');
       if (!nextBook) {
         log.debug('No next book in series found');
         return;
@@ -290,8 +297,8 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       };
 
       set({ queue: [newItem], autoSeriesBookId: nextBook.id });
-      const nextMetadata = (nextBook.media?.metadata as any) || {};
-      log.info(`Auto-added next series book: ${nextMetadata.title || nextBook.id}`);
+      const nextMetadata = getBookMetadata(nextBook);
+      log.info(`Auto-added next series book: ${nextMetadata?.title || nextBook.id}`);
     } catch (err) {
       log.error('checkAndAddSeriesBook error:', err);
     }

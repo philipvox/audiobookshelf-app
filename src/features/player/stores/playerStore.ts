@@ -15,12 +15,14 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { Alert } from 'react-native';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { sessionService, SessionChapter } from '../services/sessionService';
+import { sessionService, SessionChapter, AudioTrack, PlaybackSession } from '../services/sessionService';
+import { chapterCacheService } from '../services/chapterCacheService';
 import { progressService } from '../services/progressService';
 import { backgroundSyncService } from '../services/backgroundSyncService';
 import { sqliteCache } from '@/core/services/sqliteCache';
+import { playbackCache } from '@/core/services/playbackCache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import audioService directly (not from barrel) to avoid circular dependency
@@ -37,6 +39,7 @@ import {
   logTracks,
   validateUrl,
 } from '@/shared/utils/audioDebug';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
 
 // Import smart rewind utility
 import { calculateSmartRewindSeconds } from '../utils/smartRewindCalculator';
@@ -111,8 +114,22 @@ import { useCompletionStore } from './completionStore';
 import { useSeekingStore, type SeekDirection as SeekDirectionImport } from './seekingStore';
 
 const DEBUG = __DEV__;
-const log = (msg: string, ...args: any[]) => audioLog.store(msg, ...args);
-const logError = (msg: string, ...args: any[]) => audioLog.error(msg, ...args);
+const log = (msg: string, ...args: unknown[]) => audioLog.store(msg, ...args);
+const logError = (msg: string, ...args: unknown[]) => audioLog.error(msg, ...args);
+
+// =============================================================================
+// TYPE GUARDS
+// =============================================================================
+
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
 
 // =============================================================================
 // TYPES
@@ -168,6 +185,7 @@ interface PlayerState {
   // ---------------------------------------------------------------------------
   isPlayerVisible: boolean;
   isOffline: boolean;
+  playbackError: string | null;  // Error message to show in UI (null = no error)
 
   // ---------------------------------------------------------------------------
   // Last Played Tracking (separate from currentBook which is "opened" book)
@@ -232,6 +250,13 @@ interface PlayerActions {
   // ---------------------------------------------------------------------------
   loadBook: (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean; showPlayer?: boolean }) => Promise<void>;
   cleanup: () => Promise<void>;
+
+  /**
+   * Preload book state without starting audio playback.
+   * Used during app startup to show correct progress on UI before user hits play.
+   * Sets currentBook, position, duration, and chapters from cached data.
+   */
+  preloadBookState: (book: LibraryItem) => Promise<void>;
 
   // ---------------------------------------------------------------------------
   // View Book (open player without stopping playback)
@@ -344,6 +369,7 @@ interface PlayerActions {
   // ---------------------------------------------------------------------------
   togglePlayer: () => void;
   closePlayer: () => void;
+  clearPlaybackError: () => void;
 
   // ---------------------------------------------------------------------------
   // Internal (called by audioService)
@@ -458,6 +484,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // UI
     isPlayerVisible: false,
     isOffline: false,
+    playbackError: null,
 
     // Last played tracking
     lastPlayedBookId: null,
@@ -619,7 +646,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             prevPosition,
             get().duration,
             session?.id
-          ).catch(() => {});
+          ).catch((err) => {
+            audioLog.warn('[Player] Save progress failed:', err);
+          });
         }
 
         if (loadId !== currentLoadId) return;
@@ -644,7 +673,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         let audioTrackInfos: AudioTrackInfo[] = [];
 
         // Load bookmarks early (non-blocking) - ready when user needs them
-        useBookmarksStore.getState().loadBookmarks(book.id).catch(() => {});
+        useBookmarksStore.getState().loadBookmarks(book.id).catch((err) => {
+          audioLog.warn('[Player] Load bookmarks failed:', err);
+        });
 
         if (isOffline && localPath) {
           // =================================================================
@@ -652,86 +683,128 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           // FIX 2: Race session against 2s timeout to avoid jarring seek
           // =================================================================
           cleanupDownloadCompletionListener();
-          chapters = extractChaptersFromBook(book);
+
+          // Use chapter cache fallback hierarchy: session -> SQLite cache -> metadata
+          const chapterResult = await chapterCacheService.getChaptersWithFallback(book, null);
+          chapters = chapterResult.chapters;
+
+          // Log chapter source for debugging
+          playerLogger.debug('Chapters loaded for playback', {
+            bookId: book.id,
+            source: chapterResult.source,
+            chapterCount: chapters.length,
+            mode: 'offline',
+          });
+
           log('OFFLINE PLAYBACK MODE (fast path)');
           timing('Offline mode start');
 
-          // FIX 2: Race session request against 2-second timeout
-          // This gives us a chance to get server position WITHOUT blocking playback
-          // If timeout, we continue with local progress and connect session in background
-          const SESSION_TIMEOUT_MS = 2000;
-          const sessionPromise = sessionService.startSession(book.id).catch((err) => {
-            log('Session request failed:', err.message);
-            return null;
-          });
-          const timeoutPromise = new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), SESSION_TIMEOUT_MS)
-          );
+          // Check for cached session first (pre-fetched during app startup)
+          const cachedSession = playbackCache.getSession(book.id);
 
-          // Start audio setup and get local progress in parallel
-          const setupPromise = audioService.ensureSetup();
+          // Start audio setup and get local progress in parallel (instant from memory cache)
+          const setupPromise = playbackCache.isAudioInitialized()
+            ? Promise.resolve() // Audio already initialized
+            : audioService.ensureSetup();
           const localDataPromise = progressService.getProgressData(book.id);
 
-          // Race session against timeout while also getting local data
-          const [sessionResult, localData] = await Promise.all([
-            Promise.race([sessionPromise, timeoutPromise]),
-            localDataPromise,
-          ]);
+          // NOTE: sessionResult can be either a full PlaybackSession from the server
+          // or a CachedSession from playbackCache (which has fewer properties)
+          let sessionResult: PlaybackSession | typeof cachedSession | null = null;
 
-          if (sessionResult) {
-            log('Session arrived before timeout - using timestamp-based resolution');
+          if (cachedSession) {
+            // INSTANT: Use cached session (no network call needed!)
+            log('Using cached session (instant playback)');
+            sessionResult = cachedSession;
+
+            // Get local data while "session" is already available
+            const [, localData] = await Promise.all([setupPromise, localDataPromise]);
+
+            // Start auto sync in background
             sessionService.startAutoSync(() => get().position);
 
-            // FIX 3: Use position resolver for cross-device sync
-            const serverPosition = sessionResult.currentTime || 0;
-            // FIX: If server doesn't provide timestamp, use 0 (not Date.now()) to avoid
-            // falsely making server position appear newest. Missing timestamp = unknown age.
-            const serverTimestamp = sessionResult.updatedAt || 0;
-            if (!sessionResult.updatedAt) {
-              playerLogger.warn('[SESSION_TIMESTAMP] Server returned no updatedAt timestamp - using 0 to avoid false priority');
-            }
-
-            const localSource = localData
-              ? createLocalSource(localData.currentTime, localData.updatedAt || 0)
-              : null;
-            const serverSource = serverPosition > 0
-              ? createServerSource(serverPosition, serverTimestamp)
-              : null;
-
-            const resolution = resolvePosition(localSource, serverSource);
-            log(`Position resolved: ${resolution.position.toFixed(1)}s (${resolution.reason})`);
-
-            if (!startPosition && resolution.position > 0) {
-              resumePosition = resolution.position;
-            }
-          } else {
-            // FIX 2: Enhanced timeout logging for tuning
-            const timeoutStartTime = Date.now();
-            audioLog.warn(`Session timed out after ${SESSION_TIMEOUT_MS}ms - using local progress`);
-            trackEvent('session_timeout', {
-              timeout_ms: SESSION_TIMEOUT_MS,
-              local_position: localData?.currentTime || 0,
-              book_id: book.id,
-            }, 'info');
-
-            // Use local progress
+            // Use local position (more recent than cached session)
             if (!startPosition && localData && localData.currentTime > 0) {
               resumePosition = localData.currentTime;
               log(`Using local progress: ${resumePosition.toFixed(1)}s`);
             }
+          } else {
+            // FIX 2: Race session request against 2-second timeout
+            // This gives us a chance to get server position WITHOUT blocking playback
+            // If timeout, we continue with local progress and connect session in background
+            const SESSION_TIMEOUT_MS = 2000;
+            const sessionPromise = sessionService.startSession(book.id).catch((err) => {
+              log('Session request failed:', err.message);
+              return null;
+            });
+            const timeoutPromise = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), SESSION_TIMEOUT_MS)
+            );
 
-            // Continue session connection in background for sync only - NO SEEKING after playback starts
-            sessionPromise.then((session) => {
-              if (session) {
-                const actualWaitTime = Date.now() - timeoutStartTime + SESSION_TIMEOUT_MS;
-                log(`Background session connected after ${actualWaitTime}ms total (sync only, no position change)`);
-                log(`Server position was: ${session.currentTime?.toFixed(1)}s, we used: ${resumePosition.toFixed(1)}s`);
-                sessionService.startAutoSync(() => get().position);
-                // Note: We do NOT seek here - that would cause jarring UX
-                // The position was already resolved before playback started
+            // Race session against timeout while also getting local data
+            const [raceResult, localData] = await Promise.all([
+              Promise.race([sessionPromise, timeoutPromise]),
+              localDataPromise,
+              setupPromise,
+            ]);
+
+            sessionResult = raceResult;
+
+            if (sessionResult) {
+              log('Session arrived before timeout - using timestamp-based resolution');
+              sessionService.startAutoSync(() => get().position);
+
+              // FIX 3: Use position resolver for cross-device sync
+              const serverPosition = sessionResult.currentTime || 0;
+              // FIX: If server doesn't provide timestamp, use 0 (not Date.now()) to avoid
+              // falsely making server position appear newest. Missing timestamp = unknown age.
+              const serverTimestamp = sessionResult.updatedAt || 0;
+              if (!sessionResult.updatedAt) {
+                playerLogger.warn('[SESSION_TIMESTAMP] Server returned no updatedAt timestamp - using 0 to avoid false priority');
               }
-            }).catch(() => {});
-          }
+
+              const localSource = localData
+                ? createLocalSource(localData.currentTime, localData.updatedAt || 0)
+                : null;
+              const serverSource = serverPosition > 0
+                ? createServerSource(serverPosition, serverTimestamp)
+                : null;
+
+              const resolution = resolvePosition(localSource, serverSource);
+              log(`Position resolved: ${resolution.position.toFixed(1)}s (${resolution.reason})`);
+
+              if (!startPosition && resolution.position > 0) {
+                resumePosition = resolution.position;
+              }
+            } else {
+              // FIX 2: Enhanced timeout logging for tuning
+              const timeoutStartTime = Date.now();
+              audioLog.warn(`Session timed out after ${SESSION_TIMEOUT_MS}ms - using local progress`);
+              trackEvent('session_timeout', {
+                timeout_ms: SESSION_TIMEOUT_MS,
+                local_position: localData?.currentTime || 0,
+                book_id: book.id,
+              }, 'info');
+
+              // Use local progress
+              if (!startPosition && localData && localData.currentTime > 0) {
+                resumePosition = localData.currentTime;
+                log(`Using local progress: ${resumePosition.toFixed(1)}s`);
+              }
+
+              // Continue session connection in background for sync only - NO SEEKING after playback starts
+              sessionPromise.then((session) => {
+                if (session) {
+                  const actualWaitTime = Date.now() - timeoutStartTime + SESSION_TIMEOUT_MS;
+                  log(`Background session connected after ${actualWaitTime}ms total (sync only, no position change)`);
+                  log(`Server position was: ${session.currentTime?.toFixed(1)}s, we used: ${resumePosition.toFixed(1)}s`);
+                  sessionService.startAutoSync(() => get().position);
+                  // Note: We do NOT seek here - that would cause jarring UX
+                  // The position was already resolved before playback started
+                }
+              }).catch(() => {});
+            }
+          } // End of else block (no cached session)
 
           // Check if localPath is a directory (multi-file) or single file
           const FileSystem = await import('expo-file-system/legacy');
@@ -751,21 +824,33 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             }
 
             // Build track infos from downloaded files and book metadata
-            const bookAudioFiles = (book.media as any)?.audioFiles || [];
+            // Priority for duration/offset: cached session tracks > book.media.audioFiles
+            const bookAudioFiles = isBookMedia(book.media) ? book.media.audioFiles : [];
+            const sessionTracks = cachedSession?.audioTracks || [];
             let currentOffset = 0;
+
+            // Log available metadata sources for debugging
+            log(`Track metadata: sessionTracks=${sessionTracks.length}, bookAudioFiles=${bookAudioFiles.length}, files=${audioFileNames.length}`);
 
             audioTrackInfos = audioFileNames.map((fileName, index) => {
               const filePath = `${localPath}${fileName}`;
-              // Try to match with book metadata for duration info
+              // Try to match with cached session tracks first (have accurate duration/offset)
+              // Then fall back to book.media.audioFiles
+              const sessionTrack = sessionTracks[index];
               const bookFile = bookAudioFiles[index];
-              const duration = bookFile?.duration || 0;
+
+              // Use session track duration if available (most reliable for downloaded books)
+              const duration = sessionTrack?.duration || bookFile?.duration || 0;
+              // Use session track offset if available, otherwise calculate
+              const startOffset = sessionTrack?.startOffset ?? currentOffset;
+
               const trackInfo = {
                 url: filePath,
-                title: bookFile?.metadata?.filename || fileName,
-                startOffset: currentOffset,
+                title: bookFile?.metadata?.filename || sessionTrack?.title || fileName,
+                startOffset: startOffset,
                 duration: duration,
               };
-              currentOffset += duration;
+              currentOffset = startOffset + duration; // Update for next track
               return trackInfo;
             });
 
@@ -788,14 +873,36 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           log('ONLINE PLAYBACK MODE');
           timing('Starting session request');
 
-          // Start audio setup in parallel with session request
-          const [session] = await Promise.all([
-            sessionService.startSession(book.id).catch((err) => {
-              log('Session start failed:', err.message);
-              return null;
-            }),
-            audioService.ensureSetup(),
-          ]);
+          // Check for cached session first (pre-fetched during app startup)
+          const cachedSession = playbackCache.getSession(book.id);
+
+          // NOTE: session can be either a full PlaybackSession from the server
+          // or a CachedSession from playbackCache (which has fewer properties)
+          let session: PlaybackSession | typeof cachedSession | null;
+
+          if (cachedSession) {
+            // INSTANT: Use cached session (no network call needed!)
+            log('Using cached session for streaming (instant)');
+            session = cachedSession;
+
+            // Ensure audio is ready
+            if (!playbackCache.isAudioInitialized()) {
+              await audioService.ensureSetup();
+            }
+
+            // Start auto sync in background
+            sessionService.startAutoSync(() => get().position);
+          } else {
+            // Start audio setup in parallel with session request
+            const [fetchedSession] = await Promise.all([
+              sessionService.startSession(book.id).catch((err) => {
+                log('Session start failed:', err.message);
+                return null;
+              }),
+              audioService.ensureSetup(),
+            ]);
+            session = fetchedSession;
+          }
           timing('Session + setup complete');
 
           if (!session) {
@@ -809,7 +916,21 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           log('  Duration:', session.duration);
           log('  Current time (resume):', session.currentTime);
 
-          chapters = mapSessionChapters(session.chapters || []);
+          // Use chapter cache fallback hierarchy: session -> SQLite cache -> metadata
+          const chapterResult = await chapterCacheService.getChaptersWithFallback(
+            book,
+            session.chapters
+          );
+          chapters = chapterResult.chapters;
+
+          // Log chapter source for debugging
+          playerLogger.debug('Chapters loaded for playback', {
+            bookId: book.id,
+            source: chapterResult.source,
+            chapterCount: chapters.length,
+            mode: 'streaming',
+          });
+
           if (session.duration > 0) totalDuration = session.duration;
 
           // FIX 3: Use timestamp-based position resolution for cross-device sync
@@ -862,7 +983,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               log('Auth token present, length:', token.length);
             }
 
-            audioTrackInfos = audioTracks.map((track) => {
+            audioTrackInfos = audioTracks.map((track: AudioTrack) => {
               let trackUrl = `${baseUrl}${track.contentUrl}`;
               if (!track.contentUrl.includes('token=')) {
                 const separator = track.contentUrl.includes('?') ? '&' : '?';
@@ -880,8 +1001,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             log('SINGLE-FILE AUDIOBOOK');
             const url = sessionService.getStreamUrl();
             if (!url) {
+              const session = sessionService.getCurrentSession();
               logError('No stream URL returned from session!');
-              throw new Error('No stream URL');
+              logError('Session audio tracks:', session?.audioTracks?.length || 0);
+              logError('Book ID:', book.id);
+              // More specific error message
+              const errorMsg = session?.audioTracks?.length === 0
+                ? 'This book has no audio files. Check the server.'
+                : 'Could not get stream URL from server.';
+              throw new Error(errorMsg);
             }
             streamUrl = url;
             validateUrl(streamUrl, 'Stream URL');
@@ -909,7 +1037,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         }
 
         // Initialize and start background sync service (NON-BLOCKING)
-        backgroundSyncService.init().then(() => backgroundSyncService.start()).catch(() => {});
+        backgroundSyncService.init().then(() => backgroundSyncService.start()).catch((err) => {
+          audioLog.error('[Player] Background sync init failed:', err);
+        });
 
         // Log chapters and duration sources
         if (chapters.length > 0) {
@@ -954,12 +1084,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           }));
           generateAndCacheTicks(book.id, totalDuration, chapterInputs, true).catch(() => {});
           log('Pre-generating timeline ticks for:', book.id);
+
+          // Cache chapters to SQLite for future fallback (fire and forget)
+          chapterCacheService.cacheChapters(book.id, chapters).catch(() => {});
         }
 
         if (loadId !== currentLoadId) return;
 
         // Get metadata for lock screen
-        const metadata = book.media?.metadata as any;
+        const metadata = getBookMetadata(book);
         const title = metadata?.title || 'Audiobook';
         const author = metadata?.authorName ||
                        metadata?.authors?.[0]?.name ||
@@ -1037,7 +1170,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           log('Playback started');
 
           // Emit book started event
-          const bookMetadata = book.media?.metadata as any;
+          const bookMetadata = getBookMetadata(book);
           eventBus.emit('book:started', {
             bookId: book.id,
             title: bookMetadata?.title || 'Unknown',
@@ -1080,17 +1213,73 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           })();
         }
 
-      } catch (error: any) {
+      } catch (error) {
         if (loadId === currentLoadId) {
           logSection('LOAD BOOK FAILED');
-          logError('Error:', error.message);
-          logError('Stack:', error.stack);
-          set({ isLoading: false, isBuffering: false });
+          const errMsg = getErrorMessage(error);
+          logError('Error:', errMsg);
+          logError('Stack:', (error instanceof Error ? error.stack : undefined));
 
-          // Show user-friendly error
+          // CRITICAL: Preserve chapters on error - try to recover from cache/metadata
+          const currentChapters = get().chapters;
+          let preservedChapters = currentChapters;
+
+          if (!currentChapters.length && book) {
+            // Log recovery attempt
+            playerLogger.info('Attempting chapter recovery after error', {
+              bookId: book.id,
+              bookTitle: (book.media?.metadata as any)?.title || 'Unknown',
+            });
+
+            // Try to recover chapters from cache/metadata fallback
+            try {
+              const chapterResult = await chapterCacheService.getChaptersWithFallback(book, null);
+
+              if (chapterResult.chapters.length > 0) {
+                preservedChapters = chapterResult.chapters;
+                // Log successful recovery
+                playerLogger.info('Chapters recovered successfully', {
+                  bookId: book.id,
+                  source: chapterResult.source,
+                  chapterCount: preservedChapters.length,
+                });
+              } else {
+                // Log recovery yielded no chapters
+                playerLogger.warn('Chapter recovery returned no chapters', {
+                  bookId: book.id,
+                });
+              }
+            } catch (recoveryError) {
+              // Log recovery failure
+              playerLogger.warn('Chapter recovery failed', {
+                bookId: book.id,
+                error: recoveryError instanceof Error ? recoveryError.message : 'Unknown error',
+              });
+            }
+          }
+
+          set({
+            isLoading: false,
+            isBuffering: false,
+            // Preserve chapters on error to prevent disappearance
+            chapters: preservedChapters,
+            viewingChapters: preservedChapters,
+          });
+
+          // Show user-friendly error with specific message
+          // Include actual error for debugging Android-specific issues
+          let errorMessage = 'Could not load this book. Please check your connection and try again.';
+          if (errMsg.includes('no audio files')) {
+            errorMessage = errMsg;
+          } else if (errMsg.includes('not found') || errMsg.includes('File not found')) {
+            errorMessage = 'Audio file not found. Try re-downloading the book.';
+          } else if (errMsg) {
+            // Include actual error for debugging
+            errorMessage = `Playback error: ${errMsg}`;
+          }
           Alert.alert(
             'Playback Error',
-            'Could not load this book. Please check your connection and try again.',
+            errorMessage,
             [{ text: 'OK' }]
           );
         }
@@ -1160,14 +1349,59 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     },
 
     // =========================================================================
+    // PRELOAD BOOK STATE (for UI display without audio playback)
+    // =========================================================================
+
+    preloadBookState: async (book: LibraryItem) => {
+      log('preloadBookState:', book.id, book.media?.metadata?.title);
+
+      // Don't overwrite if a book is already playing
+      const { isPlaying, currentBook } = get();
+      if (isPlaying && currentBook) {
+        log('Skipping preload - book already playing');
+        return;
+      }
+
+      // Get chapters using fallback hierarchy (session -> cache -> metadata)
+      // This ensures chapters are available even for downloaded books
+      const chapterResult = await chapterCacheService.getChaptersWithFallback(book, null);
+      const chapters = chapterResult.chapters;
+      log(`preloadBookState chapters: ${chapters.length} from ${chapterResult.source}`);
+
+      const bookDuration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
+
+      // Get progress from cache (instant) or SQLite
+      const progressData = await progressService.getProgressData(book.id);
+      const position = progressData?.currentTime || 0;
+      const duration = progressData?.duration || bookDuration;
+
+      log(`Preloaded state: position=${position.toFixed(1)}s, duration=${duration.toFixed(1)}s`);
+
+      // Set player state without loading audio
+      set({
+        currentBook: book,
+        viewingBook: book,
+        viewingChapters: chapters,
+        chapters,
+        position,
+        duration,
+        isLoading: false,
+        isPlaying: false,
+        isPlayerVisible: false, // Don't show player
+      });
+    },
+
+    // =========================================================================
     // VIEW BOOK (open player without stopping playback)
     // =========================================================================
 
     viewBook: async (book: LibraryItem) => {
       log('viewBook:', book.id, book.media?.metadata?.title);
 
-      // Extract chapters from the book for viewing
-      const viewingChapters = extractChaptersFromBook(book);
+      // Get chapters using fallback hierarchy (session -> cache -> metadata)
+      const chapterResult = await chapterCacheService.getChaptersWithFallback(book, null);
+      const viewingChapters = chapterResult.chapters;
+      log(`viewBook chapters: ${viewingChapters.length} from ${chapterResult.source}`);
 
       // Set viewing book and open player
       set({
@@ -1207,19 +1441,27 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     play: async () => {
-      if (!audioService.getIsLoaded()) {
-        // Silently ignore - this can happen during app startup when iOS
-        // tries to resume playback before audio is loaded
-        return;
-      }
-
       const {
         currentBook,
+        viewingBook,
         position,
         chapters,
         smartRewindEnabled,
         smartRewindMaxSeconds,
       } = get();
+
+      // If audio isn't loaded, we need to load the book first
+      if (!audioService.getIsLoaded()) {
+        // If we have a book to play, load it
+        const bookToPlay = viewingBook || currentBook;
+        if (bookToPlay) {
+          log('play() called but audio not loaded - loading book first');
+          await get().loadBook(bookToPlay, true); // autoPlay=true
+          return; // loadBook will handle playing
+        }
+        // No book to load - silently ignore (can happen during iOS startup)
+        return;
+      }
 
       // INSTANT: Update UI and start playback immediately
       set({
@@ -1228,7 +1470,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       });
 
       // Fire play command (don't block on it)
-      audioService.play().catch(() => {});
+      audioService.play().catch((err) => {
+        audioLog.warn('[Player] Play command failed:', err);
+      });
 
       // STUCK DETECTION: Verify audio actually starts playing
       // If after 3 seconds we think we're playing but audio isn't, try to recover
@@ -1280,6 +1524,20 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Persist lastPlayedBookId for app restart recovery (fire and forget)
       if (currentBook) {
         AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, currentBook.id).catch(() => {});
+      }
+
+      // Sync progress on play (fire and forget)
+      // This updates server's lastUpdate timestamp so "items-in-progress" reflects current book
+      if (currentBook) {
+        const session = sessionService.getCurrentSession();
+        backgroundSyncService.saveProgress(
+          currentBook.id,
+          position,
+          get().duration,
+          session?.id
+        ).catch((err) => {
+          audioLog.warn('[Player] Sync on play failed:', err);
+        });
       }
 
       // Start listening session tracking
@@ -1551,10 +1809,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     setPlaybackRate: async (rate: number) => {
-      const { currentBook } = get();
+      // Use viewingBook if available (the book shown on player screen)
+      // Fall back to currentBook (the book whose audio is loaded)
+      const { viewingBook, currentBook } = get();
+      const targetBook = viewingBook || currentBook;
 
-      // Delegate to speedStore
-      await useSpeedStore.getState().setPlaybackRate(rate, currentBook?.id);
+      log(`[setPlaybackRate] rate=${rate}, viewingBook=${viewingBook?.id}, currentBook=${currentBook?.id}, target=${targetBook?.id}`);
+
+      // Delegate to speedStore with the correct book ID
+      await useSpeedStore.getState().setPlaybackRate(rate, targetBook?.id);
 
       // Sync to local state for backward compatibility
       const speedState = useSpeedStore.getState();
@@ -1582,7 +1845,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     setSleepTimer: (minutes: number) => {
       // Delegate to sleepTimerStore with pause callback
       useSleepTimerStore.getState().setSleepTimer(minutes, () => {
+        log('[SleepTimer] Timer expired - pausing playback');
         get().pause();
+        // CRITICAL: Sync state to playerStore when timer expires naturally
+        // This ensures UI updates since it reads from playerStore.sleepTimer
+        set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
       });
 
       // Sync to local state for backward compatibility
@@ -1734,6 +2001,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       set({ isPlayerVisible: false });
     },
 
+    clearPlaybackError: () => {
+      set({ playbackError: null });
+    },
+
     // =========================================================================
     // INTERNAL: PLAYBACK STATE UPDATES FROM AUDIO SERVICE
     // =========================================================================
@@ -1746,6 +2017,30 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isPlaying: wasPlaying,
         position: prevPosition,
       } = get();
+
+      // STUCK DETECTION: Handle stuck audio (position unchanged for 5+ seconds)
+      if (state.isStuck) {
+        set({ playbackError: 'Playback stuck - retrying...' });
+        audioLog.warn('[Player] Stuck detected - attempting recovery');
+
+        // Attempt recovery by calling play()
+        audioService.play().then(() => {
+          // Wait 1 second to verify recovery worked
+          setTimeout(() => {
+            if (!audioService.getIsPlaying()) {
+              set({ playbackError: 'Playback failed. Tap to retry.' });
+              audioLog.error('[Player] Recovery failed - playback still stuck');
+            } else {
+              set({ playbackError: null });
+              audioLog.store('[Player] Recovery successful');
+            }
+          }, 1000);
+        }).catch((err) => {
+          set({ playbackError: 'Playback failed. Tap to retry.' });
+          audioLog.error('[Player] Recovery play() failed:', err);
+        });
+        return; // Don't process normal update while handling stuck
+      }
 
       // CRITICAL: Never let audio service's track duration overwrite the total book duration
       // storeDuration is set during loadBook and represents the FULL book duration
@@ -1860,7 +2155,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           set({ isPlaying: false });
 
           // Emit book finished event
-          const finishedMetadata = currentBook.media?.metadata as any;
+          const finishedMetadata = getBookMetadata(currentBook);
           eventBus.emit('book:finished', {
             bookId: currentBook.id,
             seriesId: finishedMetadata?.series?.[0]?.id,
@@ -1911,13 +2206,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             })();
           } else {
             // Neither prompt nor auto-mark - just add to reading history and check queue
-            const metadata = currentBook.media?.metadata as any;
+            const metadata = getBookMetadata(currentBook);
             if (metadata) {
               sqliteCache.addToReadHistory({
                 itemId: currentBook.id,
                 title: metadata.title || 'Unknown Title',
                 authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-                narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+                narratorName: metadata.narrators?.[0],
                 genres: metadata.genres || [],
               }).catch(() => {});
             }

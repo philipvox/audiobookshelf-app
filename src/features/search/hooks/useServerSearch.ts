@@ -1,12 +1,18 @@
 /**
  * src/features/search/hooks/useServerSearch.ts
- * 
+ *
  * Server-side search hook - much faster than loading all items
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
+import {
+  BookSearchResult,
+  SeriesSearchResult,
+  AuthorSearchResult,
+  NarratorSearchResult,
+} from '@/core/types/api';
 
 export interface SearchResults {
   books: LibraryItem[];
@@ -64,24 +70,24 @@ export function useServerSearch(libraryId: string) {
 
     try {
       const response = await apiClient.searchLibrary(libraryId, { q: searchQuery });
-      
+
       // Extract books from response
-      const books: LibraryItem[] = response.book?.map((b: any) => b.libraryItem) || [];
-      
+      const books: LibraryItem[] = response.book?.map((b: BookSearchResult) => b.libraryItem) || [];
+
       // Extract series
-      const seriesResults: SeriesResult[] = response.series?.map((s: any) => ({
-        name: s.series?.name || s.name || '',
-        books: s.books?.map((b: any) => b.libraryItem) || [],
+      const seriesResults: SeriesResult[] = response.series?.map((s: SeriesSearchResult) => ({
+        name: s.series?.name || '',
+        books: s.books?.map((b: BookSearchResult) => b.libraryItem) || [],
       })).filter((s: SeriesResult) => s.name) || [];
 
       // Extract authors
-      const authorResults: AuthorResult[] = response.authors?.map((a: any) => ({
+      const authorResults: AuthorResult[] = response.authors?.map((a: AuthorSearchResult) => ({
         name: a.name || '',
         books: [], // Server doesn't return books with authors
       })).filter((a: AuthorResult) => a.name) || [];
 
       // Extract narrators
-      const narratorResults: NarratorResult[] = response.narrators?.map((n: any) => ({
+      const narratorResults: NarratorResult[] = response.narrators?.map((n: NarratorSearchResult) => ({
         name: n.name || '',
         books: [],
       })).filter((n: NarratorResult) => n.name) || [];

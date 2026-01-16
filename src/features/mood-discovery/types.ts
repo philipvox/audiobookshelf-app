@@ -29,52 +29,52 @@ export interface MoodConfig {
   id: Mood;
   label: string;
   icon: string;
-  iconSet: 'ionicons' | 'feather' | 'material';
+  iconSet: 'lucide';
   description: string;
 }
 
 export const MOODS: MoodConfig[] = [
   {
     id: 'comfort',
-    label: 'Curled up at home',
-    icon: 'Sofa',
-    iconSet: 'ionicons',
+    label: 'Comfort',
+    icon: 'Armchair',
+    iconSet: 'lucide',
     description: 'Cozy, warm, familiar',
   },
   {
     id: 'thrills',
-    label: 'Edge of your seat',
+    label: 'Thrills',
     icon: 'Zap',
-    iconSet: 'ionicons',
-    description: "Heart racing, can't stop",
+    iconSet: 'lucide',
+    description: 'Heart racing, page-turner',
   },
   {
     id: 'escape',
-    label: 'Lost in another world',
+    label: 'Escape',
     icon: 'Sparkles',
-    iconSet: 'ionicons',
-    description: 'Far from reality',
+    iconSet: 'lucide',
+    description: 'Another world entirely',
   },
   {
     id: 'laughs',
-    label: 'Laughing out loud',
+    label: 'Laughs',
     icon: 'Smile',
-    iconSet: 'ionicons',
-    description: 'Light, not serious',
+    iconSet: 'lucide',
+    description: 'Light and funny',
   },
   {
     id: 'feels',
-    label: 'Feeling all the feels',
+    label: 'Feels',
     icon: 'Heart',
-    iconSet: 'ionicons',
-    description: 'Emotional, moving',
+    iconSet: 'lucide',
+    description: 'Emotional and moving',
   },
   {
     id: 'thinking',
-    label: 'Mind blown',
+    label: 'Think',
     icon: 'Lightbulb',
-    iconSet: 'ionicons',
-    description: 'Learning, questioning',
+    iconSet: 'lucide',
+    description: 'Mind-expanding',
   },
 ];
 
@@ -92,7 +92,7 @@ export interface PaceConfig {
   id: Pace;
   label: string;
   icon: string;
-  iconSet: 'ionicons' | 'feather' | 'material';
+  iconSet: 'lucide';
   description: string;
   isDefault?: boolean;
 }
@@ -100,31 +100,31 @@ export interface PaceConfig {
 export const PACES: PaceConfig[] = [
   {
     id: 'slow',
-    label: 'Slow & savory',
+    label: 'Slow burn',
     icon: 'Moon',
-    iconSet: 'ionicons',
-    description: 'Take your time, soak it in',
+    iconSet: 'lucide',
+    description: 'Leisurely, atmospheric',
   },
   {
     id: 'steady',
-    label: 'Steady rhythm',
-    icon: 'Music',
-    iconSet: 'ionicons',
-    description: 'Balanced, keeps you moving',
+    label: 'Steady',
+    icon: 'Activity',
+    iconSet: 'lucide',
+    description: 'Balanced pace',
   },
   {
     id: 'fast',
-    label: "Can't put it down",
+    label: 'Fast',
     icon: 'Flame',
-    iconSet: 'ionicons',
-    description: 'Rapid-fire, zero downtime',
+    iconSet: 'lucide',
+    description: 'Page-turner',
   },
   {
     id: 'any',
-    label: 'Surprise me',
+    label: 'Any pace',
     icon: 'Shuffle',
-    iconSet: 'ionicons',
-    description: "I'm flexible",
+    iconSet: 'lucide',
+    description: 'No preference',
     isDefault: true,
   },
 ];
@@ -143,7 +143,7 @@ export interface WeightConfig {
   id: Weight;
   label: string;
   icon: string;
-  iconSet: 'ionicons' | 'feather' | 'material';
+  iconSet: 'lucide';
   description: string;
   isDefault?: boolean;
 }
@@ -151,31 +151,31 @@ export interface WeightConfig {
 export const WEIGHTS: WeightConfig[] = [
   {
     id: 'light',
-    label: 'Light & bright',
+    label: 'Light',
     icon: 'Sun',
-    iconSet: 'ionicons',
-    description: 'Feel-good, uplifting, easy',
+    iconSet: 'lucide',
+    description: 'Feel-good, uplifting',
   },
   {
     id: 'balanced',
-    label: 'Shade & light',
+    label: 'Balanced',
     icon: 'CloudSun',
-    iconSet: 'ionicons',
-    description: 'Some clouds, some sunshine',
+    iconSet: 'lucide',
+    description: 'Mix of light and dark',
   },
   {
     id: 'heavy',
-    label: 'Deep & intense',
-    icon: 'CircleDot',
-    iconSet: 'ionicons',
-    description: 'Dark themes, emotional weight',
+    label: 'Heavy',
+    icon: 'CloudRain',
+    iconSet: 'lucide',
+    description: 'Intense, emotional',
   },
   {
     id: 'any',
-    label: "I'll take anything",
+    label: 'Any tone',
     icon: 'Shuffle',
-    iconSet: 'ionicons',
-    description: "Mood isn't picky today",
+    iconSet: 'lucide',
+    description: 'No preference',
     isDefault: true,
   },
 ];
@@ -193,7 +193,7 @@ export interface WorldConfig {
   id: World;
   label: string;
   icon: string;
-  iconSet: 'ionicons' | 'feather' | 'material';
+  iconSet: 'lucide';
   description: string;
   isDefault?: boolean;
 }
@@ -201,38 +201,38 @@ export interface WorldConfig {
 export const WORLDS: WorldConfig[] = [
   {
     id: 'contemporary',
-    label: 'Right here, right now',
+    label: 'Modern',
     icon: 'Building2',
-    iconSet: 'ionicons',
-    description: 'Modern day, realistic',
+    iconSet: 'lucide',
+    description: 'Present day',
   },
   {
     id: 'historical',
-    label: 'Back in time',
+    label: 'Historical',
     icon: 'Castle',
-    iconSet: 'ionicons',
-    description: 'Past eras, different worlds',
+    iconSet: 'lucide',
+    description: 'Past eras',
   },
   {
     id: 'fantasy',
-    label: 'Realms of magic',
+    label: 'Fantasy',
     icon: 'Wand2',
-    iconSet: 'ionicons',
-    description: 'Impossible things, mythical',
+    iconSet: 'lucide',
+    description: 'Magic and myth',
   },
   {
     id: 'scifi',
-    label: 'Among the stars',
+    label: 'Sci-Fi',
     icon: 'Rocket',
-    iconSet: 'ionicons',
-    description: 'Future tech, space, what-ifs',
+    iconSet: 'lucide',
+    description: 'Future and space',
   },
   {
     id: 'any',
-    label: 'Anywhere is fine',
+    label: 'Any setting',
     icon: 'Globe',
-    iconSet: 'ionicons',
-    description: "Setting doesn't matter",
+    iconSet: 'lucide',
+    description: 'No preference',
     isDefault: true,
   },
 ];
@@ -247,7 +247,7 @@ export interface LengthConfig {
   id: LengthPreference;
   label: string;
   icon: string;
-  iconSet: 'ionicons' | 'feather' | 'material';
+  iconSet: 'lucide';
   description: string;
   minHours?: number;
   maxHours?: number;
@@ -257,35 +257,35 @@ export interface LengthConfig {
 export const LENGTHS: LengthConfig[] = [
   {
     id: 'short',
-    label: 'Quick listen',
+    label: 'Short',
     icon: 'Timer',
-    iconSet: 'ionicons',
-    description: 'Finish in a day or two',
+    iconSet: 'lucide',
+    description: 'Under 6 hours',
     maxHours: 6,
   },
   {
     id: 'medium',
-    label: 'Weekend companion',
-    icon: 'Calendar',
-    iconSet: 'ionicons',
-    description: 'A few days of listening',
+    label: 'Medium',
+    icon: 'Clock',
+    iconSet: 'lucide',
+    description: '6-12 hours',
     minHours: 6,
     maxHours: 12,
   },
   {
     id: 'long',
-    label: 'Epic journey',
-    icon: 'Map',
-    iconSet: 'ionicons',
-    description: 'Settle in for the long haul',
+    label: 'Long',
+    icon: 'BookOpen',
+    iconSet: 'lucide',
+    description: '12+ hours',
     minHours: 12,
   },
   {
     id: 'any',
-    label: "Doesn't matter",
+    label: 'Any length',
     icon: 'Infinity',
-    iconSet: 'ionicons',
-    description: "Length isn't a factor",
+    iconSet: 'lucide',
+    description: 'No preference',
     isDefault: true,
   },
 ];

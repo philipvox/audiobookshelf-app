@@ -7,6 +7,7 @@
 import React from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { Icon } from '@/shared/components/Icon';
+import { useTheme } from '@/shared/theme';
 
 interface SearchBarProps {
   value: string;
@@ -25,15 +26,17 @@ export function SearchBar({
   autoFocus = false,
   dark = true,
 }: SearchBarProps) {
+  const { colors } = useTheme();
+
   const handleClear = () => {
     onChangeText('');
     onClear?.();
   };
 
-  const bgColor = dark ? 'rgba(255,255,255,0.1)' : '#F0F0F0';
-  const textColor = dark ? '#FFFFFF' : '#000000';
-  const placeholderColor = dark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
-  const iconColor = dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)';
+  const bgColor = dark ? colors.search.inputBackground : colors.background.secondary;
+  const textColor = dark ? colors.text.primary : colors.text.inverse;
+  const placeholderColor = dark ? colors.search.placeholder : colors.text.tertiary;
+  const iconColor = dark ? colors.icon.tertiary : colors.icon.tertiary;
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>

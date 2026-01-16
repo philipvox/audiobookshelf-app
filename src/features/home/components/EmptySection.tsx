@@ -12,7 +12,7 @@ import {
   radius,
   scale,
   layout,
-  useThemeColors,
+  useTheme,
   accentColors,
 } from '@/shared/theme';
 
@@ -29,15 +29,15 @@ export function EmptySection({
   ctaLabel,
   onCTAPress,
 }: EmptySectionProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: themeColors.textSecondary }]}>{title}</Text>
-      <Text style={[styles.description, { color: themeColors.textTertiary }]}>{description}</Text>
+      <Text style={[styles.title, { color: colors.text.secondary }]}>{title}</Text>
+      <Text style={[styles.description, { color: colors.text.tertiary }]}>{description}</Text>
       {ctaLabel && onCTAPress && (
-        <TouchableOpacity style={[styles.ctaButton, { backgroundColor: themeColors.card }]} onPress={onCTAPress}>
-          <Text style={[styles.ctaText, { color: accentColors.gold }]}>{ctaLabel}</Text>
+        <TouchableOpacity style={[styles.ctaButton, { backgroundColor: colors.background.elevated }]} onPress={onCTAPress}>
+          <Text style={[styles.ctaText, { color: colors.accent.primary }]}>{ctaLabel}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -73,6 +73,6 @@ const styles = StyleSheet.create({
   ctaText: {
     fontSize: scale(12),
     fontWeight: '600',
-    // color set via accentColors.gold in JSX
+    // color set via colors.accent.primary in JSX
   },
 });

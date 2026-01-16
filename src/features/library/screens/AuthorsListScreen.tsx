@@ -17,7 +17,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -27,10 +26,9 @@ import { useLibraryCache, getAllAuthors } from '@/core/cache';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { apiClient } from '@/core/api';
 import { Icon } from '@/shared/components/Icon';
-import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
+import { AlphabetScrubber, SkullRefreshControl, TopNav, TopNavBackIcon, UserIcon } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { spacing, radius } from '@/shared/theme';
-import { useThemeColors, useColors } from '@/shared/theme/themeStore';
+import { spacing, radius, useTheme } from '@/shared/theme';
 
 type SortType = 'name' | 'bookCount' | 'recent';
 
@@ -62,8 +60,7 @@ function getInitials(name: string): string {
 export function AuthorsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const accent = colors.accent.primary;
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -230,10 +227,10 @@ export function AuthorsListScreen() {
 
       {/* Info */}
       <View style={styles.authorInfo}>
-        <Text style={[styles.authorName, { color: themeColors.text }]} numberOfLines={1}>{item.name}</Text>
-        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>{item.bookCount} books in library</Text>
+        <Text style={[styles.authorName, { color: colors.text.primary }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={[styles.bookCount, { color: colors.text.secondary }]}>{item.bookCount} books in library</Text>
         {item.topGenres.length > 0 && (
-          <Text style={[styles.genres, { color: themeColors.textTertiary }]} numberOfLines={1}>
+          <Text style={[styles.genres, { color: colors.text.tertiary }]} numberOfLines={1}>
             {item.topGenres.join(', ')}
           </Text>
         )}
@@ -261,62 +258,68 @@ export function AuthorsListScreen() {
           <Text style={styles.yourAuthorAvatarText}>{getInitials(author.name)}</Text>
         )}
       </View>
-      <Text style={[styles.yourAuthorName, { color: themeColors.text }]} numberOfLines={2}>{author.name}</Text>
-      <Text style={[styles.yourAuthorBooks, { color: themeColors.textSecondary }]}>{author.bookCount} books</Text>
+      <Text style={[styles.yourAuthorName, { color: colors.text.primary }]} numberOfLines={2}>{author.name}</Text>
+      <Text style={[styles.yourAuthorBooks, { color: colors.text.secondary }]}>{author.bookCount} books</Text>
     </TouchableOpacity>
   );
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
-        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
-        </TouchableOpacity>
-        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
-          <Icon name="Search" size={18} color={themeColors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
-            placeholder="Search authors..."
-            placeholderTextColor={themeColors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
+
+      {/* TopNav with skull logo and integrated search bar */}
+      <TopNav
+        variant={isDark ? 'dark' : 'light'}
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        style={{ backgroundColor: colors.background.primary }}
+        pills={[
+          {
+            key: 'authors',
+            label: 'Authors',
+            icon: <UserIcon size={10} color={colors.text.primary} />,
+          },
+        ]}
+        circleButtons={[
+          {
+            key: 'back',
+            icon: <TopNavBackIcon color={colors.text.primary} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+        searchBar={{
+          value: searchQuery,
+          onChangeText: setSearchQuery,
+          placeholder: 'Search authors...',
+        }}
+      />
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{filteredAuthors.length} authors</Text>
+        <Text style={[styles.resultCount, { color: colors.text.secondary }]}>{filteredAuthors.length} authors</Text>
         <View style={styles.sortButtons}>
           {(['name', 'bookCount', 'recent'] as SortType[]).map(type => (
             <TouchableOpacity
               key={type}
-              style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === type && { backgroundColor: accent }]}
+              style={[styles.sortButton, { backgroundColor: colors.border.default }, sortBy === type && { backgroundColor: accent }]}
               onPress={() => setSortBy(type)}
             >
-              <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === type && styles.sortButtonTextActive]}>
+              <Text style={[styles.sortButtonText, { color: colors.text.secondary }, sortBy === type && [styles.sortButtonTextActive, { color: colors.text.inverse }]]}>
                 {type === 'name' ? 'A-Z' : type === 'bookCount' ? 'Books' : 'Recent'}
               </Text>
             </TouchableOpacity>
@@ -326,24 +329,18 @@ export function AuthorsListScreen() {
 
       {/* Main Content */}
       <View style={styles.content}>
-        <SectionList
-          ref={sectionListRef}
-          sections={sections}
-          keyExtractor={(item) => item.name}
-          stickySectionHeadersEnabled={sortBy === 'name'}
-          contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: sortBy === 'name' ? 28 : 0 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={accent}
-            />
-          }
+        <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+          <SectionList
+            ref={sectionListRef}
+            sections={sections}
+            keyExtractor={(item) => item.name}
+            stickySectionHeadersEnabled={sortBy === 'name'}
+            contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: sortBy === 'name' ? 28 : 0 }}
+            showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             !isSearching && yourAuthors.length > 0 ? (
               <View style={styles.yourAuthorsSection}>
-                <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Your Authors</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>Your Authors</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -356,7 +353,7 @@ export function AuthorsListScreen() {
           }
           renderSectionHeader={({ section }) =>
             section.title ? (
-              <View style={[styles.letterHeader, { backgroundColor: themeColors.background }]}>
+              <View style={[styles.letterHeader, { backgroundColor: colors.background.primary }]}>
                 <Text style={[styles.letterText, { color: accent }]}>{section.title}</Text>
               </View>
             ) : null
@@ -368,7 +365,8 @@ export function AuthorsListScreen() {
             offset: 72 * index,
             index,
           })}
-        />
+          />
+        </SkullRefreshControl>
 
         {/* A-Z Scrubber */}
         <AlphabetScrubber
@@ -387,18 +385,9 @@ const styles = StyleSheet.create({
     flex: 1,
     // backgroundColor set via themeColors.background in JSX
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+  searchRow: {
+    paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 8,
-  },
-  headerButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     flex: 1,
@@ -458,7 +447,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   sortButtonTextActive: {
-    color: '#000', // Black on gold accent (intentional)
+    // color applied inline via colors.text.inverse
   },
   content: {
     flex: 1,

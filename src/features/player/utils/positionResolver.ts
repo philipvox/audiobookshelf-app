@@ -91,8 +91,8 @@ export function resolvePosition(
   const sameSessionWindow = options.sameSessionWindow ?? DEFAULT_SAME_SESSION_WINDOW;
 
   log('Resolving position:');
-  log(`  Local:  ${local ? `${local.position.toFixed(1)}s @ ${new Date(local.updatedAt).toISOString()}` : 'none'}`);
-  log(`  Server: ${server ? `${server.position.toFixed(1)}s @ ${new Date(server.updatedAt).toISOString()}` : 'none'}`);
+  log(`  Local:  ${local && local.position != null ? `${local.position.toFixed(1)}s @ ${new Date(local.updatedAt).toISOString()}` : 'none'}`);
+  log(`  Server: ${server && server.position != null ? `${server.position.toFixed(1)}s @ ${new Date(server.updatedAt).toISOString()}` : 'none'}`);
 
   // Case 1: Only local exists
   if (local && !server) {

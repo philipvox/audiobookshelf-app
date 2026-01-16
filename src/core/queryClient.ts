@@ -244,39 +244,48 @@ export async function prefetchMainTabData(): Promise<void> {
   // Import library cache store directly
   const { useLibraryCache } = await import('./cache/libraryCache');
 
-  // Prefetch all main data in parallel - don't block on these
-  const prefetches = [
-    // Items in progress (for home screen)
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.user.inProgress(),
-      queryFn: () => apiClient.getItemsInProgress(),
-      staleTime: 2 * 60 * 1000, // 2 minutes
-    }),
-
-    // Libraries list
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.libraries.all,
-      queryFn: () => apiClient.getLibraries(),
-      staleTime: 10 * 60 * 1000, // 10 minutes
-    }),
-
-    // Playlists
-    queryClient.prefetchQuery({
-      queryKey: ['playlists'],
-      queryFn: () => apiClient.getPlaylists(),
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    }),
-
-    // Library cache refresh (loads all items, series, authors)
-    // Access the zustand store directly
-    useLibraryCache.getState().refreshCache(),
-  ];
-
   try {
+    // First, fetch libraries to get the library ID
+    // This must complete before we can refresh the library cache
+    const libraries = await apiClient.getLibraries();
+    const defaultLibraryId = libraries?.[0]?.id;
+
+    // Cache the libraries result
+    queryClient.setQueryData(queryKeys.libraries.all, libraries);
+
+    if (!defaultLibraryId) {
+      if (__DEV__) {
+        console.warn('[PREFETCH] No library ID found, skipping cache load');
+      }
+      return;
+    }
+
+    // Now prefetch remaining data in parallel
+    const prefetches = [
+      // Items in progress (for home screen)
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.user.inProgress(),
+        queryFn: () => apiClient.getItemsInProgress(),
+        staleTime: 2 * 60 * 1000, // 2 minutes
+      }),
+
+      // Playlists
+      queryClient.prefetchQuery({
+        queryKey: ['playlists'],
+        queryFn: () => apiClient.getPlaylists(),
+        staleTime: 5 * 60 * 1000, // 5 minutes
+      }),
+
+      // Library cache refresh (loads all items, series, authors)
+      // Now we have the library ID, so this will actually work
+      useLibraryCache.getState().loadCache(defaultLibraryId, true),
+    ];
+
     await Promise.allSettled(prefetches);
-    console.log('[QueryClient] Main tab data prefetched');
   } catch (err) {
-    console.warn('[QueryClient] Some prefetches failed:', err);
+    if (__DEV__) {
+      console.error('[PREFETCH] Prefetch failed:', err);
+    }
   }
 }
 

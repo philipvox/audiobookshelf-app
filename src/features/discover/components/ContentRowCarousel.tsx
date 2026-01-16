@@ -20,8 +20,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useCoverUrl } from '@/core/cache';
-import { scale, spacing, radius, layout, wp } from '@/shared/theme';
-import { useThemeColors, useColors } from '@/shared/theme/themeStore';
+import { scale, spacing, radius, layout, wp, useTheme } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { BookSummary, ContentRow, RowDisplayMode } from '../types';
 import { haptics } from '@/core/native/haptics';
@@ -70,9 +69,8 @@ interface BookCardProps {
   accentColor: string;
 }
 
-// Serendipity badge colors
-const SERENDIPITY_BG = 'rgba(147, 51, 234, 0.9)'; // Purple
-const SERENDIPITY_TEXT = '#FFFFFF';
+// Serendipity badge colors - purple accent for special recommendations
+const SERENDIPITY_BG = 'rgba(147, 51, 234, 0.9)';
 
 // Grid card for 2x2 layout (featured/default)
 const GridBookCard = React.memo(function GridBookCard({ book, onPress, textColor, textSecondaryColor, bgColor }: BookCardProps) {
@@ -97,13 +95,13 @@ const GridBookCard = React.memo(function GridBookCard({ book, onPress, textColor
         <CompleteBadgeOverlay bookId={book.id} size="small" />
         {book.isSerendipity && (
           <View style={styles.serendipityBadge}>
-            <Text style={styles.serendipityIcon}>✨</Text>
+            <Text style={[styles.serendipityIcon, { color: '#FFFFFF' }]}>✨</Text>
           </View>
         )}
         {/* Last played badge on cover */}
         {timeAgo ? (
           <View style={styles.timeAgoBadge}>
-            <Text style={styles.timeAgoBadgeText}>{timeAgo}</Text>
+            <Text style={[styles.timeAgoBadgeText, { color: '#FFFFFF' }]}>{timeAgo}</Text>
           </View>
         ) : null}
 
@@ -153,7 +151,7 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ book, onPress, t
         )}
         {book.isSerendipity && (
           <View style={styles.serendipityBadge}>
-            <Text style={styles.serendipityIcon}>✨</Text>
+            <Text style={[styles.serendipityIcon, { color: '#FFFFFF' }]}>✨</Text>
           </View>
         )}
       </View>
@@ -202,8 +200,7 @@ interface ContentRowCarouselProps {
 
 export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accent = colors.accent.primary;
 
   const handleBookPress = useCallback((bookId: string) => {
@@ -248,7 +245,7 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
     // If no source attribution or no item ID to link to, show plain title
     if (!sourceAttribution || !sourceAttribution.itemId) {
       return (
-        <Text style={[styles.rowTitle, { color: themeColors.text }]}>
+        <Text style={[styles.rowTitle, { color: colors.text.primary }]}>
           {row.title || 'Top Picks'}
         </Text>
       );
@@ -269,17 +266,17 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
       default:
         // For author/narrator/genre, just show plain title
         return (
-          <Text style={[styles.rowTitle, { color: themeColors.text }]}>
+          <Text style={[styles.rowTitle, { color: colors.text.primary }]}>
             {row.title || 'Top Picks'}
           </Text>
         );
     }
 
     return (
-      <Text style={[styles.rowTitle, { color: themeColors.text }]}>
+      <Text style={[styles.rowTitle, { color: colors.text.primary }]}>
         {prefix}
         <Text
-          style={[styles.sourceLink, { color: themeColors.accent }]}
+          style={[styles.sourceLink, { color: colors.accent.primary }]}
           onPress={handleSourcePress}
         >
           {linkText}
@@ -311,9 +308,9 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
                 key={book.id}
                 book={book}
                 onPress={() => handleBookPress(book.id)}
-                textColor={themeColors.text}
-                textSecondaryColor={themeColors.textSecondary}
-                bgColor={themeColors.backgroundSecondary}
+                textColor={colors.text.primary}
+                textSecondaryColor={colors.text.secondary}
+                bgColor={colors.background.secondary}
                 accentColor={accent}
               />
             ))}
@@ -332,9 +329,9 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
                 key={book.id}
                 book={book}
                 onPress={() => handleBookPress(book.id)}
-                textColor={themeColors.text}
-                textSecondaryColor={themeColors.textSecondary}
-                bgColor={themeColors.backgroundSecondary}
+                textColor={colors.text.primary}
+                textSecondaryColor={colors.text.secondary}
+                bgColor={colors.background.secondary}
                 accentColor={accent}
               />
             ))}
@@ -351,9 +348,9 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
                 key={book.id}
                 book={book}
                 onPress={() => handleBookPress(book.id)}
-                textColor={themeColors.text}
-                textSecondaryColor={themeColors.textSecondary}
-                bgColor={themeColors.backgroundSecondary}
+                textColor={colors.text.primary}
+                textSecondaryColor={colors.text.secondary}
+                bgColor={colors.background.secondary}
                 accentColor={accent}
               />
             ))}
@@ -372,14 +369,14 @@ export function ContentRowCarousel({ row, onSeeAll }: ContentRowCarouselProps) {
         <View style={styles.titleContainer}>
           {renderTitle()}
           {row.subtitle && (
-            <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+            <Text style={[styles.subtitle, { color: colors.text.secondary }]}>
               {row.subtitle}
             </Text>
           )}
         </View>
         {row.totalCount > viewMoreThreshold && (
           <TouchableOpacity onPress={handleSeeAll} style={styles.seeAllButton}>
-            <Text style={[styles.seeAllText, { color: themeColors.textSecondary }]}>View More</Text>
+            <Text style={[styles.seeAllText, { color: colors.text.secondary }]}>View More</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -474,7 +471,7 @@ const styles = StyleSheet.create({
   },
   serendipityIcon: {
     fontSize: scale(12),
-    color: SERENDIPITY_TEXT,
+    // Text is always white on dark purple background
   },
   timeAgoBadge: {
     position: 'absolute',
@@ -488,7 +485,7 @@ const styles = StyleSheet.create({
   timeAgoBadgeText: {
     fontSize: scale(10),
     fontWeight: '500',
-    color: '#FFFFFF',
+    // Color set dynamically in component
   },
   title: {
     fontSize: scale(14),

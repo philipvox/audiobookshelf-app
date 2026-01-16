@@ -31,6 +31,7 @@ export {
   themePresets,
   getThemeColors,
   colors, // deprecated legacy export
+  ACCENT, // Static accent color for StyleSheet usage at module level
   type ThemeColors,
   type LightColors,
   type DarkColors,
@@ -42,6 +43,16 @@ export * from './typography';
 export * from './sizes';
 export * from './animation';
 export * from './formatting';
+
+// Secret Library design system
+export * from './secretLibrary';
+export {
+  useSecretLibraryColors,
+  getSecretLibraryColors,
+  secretLibraryLightColors,
+  secretLibraryDarkColors,
+  type SecretLibraryColors,
+} from './secretLibrary';
 
 // Import for combined theme object
 import { colors } from './colors';

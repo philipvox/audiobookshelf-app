@@ -8,8 +8,7 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { scale, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, useTheme } from '@/shared/theme';
 import { TabType, TAB_ORDER, TAB_LABELS } from '../types';
 
 interface LibraryTabBarProps {
@@ -21,7 +20,7 @@ export const LibraryTabBar = React.memo(function LibraryTabBar({
   activeTab,
   onTabChange,
 }: LibraryTabBarProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
     <ScrollView
@@ -45,7 +44,7 @@ export const LibraryTabBar = React.memo(function LibraryTabBar({
           >
             <Text style={[
               styles.textTabLabel,
-              { color: isActive ? themeColors.text : themeColors.textTertiary },
+              { color: isActive ? colors.text.primary : colors.text.tertiary },
             ]}>
               {TAB_LABELS[tabId]}
             </Text>

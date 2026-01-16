@@ -151,9 +151,9 @@ export const elevation = {
     shadowRadius: 16,
     elevation: 8,
   },
-  // Glow effect for accent elements
+  // Glow effect for accent elements (uses theme accent dynamically)
   glow: {
-    shadowColor: '#F3B60C',
+    shadowColor: '#E53935', // Updated to red accent - should use theme.colors.accent.primary dynamically
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 20,
