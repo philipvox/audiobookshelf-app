@@ -1,8 +1,8 @@
 /**
  * src/features/profile/screens/ChapterCleaningSettingsScreen.tsx
  *
- * Settings screen for chapter name cleaning preferences.
- * Allows users to select cleaning level and see examples.
+ * Secret Library Chapter Cleaning Settings
+ * Cleaning level selection with examples.
  */
 
 import React, { useCallback } from 'react';
@@ -16,130 +16,143 @@ import {
   Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { Check, ChevronLeft, Code, Info, ArrowRight, type LucideIcon } from 'lucide-react-native';
+import { Check, Code, Info, ArrowRight, type LucideIcon } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale, typography, fontWeight, spacing } from '@/shared/theme';
-import { useColors, ThemeColors } from '@/shared/theme';
+import { scale } from '@/shared/theme';
+import {
+  secretLibraryColors as colors,
+  secretLibraryFonts as fonts,
+} from '@/shared/theme/secretLibrary';
 import {
   useChapterCleaningStore,
   CLEANING_LEVEL_INFO,
   type ChapterCleaningLevel,
 } from '../stores/chapterCleaningStore';
+import { SettingsHeader } from '../components/SettingsHeader';
 
-// Helper to create theme-aware colors from nested ThemeColors
-function createColors(c: ThemeColors) {
-  return {
-    accent: c.accent.primary,
-    accentSubtle: c.accent.primarySubtle,
-    background: c.background.secondary,
-    text: c.text.primary,
-    textSecondary: c.text.secondary,
-    textTertiary: c.text.tertiary,
-    card: c.border.default,
-    border: c.border.default,
-    iconBg: c.border.default,
-  };
-}
+// =============================================================================
+// CONSTANTS
+// =============================================================================
 
-// Level option data
 const LEVEL_OPTIONS: ChapterCleaningLevel[] = ['off', 'light', 'standard', 'aggressive'];
 
-// Radio Button Option Component
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
 interface LevelOptionProps {
   level: ChapterCleaningLevel;
   isSelected: boolean;
   onSelect: (level: ChapterCleaningLevel) => void;
   isRecommended?: boolean;
-  colors: ReturnType<typeof createColors>;
 }
 
-function LevelOption({ level, isSelected, onSelect, isRecommended, colors }: LevelOptionProps) {
+function LevelOption({ level, isSelected, onSelect, isRecommended }: LevelOptionProps) {
   const info = CLEANING_LEVEL_INFO[level];
 
   return (
     <TouchableOpacity
-      style={[styles.levelOption, { borderBottomColor: colors.border }, isSelected && { backgroundColor: colors.accentSubtle }]}
+      style={[styles.levelOption, isSelected && styles.levelOptionSelected]}
       onPress={() => onSelect(level)}
       activeOpacity={0.7}
     >
       <View style={styles.levelOptionLeft}>
         {/* Radio circle */}
-        <View style={[styles.radioOuter, { borderColor: colors.textTertiary }, isSelected && { borderColor: colors.accent }]}>
-          {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.accent }]} />}
+        <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
+          {isSelected && <View style={styles.radioInner} />}
         </View>
 
         {/* Content */}
         <View style={styles.levelContent}>
           <View style={styles.labelRow}>
-            <Text style={[styles.levelLabel, { color: colors.text }, isSelected && { color: colors.accent }]}>
+            <Text style={[styles.levelLabel, isSelected && styles.levelLabelSelected]}>
               {info.label}
             </Text>
             {isRecommended && (
               <View style={styles.recommendedBadge}>
-                <Text style={[styles.recommendedText, { color: colors.accent }]}>Recommended</Text>
+                <Text style={styles.recommendedText}>Recommended</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.levelDescription, { color: colors.textTertiary }]}>{info.description}</Text>
-          <Text style={[styles.levelExample, { color: colors.textTertiary }]}>{info.example}</Text>
+          <Text style={styles.levelDescription}>{info.description}</Text>
+          <Text style={styles.levelExample}>{info.example}</Text>
         </View>
       </View>
 
       {/* Checkmark for selected */}
-      {isSelected && (
-        <Check size={scale(20)} color={colors.accent} strokeWidth={2.5} />
-      )}
+      {isSelected && <Check size={scale(20)} color={colors.black} strokeWidth={2} />}
     </TouchableOpacity>
   );
 }
 
-// Settings Row Component (for toggle)
 interface SettingsRowProps {
   Icon: LucideIcon;
   label: string;
   note?: string;
   switchValue: boolean;
   onSwitchChange: (value: boolean) => void;
-  colors: ReturnType<typeof createColors>;
 }
 
-function SettingsRow({ Icon, label, note, switchValue, onSwitchChange, colors }: SettingsRowProps) {
+function SettingsRow({ Icon, label, note, switchValue, onSwitchChange }: SettingsRowProps) {
   return (
-    <View style={[styles.settingsRow, { borderBottomColor: colors.border }]}>
+    <View style={styles.settingsRow}>
       <View style={styles.rowLeft}>
-        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
-          <Icon
-            size={scale(18)}
-            color={colors.textSecondary}
-            strokeWidth={2}
-          />
+        <View style={styles.iconContainer}>
+          <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
         </View>
         <View style={styles.rowContent}>
-          <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
-          {note ? <Text style={[styles.rowNote, { color: colors.textTertiary }]}>{note}</Text> : null}
+          <Text style={styles.rowLabel}>{label}</Text>
+          {note && <Text style={styles.rowNote}>{note}</Text>}
         </View>
       </View>
       <Switch
         value={switchValue}
         onValueChange={onSwitchChange}
-        trackColor={{ false: colors.border, true: colors.accent }}
-        thumbColor="#fff"
+        trackColor={{ false: 'rgba(0,0,0,0.1)', true: colors.black }}
+        thumbColor={colors.white}
+        ios_backgroundColor="rgba(0,0,0,0.1)"
       />
     </View>
   );
 }
 
-// Section Header Component
-function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
-  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
+function SectionHeader({ title }: { title: string }) {
+  return <Text style={styles.sectionHeader}>{title}</Text>;
 }
+
+interface ExampleRowProps {
+  before: string;
+  after: string;
+  note?: string;
+}
+
+function ExampleRow({ before, after, note }: ExampleRowProps) {
+  return (
+    <View style={styles.exampleRow}>
+      <View style={styles.exampleBefore}>
+        <Text style={styles.exampleLabel}>Before</Text>
+        <Text style={styles.exampleText} numberOfLines={1}>
+          {before}
+        </Text>
+      </View>
+      <ArrowRight size={scale(14)} color={colors.gray} strokeWidth={1.5} style={styles.exampleArrow} />
+      <View style={styles.exampleAfter}>
+        <Text style={styles.exampleLabel}>After</Text>
+        <Text style={styles.exampleTextClean} numberOfLines={1}>
+          {after}
+        </Text>
+        {note && <Text style={styles.exampleNote}>{note}</Text>}
+      </View>
+    </View>
+  );
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 
 export function ChapterCleaningSettingsScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
-  const themeColors = useColors();
-  const colors = createColors(themeColors);
 
   // Settings from store
   const level = useChapterCleaningStore((s) => s.level);
@@ -155,39 +168,30 @@ export function ChapterCleaningSettingsScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Chapter Names</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.grayLight} />
+      <SettingsHeader title="Chapter Names" />
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Intro */}
         <View style={styles.introSection}>
-          <Text style={[styles.introText, { color: colors.textSecondary }]}>
-            Clean up inconsistent chapter names for a more polished listening experience.
-            Original metadata is always preserved.
+          <Text style={styles.introText}>
+            Clean up inconsistent chapter names for a more polished listening experience. Original
+            metadata is always preserved.
           </Text>
         </View>
 
         {/* Cleaning Level Section */}
         <View style={styles.section}>
-          <SectionHeader title="CLEANING LEVEL" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Cleaning Level" />
+          <View style={styles.sectionCard}>
             {LEVEL_OPTIONS.map((opt) => (
               <LevelOption
                 key={opt}
@@ -195,7 +199,6 @@ export function ChapterCleaningSettingsScreen() {
                 isSelected={level === opt}
                 onSelect={handleLevelSelect}
                 isRecommended={opt === 'standard'}
-                colors={colors}
               />
             ))}
           </View>
@@ -203,55 +206,36 @@ export function ChapterCleaningSettingsScreen() {
 
         {/* Advanced Section */}
         <View style={styles.section}>
-          <SectionHeader title="ADVANCED" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Advanced" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={Code}
               label="Show Original Names"
               note="Display original metadata for debugging"
               switchValue={showOriginalNames}
               onSwitchChange={setShowOriginalNames}
-              colors={colors}
             />
           </View>
         </View>
 
         {/* Before/After Examples */}
         <View style={styles.section}>
-          <SectionHeader title="EXAMPLE TRANSFORMATIONS" colors={colors} />
-          <View style={[styles.examplesCard, { backgroundColor: colors.card }]}>
-            <ExampleRow
-              before="01 - The Great Gatsby: Chapter 1"
-              after="Chapter 1"
-              colors={colors}
-            />
-            <ExampleRow
-              before="D01T05 - Interview With the Vampire"
-              after="Chapter 5"
-              colors={colors}
-            />
+          <SectionHeader title="Example Transformations" />
+          <View style={styles.sectionCard}>
+            <ExampleRow before="01 - The Great Gatsby: Chapter 1" after="Chapter 1" />
+            <ExampleRow before="D01T05 - Interview With the Vampire" after="Chapter 5" />
             <ExampleRow
               before="Chapter Twenty-Three: The Discovery"
               after="Chapter 23: The Discovery"
-              colors={colors}
             />
-            <ExampleRow
-              before="Prologue"
-              after="Prologue"
-              note="Front/back matter preserved"
-              colors={colors}
-            />
+            <ExampleRow before="Prologue" after="Prologue" note="Front/back matter preserved" />
           </View>
         </View>
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Info
-            size={scale(16)}
-            color={colors.textTertiary}
-            strokeWidth={2}
-          />
-          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
+          <Info size={scale(16)} color={colors.gray} strokeWidth={1.5} />
+          <Text style={styles.infoText}>
             Changes only affect how chapters are displayed. Your server data remains unchanged.
             Based on analysis of 68,000+ real audiobook chapters.
           </Text>
@@ -261,109 +245,57 @@ export function ChapterCleaningSettingsScreen() {
   );
 }
 
-// Example Row Component
-function ExampleRow({
-  before,
-  after,
-  note,
-  colors,
-}: {
-  before: string;
-  after: string;
-  note?: string;
-  colors: ReturnType<typeof createColors>;
-}) {
-  return (
-    <View style={[styles.exampleRow, { borderBottomColor: colors.border }]}>
-      <View style={styles.exampleBefore}>
-        <Text style={[styles.exampleLabel, { color: colors.textTertiary }]}>Before</Text>
-        <Text style={[styles.exampleText, { color: colors.textTertiary }]} numberOfLines={1}>
-          {before}
-        </Text>
-      </View>
-      <ArrowRight
-        size={scale(14)}
-        color={colors.textTertiary}
-        strokeWidth={2}
-        style={styles.exampleArrow}
-      />
-      <View style={styles.exampleAfter}>
-        <Text style={[styles.exampleLabel, { color: colors.textTertiary }]}>After</Text>
-        <Text style={[styles.exampleTextClean, { color: colors.accent }]} numberOfLines={1}>
-          {after}
-        </Text>
-        {note && <Text style={[styles.exampleNote, { color: colors.textTertiary }]}>{note}</Text>}
-      </View>
-    </View>
-  );
-}
+// =============================================================================
+// STYLES
+// =============================================================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via colors.background in JSX
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: scale(40),
-    height: scale(40),
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    ...typography.headlineLarge,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.text in JSX
-  },
-  headerSpacer: {
-    width: scale(40),
+    backgroundColor: colors.grayLight,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    paddingBottom: SCREEN_BOTTOM_PADDING,
+    paddingHorizontal: 16,
   },
   introSection: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.xxl,
+    marginBottom: 28,
   },
   introText: {
-    ...typography.bodyLarge,
-    // color set via colors.textSecondary in JSX
-    lineHeight: scale(20),
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(14),
+    color: colors.black,
+    lineHeight: scale(22),
   },
   section: {
-    marginBottom: spacing.xxl,
+    marginBottom: 28,
   },
   sectionHeader: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.textTertiary in JSX
-    letterSpacing: 0.5,
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.sm,
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    paddingLeft: 4,
   },
   sectionCard: {
-    marginHorizontal: spacing.lg,
-    // backgroundColor set via colors.card in JSX
-    borderRadius: scale(12),
-    overflow: 'hidden',
+    backgroundColor: colors.white,
   },
+  // Level Option
   levelOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: scale(14),
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    // borderBottomColor set via colors.border in JSX
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  levelOptionSelected: {
+    backgroundColor: colors.grayLight,
   },
   levelOptionLeft: {
     flexDirection: 'row',
@@ -375,62 +307,72 @@ const styles = StyleSheet.create({
     height: scale(20),
     borderRadius: scale(10),
     borderWidth: 2,
-    // borderColor set in JSX
+    borderColor: colors.gray,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: scale(2),
+  },
+  radioOuterSelected: {
+    borderColor: colors.black,
   },
   radioInner: {
     width: scale(10),
     height: scale(10),
     borderRadius: scale(5),
-    // backgroundColor set in JSX
+    backgroundColor: colors.black,
   },
   levelContent: {
     flex: 1,
-    marginLeft: spacing.md,
-    marginRight: scale(12),
+    marginLeft: 12,
+    marginRight: 12,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
   },
   levelLabel: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.medium,
-    // color set in JSX
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(15),
+    color: colors.black,
+  },
+  levelLabelSelected: {
+    fontFamily: fonts.playfair.bold,
   },
   recommendedBadge: {
-    backgroundColor: 'rgba(243, 182, 12, 0.15)', // Intentional: accent highlight
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    borderRadius: scale(4),
+    backgroundColor: colors.grayLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   recommendedText: {
-    ...typography.labelSmall,
-    fontWeight: fontWeight.semibold,
-    // color set in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(8),
+    color: colors.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   levelDescription: {
-    ...typography.bodySmall,
-    // color set in JSX
-    marginTop: scale(2),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    marginTop: 2,
   },
   levelExample: {
-    ...typography.labelMedium,
-    // color set in JSX
-    marginTop: scale(4),
-    fontFamily: 'monospace',
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
+  // Settings Row
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: scale(14),
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    // borderBottomColor set via colors.border in JSX
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   rowLeft: {
     flexDirection: 'row',
@@ -441,84 +383,82 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    // backgroundColor set via colors.iconBg in JSX
+    backgroundColor: colors.grayLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   rowContent: {
     flex: 1,
-    marginLeft: spacing.md,
-    marginRight: scale(12),
+    marginLeft: 12,
+    marginRight: 12,
   },
   rowLabel: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.medium,
-    // color set via colors.text in JSX
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(15),
+    color: colors.black,
   },
   rowNote: {
-    ...typography.bodySmall,
-    // color set via colors.textTertiary in JSX
-    marginTop: scale(2),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    marginTop: 2,
   },
-  examplesCard: {
-    marginHorizontal: spacing.lg,
-    // backgroundColor set via colors.card in JSX
-    borderRadius: scale(12),
-    overflow: 'hidden',
-  },
+  // Example Row
   exampleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    // borderBottomColor set via colors.border in JSX
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   exampleBefore: {
     flex: 1,
   },
   exampleArrow: {
-    marginHorizontal: scale(8),
-    marginTop: scale(14),
+    marginHorizontal: 8,
+    marginTop: 18,
   },
   exampleAfter: {
     flex: 1,
   },
   exampleLabel: {
-    ...typography.labelSmall,
-    fontWeight: fontWeight.semibold,
-    // color set in JSX
-    marginBottom: scale(4),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(8),
+    color: colors.gray,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginBottom: 4,
   },
   exampleText: {
-    ...typography.bodySmall,
-    // color set in JSX
-    fontFamily: 'monospace',
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.gray,
   },
   exampleTextClean: {
-    ...typography.bodySmall,
-    // color set via colors.accent in JSX
-    fontFamily: 'monospace',
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.black,
   },
   exampleNote: {
-    ...typography.labelSmall,
-    // color set in JSX
-    marginTop: scale(2),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(8),
+    color: colors.gray,
+    marginTop: 2,
     fontStyle: 'italic',
   },
+  // Info Section
   infoSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.sm,
+    gap: 8,
+    marginTop: 8,
   },
   infoText: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
     flex: 1,
-    ...typography.bodySmall,
-    // color set via colors.textTertiary in JSX
-    lineHeight: scale(18),
+    lineHeight: scale(16),
   },
 });

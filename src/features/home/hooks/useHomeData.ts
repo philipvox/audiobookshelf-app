@@ -10,7 +10,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
 import { queryKeys } from '@/core/queryClient';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { usePlayerStore } from '@/features/player';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useLibraryCache } from '@/core/cache';
@@ -25,6 +25,7 @@ import {
   HeroBookState,
   EnhancedSeriesData,
   BookStatus,
+  HomeViewMode,
 } from '../types';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
 import { filterForKidMode } from '@/shared/utils/kidModeFilter';
@@ -32,6 +33,27 @@ import { calculateTimeRemaining, isBookComplete } from '@/features/player/utils/
 import { findChapterForPosition } from '@/features/player/utils/chapterNavigator';
 import { getNarratorName, getTitle } from '@/shared/utils/metadata';
 import { Chapter } from '@/features/player/utils/types';
+import { useContinueListening } from '@/shared/hooks/useContinueListening';
+
+// Type guard for FULL book media with audioFiles (needed for chapters)
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+// Helper to get book duration safely
+// Note: Does NOT require audioFiles - works with cache items that only have duration
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  return item?.media?.duration || 0;
+}
+
+// Helper to get book metadata safely
+// Note: Does NOT require audioFiles - works with cache items that only have metadata
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  // This app only handles books, so metadata is always BookMetadata
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
 
 /**
  * Main hook for home screen data
@@ -39,6 +61,13 @@ import { Chapter } from '@/features/player/utils/types';
  */
 export function useHomeData(): UseHomeDataReturn {
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // View mode state - 'discover' (add to library) is default, 'lastPlayed' shows recently played
+  const [viewMode, setViewMode] = useState<HomeViewMode>('discover');
+
+  const toggleViewMode = useCallback(() => {
+    setViewMode((prev) => (prev === 'discover' ? 'lastPlayed' : 'discover'));
+  }, []);
 
   // Get player state for current book
   const {
@@ -54,8 +83,8 @@ export function useHomeData(): UseHomeDataReturn {
   // Kid Mode filter state
   const kidModeEnabled = useKidModeStore((state) => state.enabled);
 
-  // Get series data from library cache
-  const { getSeries, getItem, isLoaded: isCacheLoaded } = useLibraryCache();
+  // Get series data and all items from library cache
+  const { getSeries, getItem, isLoaded: isCacheLoaded, items: allLibraryItems } = useLibraryCache();
 
   // Get downloaded books
   const { downloads } = useDownloads();
@@ -64,9 +93,20 @@ export function useHomeData(): UseHomeDataReturn {
     [downloads]
   );
 
+  // Get books from local library (includes both in-progress AND explicitly added)
+  // This is the source of truth for "Continue Listening" and shows instant updates
+  const { items: continueListeningItems } = useContinueListening();
+
   // Local cache of book data - persists across re-renders to avoid flicker
   const bookCacheRef = useRef<Map<string, LibraryItem>>(new Map());
-  const [libraryBooks, setLibraryBooks] = useState<LibraryItem[]>([]);
+
+  // Initialize library books from continueListeningItems to prevent empty flash
+  // (v0.7.64 fix: continueListeningItems are available synchronously from local SQLite)
+  const [libraryBooks, setLibraryBooks] = useState<LibraryItem[]>(() => {
+    // Use continueListeningItems if available and libraryIds match
+    // This provides instant content on first render instead of empty state
+    return [];
+  });
 
   // Fetch items in progress
   const {
@@ -80,8 +120,8 @@ export function useHomeData(): UseHomeDataReturn {
 
       // Sort by most recently updated
       return items.sort((a, b) => {
-        const aTime = (a as any).mediaProgress?.lastUpdate || (a as any).progressLastUpdate || (a as any).userMediaProgress?.lastUpdate || 0;
-        const bTime = (b as any).mediaProgress?.lastUpdate || (b as any).progressLastUpdate || (b as any).userMediaProgress?.lastUpdate || 0;
+        const aTime = a.mediaProgress?.lastUpdate || a.userMediaProgress?.lastUpdate || 0;
+        const bTime = b.mediaProgress?.lastUpdate || b.userMediaProgress?.lastUpdate || 0;
         return bTime - aTime;
       });
     },
@@ -128,6 +168,7 @@ export function useHomeData(): UseHomeDataReturn {
   }, [inProgressItems, playerCurrentBook]);
 
   // Sync library books with libraryIds - uses cache for instant updates
+  // OPTIMIZED: Single state update to prevent flash/reflow (v0.7.64 fix)
   useEffect(() => {
     const syncLibraryBooks = async () => {
       if (libraryIds.length === 0) {
@@ -136,30 +177,24 @@ export function useHomeData(): UseHomeDataReturn {
       }
 
       const cache = bookCacheRef.current;
-      const books: LibraryItem[] = [];
       const idsToFetch: string[] = [];
 
-      // First, use cached books and identify which ones we need to fetch
+      // Identify which books need fetching
       for (const id of libraryIds) {
-        const cached = cache.get(id);
-        if (cached) {
-          books.push(cached);
-        } else {
+        if (!cache.has(id)) {
           idsToFetch.push(id);
         }
       }
 
-      // Update immediately with cached books (no flicker)
-      if (books.length > 0) {
-        // Maintain order based on libraryIds
+      // If ALL books are cached, update immediately (no fetch needed)
+      if (idsToFetch.length === 0) {
         const orderedBooks = libraryIds
           .map(id => cache.get(id))
           .filter((book): book is LibraryItem => book !== undefined);
         setLibraryBooks(orderedBooks);
-      }
-
-      // Fetch missing books in background
-      if (idsToFetch.length > 0) {
+      } else {
+        // Some books need fetching - wait for all data before single update
+        // This eliminates the second render that caused flash/reflow
         const fetchPromises = idsToFetch.map(async (id) => {
           try {
             const book = await apiClient.getItem(id);
@@ -172,7 +207,7 @@ export function useHomeData(): UseHomeDataReturn {
 
         await Promise.all(fetchPromises);
 
-        // Update with all books now that fetching is complete
+        // Single state update with all books (cached + freshly fetched)
         const allBooks = libraryIds
           .map(id => cache.get(id))
           .filter((book): book is LibraryItem => book !== undefined);
@@ -229,11 +264,11 @@ export function useHomeData(): UseHomeDataReturn {
   useEffect(() => {
     if (!currentBook) return;
 
-    const bookChapters = currentBook.media?.chapters || [];
-    const bookDuration = (currentBook.media as any)?.duration || 0;
+    const bookChapters = isBookMedia(currentBook.media) ? currentBook.media.chapters : [];
+    const bookDuration = getBookDuration(currentBook);
 
     if (bookDuration > 0 && bookChapters.length > 0) {
-      const chapterInputs: ChapterInput[] = bookChapters.map((ch: any, i: number) => ({
+      const chapterInputs: ChapterInput[] = bookChapters.map((ch, i) => ({
         start: ch.start || 0,
         end: ch.end || bookChapters[i + 1]?.start || bookDuration,
         displayTitle: ch.title,
@@ -260,11 +295,11 @@ export function useHomeData(): UseHomeDataReturn {
     }
 
     // Otherwise use stored progress (mediaProgress from getItemsInProgress, or legacy userMediaProgress)
-    const userProgress = (currentBook as any).mediaProgress || (currentBook as any).userMediaProgress;
+    const userProgress = currentBook.mediaProgress || currentBook.userMediaProgress;
     if (userProgress) {
       return {
         currentTime: userProgress.currentTime || 0,
-        duration: userProgress.duration || (currentBook.media as any)?.duration || 0,
+        duration: userProgress.duration || getBookDuration(currentBook),
         progress: userProgress.progress || 0,
         isFinished: userProgress.isFinished || false,
         lastUpdate: userProgress.lastUpdate || 0,
@@ -274,12 +309,42 @@ export function useHomeData(): UseHomeDataReturn {
     return null;
   }, [currentBook, playerCurrentBook, position, duration]);
 
-  // Recently listened - all in-progress books for Continue Listening section
+  // Recently listened - includes BOTH in-progress AND library-added books
+  // Uses continueListeningItems from progressStore (local) as primary source for instant updates
+  // Also merges server inProgressItems for any books not yet in local storage
   const recentlyListened = useMemo(() => {
-    // Apply Kid Mode filter first, then take up to 20
-    const filtered = filterForKidMode(inProgressItems, kidModeEnabled);
+    // Build a map of all books (local library items take priority)
+    const bookMap = new Map<string, LibraryItem>();
+
+    // Add local library items first (most up-to-date, instant updates)
+    continueListeningItems.forEach(item => {
+      bookMap.set(item.id, item);
+    });
+
+    // Merge server items that aren't in local storage yet
+    inProgressItems.forEach(item => {
+      if (!bookMap.has(item.id)) {
+        bookMap.set(item.id, item);
+      }
+    });
+
+    // Convert to array and apply Kid Mode filter
+    const allBooks = Array.from(bookMap.values());
+    const filtered = filterForKidMode(allBooks, kidModeEnabled);
+
+    // If a book is currently playing, ensure it's at the top of the list
+    // This provides instant feedback when starting playback, without waiting for API refresh
+    if (playerCurrentBook) {
+      const isAlreadyFirst = filtered.length > 0 && filtered[0].id === playerCurrentBook.id;
+      if (!isAlreadyFirst) {
+        // Remove current book from list if it exists elsewhere, then prepend it
+        const withoutCurrent = filtered.filter(item => item.id !== playerCurrentBook.id);
+        return [playerCurrentBook, ...withoutCurrent].slice(0, 20);
+      }
+    }
+
     return filtered.slice(0, 20);
-  }, [inProgressItems, kidModeEnabled]);
+  }, [continueListeningItems, inProgressItems, kidModeEnabled, playerCurrentBook]);
 
   // Your Books - from library store (live updates when adding/removing)
   // Exclude current book from the list, apply Kid Mode filter
@@ -297,7 +362,9 @@ export function useHomeData(): UseHomeDataReturn {
 
     // Helper to extract series name from metadata
     const extractSeriesName = (item: LibraryItem): string | null => {
-      const metadata = (item.media?.metadata as any) || {};
+      const metadata = getBookMetadata(item);
+      if (!metadata) return null;
+
       // Try seriesName first (e.g., "Series Name #1")
       if (metadata.seriesName) {
         const match = metadata.seriesName.match(/^(.+?)\s*#[\d.]+$/);
@@ -407,9 +474,7 @@ export function useHomeData(): UseHomeDataReturn {
       ...playlist,
       totalDuration: playlist.items.reduce((acc, item) => {
         const libraryItem = item.libraryItem;
-        const itemDuration = libraryItem?.media
-          ? (libraryItem.media as any).duration || 0
-          : 0;
+        const itemDuration = libraryItem ? getBookDuration(libraryItem) : 0;
         return acc + itemDuration;
       }, 0),
       isFavorite: false,
@@ -430,8 +495,8 @@ export function useHomeData(): UseHomeDataReturn {
     const book = playerCurrentBook || recentlyListened[0];
     if (!book) return null;
     // mediaProgress is attached by getItemsInProgress(), userMediaProgress is legacy
-    const userProgress = (book as any).mediaProgress || (book as any).userMediaProgress;
-    const bookDuration = (book.media as any)?.duration || 0;
+    const userProgress = book.mediaProgress || book.userMediaProgress;
+    const bookDuration = getBookDuration(book);
 
     // Get progress - use player state if this is the current book
     let progress = userProgress?.progress || 0;
@@ -443,7 +508,8 @@ export function useHomeData(): UseHomeDataReturn {
     }
 
     // Calculate chapter info using existing utility
-    const chapters: Chapter[] = (book.media?.chapters || []).map((ch: any, idx: number) => ({
+    const bookChapters = isBookMedia(book.media) ? book.media.chapters : [];
+    const chapters: Chapter[] = bookChapters.map((ch, idx) => ({
       id: ch.id || idx,
       start: ch.start || 0,
       end: ch.end || bookDuration,
@@ -519,20 +585,20 @@ export function useHomeData(): UseHomeDataReturn {
     };
 
     inProgressItems.forEach((item) => {
-      const metadata = (item.media?.metadata as any) || {};
+      const metadata = getBookMetadata(item);
 
       // Try multiple sources for series name
       let seriesNames: string[] = [];
 
       // From seriesName field (e.g., "Series Name #1")
-      if (metadata.seriesName) {
+      if (metadata?.seriesName) {
         seriesNames.push(metadata.seriesName);
         seriesNames.push(cleanSeriesName(metadata.seriesName));
       }
 
       // From series array
-      const seriesInfo = metadata.series;
-      if (seriesInfo?.length > 0) {
+      const seriesInfo = metadata?.series;
+      if (seriesInfo?.length && seriesInfo.length > 0) {
         const firstSeries = seriesInfo[0];
         const rawName = typeof firstSeries === 'object' ? firstSeries.name : firstSeries;
         if (rawName) {
@@ -542,7 +608,7 @@ export function useHomeData(): UseHomeDataReturn {
       }
 
       // Add all variations to the map
-      const lastUpdate = (item as any).mediaProgress?.lastUpdate || (item as any).userMediaProgress?.lastUpdate || 0;
+      const lastUpdate = item.mediaProgress?.lastUpdate || item.userMediaProgress?.lastUpdate || 0;
       seriesNames.forEach((name) => {
         if (name) {
           const existing = seriesLastListened.get(name) || 0;
@@ -558,7 +624,7 @@ export function useHomeData(): UseHomeDataReturn {
       .map((series): EnhancedSeriesData & { lastListened: number } => {
         // Calculate per-book status
         const bookStatuses: BookStatus[] = series.books.map((book) => {
-          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
+          const bookProgress = book.mediaProgress?.progress || book.userMediaProgress?.progress || 0;
           if (bookProgress >= 0.95) return 'done';
           if (bookProgress > 0) return 'current';
           return 'not-started';
@@ -572,19 +638,19 @@ export function useHomeData(): UseHomeDataReturn {
         let totalDuration = 0;
         let listenedDuration = 0;
         series.books.forEach((book) => {
-          const bookDuration = (book.media as any)?.duration || 0;
-          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
-          totalDuration += bookDuration;
-          listenedDuration += bookDuration * bookProgress;
+          const bookDur = getBookDuration(book);
+          const bookProgress = book.mediaProgress?.progress || book.userMediaProgress?.progress || 0;
+          totalDuration += bookDur;
+          listenedDuration += bookDur * bookProgress;
         });
         const seriesProgressPercent = totalDuration > 0 ? (listenedDuration / totalDuration) * 100 : 0;
 
         // Calculate time remaining for series
         let seriesTimeRemainingSeconds = 0;
         series.books.forEach((book) => {
-          const bookDuration = (book.media as any)?.duration || 0;
-          const bookProgress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
-          seriesTimeRemainingSeconds += bookDuration * (1 - bookProgress);
+          const bookDur = getBookDuration(book);
+          const bookProgress = book.mediaProgress?.progress || book.userMediaProgress?.progress || 0;
+          seriesTimeRemainingSeconds += bookDur * (1 - bookProgress);
         });
 
         return {
@@ -609,20 +675,54 @@ export function useHomeData(): UseHomeDataReturn {
   const recentlyAdded: LibraryItem[] = useMemo(() => {
     // Get books with no progress (not started)
     const notStarted = libraryBooks.filter((book) => {
-      const progress = (book as any).mediaProgress?.progress || (book as any).userMediaProgress?.progress || 0;
+      const progress = book.mediaProgress?.progress || book.userMediaProgress?.progress || 0;
       return progress === 0;
     });
 
     // Sort by addedAt (most recent first)
     const sorted = notStarted.sort((a, b) => {
-      const aAdded = (a as any).addedAt || 0;
-      const bAdded = (b as any).addedAt || 0;
+      const aAdded = a.addedAt || 0;
+      const bAdded = b.addedAt || 0;
       return bAdded - aAdded;
     });
 
     // Apply Kid Mode filter and limit
     return filterForKidMode(sorted, kidModeEnabled).slice(0, 20);
   }, [libraryBooks, kidModeEnabled]);
+
+  /**
+   * Discover Books - Books not yet in user's listening history
+   * Shows all library items that aren't in the user's progress list
+   * Sorted by most recently added to the server
+   */
+  const discoverBooks: LibraryItem[] = useMemo(() => {
+    if (!isCacheLoaded || allLibraryItems.length === 0) return [];
+
+    // Get IDs of books user has ANY progress on (from inProgressItems)
+    const inProgressIds = new Set(inProgressItems.map((item) => item.id));
+
+    // Also exclude books in the user's explicit library
+    const userLibraryIds = new Set(libraryIds);
+
+    // Filter to books not in progress and not in library
+    const notStarted = allLibraryItems.filter((item) => {
+      // Exclude if user has progress on this book
+      if (inProgressIds.has(item.id)) return false;
+      // Exclude if book is in user's library
+      if (userLibraryIds.has(item.id)) return false;
+      return true;
+    });
+
+    // Sort by addedAt (most recent first)
+    const sorted = notStarted.sort((a, b) => {
+      const aAdded = a.addedAt || 0;
+      const bAdded = b.addedAt || 0;
+      return bAdded - aAdded;
+    });
+
+    // Apply Kid Mode filter and limit
+    return filterForKidMode(sorted, kidModeEnabled).slice(0, 30);
+  }, [allLibraryItems, inProgressItems, libraryIds, isCacheLoaded, kidModeEnabled]);
 
   // Combined loading state (library books load instantly from cache, no loading state needed)
   const isLoading = isLoadingProgress || isLoadingPlaylists;
@@ -653,6 +753,10 @@ export function useHomeData(): UseHomeDataReturn {
     continueListeningGrid,
     seriesInProgress,
     recentlyAdded,
+    // View Mode
+    viewMode,
+    toggleViewMode,
+    discoverBooks,
     // State
     isLoading,
     isRefreshing,

@@ -6,6 +6,7 @@
  */
 
 import { sqliteCache } from '@/core/services/sqliteCache';
+import { playbackCache } from '@/core/services/playbackCache';
 import { audioLog, formatDuration } from '@/shared/utils/audioDebug';
 
 const log = (msg: string, ...args: any[]) => audioLog.progress(msg, ...args);
@@ -62,10 +63,30 @@ class ProgressService {
 
   /**
    * Get full progress data for a book
+   * Checks memory cache first (instant), then falls back to SQLite
    */
   async getProgressData(itemId: string): Promise<LocalProgress | null> {
     log('getProgressData for:', itemId);
 
+    // Check memory cache first (instant - no async)
+    const cached = playbackCache.getProgress(itemId);
+    if (cached) {
+      const result = {
+        itemId: cached.itemId,
+        currentTime: cached.currentTime,
+        duration: cached.duration,
+        progress: cached.progress,
+        isFinished: cached.progress >= 0.95,
+        updatedAt: cached.updatedAt,
+      };
+      log('  Found in memory cache (instant):');
+      log('    Position:', formatDuration(result.currentTime));
+      log('    Duration:', formatDuration(result.duration));
+      log('    Progress:', (result.progress * 100).toFixed(1) + '%');
+      return result;
+    }
+
+    // Fall back to SQLite
     try {
       const progress = await sqliteCache.getPlaybackProgress(itemId);
       if (progress) {
@@ -77,7 +98,7 @@ class ProgressService {
           isFinished: progress.position >= progress.duration * 0.95,
           updatedAt: progress.updatedAt,
         };
-        log('  Found:');
+        log('  Found in SQLite:');
         log('    Position:', formatDuration(result.currentTime));
         log('    Duration:', formatDuration(result.duration));
         log('    Progress:', (result.progress * 100).toFixed(1) + '%');

@@ -19,11 +19,11 @@ import { BookOpen, CheckCircle, Check, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePlayerStore } from '../stores/playerStore';
 import { getCoverUrl } from '@/core/cache';
-import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, useTheme } from '@/shared/theme';
 
 export function BookCompletionSheet() {
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   const showCompletionSheet = usePlayerStore((s) => s.showCompletionSheet);
   const completionSheetBook = usePlayerStore((s) => s.completionSheetBook);
@@ -59,46 +59,46 @@ export function BookCompletionSheet() {
     >
       <Pressable style={styles.overlay} onPress={dismissCompletionSheet}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: themeColors.surfaceElevated }]}
+          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: colors.background.elevated }]}
           onPress={() => {}}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={[styles.handle, { backgroundColor: themeColors.border }]} />
+            <View style={[styles.handle, { backgroundColor: colors.border.default }]} />
           </View>
 
           {/* Book Info */}
           <View style={styles.bookInfo}>
             {coverUrl ? (
-              <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} />
+              <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.background.secondary }]} />
             ) : (
-              <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.backgroundSecondary }]}>
-                <BookOpen size={scale(32)} color={themeColors.textTertiary} strokeWidth={1.5} />
+              <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: colors.background.secondary }]}>
+                <BookOpen size={scale(32)} color={colors.text.tertiary} strokeWidth={1.5} />
               </View>
             )}
             <View style={styles.titleContainer}>
-              <Text style={[styles.congrats, { color: accentColors.gold }]}>You finished</Text>
-              <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={2}>{title}</Text>
-              <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
+              <Text style={[styles.congrats, { color: colors.accent.primary }]}>You finished</Text>
+              <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={2}>{title}</Text>
+              <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>{author}</Text>
             </View>
           </View>
 
           {/* Celebration Icon */}
           <View style={styles.celebrationContainer}>
-            <View style={[styles.celebrationCircle, { backgroundColor: `${accentColors.gold}25` }]}>
-              <CheckCircle size={scale(48)} color={accentColors.gold} strokeWidth={2} />
+            <View style={[styles.celebrationCircle, { backgroundColor: `${colors.accent.primary}25` }]}>
+              <CheckCircle size={scale(48)} color={colors.accent.primary} strokeWidth={2} />
             </View>
           </View>
 
           {/* Actions */}
           <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: accentColors.gold }]}
+              style={[styles.primaryButton, { backgroundColor: colors.accent.primary }]}
               onPress={handleMarkFinished}
               activeOpacity={0.8}
             >
-              <Check size={scale(20)} color={themeColors.background} strokeWidth={2.5} />
-              <Text style={[styles.primaryButtonText, { color: themeColors.background }]}>Mark as Finished</Text>
+              <Check size={scale(20)} color={colors.background.primary} strokeWidth={2.5} />
+              <Text style={[styles.primaryButtonText, { color: colors.background.primary }]}>Mark as Finished</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -106,8 +106,8 @@ export function BookCompletionSheet() {
               onPress={handleKeepListening}
               activeOpacity={0.7}
             >
-              <RotateCcw size={scale(18)} color={accentColors.gold} strokeWidth={2} />
-              <Text style={[styles.secondaryButtonText, { color: accentColors.gold }]}>Listen Again</Text>
+              <RotateCcw size={scale(18)} color={colors.accent.primary} strokeWidth={2} />
+              <Text style={[styles.secondaryButtonText, { color: colors.accent.primary }]}>Listen Again</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -115,7 +115,7 @@ export function BookCompletionSheet() {
               onPress={dismissCompletionSheet}
               activeOpacity={0.7}
             >
-              <Text style={[styles.dismissButtonText, { color: themeColors.textTertiary }]}>Close</Text>
+              <Text style={[styles.dismissButtonText, { color: colors.text.tertiary }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

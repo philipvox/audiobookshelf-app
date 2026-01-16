@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { scale, useThemeColors } from '@/shared/theme';
+import { scale, useTheme } from '@/shared/theme';
 import { SectionHeaderProps } from '../types';
 
 // NN/g: Larger section headers for clear content hierarchy
@@ -19,18 +19,18 @@ export function SectionHeader({
   onViewAll,
   showViewAll = true,
 }: SectionHeaderProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
       {showViewAll && onViewAll && (
         <TouchableOpacity
           onPress={onViewAll}
           style={styles.viewAllButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={[styles.viewAll, { color: themeColors.textSecondary }]}>View All</Text>
+          <Text style={[styles.viewAll, { color: colors.text.secondary }]}>View All</Text>
         </TouchableOpacity>
       )}
     </View>

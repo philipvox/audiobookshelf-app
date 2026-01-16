@@ -39,6 +39,7 @@ import {
   validateUrl,
   formatDuration,
 } from '@/shared/utils/audioDebug';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
 
 export interface PlaybackState {
   isPlaying: boolean;
@@ -46,6 +47,7 @@ export interface PlaybackState {
   duration: number;       // Total duration of all tracks
   isBuffering: boolean;
   didJustFinish: boolean; // True when last track in queue ends
+  isStuck?: boolean;      // True when playback appears stuck (position unchanged for 5+ seconds)
 }
 
 export interface AudioTrackInfo {
@@ -58,7 +60,7 @@ export interface AudioTrackInfo {
 type StatusCallback = (status: PlaybackState) => void;
 
 const DEBUG = __DEV__;
-const log = (...args: any[]) => audioLog.audio(args.join(' '));
+const log = (...args: unknown[]) => audioLog.audio(args.map(String).join(' '));
 
 class AudioService {
   private player: AudioPlayer | null = null;
@@ -108,6 +110,11 @@ class AudioService {
 
   // Event listener tracking - prevents listener stacking on retry
   private playbackStatusSubscription: { remove: () => void } | null = null;
+
+  // Continuous stuck detection - monitors playback during active play
+  private stuckDetectionLastPosition = 0;
+  private stuckDetectionLastTime = 0;
+  private readonly STUCK_THRESHOLD_MS = 5000; // 5 seconds without position change = stuck
 
   constructor() {
     // Pre-warm on construction - don't await, let it run in background
@@ -162,12 +169,13 @@ class AudioService {
       });
       timing('setAudioModeAsync done');
 
-      // Create the audio player
-      this.player = createAudioPlayer({ uri: '' });
+      // Create the audio player with no source (will be set when loading audio)
+      // Note: Empty string '' causes ExoPlayer to try opening "/" which fails on Android
+      this.player = createAudioPlayer({});
       timing('createAudioPlayer done');
 
       // Create preload player for seamless track transitions
-      this.preloadPlayer = createAudioPlayer({ uri: '' });
+      this.preloadPlayer = createAudioPlayer({});
       timing('preloadPlayer created');
 
       // Set up event listeners
@@ -180,9 +188,9 @@ class AudioService {
 
       this.isSetup = true;
       log('expo-audio ready');
-    } catch (error: any) {
-      audioLog.error('Setup failed:', error.message);
-      audioLog.error('Stack:', error.stack);
+    } catch (error) {
+      audioLog.error('Setup failed:', getErrorMessage(error));
+      audioLog.error('Stack:', (error instanceof Error ? error.stack : undefined));
       this.setupPromise = null;
       throw error;
     }
@@ -277,8 +285,8 @@ class AudioService {
 
       this.mediaControlEnabled = true;
       log('Media controls enabled');
-    } catch (error: any) {
-      audioLog.warn('Media controls setup failed:', error.message);
+    } catch (error) {
+      audioLog.warn('Media controls setup failed:', getErrorMessage(error));
       // Non-fatal - continue without media controls
     }
   }
@@ -366,8 +374,8 @@ class AudioService {
     try {
       await MediaControl.updateMetadata(metadata);
       log('Media metadata updated successfully');
-    } catch (error: any) {
-      audioLog.error('Failed to update media metadata:', error.message, error.stack);
+    } catch (error) {
+      audioLog.error('Failed to update media metadata:', getErrorMessage(error), (error instanceof Error ? error.stack : undefined));
     }
   }
 
@@ -389,8 +397,8 @@ class AudioService {
       const pos = position ?? this.getGlobalPositionSync();
       log('Updating playback state:', { isPlaying, state, position: pos });
       await MediaControl.updatePlaybackState(state, pos);
-    } catch (error: any) {
-      audioLog.error('Failed to update playback state:', error.message);
+    } catch (error) {
+      audioLog.error('Failed to update playback state:', getErrorMessage(error));
     }
   }
 
@@ -710,6 +718,36 @@ class AudioService {
           }
         }
 
+        // CONTINUOUS STUCK DETECTION: Check if position is unchanged while "playing"
+        // Only check when playing and not buffering (buffering is expected to pause position)
+        if (isPlaying && !isBuffering && !this.trackSwitchInProgress && !this.isScrubbing) {
+          const now = Date.now();
+          const positionDelta = Math.abs(position - this.stuckDetectionLastPosition);
+
+          if (positionDelta < 0.5) {
+            // Position hasn't changed significantly
+            if (now - this.stuckDetectionLastTime > this.STUCK_THRESHOLD_MS) {
+              // STUCK! Position same for 5+ seconds while "playing"
+              audioLog.warn(`[STUCK] Audio stuck - position unchanged at ${position.toFixed(1)}s for ${this.STUCK_THRESHOLD_MS}ms`);
+              this.statusCallback?.({
+                isPlaying,
+                position,
+                duration: this.totalDuration || this.player.duration,
+                isBuffering,
+                didJustFinish: false,
+                isStuck: true,
+              });
+              // Reset timer to avoid spamming stuck events
+              this.stuckDetectionLastTime = now;
+              return; // Skip normal callback this cycle
+            }
+          } else {
+            // Position changed, reset detection timer
+            this.stuckDetectionLastPosition = position;
+            this.stuckDetectionLastTime = now;
+          }
+        }
+
         this.statusCallback?.({
           isPlaying,
           position,
@@ -777,6 +815,9 @@ class AudioService {
       // Reset debug tracking
       this.lastLoggedPosition = 0;
       this.playbackStartTime = Date.now();
+      // Reset stuck detection for new load
+      this.stuckDetectionLastPosition = 0;
+      this.stuckDetectionLastTime = Date.now();
 
       timing('Loading audio');
       if (this.player) {
@@ -846,10 +887,10 @@ class AudioService {
       // Update media controls with metadata
       await this.updateMediaControlMetadata();
       await this.updateMediaControlPlaybackState(autoPlay, startPositionSec);
-    } catch (error: any) {
+    } catch (error) {
       if (this.loadId === thisLoadId) {
-        audioLog.error('Load failed:', error.message);
-        audioLog.error('Stack:', error.stack);
+        audioLog.error('Load failed:', getErrorMessage(error));
+        audioLog.error('Stack:', (error instanceof Error ? error.stack : undefined));
         this.isLoaded = false;
         throw error;
       }
@@ -907,6 +948,9 @@ class AudioService {
       // Use known duration or calculate from tracks
       this.totalDuration = knownTotalDuration || tracks.reduce((sum, t) => sum + t.duration, 0);
       log(`Total duration: ${formatDuration(this.totalDuration)}`);
+      // Reset stuck detection for new load
+      this.stuckDetectionLastPosition = 0;
+      this.stuckDetectionLastTime = Date.now();
 
       // Find which track contains the start position
       let targetTrackIndex = 0;
@@ -928,6 +972,24 @@ class AudioService {
       this.currentTrackIndex = targetTrackIndex;
       const firstTrack = tracks[targetTrackIndex];
       log(`Starting with track ${targetTrackIndex}, position ${formatDuration(positionInTrack)}`);
+      log(`Platform: ${Platform.OS}`);
+      log(`First track URL: ${firstTrack.url}`);
+
+      // Verify file exists on Android before loading (helps diagnose file access issues)
+      if (Platform.OS === 'android' && firstTrack.url.startsWith('file://')) {
+        try {
+          const FileSystem = await import('expo-file-system/legacy');
+          const fileInfo = await FileSystem.getInfoAsync(firstTrack.url);
+          const fileSize = fileInfo.exists && 'size' in fileInfo ? (fileInfo as { size: number }).size : 'unknown';
+          log(`File exists: ${fileInfo.exists}, size: ${fileSize}`);
+          if (!fileInfo.exists) {
+            throw new Error(`Audio file not found: ${firstTrack.url}`);
+          }
+        } catch (fsError) {
+          audioLog.error('File verification failed:', getErrorMessage(fsError));
+          // Continue anyway - expo-audio might still be able to load it
+        }
+      }
 
       timing('Loading first track');
       if (this.player) {
@@ -973,10 +1035,10 @@ class AudioService {
       // Update media controls with metadata
       await this.updateMediaControlMetadata();
       await this.updateMediaControlPlaybackState(autoPlay, startPositionSec);
-    } catch (error: any) {
+    } catch (error) {
       if (this.loadId === thisLoadId) {
-        audioLog.error('Load tracks failed:', error.message);
-        audioLog.error('Stack:', error.stack);
+        audioLog.error('Load tracks failed:', getErrorMessage(error));
+        audioLog.error('Stack:', (error instanceof Error ? error.stack : undefined));
         this.isLoaded = false;
         throw error;
       }
@@ -1285,8 +1347,8 @@ class AudioService {
       // (could be slow network, will be caught by stuck detection)
       audioLog.warn('Play: Playback not started after 500ms, may be slow network');
       await this.updateMediaControlPlaybackState(true);
-    } catch (error: any) {
-      audioLog.error('Play failed:', error.message);
+    } catch (error) {
+      audioLog.error('Play failed:', getErrorMessage(error));
       throw error;
     }
   }
@@ -1300,8 +1362,8 @@ class AudioService {
     try {
       this.player.pause();
       this.updateMediaControlPlaybackState(false);
-    } catch (error: any) {
-      audioLog.warn('Pause failed:', error.message);
+    } catch (error) {
+      audioLog.warn('Pause failed:', getErrorMessage(error));
     }
   }
 
@@ -1367,13 +1429,12 @@ class AudioService {
 
     if (this.player) {
       this.player.pause();
-      this.player.replace({ uri: '' });
+      // Don't replace with empty string - it causes ExoPlayer to try opening "/"
+      // Just pause is sufficient for unloading
     }
 
-    // Clean up preload player
-    if (this.preloadPlayer) {
-      this.preloadPlayer.replace({ uri: '' });
-    }
+    // Clean up preload player - just leave it, don't try to clear with empty URI
+    // Preload player will be overwritten on next use
 
     // Update media controls to stopped state
     if (this.mediaControlEnabled && MediaControl && MediaPlaybackState) {
@@ -1406,8 +1467,10 @@ class AudioService {
    * Enable or disable audio sampling for waveform visualization
    */
   setAudioSamplingEnabled(enabled: boolean): void {
-    if (this.player && 'setAudioSamplingEnabled' in this.player) {
-      (this.player as any).setAudioSamplingEnabled(enabled);
+    // Audio sampling is an optional feature - use duck typing to check for method
+    const playerWithSampling = this.player as AudioPlayer & { setAudioSamplingEnabled?: (enabled: boolean) => void };
+    if (playerWithSampling?.setAudioSamplingEnabled) {
+      playerWithSampling.setAudioSamplingEnabled(enabled);
     }
   }
 
@@ -1415,13 +1478,17 @@ class AudioService {
    * Add a listener for audio sample updates
    * Returns a cleanup function to remove the listener
    */
-  addAudioSampleListener(callback: (sample: any) => void): (() => void) | null {
+  addAudioSampleListener(callback: (sample: { channels: Float32Array[]; sampleRate: number; timestamp: number }) => void): (() => void) | null {
     if (!this.player || !('addListener' in this.player)) {
       return null;
     }
     try {
       this.setAudioSamplingEnabled(true);
-      const subscription = (this.player as any).addListener('audioSampleUpdate', callback);
+      type PlayerWithSampling = AudioPlayer & { addListener: (event: string, cb: (sample: unknown) => void) => { remove: () => void } };
+      const wrappedCallback = (sample: unknown) => {
+        callback(sample as { channels: Float32Array[]; sampleRate: number; timestamp: number });
+      };
+      const subscription = (this.player as PlayerWithSampling).addListener('audioSampleUpdate', wrappedCallback);
       return () => {
         subscription?.remove?.();
         this.setAudioSamplingEnabled(false);

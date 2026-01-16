@@ -20,19 +20,83 @@ export { TextInput } from './inputs/TextInput';
 export { SearchInput } from './inputs/SearchInput';
 
 // =============================================================================
+// LOADING (Single source of truth)
+// =============================================================================
+export { Loading, FullScreenLoading, InlineLoading, ButtonLoading, CandleLoading } from './Loading';
+export type { LoadingProps, LoadingMode } from './Loading';
+
+// Legacy loading components (deprecated - use Loading instead)
+export { LoadingSpinner } from './LoadingSpinner';
+export { SkullLoadingSpinner } from './SkullLoadingSpinner';
+
+// Custom pull-to-refresh with skull animation
+export { SkullRefreshControl } from './SkullRefreshControl';
+export type { SkullRefreshControlProps } from './SkullRefreshControl';
+
+// =============================================================================
 // FEEDBACK & STATES
 // =============================================================================
-export { LoadingSpinner } from './LoadingSpinner';
 export { ErrorView } from './ErrorView';
 export type { ErrorType } from './ErrorView';
 export { EmptyState } from './EmptyState';
 export type { EmptyStateIcon } from './EmptyState';
 
 // =============================================================================
-// UTILITY COMPONENTS
+// TEXT
+// =============================================================================
+export { HyphenatedText } from './HyphenatedText';
+
+// =============================================================================
+// ICONS (Single source of truth)
 // =============================================================================
 export { Icon, ICON_SIZES } from './Icon';
 export type { IconSize } from './Icon';
+
+// App Icons - custom SVG icons with consistent style
+export {
+  // Re-exports
+  IconSizes,
+  AppIcons,
+  IconButton as AppIconButton,
+  // Navigation
+  BackIcon,
+  CloseIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ChevronRightIcon,
+  // System
+  SearchIcon,
+  SettingsIcon,
+  MenuIcon,
+  MoreVerticalIcon,
+  MoreHorizontalIcon,
+  // Actions
+  PlusIcon,
+  CheckIcon,
+  HeartIcon as HeartIconSvg,
+  DownloadIcon,
+  ShareIcon,
+  // Player
+  PlayIcon,
+  PauseIcon,
+  SkipBackIcon,
+  SkipForwardIcon,
+  MoonIcon,
+  // Entity
+  UserIcon,
+  MicIcon,
+  BellIcon,
+  BellOffIcon,
+  // Content
+  LibraryIcon,
+  BookIcon,
+  BookOpenIcon,
+  ClockIcon,
+  GridIcon,
+  TagIcon,
+  SmileIcon,
+  ListIcon,
+} from './AppIcons';
 export { FilterSortBar } from './FilterSortBar';
 export type { SortOption } from './FilterSortBar';
 
@@ -66,6 +130,8 @@ export { HeartButton, HeartIcon } from './HeartButton';
 export type { HeartButtonProps } from './HeartButton';
 export { SeriesHeartButton } from './SeriesHeartButton';
 export type { SeriesHeartButtonProps } from './SeriesHeartButton';
+export { AddToLibraryButton, LibraryIcon as AddToLibraryIcon } from './AddToLibraryButton';
+export type { AddToLibraryButtonProps } from './AddToLibraryButton';
 
 // =============================================================================
 // BOOK CARDS
@@ -141,3 +207,28 @@ export { ToastContainer } from './ToastContainer';
 // =============================================================================
 export { PinInput } from './PinInput';
 export type { PinInputProps } from './PinInput';
+
+// =============================================================================
+// TOP NAVIGATION
+// =============================================================================
+export {
+  TopNav,
+  SearchIcon as TopNavSearchIcon,
+  CloseIcon as TopNavCloseIcon,
+  BackIcon as TopNavBackIcon,
+  SettingsIcon as TopNavSettingsIcon,
+  DownloadIcon as TopNavDownloadIcon,
+  ShareIcon as TopNavShareIcon,
+} from './TopNav';
+export type { TopNavProps, TopNavPill, TopNavCircleButton, TopNavVariant, TopNavSearchConfig } from './TopNav';
+
+// =============================================================================
+// SYNC STATUS
+// =============================================================================
+export { SyncStatusBanner } from './SyncStatusBanner';
+
+// =============================================================================
+// COLLAPSIBLE SECTIONS
+// =============================================================================
+export { CollapsibleSection } from './CollapsibleSection';
+export type { CollapsibleSectionProps } from './CollapsibleSection';

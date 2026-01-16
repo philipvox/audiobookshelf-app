@@ -18,8 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { getAllAuthors, useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { scale, spacing, layout } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, layout, useTheme } from '@/shared/theme';
 
 // Compact circular avatar
 const AVATAR_SIZE = scale(56);
@@ -105,7 +104,7 @@ interface TopAuthorsSectionProps {
 
 export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const { isLoaded } = useLibraryCache();
 
   // Load user's reading history to boost authors they've read
@@ -163,10 +162,10 @@ export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
     <AuthorCard
       author={item}
       onPress={() => handleAuthorPress(item.name, item.id)}
-      textColor={themeColors.text}
-      textTertiaryColor={themeColors.textTertiary}
+      textColor={colors.text.primary}
+      textTertiaryColor={colors.text.tertiary}
     />
-  ), [handleAuthorPress, themeColors.text, themeColors.textTertiary]);
+  ), [handleAuthorPress, colors.text.primary, colors.text.tertiary]);
 
   const keyExtractor = useCallback((item: typeof topAuthors[0]) => item.name, []);
 
@@ -177,13 +176,13 @@ export function TopAuthorsSection({ limit = 10 }: TopAuthorsSectionProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>{sectionTitle}</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]}>{sectionTitle}</Text>
         <TouchableOpacity
           style={styles.viewAllButton}
           onPress={handleViewAll}
           activeOpacity={0.7}
         >
-          <Text style={[styles.viewAllText, { color: themeColors.textSecondary }]}>View All</Text>
+          <Text style={[styles.viewAllText, { color: colors.text.secondary }]}>View All</Text>
         </TouchableOpacity>
       </View>
 
@@ -253,7 +252,8 @@ const styles = StyleSheet.create({
   initialsText: {
     fontSize: scale(18),
     fontWeight: '700',
-    color: '#fff',
+    // White text on colored avatar backgrounds for visibility
+    color: '#FFFFFF',
   },
   authorName: {
     fontSize: scale(11),

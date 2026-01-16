@@ -1,10 +1,11 @@
 /**
  * src/features/profile/screens/ProfileScreen.tsx
  *
- * Clean profile hub screen with grouped navigation links.
+ * Secret Library Profile Screen
+ * Clean editorial aesthetic with Playfair Display and JetBrains Mono typography.
  */
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,12 +15,10 @@ import {
   StatusBar,
   TouchableOpacity,
   Switch,
+  Pressable,
 } from 'react-native';
-import { Image } from 'expo-image';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// App logo
-const APP_LOGO = require('../../../../assets/login-logo.png');
 import { useNavigation } from '@react-navigation/native';
 import {
   Server,
@@ -30,33 +29,33 @@ import {
   Type,
   LogOut,
   ChevronRight,
-  Bug,
   Palette,
   Library,
-  Sparkles,
   EyeOff,
   Baby,
-  Heart,
+  Vibrate,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useThemeStore, useThemeColors, useIsDarkMode, useTheme } from '@/shared/theme/themeStore';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
-import { useWishlistStore } from '@/features/wishlist/stores/wishlistStore';
 import { useDismissedCount } from '@/features/recommendations/stores/dismissedItemsStore';
 import { haptics } from '@/core/native/haptics';
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
-import { accentColors, scale, typography, fontWeight, spacing, layout } from '@/shared/theme';
+import { scale, useSecretLibraryColors } from '@/shared/theme';
+import {
+  secretLibraryColors as staticColors,
+  secretLibraryFonts as fonts,
+} from '@/shared/theme/secretLibrary';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
-import { generateErrorReport, exportErrorReportJSON } from '@/utils/runtimeMonitor';
-import { logger } from '@/shared/utils/logger';
 
-// Note: ACCENT removed - using themeColors.accent for dynamic accent color
+// =============================================================================
+// HELPERS
+// =============================================================================
 
-// Format bytes to human readable
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -65,10 +64,23 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-// Theme colors type
-type ThemeColorsType = ReturnType<typeof useThemeColors>;
+// =============================================================================
+// ICONS
+// =============================================================================
 
-// Profile Link Component
+const SkullLogo = ({ size = 48, color = staticColors.black }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 189.47 189.47">
+    <Path fill={color} d="M105.18,30.63c-11.17,5.68-24.12,6.5-36.32,4.09,1.32-2.17,6.21-4.03,12.02-5.23.44.43.88.83,1.33,1.23.21.2.79.75.99.94,1.88,2.05,5.49,1.79,6.98-.58.6-.97,1.2-1.95,1.76-2.94,6.15-.26,11.56.44,13.24,2.49Z" />
+    <Path fill={color} d="M92.58,18.85v.06c-.1.87-.28,1.74-.54,2.57,0,.04-.02.06-.03.1-.04.14-.08.28-.13.43-.07.23-.15.46-.24.67-.35.93-.77,1.89-1.25,2.86-.11.23-.21.44-.33.65-.07.14-.15.28-.23.43-.33.58-.65,1.15-.99,1.71-.13.23-.26.44-.39.66-.01.01-.01.03-.03.04-.02.04-.03.06-.06.09-.01.02-.03.06-.05.09-.07.1-.13.2-.2.3,0,.01-.02.04-.03.05-.03.06-.07.11-.12.16-.08.09-.16.17-.23.24-.08.07-.17.13-.23.19t-.01.01c-.14.09-.28.16-.42.19-.08.02-.16.04-.24.06-.08.02-.16.03-.24.02-.05,0-.1,0-.17,0h-.01c-.47-.05-.93-.3-1.4-.67,0,0-.01,0-.01-.01-.29-.27-.6-.55-.89-.84h-.01s-.07-.07-.11-.11c-1.11-1.04-2.1-1.98-2.9-2.9-.13-.15-.25-.32-.37-.47-.01-.01-.02-.03-.02-.04-1.27-1.73-1.83-3.47-1.36-5.38,0-.03.02-.06.02-.09,0-.04.02-.06.03-.1.25-.78.66-1.61,1.26-2.52.07-.11.15-.22.23-.34.16-.21.33-.42.51-.64.21-.23.42-.48.66-.72h0c.65-.57,1.23-1.18,1.73-1.83.07-.1.14-.2.23-.31.6-.77,1.15-1.72,1.56-3.07.03-.09.06-.18.08-.28,0-.03.02-.05.02-.08.24-.79.4-1.63.46-2.48v-.18s.66-.18.66-.18c.33.45.67.92,1.01,1.37.3.42.59.84.9,1.27.54.78,1.09,1.57,1.56,2.39.26.42.49.84.71,1.27.21.39.4.78.57,1.2.1.23.2.46.28.7.08.19.14.37.21.57h0c.05.17.11.33.15.49.05.19.1.37.14.56,0,.05.02.09.03.15.06.26.11.54.15.82.02.21.05.43.07.64v.05c0,.05-.01.1,0,.16Z" />
+    <Path fill={color} d="M154.64,114.18c-.37-3.76-1.31-7.46-2.46-11.07-.64-2.02-1.25-4.16-2.16-6.07-1.85-3.88-5.23-6.54-7.85-10-3.91-5.22-6.83-11.26-10.7-16.6-.63-.89-1.89-.85-2.64-.06-.01,0-.01.01-.02.02-.92.79-2.07.95-3.04.95-2.85-.11-5.54-1.18-8.24-1.6-4.14-.71-8.04-.72-10.38,2.11-.32.42-.62.86-.86,1.34-1.25,2.83-4.32,4.66-7.29,4.89-8.11.84-13.25-5.28-20.51-1.81-2.37,1.02-5.4,2.86-8.36,2.99-4.72.37-8.78-2.84-13.36-1.89-1.19.37-2.77.89-4.17.93-2.31.28-4.54.99-7.08.43l-.6-.14c-1.65,1.78-3.17,3.66-4.51,5.62-.07.09-.13.19-.22.27l-.23.23s-.08.07-.13.12c-.65,1.09-1.27,2.18-1.83,3.31-.02.08-.07.13-.11.2-.75,1.41-1.37,2.79-1.93,4.21-5.64,15.05-6.3,20.7-.65,34.8,9.7,24.22,30.45,41.48,34.12,43.17,3.98,1.85,23.33-5,27.65-4.58,3.6.36,5.96,4.3,7.39,7.22.67,1.35,2.45,8.85,3.88,9.06.89.13,1.87-.16,2.91-.47.44-.13.86-.26,1.27-.34,1.44-.36,2.36-.7,2.85-.92-.28-.81-.67-1.87-.98-2.66-1.14-2.94-1.88-5.63-2.01-8.81,2.99-1.34,4.15,5.92,4.79,7.65.39,1.11.82,2.27,1.14,3.13,1.18-.35,3.08-.96,4.99-1.57,1.9-.64,3.81-1.26,4.96-1.67-.48-1.36-.81-2.8-1.4-4.1-.51-1.12-1.11-1.82-1.3-3.08-.12-.79-.6-5.69,1.35-4.5,1.25.76,1.68,2.6,2.06,3.9.41,1.43.97,2.65,1.43,4.05.29.88.75,2.2,1.09,2.91.42-.13.99-.27,1.66-.44,1.76-.47,5.47-1.43,7.09-1.95-.12-.6-.41-1.48-.77-2.69-.56-1.79-1.04-3.62-1.28-5.47-.09-.72-.04-1.44.62-2,.7-.6,3.33,5.98,3.59,6.54.54,1.13.78,2.42,2.04,2.6,1.57.26,3.2-.97,4.52-1.59,1.39-.68,2.87-1.23,3.36-2.85.72-2.43-.58-4.91-2.07-6.67-1.65-2-2.93-4.3-3.84-6.72-1.09-2.9-3.63-15.08-3.5-15.97.61-3.83,2.92-6.7,6.56-8.34,2.92-1.31,4.45-3.88,4.68-7.18.12-1.55-.12-3.15.19-4.68.29-1.5.47-2.59.3-4.18ZM112.28,126.14c-.35,13.26-15.48,23.48-27.03,11.4-6.92-6.92-7.95-20.42.99-26.01,10.82-7.04,25.02,2.1,26.06,14.38l-.02.23ZM125.73,142.21c-5.9-16.63-.51-18.6,5.09-1.25.99,3.11-4.09,4.42-5.09,1.25ZM146.64,124.67l-.13.15c-6.59,8.95-18.3,1.62-20.71-9.47-3.05-11.7,5.51-24.38,16.32-17.1,8.46,4.89,10.31,18.99,4.52,26.42Z" />
+    <Path fill={color} d="M127.43,65.65c.14,1.55.05,3.09-1.51,3.06,0,0-.02,0-.03,0-2.67-.14-5.21-1.28-7.87-1.84-4.34-1.11-9.91-1.44-12.98,2.49-.62.69-1.06,1.55-1.56,2.26-2.31,3.02-6.74,2.76-10.07,1.87-9.92-3.39-11.63-3.29-20.88,1.59-5.3,2.29-10.83-2.26-16.21-.57-1.77.72-3.42.92-5.27,1.22-1.61.32-3.18.65-4.68.47-2.98-3.62,13.84-16.58,18.36-19.16,1.26-.72,1.89-1.7,2.2-2.83,0-.03.02-.05.02-.08.07-.2.12-.42.15-.64.03-.19.05-.4.07-.61.11-1.05.07-2.16.1-3.25,0-.31,0-.62.03-.94.17-3.48.2-7.2.12-10.7-.04-.54.52-.9.99-.73,9.38,2.54,19.76,2.7,29.13-.33,3.01-.92,5.9-2.19,8.68-3.64.59.76.43,2,.33,3.32-.04,1.55.13,2.95.18,4.44l.25,4.38c.09,2.19.11,4.72,1.39,6.7,2.15,3.32,18.39,6.14,19.05,13.5Z" />
+  </Svg>
+);
+
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
 interface ProfileLinkProps {
   Icon: LucideIcon;
   label: string;
@@ -76,54 +88,52 @@ interface ProfileLinkProps {
   badge?: string;
   badgeColor?: string;
   onPress: () => void;
-  themeColors: ThemeColorsType;
-  iconBgColor?: string;
-  isDarkMode?: boolean;
 }
 
-function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress, themeColors, iconBgColor, isDarkMode }: ProfileLinkProps) {
-  const iconContainerBg = iconBgColor || (isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border);
-  const effectiveBadgeColor = badgeColor || themeColors.accent;
+function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: ProfileLinkProps) {
+  const colors = useSecretLibraryColors();
   return (
-    <TouchableOpacity style={[styles.profileLink, { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : themeColors.border }]} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.linkIconContainer, { backgroundColor: iconContainerBg }]}>
-        <Icon size={scale(20)} color={themeColors.text} strokeWidth={2} />
+    <TouchableOpacity
+      style={[styles.profileLink, { borderBottomColor: colors.borderLight }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.linkIconContainer, { backgroundColor: colors.grayLight }]}>
+        <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
       </View>
       <View style={styles.linkContent}>
-        <Text style={[styles.linkLabel, { color: themeColors.text }]}>{label}</Text>
-        {subtitle ? <Text style={[styles.linkSubtitle, { color: themeColors.textSecondary }]}>{subtitle}</Text> : null}
+        <Text style={[styles.linkLabel, { color: colors.black }]}>{label}</Text>
+        {subtitle && <Text style={[styles.linkSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
       </View>
-      {badge ? (
-        <View style={[styles.badge, { borderColor: effectiveBadgeColor }]}>
-          <Text style={[styles.badgeText, { color: effectiveBadgeColor }]}>{badge}</Text>
+      {badge && (
+        <View style={[styles.badge, { borderColor: badgeColor || colors.gray }]}>
+          <Text style={[styles.badgeText, { color: badgeColor || colors.gray }]}>{badge}</Text>
         </View>
-      ) : null}
-      <ChevronRight size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
+      )}
+      <ChevronRight size={scale(16)} color={colors.gray} strokeWidth={1.5} />
     </TouchableOpacity>
   );
 }
 
-// Profile Toggle Component (for settings with on/off switch)
 interface ProfileToggleProps {
   Icon: LucideIcon;
   label: string;
   subtitle?: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
-  themeColors: ThemeColorsType;
-  isDarkMode?: boolean;
 }
 
-function ProfileToggle({ Icon, label, subtitle, value, onValueChange, themeColors, isDarkMode }: ProfileToggleProps) {
-  const iconContainerBg = isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border;
+function ProfileToggle({ Icon, label, subtitle, value, onValueChange }: ProfileToggleProps) {
+  const colors = useSecretLibraryColors();
+  const isDark = colors.isDark;
   return (
-    <View style={[styles.profileLink, { borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : themeColors.border }]}>
-      <View style={[styles.linkIconContainer, { backgroundColor: iconContainerBg }]}>
-        <Icon size={scale(20)} color={themeColors.text} strokeWidth={2} />
+    <View style={[styles.profileLink, { borderBottomColor: colors.borderLight }]}>
+      <View style={[styles.linkIconContainer, { backgroundColor: colors.grayLight }]}>
+        <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
       </View>
       <View style={styles.linkContent}>
-        <Text style={[styles.linkLabel, { color: themeColors.text }]}>{label}</Text>
-        {subtitle ? <Text style={[styles.linkSubtitle, { color: themeColors.textSecondary }]}>{subtitle}</Text> : null}
+        <Text style={[styles.linkLabel, { color: colors.black }]}>{label}</Text>
+        {subtitle && <Text style={[styles.linkSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
       </View>
       <Switch
         value={value}
@@ -131,47 +141,44 @@ function ProfileToggle({ Icon, label, subtitle, value, onValueChange, themeColor
           haptics.selection();
           onValueChange(newValue);
         }}
-        trackColor={{ false: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', true: themeColors.accent }}
-        thumbColor="#fff"
+        trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.black }}
+        thumbColor={colors.white}
+        ios_backgroundColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}
       />
     </View>
   );
 }
 
-// Section Group Component
 interface SectionGroupProps {
   title: string;
   children: React.ReactNode;
-  themeColors: ThemeColorsType;
-  bgColor?: string;
-  isDarkMode?: boolean;
 }
 
-function SectionGroup({ title, children, themeColors, bgColor, isDarkMode }: SectionGroupProps) {
+function SectionGroup({ title, children }: SectionGroupProps) {
+  const colors = useSecretLibraryColors();
   return (
     <View style={styles.sectionGroup}>
-      <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>{title}</Text>
-      <View style={[
-        styles.sectionContent,
-        {
-          backgroundColor: 'transparent',
-          borderWidth: 1,
-          borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-        }
-      ]}>
+      <Text style={[styles.sectionTitle, { color: colors.gray }]}>{title}</Text>
+      <View style={[styles.sectionContent, { backgroundColor: colors.white }]}>
         {children}
       </View>
     </View>
   );
 }
 
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
 export function ProfileScreen() {
   useScreenLoadTime('ProfileScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { user, serverUrl, logout, isLoading } = useAuth();
-  const themeColors = useThemeColors();
-  const isDarkMode = useIsDarkMode();
+
+  // Theme-aware colors
+  const colors = useSecretLibraryColors();
+  const isDarkMode = colors.isDark; // Quick check: in dark mode, 'black' is white
 
   // Download stats
   const { downloads } = useDownloads();
@@ -179,23 +186,16 @@ export function ProfileScreen() {
   const downloadCount = completedDownloads.length;
   const totalStorage = completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
 
-  // Theme
-  const { mode: themeMode, accentThemeName } = useTheme();
-
   // Library preferences
   const { hideSingleBookSeries, setHideSingleBookSeries } = useMyLibraryStore();
 
   // Kid Mode
   const kidModeEnabled = useKidModeStore((s) => s.enabled);
 
-  // Hidden items count for badge
+  // Hidden items count
   const hiddenItemsCount = useDismissedCount();
 
-  // Wishlist count
-  const wishlistItems = useWishlistStore((s) => s.items);
-  const wishlistCount = wishlistItems.length;
-
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -211,438 +211,306 @@ export function ProfileScreen() {
         },
       },
     ]);
-  };
+  }, [logout]);
+
+  // Skull logo: tap to go home
+  const handleLogoPress = useCallback(() => {
+    haptics.buttonPress();
+    navigation.navigate('HomeTab');
+  }, [navigation]);
 
   const formatAccountType = (type?: string) => {
     if (!type) return 'User';
     return type.charAt(0).toUpperCase() + type.slice(1);
   };
 
-  // In dark mode, use pure black background
-  const bgColor = isDarkMode ? '#000000' : themeColors.backgroundSecondary;
-  const sectionBgColor = isDarkMode ? 'rgba(255,255,255,0.05)' : themeColors.border;
-  const iconContainerBgColor = isDarkMode ? 'rgba(255,255,255,0.08)' : themeColors.border;
-  const userHeaderBgColor = isDarkMode ? 'rgba(255,255,255,0.05)' : themeColors.border;
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT, backgroundColor: bgColor }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={bgColor} />
+    <View style={[styles.container, { backgroundColor: colors.white }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+
+      {/* Safe area background */}
+      <View style={[styles.safeAreaTop, { height: insets.top, backgroundColor: colors.white }]} />
+
+      {/* Top Navigation with User Info */}
+      <View style={[styles.topNav, { backgroundColor: colors.grayLight }]}>
+        {/* Skull logo - tap to go home */}
+        <Pressable onPress={handleLogoPress}>
+          <SkullLogo size={48} color={colors.black} />
+        </Pressable>
+        <View style={styles.topNavRight}>
+          <View style={styles.topNavUser}>
+            <Text style={[styles.topNavUsername, { color: colors.black }]}>{user?.username || 'User'}</Text>
+            <Text style={[styles.topNavServer, { color: colors.gray }]} numberOfLines={1}>
+              {(serverUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.signOutIconButton, { backgroundColor: colors.white }]}
+            onPress={handleLogout}
+            disabled={isLoading}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <LogOut size={scale(18)} color={colors.gray} strokeWidth={1.5} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Profile</Text>
-        </View>
-
-        {/* User Header with quick sign out */}
-        <View style={[styles.userHeader, { backgroundColor: 'transparent', borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-          <View style={[styles.avatar, { backgroundColor: themeColors.accent }]}>
-            <Text style={styles.avatarText}>{(user?.username || 'User').split(' ').map((word) => word[0]).slice(0, 2).join('').toUpperCase() || '?'}</Text>
-          </View>
-          <View style={styles.userInfo}>
-            <Text style={[styles.username, { color: themeColors.text }]}>{user?.username || 'User'}</Text>
-            <Text style={[styles.userRole, { color: themeColors.textSecondary }]}>{formatAccountType(user?.type)}</Text>
-            <View style={styles.serverRow}>
-              <Server size={scale(12)} color={themeColors.textTertiary} strokeWidth={2} />
-              <Text style={[styles.serverText, { color: themeColors.textTertiary }]} numberOfLines={1}>{(serverUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={[styles.headerSignOut, isLoading && styles.headerSignOutDisabled]}
-            onPress={handleLogout}
-            disabled={isLoading}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <LogOut size={scale(18)} color="#ff4b4b" strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
+        {/* Page Title */}
+        <Text style={[styles.pageTitle, { color: colors.black }]}>Settings</Text>
 
         {/* My Stuff Section */}
-        <SectionGroup title="My Stuff" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
+        <SectionGroup title="My Stuff">
           <ProfileLink
             Icon={Download}
             label="Downloads"
             subtitle={`${downloadCount} book${downloadCount !== 1 ? 's' : ''} · ${formatBytes(totalStorage)}`}
             onPress={() => navigation.navigate('Downloads')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={BarChart3}
             label="Listening Stats"
             subtitle="Track your listening activity"
             onPress={() => navigation.navigate('Stats')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
-          />
-          <ProfileLink
-            Icon={Heart}
-            label="Wishlist"
-            subtitle={wishlistCount > 0 ? `${wishlistCount} item${wishlistCount !== 1 ? 's' : ''}` : 'Track books you want'}
-            badge={wishlistCount > 0 ? String(wishlistCount) : undefined}
-            onPress={() => navigation.navigate('Wishlist')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
         </SectionGroup>
 
-        {/* Settings Section */}
-        <SectionGroup title="Settings" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
+        {/* Playback Section */}
+        <SectionGroup title="Playback">
           <ProfileLink
             Icon={PlayCircle}
-            label="Playback"
+            label="Playback Settings"
             subtitle="Speed, skip intervals, sleep timer"
             onPress={() => navigation.navigate('PlaybackSettings')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
+          <ProfileLink
+            Icon={Vibrate}
+            label="Haptics"
+            subtitle="Vibration feedback settings"
+            onPress={() => navigation.navigate('HapticSettings')}
+          />
+          <ProfileLink
+            Icon={Palette}
+            label="Appearance"
+            subtitle="Dark mode, accent colors"
+            onPress={() => navigation.navigate('AppearanceSettings')}
+          />
+        </SectionGroup>
+
+        {/* Library Section */}
+        <SectionGroup title="Library">
           <ProfileLink
             Icon={Folder}
             label="Storage"
             subtitle="Downloads, cache, WiFi-only"
             onPress={() => navigation.navigate('StorageSettings')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={Type}
             label="Chapter Names"
             subtitle="Clean up messy chapter names"
             onPress={() => navigation.navigate('ChapterCleaningSettings')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
-          />
-          <ProfileLink
-            Icon={Palette}
-            label="Appearance"
-            subtitle={`${themeMode === 'dark' ? 'Dark' : 'Light'} · ${accentThemeName}`}
-            onPress={() => navigation.navigate('AppearanceSettings')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
           <ProfileToggle
             Icon={Library}
             label="Hide Single-Book Series"
-            subtitle="Hide series with only 1 book from browse"
+            subtitle="Hide series with only 1 book"
             value={hideSingleBookSeries}
             onValueChange={setHideSingleBookSeries}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
-          />
-          <ProfileLink
-            Icon={Baby}
-            label="Kid Mode"
-            subtitle={kidModeEnabled ? 'Active - filtering content' : 'Off - showing all content'}
-            badge={kidModeEnabled ? 'ON' : undefined}
-            badgeColor={kidModeEnabled ? '#34C759' : undefined}
-            onPress={() => navigation.navigate('KidModeSettings' as never)}
-            themeColors={themeColors}
-            iconBgColor={kidModeEnabled ? themeColors.accent : undefined}
-            isDarkMode={isDarkMode}
-          />
-        </SectionGroup>
-
-        {/* Recommendations Section */}
-        <SectionGroup title="Recommendations" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
-          <ProfileLink
-            Icon={Sparkles}
-            label="Preferences"
-            subtitle="Tune your recommendations"
-            onPress={() => navigation.navigate('Preferences')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
           <ProfileLink
             Icon={EyeOff}
             label="Hidden Books"
-            subtitle={hiddenItemsCount > 0 ? `${hiddenItemsCount} hidden from recommendations` : 'No hidden books'}
+            subtitle={hiddenItemsCount > 0 ? `${hiddenItemsCount} hidden` : 'No hidden books'}
             badge={hiddenItemsCount > 0 ? String(hiddenItemsCount) : undefined}
-            badgeColor={themeColors.textSecondary}
             onPress={() => navigation.navigate('HiddenItems')}
-            themeColors={themeColors}
-            isDarkMode={isDarkMode}
           />
         </SectionGroup>
 
-        {/* Developer Section - keep for testing */}
-        {__DEV__ && (
-          <SectionGroup title="Developer" themeColors={themeColors} bgColor={sectionBgColor} isDarkMode={isDarkMode}>
-            <ProfileLink
-              Icon={Bug}
-              label="Stress Tests"
-              subtitle="Runtime monitoring & diagnostics"
-              onPress={() => navigation.navigate('DebugStressTest')}
-              themeColors={themeColors}
-              isDarkMode={isDarkMode}
-            />
-            <ProfileLink
-              Icon={BarChart3}
-              label="Export Performance Report"
-              subtitle="FPS, memory, errors as JSON"
-              onPress={async () => {
-                try {
-                  const report = await exportErrorReportJSON();
-                  logger.info('\n=== PERFORMANCE REPORT ===');
-                  logger.info(report);
-                  logger.info('=== END REPORT ===\n');
-                  haptics.selection();
-                  Alert.alert('Report Exported', 'Performance report logged to console. Check your terminal.');
-                } catch (e) {
-                  Alert.alert('Export Failed', String(e));
-                }
-              }}
-              themeColors={themeColors}
-              isDarkMode={isDarkMode}
-            />
-          </SectionGroup>
-        )}
+        {/* Parental Section */}
+        <SectionGroup title="Parental">
+          <ProfileLink
+            Icon={Baby}
+            label="Kid Mode"
+            subtitle={kidModeEnabled ? 'Active - filtering content' : 'Off'}
+            badge={kidModeEnabled ? 'ON' : undefined}
+            badgeColor={kidModeEnabled ? '#34C759' : undefined}
+            onPress={() => navigation.navigate('KidModeSettings' as never)}
+          />
+        </SectionGroup>
 
-        {/* Sign Out Button */}
-        <View style={styles.signOutSection}>
-          <TouchableOpacity
-            style={[
-              styles.signOutButton,
-              {
-                backgroundColor: isDarkMode ? 'rgba(255,75,75,0.15)' : 'rgba(220,38,38,0.08)',
-                borderColor: isDarkMode ? 'rgba(255,75,75,0.3)' : 'rgba(220,38,38,0.2)',
-              },
-              isLoading && styles.signOutButtonDisabled
-            ]}
-            onPress={handleLogout}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <LogOut size={scale(20)} color={isDarkMode ? '#ff4b4b' : '#dc2626'} strokeWidth={2} />
-            <Text style={[styles.signOutText, { color: isDarkMode ? '#ff4b4b' : '#dc2626' }]}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Design Tools Section */}
+        <SectionGroup title="Design Tools">
+          <ProfileLink
+            Icon={BookOpen}
+            label="Spine Templates"
+            subtitle="Review 26 professional spine designs"
+            onPress={() => navigation.navigate('SpineTemplatePreview' as never)}
+          />
+        </SectionGroup>
 
-        {/* App Footer */}
+        {/* Footer */}
         <View style={styles.footer}>
-          <View style={[
-            styles.footerLogoContainer,
-            { backgroundColor: isDarkMode ? 'transparent' : 'rgba(0,0,0,0.05)' }
-          ]}>
-            <Image
-              source={APP_LOGO}
-              style={[styles.footerLogo, { opacity: isDarkMode ? 0.6 : 1 }]}
-              contentFit="contain"
-            />
-          </View>
-          <Text style={[styles.appName, { color: themeColors.textSecondary }]}>Secret Library</Text>
-          <Text style={[styles.versionText, { color: themeColors.textTertiary }]}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
-          <Text style={[styles.buildDate, { color: themeColors.textTertiary }]}>{VERSION_DATE}</Text>
+          <SkullLogo size={64} color={colors.black} />
+          <Text style={[styles.appName, { color: colors.gray }]}>Secret Library</Text>
+          <Text style={[styles.versionText, { color: colors.gray }]}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
+          <Text style={[styles.buildDate, { color: colors.gray }]}>{VERSION_DATE}</Text>
         </View>
       </ScrollView>
     </View>
   );
 }
 
+// =============================================================================
+// STYLES
+// =============================================================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via themeColors.backgroundSecondary in JSX
+    // backgroundColor applied inline with theme-aware colors
+  },
+  safeAreaTop: {
+    // backgroundColor applied inline with theme-aware colors
+  },
+  // Top Nav
+  topNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    // backgroundColor applied inline with theme-aware colors
+  },
+  topNavRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  topNavUser: {
+    alignItems: 'flex-end',
+  },
+  topNavUsername: {
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(15),
+    // color applied inline with theme-aware colors
+  },
+  topNavServer: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color applied inline with theme-aware colors
+    marginTop: 1,
+  },
+  signOutIconButton: {
+    width: scale(36),
+    height: scale(36),
+    // backgroundColor applied inline with theme-aware colors
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
   },
-  content: {
-    paddingBottom: SCREEN_BOTTOM_PADDING,
+  scrollContent: {
+    paddingHorizontal: 16,
   },
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    ...typography.displayLarge,
-    fontWeight: fontWeight.bold,
-    // color set via themeColors.text in JSX
-    letterSpacing: -0.5,
-  },
-  // User Header
-  userHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.xxl,
-    // backgroundColor set via themeColors.border in JSX
-    borderRadius: spacing.lg,
-  },
-  avatar: {
-    width: scale(64),
-    height: scale(64),
-    borderRadius: scale(32),
-    // backgroundColor set via themeColors.accent in JSX
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    ...typography.displayMedium,
-    fontWeight: fontWeight.bold,
-    color: '#000', // Black on gold accent (intentional)
-  },
-  userInfo: {
-    flex: 1,
-    marginLeft: spacing.lg,
-  },
-  username: {
-    ...typography.displaySmall,
-    fontWeight: fontWeight.bold,
-    // color set via themeColors.text in JSX
-    marginBottom: scale(2),
-  },
-  userRole: {
-    ...typography.bodyLarge,
-    // color set via themeColors.textSecondary in JSX
-    marginBottom: scale(6),
-  },
-  serverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(4),
-  },
-  serverText: {
-    ...typography.bodySmall,
-    // color set via themeColors.textTertiary in JSX
-    flex: 1,
-  },
-  headerSignOut: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    backgroundColor: 'rgba(255,75,75,0.15)', // Red tint (intentional)
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: spacing.sm,
-  },
-  headerSignOutDisabled: {
-    opacity: 0.5,
+  pageTitle: {
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(42),
+    // color applied inline with theme-aware colors
+    marginBottom: 24,
+    marginTop: 8,
   },
   // Section Group
   sectionGroup: {
-    marginBottom: spacing.xxl,
+    marginBottom: 28,
   },
   sectionTitle: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.semibold,
-    // color set via themeColors.textSecondary in JSX
-    letterSpacing: 0.5,
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.sm,
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color applied inline with theme-aware colors
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    paddingLeft: 4,
   },
   sectionContent: {
-    marginHorizontal: spacing.lg,
-    // backgroundColor set via themeColors.border in JSX
-    borderRadius: spacing.md,
-    overflow: 'hidden',
+    // backgroundColor applied inline with theme-aware colors
   },
   // Profile Link
   profileLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: scale(14),
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    // borderBottomColor set via themeColors.border in JSX
+    // borderBottomColor applied inline with theme-aware colors
   },
   linkIconContainer: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(10),
-    // backgroundColor set via themeColors.border in JSX
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(8),
+    // backgroundColor applied inline with theme-aware colors
     justifyContent: 'center',
     alignItems: 'center',
   },
   linkContent: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginLeft: 12,
   },
   linkLabel: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.medium,
-    // color set via themeColors.text in JSX
-    marginBottom: scale(2),
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(15),
+    // color applied inline with theme-aware colors
+    marginBottom: 2,
   },
   linkSubtitle: {
-    ...typography.bodySmall,
-    // color set via themeColors.textSecondary in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color applied inline with theme-aware colors
   },
   badge: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-    borderRadius: scale(6),
-    marginRight: scale(8),
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
     borderWidth: 1,
-    // borderColor set dynamically in JSX
+    // borderColor applied inline with theme-aware colors
+    marginRight: 8,
   },
   badgeText: {
-    ...typography.labelMedium,
-    fontWeight: fontWeight.semibold,
-    // color set dynamically in JSX
-  },
-  // Sign Out
-  signOutSection: {
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xxl,
-  },
-  signOutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: scale(14),
-    backgroundColor: 'rgba(255,75,75,0.15)', // Red tint (intentional)
-    borderRadius: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,75,75,0.3)', // Red tint (intentional)
-  },
-  signOutButtonDisabled: {
-    opacity: 0.5,
-  },
-  signOutText: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.semibold,
-    color: '#ff4b4b', // Red (intentional for destructive action)
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color applied inline with theme-aware colors
+    textTransform: 'uppercase',
   },
   // Footer
   footer: {
     alignItems: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  footerLogoContainer: {
-    width: scale(80),
-    height: scale(80),
-    borderRadius: spacing.xl,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  footerLogo: {
-    width: scale(64),
-    height: scale(64),
-    borderRadius: scale(14),
+    paddingVertical: 32,
   },
   appName: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.semibold,
-    // color set via themeColors.textSecondary in JSX
-    marginBottom: scale(4),
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(16),
+    // color applied inline with theme-aware colors
+    marginTop: 12,
+    marginBottom: 4,
   },
   versionText: {
-    ...typography.bodySmall,
-    // color set via themeColors.textTertiary in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color applied inline with theme-aware colors
   },
   buildDate: {
-    ...typography.labelSmall,
-    // color set via themeColors.textTertiary in JSX
-    marginTop: scale(2),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(8),
+    // color applied inline with theme-aware colors
+    marginTop: 2,
   },
 });

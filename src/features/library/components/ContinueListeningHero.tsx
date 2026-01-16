@@ -23,10 +23,15 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Play } from 'lucide-react-native';
-import { LibraryItem, BookChapter } from '@/core/types';
+import { LibraryItem, BookChapter, BookMedia, BookMetadata } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { scale } from '@/shared/theme';
 import { useColors } from '@/shared/theme/themeStore';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'chapters' in media;
+}
 
 interface ContinueListeningHeroProps {
   /** The in-progress book to display */
@@ -62,7 +67,10 @@ function getMetadata(item: LibraryItem): {
   author: string;
   narrator: string | null;
 } {
-  const metadata = (item.media?.metadata as any) || {};
+  if (item.mediaType !== 'book' || !item.media?.metadata) {
+    return { title: 'Unknown Title', author: 'Unknown Author', narrator: null };
+  }
+  const metadata = item.media.metadata as BookMetadata;
   const narrators = metadata.narrators || [];
   return {
     title: metadata.title || 'Unknown Title',
@@ -75,7 +83,8 @@ function getMetadata(item: LibraryItem): {
  * Find current chapter based on playback time
  */
 function getCurrentChapter(item: LibraryItem, currentTime: number): BookChapter | null {
-  const chapters = (item.media as any)?.chapters || [];
+  if (!isBookMedia(item.media)) return null;
+  const chapters = item.media.chapters || [];
   if (chapters.length === 0) return null;
 
   // Find chapter where currentTime falls within start/end
@@ -100,7 +109,7 @@ export const ContinueListeningHero = memo(function ContinueListeningHero({
   const progressPercent = Math.round(progress * 100);
 
   // Get current chapter from userMediaProgress
-  const playbackTime = currentTime ?? (book as any).userMediaProgress?.currentTime ?? 0;
+  const playbackTime = currentTime ?? book.userMediaProgress?.currentTime ?? 0;
   const currentChapter = useMemo(
     () => getCurrentChapter(book, playbackTime),
     [book, playbackTime]

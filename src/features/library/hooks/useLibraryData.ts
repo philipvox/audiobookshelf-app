@@ -148,7 +148,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const progress = sqliteProgress?.progress ?? getProgress(item);
       const lastPlayedAt = sqliteProgress?.lastPlayedAt
         ? new Date(sqliteProgress.lastPlayedAt).getTime()
-        : (item as any).userMediaProgress?.lastUpdate;
+        : item.userMediaProgress?.lastUpdate;
 
       return {
         id: download.itemId,
@@ -181,10 +181,10 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
         author: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
         seriesName,
         sequence,
-        progress: (item as any).userMediaProgress?.progress || 0,
+        progress: item.userMediaProgress?.progress || 0,
         duration: getDuration(item),
         totalBytes: download?.totalBytes || 0,
-        lastPlayedAt: (item as any).progressLastUpdate || (item as any).userMediaProgress?.lastUpdate,
+        lastPlayedAt: item.userMediaProgress?.lastUpdate,
         addedAt: item.addedAt,
         isDownloaded: !!download,
       };
@@ -209,7 +209,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const progress = sqliteProgress?.progress ?? getProgress(item);
       const lastPlayedAt = sqliteProgress?.lastPlayedAt
         ? new Date(sqliteProgress.lastPlayedAt).getTime()
-        : (item as any).userMediaProgress?.lastUpdate;
+        : item.userMediaProgress?.lastUpdate;
 
       result.push({
         id: bookId,
@@ -272,7 +272,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       const progress = sqliteProgress?.progress ?? getProgress(item);
       const lastPlayedAt = sqliteProgress?.lastPlayedAt
         ? new Date(sqliteProgress.lastPlayedAt).getTime()
-        : (item as any).userMediaProgress?.lastUpdate;
+        : item.userMediaProgress?.lastUpdate;
 
       result.push({
         id: bookId,

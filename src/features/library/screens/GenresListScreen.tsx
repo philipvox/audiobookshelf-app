@@ -18,7 +18,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   TextInput,
   SectionList,
 } from 'react-native';
@@ -27,6 +26,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllGenres } from '@/core/cache';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
+import { SkullRefreshControl, TopNav, TopNavBackIcon, TagIcon } from '@/shared/components';
+import { secretLibraryColors } from '@/shared/theme/secretLibrary';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import {
   META_CATEGORIES,
@@ -41,17 +42,14 @@ import {
   PopularGenresSection,
 } from '../components/GenreSections';
 import { GenreListItem } from '../components/GenreCards';
-import { spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
+import { spacing, radius, useTheme } from '@/shared/theme';
 
 type ViewMode = 'grouped' | 'flat';
 
 export function GenresListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
-  const isDarkMode = useIsDarkMode();
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const accent = colors.accent.primary;
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -231,10 +229,10 @@ export function GenresListScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
-        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Loading...</Text>
         </View>
       </View>
     );
@@ -242,18 +240,12 @@ export function GenresListScreen() {
 
   // Render grouped view
   const renderGroupedView = () => (
-    <ScrollView
-      style={styles.content}
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={accent}
-        />
-      }
-    >
+    <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Your Genres Section */}
       {!isSearching && yourGenres.length > 0 && (
         <YourGenresSection
@@ -273,7 +265,7 @@ export function GenresListScreen() {
       {/* Browse by Category Header */}
       {!isSearching && (
         <View style={styles.browseHeader}>
-          <Text style={[styles.browseTitle, { color: themeColors.textSecondary }]}>Browse by Category</Text>
+          <Text style={[styles.browseTitle, { color: colors.text.secondary }]}>Browse by Category</Text>
         </View>
       )}
 
@@ -298,12 +290,13 @@ export function GenresListScreen() {
       {/* Empty State */}
       {filteredGenres.length === 0 && (
         <View style={styles.emptyState}>
-          <Icon name="Search" size={48} color={themeColors.textTertiary} />
-          <Text style={[styles.emptyText, { color: themeColors.text }]}>No genres found</Text>
-          <Text style={[styles.emptySubtext, { color: themeColors.textSecondary }]}>Try a different search term</Text>
+          <Icon name="Search" size={48} color={colors.text.tertiary} />
+          <Text style={[styles.emptyText, { color: colors.text.primary }]}>No genres found</Text>
+          <Text style={[styles.emptySubtext, { color: colors.text.secondary }]}>Try a different search term</Text>
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </SkullRefreshControl>
   );
 
   // Render flat A-Z view with SectionList and custom alphabet index
@@ -317,7 +310,7 @@ export function GenresListScreen() {
         contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: 28 }}
         showsVerticalScrollIndicator={false}
         renderSectionHeader={({ section }) => (
-          <View style={[styles.sectionHeader, { backgroundColor: themeColors.background }]}>
+          <View style={[styles.sectionHeader, { backgroundColor: colors.background.primary }]}>
             <Text style={[styles.sectionHeaderText, { color: accent }]}>{section.title}</Text>
           </View>
         )}
@@ -352,49 +345,50 @@ export function GenresListScreen() {
     </View>
   );
 
-  return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
-        </TouchableOpacity>
-        <View style={[
-          styles.searchContainer,
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
+
+      {/* TopNav with skull logo and integrated search bar */}
+      <TopNav
+        variant={isDark ? 'dark' : 'light'}
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        style={{ backgroundColor: colors.background.primary }}
+        pills={[
           {
-            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#F5F5F5',
-          }
-        ]}>
-          <Icon name="Search" size={18} color={themeColors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
-            placeholder="Search genres..."
-            placeholderTextColor={themeColors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+            key: 'genres',
+            label: 'Genres',
+            icon: <TagIcon size={10} color={colors.text.primary} />,
+          },
+        ]}
+        circleButtons={[
+          {
+            key: 'back',
+            icon: <TopNavBackIcon color={colors.text.primary} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+        searchBar={{
+          value: searchQuery,
+          onChangeText: setSearchQuery,
+          placeholder: 'Search genres...',
+        }}
+      />
 
       {/* View Mode Toggle & Count */}
       <View style={styles.controlBar}>
-        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{filteredGenres.length} genres</Text>
+        <Text style={[styles.resultCount, { color: colors.text.secondary }]}>{filteredGenres.length} genres</Text>
         <View style={[
           styles.viewToggle,
           {
             backgroundColor: 'transparent',
             borderWidth: 1,
-            borderColor: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
+            borderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
           }
         ]}>
           <TouchableOpacity
@@ -404,7 +398,7 @@ export function GenresListScreen() {
             <Icon
               name="LayoutGrid"
               size={16}
-              color={viewMode === 'grouped' ? '#000' : themeColors.textTertiary}
+              color={viewMode === 'grouped' ? colors.text.inverse : colors.text.tertiary}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -414,7 +408,7 @@ export function GenresListScreen() {
             <Icon
               name="List"
               size={16}
-              color={viewMode === 'flat' ? '#000' : themeColors.textTertiary}
+              color={viewMode === 'flat' ? colors.text.inverse : colors.text.tertiary}
             />
           </TouchableOpacity>
         </View>
@@ -431,18 +425,9 @@ const styles = StyleSheet.create({
     flex: 1,
     // backgroundColor set via themeColors.background in JSX
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+  searchRow: {
+    paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 8,
-  },
-  headerButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     flex: 1,

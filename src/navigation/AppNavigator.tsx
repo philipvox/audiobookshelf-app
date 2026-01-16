@@ -7,7 +7,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, InteractionManager } from 'react-native';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '@/core/auth';
@@ -20,20 +20,21 @@ import { NarratorsListScreen } from '@/features/library/screens/NarratorsListScr
 import { GenresListScreen } from '@/features/library/screens/GenresListScreen';
 import { GenreDetailScreen } from '@/features/library/screens/GenreDetailScreen';
 import { FilteredBooksScreen } from '@/features/library/screens/FilteredBooksScreen';
-import { HomeScreen } from '@/features/home';
+import { HomeScreen, LibraryScreen } from '@/features/home';
 import { MyLibraryScreen } from '@/features/library';
 import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
+import { SpineTemplatePreviewScreen } from '@/features/home/screens/SpineTemplatePreviewScreen';
 import { SearchScreen } from '@/features/search';
-import { BrowseScreen } from '@/features/browse';
-import { SeriesDetailScreen } from '@/features/series';
-import { AuthorDetailScreen } from '@/features/author';
-import { NarratorDetailScreen } from '@/features/narrator';
+import { SecretLibraryBrowseScreen, DurationFilterScreen } from '@/features/browse';
+import { SecretLibrarySeriesDetailScreen } from '@/features/series';
+import { SecretLibraryAuthorDetailScreen } from '@/features/author';
+import { SecretLibraryNarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
-import { BookDetailScreen } from '@/features/book-detail';
+import { SecretLibraryBookDetailScreen } from '@/features/book-detail';
 import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen, AppearanceSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MoodDiscoveryScreen, MoodResultsScreen } from '@/features/mood-discovery';
-import { CDPlayerScreen, BookCompletionSheet } from '@/features/player';
+import { SecretLibraryPlayerScreen, BookCompletionSheet } from '@/features/player';
 import { MarkBooksScreen, ReadingHistoryScreen } from '@/features/reading-history-wizard';
 import { QueueScreen, useQueueStore } from '@/features/queue';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
@@ -52,11 +53,29 @@ import { logger } from '@/shared/utils/logger';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Custom dark theme with pure black background to prevent white flash
+const AppTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#000000',
+    card: '#000000',
+  },
+};
+
 // Wrap main tab screens with error boundaries for crash prevention
 function HomeScreenWithBoundary() {
   return (
     <ErrorBoundary context="HomeScreen" level="screen">
       <HomeScreen />
+    </ErrorBoundary>
+  );
+}
+
+function SecretLibraryScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="LibraryScreen" level="screen">
+      <LibraryScreen />
     </ErrorBoundary>
   );
 }
@@ -72,7 +91,7 @@ function LibraryScreenWithBoundary() {
 function BrowseScreenWithBoundary() {
   return (
     <ErrorBoundary context="BrowseScreen" level="screen">
-      <BrowseScreen />
+      <SecretLibraryBrowseScreen />
     </ErrorBoundary>
   );
 }
@@ -97,7 +116,7 @@ function SearchScreenWithBoundary() {
 function BookDetailScreenWithBoundary() {
   return (
     <ErrorBoundary context="BookDetailScreen" level="screen">
-      <BookDetailScreen />
+      <SecretLibraryBookDetailScreen />
     </ErrorBoundary>
   );
 }
@@ -105,7 +124,7 @@ function BookDetailScreenWithBoundary() {
 function SeriesDetailScreenWithBoundary() {
   return (
     <ErrorBoundary context="SeriesDetailScreen" level="screen">
-      <SeriesDetailScreen />
+      <SecretLibrarySeriesDetailScreen />
     </ErrorBoundary>
   );
 }
@@ -113,7 +132,7 @@ function SeriesDetailScreenWithBoundary() {
 function AuthorDetailScreenWithBoundary() {
   return (
     <ErrorBoundary context="AuthorDetailScreen" level="screen">
-      <AuthorDetailScreen />
+      <SecretLibraryAuthorDetailScreen />
     </ErrorBoundary>
   );
 }
@@ -121,7 +140,7 @@ function AuthorDetailScreenWithBoundary() {
 function NarratorDetailScreenWithBoundary() {
   return (
     <ErrorBoundary context="NarratorDetailScreen" level="screen">
-      <NarratorDetailScreen />
+      <SecretLibraryNarratorDetailScreen />
     </ErrorBoundary>
   );
 }
@@ -136,7 +155,7 @@ function MainTabs() {
       }}
       initialRouteName="HomeTab"
     >
-      <Tab.Screen name="HomeTab" component={HomeScreenWithBoundary} />
+      <Tab.Screen name="HomeTab" component={SecretLibraryScreenWithBoundary} />
       <Tab.Screen name="LibraryTab" component={LibraryScreenWithBoundary} />
       <Tab.Screen name="DiscoverTab" component={BrowseScreenWithBoundary} />
       <Tab.Screen name="ProfileTab" component={ProfileScreenWithBoundary} />
@@ -232,6 +251,7 @@ function AuthenticatedApp() {
     <NavigationContainer
       ref={navigationRef}
       onStateChange={onNavigationStateChange}
+      theme={AppTheme}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
@@ -242,6 +262,8 @@ function AuthenticatedApp() {
         <Stack.Screen name="GenresList" component={GenresListScreen} />
         <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
         <Stack.Screen name="FilteredBooks" component={FilteredBooksScreen} />
+        <Stack.Screen name="DurationFilter" component={DurationFilterScreen} />
+        <Stack.Screen name="BrowsePage" component={SecretLibraryBrowseScreen} />
         <Stack.Screen name="SeriesDetail" component={SeriesDetailScreenWithBoundary} />
         <Stack.Screen name="AuthorDetail" component={AuthorDetailScreenWithBoundary} />
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreenWithBoundary} />
@@ -262,6 +284,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="KidModeSettings" component={KidModeSettingsScreen} />
         <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
+        <Stack.Screen name="SpineTemplatePreview" component={SpineTemplatePreviewScreen} />
         {__DEV__ && (
           <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
         )}
@@ -291,9 +314,9 @@ function AuthenticatedApp() {
           options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
-      <CDPlayerScreen />
+      <SecretLibraryPlayerScreen />
       <GlobalMiniPlayer />
-      <NavigationBar />
+      {/* <NavigationBar /> */}
       <NetworkStatusBar />
       <BookCompletionSheet />
       <ToastContainer />
@@ -309,7 +332,7 @@ export function AppNavigator() {
 
   if (!isAuthenticated) {
     return (
-      <NavigationContainer>
+      <NavigationContainer theme={AppTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Login" component={LoginScreen} />
         </Stack.Navigator>

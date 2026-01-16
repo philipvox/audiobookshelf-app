@@ -27,9 +27,7 @@ import * as Haptics from 'expo-haptics';
 import { WishlistItem, WishlistPriority } from '../types';
 import { useWishlistStore } from '../stores/wishlistStore';
 import { useCoverUrl, useLibraryCache } from '@/core/cache';
-import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.gold;
+import { scale, spacing, radius, accentColors, useTheme, ACCENT } from '@/shared/theme';
 
 interface WishlistItemRowProps {
   item: WishlistItem;
@@ -54,7 +52,7 @@ function formatDuration(seconds?: number): string {
 }
 
 export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const removeItem = useWishlistStore((s) => s.removeItem);
   const getItem = useLibraryCache((s) => s.getItem);
 
@@ -129,50 +127,50 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
         {displayCover ? (
           <Image
             source={displayCover}
-            style={[styles.cover, { backgroundColor: themeColors.surfaceElevated }]}
+            style={[styles.cover, { backgroundColor: colors.background.elevated }]}
             contentFit="cover"
             cachePolicy="memory-disk"
           />
         ) : (
-          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: themeColors.surfaceElevated }]}>
-            <Bookmark size={scale(24)} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: colors.background.elevated }]}>
+            <Bookmark size={scale(24)} color={colors.text.tertiary} strokeWidth={1.5} />
           </View>
         )}
         {/* Priority indicator */}
         <View style={[styles.priorityBadge, { backgroundColor: priorityConfig.color }]}>
           {item.priority === 'must-read' ? (
-            <Star size={scale(10)} color="#000" fill="#000" strokeWidth={0} />
+            <Star size={scale(10)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
           ) : (
-            <Bookmark size={scale(10)} color="#000" fill="#000" strokeWidth={0} />
+            <Bookmark size={scale(10)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
           )}
         </View>
       </View>
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>{title}</Text>
 
         <View style={styles.metaRow}>
-          <User size={scale(11)} color={themeColors.textTertiary} strokeWidth={2} />
-          <Text style={[styles.metaText, { color: themeColors.textSecondary }]} numberOfLines={1}>{author}</Text>
+          <User size={scale(11)} color={colors.text.tertiary} strokeWidth={2} />
+          <Text style={[styles.metaText, { color: colors.text.secondary }]} numberOfLines={1}>{author}</Text>
         </View>
 
         {narrator && (
-          <Text style={[styles.narratorText, { color: themeColors.textTertiary }]} numberOfLines={1}>
+          <Text style={[styles.narratorText, { color: colors.text.tertiary }]} numberOfLines={1}>
             Narrated by {narrator}
           </Text>
         )}
 
         <View style={styles.tagsRow}>
           {seriesText && (
-            <View style={[styles.seriesBadge, { backgroundColor: themeColors.backgroundTertiary }]}>
-              <Text style={[styles.seriesText, { color: themeColors.textSecondary }]} numberOfLines={1}>{seriesText}</Text>
+            <View style={[styles.seriesBadge, { backgroundColor: colors.background.tertiary }]}>
+              <Text style={[styles.seriesText, { color: colors.text.secondary }]} numberOfLines={1}>{seriesText}</Text>
             </View>
           )}
           {duration && (
             <View style={styles.durationBadge}>
-              <Clock size={scale(10)} color={themeColors.textTertiary} strokeWidth={2} />
-              <Text style={[styles.durationText, { color: themeColors.textTertiary }]}>{formatDuration(duration)}</Text>
+              <Clock size={scale(10)} color={colors.text.tertiary} strokeWidth={2} />
+              <Text style={[styles.durationText, { color: colors.text.tertiary }]}>{formatDuration(duration)}</Text>
             </View>
           )}
         </View>
@@ -191,9 +189,9 @@ export function WishlistItemRow({ item, onPress, onLongPress }: WishlistItemRowP
           onPress={handleDelete}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Trash2 size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
+          <Trash2 size={scale(18)} color={colors.text.tertiary} strokeWidth={2} />
         </TouchableOpacity>
-        <ChevronRight size={scale(16)} color={themeColors.textTertiary} strokeWidth={2} />
+        <ChevronRight size={scale(16)} color={colors.text.tertiary} strokeWidth={2} />
       </View>
     </TouchableOpacity>
   );

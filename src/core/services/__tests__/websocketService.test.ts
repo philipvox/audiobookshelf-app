@@ -15,10 +15,10 @@ const mockSocket = {
   connected: false,
 };
 
-const mockIo = jest.fn(() => mockSocket);
+const mockIo = jest.fn((_url: string, _options: unknown) => mockSocket);
 
 jest.mock('socket.io-client', () => ({
-  io: (_url: string, _options: unknown) => mockIo(),
+  io: (url: string, options: unknown) => mockIo(url, options),
 }));
 
 // Mock authService

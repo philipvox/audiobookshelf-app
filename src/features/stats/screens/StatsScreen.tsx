@@ -12,22 +12,20 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
-  RefreshControl,
   TouchableOpacity,
   Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/shared/components/Icon';
+import { SkullRefreshControl } from '@/shared/components';
 import { useStatsScreen, getWeekdayName } from '../hooks/useListeningStats';
 import { formatDuration, formatDurationLong } from '@/shared/utils/format';
 import { ShareStatsCard } from '../components/ShareStatsCard';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { accentColors, wp } from '@/shared/theme';
+import { wp, ACCENT } from '@/shared/theme';
 import { useColors, ThemeColors } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
-
-const ACCENT = accentColors.gold;
 
 // Static colors that don't change with theme
 const STATIC_COLORS = {
@@ -255,17 +253,11 @@ export function StatsScreen() {
     <View style={[styles.container, { paddingTop: insets.top + TOP_NAV_HEIGHT, backgroundColor: colors.background }]}>
       <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={refetch}
-            tintColor={colors.accent}
-          />
-        }
-      >
+      <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+        >
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Listening Stats</Text>
         </View>
@@ -431,7 +423,8 @@ export function StatsScreen() {
             Stats are recorded locally on your device
           </Text>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </SkullRefreshControl>
 
       {/* Share Modal */}
       <Modal

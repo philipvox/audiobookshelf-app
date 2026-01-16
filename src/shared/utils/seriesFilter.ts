@@ -8,7 +8,13 @@
  * - Single-book series treated as standalone
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 
 interface SeriesInfo {
   name: string;
@@ -60,8 +66,8 @@ function parseSequence(sequenceValue: unknown): { start: number; end: number; is
  * - Null/undefined/invalid sequences: treated as sequence 0
  */
 export function getSeriesInfo(item: LibraryItem): SeriesInfo | null {
-  const metadata = (item.media?.metadata as any) || {};
-  const series = metadata.series?.[0];
+  const metadata = getBookMetadata(item);
+  const series = metadata?.series?.[0];
 
   if (!series?.name) return null;
 
@@ -103,7 +109,7 @@ export function buildSeriesProgressMap(
     // Check if user has started or finished this book
     const userStarted = hasStarted
       ? hasStarted(item.id)
-      : ((item as any).userMediaProgress?.progress || 0) > 0;
+      : (item.userMediaProgress?.progress || 0) > 0;
     const userFinished = isFinished(item.id);
 
     if (userStarted || userFinished) {

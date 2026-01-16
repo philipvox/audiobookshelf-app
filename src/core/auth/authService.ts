@@ -1,6 +1,6 @@
 /**
  * src/core/auth/authService.ts
- * 
+ *
  * Authentication service with cross-platform storage
  */
 
@@ -11,6 +11,10 @@ import { Platform } from 'react-native';
 import { apiClient } from '../api/apiClient';
 import { User } from '../types/user';
 import { authLogger as log } from '@/shared/utils/logger';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
+import { sqliteCache } from '../services/sqliteCache';
+import { queryClient } from '../queryClient';
+import { useLibraryCache } from '../cache/libraryCache';
 
 // Storage keys
 const TOKEN_KEY = 'auth_token';
@@ -171,17 +175,35 @@ class AuthService {
   }
 
   /**
-   * Clear all stored authentication data
+   * Clear all stored authentication and user data (P0 Critical - Privacy)
+   *
+   * This method clears ALL user data on logout to prevent the next user
+   * from seeing the previous user's library, progress, history, etc.
    */
   async clearStorage(): Promise<void> {
     try {
-      // Clear SecureStore items
+      log.info('Clearing all user data on logout...');
+
+      // 1. Clear secure storage (auth tokens)
       await storage.deleteSecureItem(TOKEN_KEY);
       await storage.deleteSecureItem(SERVER_URL_KEY);
-      // Clear AsyncStorage items
+
+      // 2. Clear AsyncStorage items (user data)
       await storage.deleteItem(USER_KEY);
+
+      // 3. Clear SQLite user data (all tables with user-specific data)
+      await sqliteCache.clearAllUserData();
+
+      // 4. Clear React Query cache (in-memory server state)
+      queryClient.clear();
+
+      // 5. Reset Zustand stores (in-memory app state)
+      useLibraryCache.getState().clearCache();
+
+      log.info('All user data cleared successfully');
     } catch (error) {
       log.error('Failed to clear storage:', error);
+      // Don't throw - best effort cleanup, user should still be logged out
     }
   }
 
@@ -212,11 +234,11 @@ class AuthService {
       await this.storeUser(user);
 
       return user;
-    } catch (error: any) {
+    } catch (error) {
       log.error('Login failed:', error);
 
       // Provide user-friendly error messages based on the error type
-      const errorMessage = error.message?.toLowerCase() || '';
+      const errorMessage = getErrorMessage(error).toLowerCase();
 
       // Check for authentication failures (401)
       if (errorMessage.includes('unauthorized') || errorMessage.includes('401')) {
@@ -244,7 +266,7 @@ class AuthService {
       }
 
       // Generic fallback with original message
-      throw new Error(error.message || 'Login failed. Please try again.');
+      throw new Error(getErrorMessage(error) || 'Login failed. Please try again.');
     }
   }
 
@@ -339,8 +361,8 @@ class AuthService {
         // Clear corrupted data and return null
         await this.clearStorage();
         return { user: null, serverUrl: null };
-      } catch (error: any) {
-        log.error(`Session restore attempt ${attempt} failed:`, error.message);
+      } catch (error) {
+        log.error(`Session restore attempt ${attempt} failed:`, getErrorMessage(error));
 
         if (attempt < MAX_RETRIES) {
           // Wait before retry with exponential backoff

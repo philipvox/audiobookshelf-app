@@ -28,7 +28,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react-native';
 import { useToastStore, Toast, ToastType } from '@/shared/hooks/useToast';
-import { scale, spacing, radius, useThemeColors } from '@/shared/theme';
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 
 // ============================================================================
 // CONSTANTS
@@ -41,12 +41,8 @@ const TOAST_ICONS: Record<ToastType, typeof CheckCircle> = {
   info: Info,
 };
 
-const TOAST_COLORS: Record<ToastType, string> = {
-  success: '#22C55E',
-  error: '#EF4444',
-  warning: '#F59E0B',
-  info: '#3B82F6',
-};
+// Toast colors are defined inline using theme colors from useTheme()
+// These are semantic colors that map to the theme's semantic color palette
 
 // ============================================================================
 // TOAST ITEM COMPONENT
@@ -58,18 +54,26 @@ interface ToastItemProps {
 }
 
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const Icon = TOAST_ICONS[toast.type];
-  const iconColor = TOAST_COLORS[toast.type];
+
+  // Map toast types to theme semantic colors
+  const toastColorMap: Record<ToastType, string> = {
+    success: colors.semantic.success,
+    error: colors.semantic.error,
+    warning: colors.semantic.warning,
+    info: colors.semantic.info,
+  };
+  const iconColor = toastColorMap[toast.type];
 
   return (
     <Animated.View
       entering={SlideInUp.duration(250)}
       exiting={FadeOut.duration(200)}
-      style={[styles.toast, { borderLeftColor: iconColor, backgroundColor: themeColors.backgroundSecondary }]}
+      style={[styles.toast, { borderLeftColor: iconColor, backgroundColor: colors.background.secondary }]}
     >
       <Icon size={scale(20)} color={iconColor} />
-      <Text style={[styles.message, { color: themeColors.text }]} numberOfLines={3}>
+      <Text style={[styles.message, { color: colors.text.primary }]} numberOfLines={3}>
         {toast.message}
       </Text>
       <TouchableOpacity
@@ -77,7 +81,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.dismissButton}
       >
-        <X size={scale(16)} color={themeColors.textSecondary} />
+        <X size={scale(16)} color={colors.text.secondary} />
       </TouchableOpacity>
     </Animated.View>
   );

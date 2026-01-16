@@ -2,50 +2,126 @@
  * src/shared/components/AnimatedSplash.tsx
  *
  * Animated splash screen shown during app initialization.
- * Shows spinning skull logo with dark/light mode support.
+ * Shows animated skull with flickering candle flame.
+ * Uses the same animation as the unified Loading component.
+ *
+ * PERFORMANCE: SkullCandle uses forceUpdate pattern instead of useState
+ * to avoid re-render cascade when parent props change.
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Animated, Easing } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-import { useThemeMode } from '@/shared/theme/themeStore';
-import { scale } from '@/shared/theme';
+import React, { useEffect, useRef, useState, useCallback, memo, useReducer } from 'react';
+import { StyleSheet, Animated, View, Text } from 'react-native';
+import Svg, { Path, G } from 'react-native-svg';
+import { scale, useTheme } from '@/shared/theme';
 
 interface AnimatedSplashProps {
   onReady: () => void;
   minDisplayTime?: number;
+  /** If provided, splash won't fade until this is true (in addition to minDisplayTime) */
+  isDataReady?: boolean;
+  /** Loading progress from 0 to 1 */
+  progress?: number;
+  /** Status text to show what's being loaded */
+  statusText?: string;
 }
 
-// Skull SVG from SL Skull.svg - viewBox="0 0 189.47 189.47"
-function SkullIcon({ color, size }: { color: string; size: number }) {
+// =============================================================================
+// SKULL CANDLE ANIMATION DATA (Same as Loading.tsx)
+// =============================================================================
+
+const SKULL_PATHS = [
+  'M155.1,153.6c-.5-4.6-1.6-9-3-13.3-.7-2.4-1.4-5-2.6-7.3-2.3-4.7-6.2-7.8-9.5-12-2.4-3.1-4.4-6.5-6.5-10,0-.2-.2-.4-.4-.6-1.8-3.7-4.3-7.6-7.4-10.7,0,0-.4-.4-.5-.5-.5-.4-.8-.7-1.2-1,0,.5-.5,1.1-.8,1.4-.5.5-1.3,1.1-2.6,1.1-2.5,0-4.8-1-7.1-1.8-4.8-1.8-7.4-2.5-10,1.4-.8,1.4-1.4,2.8-2.2,4.1-2.3,4.8-4.4,9.4-13.7,7-3.1-.8-5.8-2.5-8.3-4.2-.6-.5-1.3-.8-1.9-1.3-2.3-1.4-8.4-2.2-11.2-1.7-1.6.2-3.1,1.3-4.8,2.4-1.8,1.3-3.7,2.5-6.1,3-1.9.4-4,.4-5.9.4s-3.7,0-5.4.4c-7.2,1.7-10.3,7.2-13.6,13-2.9,5.2-6,10.6-12,13.6-1.7.8-3.1,1.2-4.3,1.2s-2.2-.4-2.9-1.1c-.7-.6-1.1-1.4-1.4-2.3-4.2,13-4,20,1.8,34.4,11.6,29,36.5,49.8,40.9,51.8,4.8,2.2,28-6,33.1-5.5,4.3.5,7.2,5.2,8.9,8.6s3,10.6,4.7,10.9c1.1,0,2.3-.2,3.5-.6.5,0,1.1-.4,1.6-.4,1.7-.5,2.9-.8,3.5-1.1-.4-1-.8-2.3-1.2-3.2-1.3-3.5-2.3-6.7-2.4-10.6,3.6-1.6,4.9,7.1,5.8,9.2.5,1.3,1,2.8,1.3,3.7,1.4-.4,3.7-1.2,6-1.9,2.3-.7,4.6-1.6,6-2-.6-1.7-1-3.4-1.7-4.9-.6-1.3-1.3-2.2-1.6-3.7,0-1-.7-6.8,1.7-5.4,1.4,1,2,3.1,2.5,4.7.5,1.7,1.2,3.2,1.7,4.9.4,1.1,1,2.6,1.3,3.5.5,0,1.2-.4,2-.5,2.2-.6,6.6-1.7,8.5-2.3,0-.7-.5-1.8-1-3.2-.7-2.2-1.2-4.3-1.6-6.6,0-.8,0-1.7.7-2.4.8-.7,4,7.2,4.3,7.8.6,1.3,1,2.9,2.4,3.1,1.9.4,3.8-1.2,5.4-1.9,1.7-.8,3.5-1.4,4.1-3.4.8-2.9-.7-5.9-2.5-8-1.9-2.4-3.5-5.2-4.6-8-1.3-3.5-4.3-18.1-4.2-19.2.7-4.6,3.5-8,7.9-10,3.5-1.6,5.4-4.7,5.6-8.6,0-1.9,0-3.8.2-5.6.4-1.7.6-3,.4-4.8h.3ZM104.3,168h0c-.5,16-18.6,28.2-32.4,13.7-8.3-8.3-9.5-24.5,1.2-31.2,13-8.4,30,2.5,31.3,17.3v.2ZM120.4,187.2c-7.1-19.9-.6-22.3,6.1-1.4,1.2,3.7-4.9,5.3-6.1,1.4ZM145.5,166.2v.2c-8,10.7-22.1,1.9-25-11.4-3.6-14,6.6-29.3,19.6-20.5,10.2,5.9,12.4,22.8,5.4,31.7Z',
+  'M17,133.9c5-2.6,7.7-7.2,10.6-12.1,3.5-6.2,7.2-12.6,15.8-14.8,2.2-.5,4.2-.5,6.2-.5s3.5,0,5-.2c1.7-.4,3.1-1.4,4.8-2.5,1.9-1.3,3.8-2.6,6.1-3,3.2-.6,10.4,0,13.8,2.2.7.5,1.3.8,2,1.3,2.4,1.6,4.6,3.1,7.1,3.7,6.4,1.7,7.3-.2,9.6-5,.6-1.3,1.3-2.9,2.3-4.4,4.1-6.7,9.7-4.7,14.2-3,1.9.7,4.1,1.4,5.9,1.6v-1.7c-.4-4.6-7.8-7.7-13.8-10.2-4.2-1.8-7.4-3.2-8.8-5.2-1.2-1.8-1.4-4.4-1.8-7.3-.6-5.5-1.2-7.4-3.5-7.4h0c-1.8,0-4.2,1.1-6.6,2-1.7.7-3.4,1.3-4.8,1.7-5.3,1.3-11,2.5-16.6,3-2,0-4.6-.5-7.1-1.2-1.8-.5-4.9-1.3-5.6-1-1.6,1-1.4,2.8-1,6.4.5,3.5,1.1,7.9-2.9,10.2-11.9,6.8-22.8,18.1-29.4,30.1-1.6,2.9-2.9,5.8-4,8.6-1.7,4.4-1.7,8.4-.8,9.2.4.2,1.3.2,3.2-.7h0v.2h.1Z',
+];
+
+const CANDLE_FRAMES = [
+  'M83,44.4c.5,4.3-1.6,8.3-3.9,12.8-1.3,2-2,4.7-4.4,5.5-1.7.3-3.6-1.3-5.4-2.8-3-3-6.3-6.1-6.8-10.5-.3-4.6.5-9.8,2.7-14,1.3-2.5,2.4-5.2,4.1-7.4.9-1.1,3.3-4.7,4.9-3,.9,1.3-.5,4.3,0,5.7,1.3,3.1,4.1,5.2,6.1,8,1.4,2,2.2,3.9,2.4,5.8h.3Z',
+  'M62.6,44.4c-.5,5,2.5,21.1,10.2,17.9,5.7-3.3,8.7-11.2,6.3-17.5-3-6.8-8.7-14.2-5.4-21.7.3-1.1,1.1-4.4.6-5-.9.9-1.6,2.8-2.7,3.9-4.9,6.3-9,14-9.1,22v.3h0Z',
+  'M78.9,47.5c-.2,2.5-.2,5.7-1.7,8.7,0,0,0,.3-.2.5-3.1,6.9-7.4,7.7-12.1,3.5-.2-.2-.5-.5-.6-.6-7.4-11,9.9-18.9,5-31.5v-.8c-.3-1.6-.5-3.1-.3-4.7.5-4.9,6.6-12.8,12.3-11.8.2.3-.9.9-1.3,1.1-5.8,3.5-11.8,9.9-7.7,16.7,0,.3.3.5.5.8,2.8,5,6,11.3,6.3,17.9v.3h-.2Z',
+  'M72.7,20c.2,2.4,0,5,.6,7.4.8,2.8,3,4.9,3.9,7.6,2.2,7.4,2.7,17-1.1,23.5-1.9,3.3-7.1,6.1-10.1,2.7-2-3.1-3.5-7.2-3.5-11,0-6.1,4.4-10.9,5.5-16.7.8-4.6,2.4-9.6,4.6-13.4h0Z M81.6,10.2c1-.9,2.2-1.6,3.4-2s3.1-.4,3.7.6c-1.7,1.1-3,1.3-5,1.6-1.9.3-3.1,2-4.9,2.4l2.7-2.5h.1Z',
+  'M74.7,60.3c-4.8,3.8-9.9,3.1-11.7-2,0-.3-.2-.6-.3-.9-1.1-6.1,1.8-11.4,4.3-16.9,0-.3.3-.6.4-.9,3-5.2,0-9.9,3-14.6,1.6,6.3,9.4,11,8,18.3v.9c-.3,3.9.3,13-3.6,16.1h-.1Z',
+  'M80.2,56.5c-.9,2-3.1,3.9-5.7,4.9-.3,0-.5.2-.8.3-3.8,2.2-6.9.6-8.5-.9-3.5-5.4-3.1-10.7-1.6-15.9,0-.3.2-.6.3-.9,1.3-2.2,2.2-4.3,2.8-6.5,0-.3,0-.5.2-.8,2-5.7-2.7-8.8-2.7-15.1,6.3,3.1,9.4,11,12.4,15.9,0,.3.3.5.5.8.3.5.6.9,1.1,1.4,0,.3.3.5.3.8,1.4,3,2.7,6.1,2.7,9.6v.9c0,1.7-.3,3.6-1.1,5.4v.3h0v-.2h.1Z',
+  'M83.1,44.4c.5,4.3-1.6,8.3-3.9,12.8-1.3,2-2,4.7-4.4,5.5-1.7.3-3.6-1.3-5.4-2.8-2.8-2.8-6-5.8-6.8-10.1-.9-5.4,3.5-9.4,5.4-14,.8-1.9,1.9-5,3.6-6.1,2.5-1.7,3.1,2.4,4.6,4.1s3,3.1,4.4,4.9c1.4,2,2.2,3.9,2.4,5.8h.2,0Z',
+  'M83.3,44.4c.5,4.3-1.6,8.3-3.9,12.8-1.3,2-2,4.7-4.4,5.5-1.7.3-3.6-1.3-5.4-2.8-2.5-2.5-5.4-5.2-6.4-8.7s-.9-7.7-.2-11.6c.6-3.8,1.6-7.5,1.8-11.4s-.2-7.9-2.4-11.1c4.7,2.2,8.6,6,11.7,10.2s3.7,5.7,5.4,8.7,1.6,3,2.4,4.6,1.4,3.8,1.2,3.8h.3Z',
+  'M62.5,44.4c0,.2,0,.4,0,.7,0,1.9.2,3.8.5,5.7.7,3.7,1.9,9,5.4,11.2s2.9.9,4.4.3c4.9-2.1,7.5-9.7,6.4-14.5s-2.5-5.7-4.2-8.3c-3.3-4.9-6.8-9.9-11.6-13.3,1.1,2.8,1.2,5.9.9,8.8-.3,2.1-.7,4.1-1.3,6.1s-.4,2.2-.4,3.3Z',
+  'M79.2,47.5c.2,3-.3,6-1.7,8.7,0,0,0,.3-.2.5-3.1,6.9-7.4,7.7-12.1,3.5-.2-.2-.5-.5-.6-.6-2.7-2.7-2-7.6-.7-10.7s2.1-2.8,3.1-4.3,1.7-3.5,2.1-5.5c.5-3.3,0-6.7-1.7-9.6-1.5-2.6-3.7-4.8-4.5-7.7-.7-2.6-.1-5.3.5-7.9.3,5.4,1.7,10.9,5.1,15.2,1.8,2.2,4.1,4,6,6.2,2.8,3.3,4.6,7.7,4.9,12.2Z',
+  'M63.7,24.7c2.7,5,7.8,8.3,11.1,13,3.6,5.1,4.6,11.8,3,17.8-.7,2.7-2.2,4.3-4.5,5.9s-5.4,2-7.3-.2c-1.6-2.5-2.8-5.3-3.3-8.2s.2-5.8.7-8.9c1-6.7,1-13.5,0-20.2.1.3.3.5.4.8Z',
+  'M74.8,60.3c-1.2,1.3-2.7,2.2-4.5,2.4s-3,.2-4.4-.7-2.7-2.3-2.7-3.6c0-.3-.2-.6-.3-.9-.6-3.1-.8-6,.4-9.1.8-2,1.8-3.8,2.6-5.8,1.7-4.7,1.4-9.9,1.1-14.9.9,4.3,4.6,7.4,7.1,11.1,1.5,2.3,2.6,5,3.2,7.7.7,3.1,1,6.4,0,9.4s-1.3,3.1-2.5,4.3Z',
+  'M80.2,56.5c-.9,2-3.1,3.9-5.7,4.9-.3,0-.5.2-.8.3-3.8,2.2-6.9.6-8.5-.9-3.2-3-3.2-10.2-2-14.1s3.4-10.1,6.3-14.4c2.8-4.3,7.1-8,12.1-9.1-3.6,1.4-5.6,5.5-5.5,9.3.1,3.7,2.1,6.2,3.5,9.5s1.6,5.6,1.6,8.1v.9c0,1.7-.3,3.6-1.1,5.4v.3-.2h.1Z',
+  'M83.1,44.4c.5,4.3-1.6,8.3-3.9,12.8-1.3,2-2,4.7-4.4,5.5-1.7.3-3.6-1.3-5.4-2.8-2.8-2.8-6-5.8-6.8-10.1-.9-4.7,2.5-8.5,4.6-12.2s3.9-8.9,4.6-13.6c.3-1.9.7-4.1,2.5-4.8-.6.2.4,6,.6,6.6.4,2.3,1.1,4.6,2,6.7,1.7,4.1,5.7,7.6,6.2,12h.2,0Z',
+];
+
+// Skull candle viewBox dimensions
+const VIEWBOX_WIDTH = 162;
+const VIEWBOX_HEIGHT = 236.5;
+const ASPECT_RATIO = VIEWBOX_WIDTH / VIEWBOX_HEIGHT;
+
+// Frame rate: 12fps = 83.33ms per frame
+const FRAME_DURATION_MS = 1000 / 12;
+
+// =============================================================================
+// ANIMATED SKULL CANDLE COMPONENT
+// =============================================================================
+
+interface SkullCandleProps {
+  color: string;
+  size: number;
+}
+
+/**
+ * SkullCandle - Memoized to prevent re-renders from parent prop changes.
+ * Uses useReducer for frame state which is more efficient than useState
+ * for frequent updates that don't need batching with other state.
+ */
+const SkullCandle = memo(function SkullCandle({ color, size }: SkullCandleProps) {
+  // Use useReducer instead of useState - slightly more efficient for frequent updates
+  // and doesn't batch with other state updates
+  const [frameIndex, nextFrame] = useReducer(
+    (prev: number) => (prev + 1) % CANDLE_FRAMES.length,
+    0
+  );
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(nextFrame, FRAME_DURATION_MS);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  const scaledHeight = scale(size);
+  const scaledWidth = scaledHeight * ASPECT_RATIO;
+
   return (
-    <Svg width={size} height={size} viewBox="0 0 189.47 189.47">
-      <Path
-        fill={color}
-        d="M105.18,30.63c-11.17,5.68-24.12,6.5-36.32,4.09,1.32-2.17,6.21-4.03,12.02-5.23.44.43.88.83,1.33,1.23.21.2.79.75.99.94,1.88,2.05,5.49,1.79,6.98-.58.6-.97,1.2-1.95,1.76-2.94,6.15-.26,11.56.44,13.24,2.49Z"
-      />
-      <Path
-        fill={color}
-        d="M92.58,18.85v.06c-.1.87-.28,1.74-.54,2.57,0,.04-.02.06-.03.1-.04.14-.08.28-.13.43-.07.23-.15.46-.24.67-.35.93-.77,1.89-1.25,2.86-.11.23-.21.44-.33.65-.07.14-.15.28-.23.43-.33.58-.65,1.15-.99,1.71-.13.23-.26.44-.39.66-.01.01-.01.03-.03.04-.02.04-.03.06-.06.09-.01.02-.03.06-.05.09-.07.1-.13.2-.2.3,0,.01-.02.04-.03.05-.03.06-.07.11-.12.16-.08.09-.16.17-.23.24-.08.07-.17.13-.23.19t-.01.01c-.14.09-.28.16-.42.19-.08.02-.16.04-.24.06-.08.02-.16.03-.24.02-.05,0-.1,0-.17,0h-.01c-.47-.05-.93-.3-1.4-.67,0,0-.01,0-.01-.01-.29-.27-.6-.55-.89-.84h-.01s-.07-.07-.11-.11c-1.11-1.04-2.1-1.98-2.9-2.9-.13-.15-.25-.32-.37-.47-.01-.01-.02-.03-.02-.04-1.27-1.73-1.83-3.47-1.36-5.38,0-.03.02-.06.02-.09,0-.04.02-.06.03-.1.25-.78.66-1.61,1.26-2.52.07-.11.15-.22.23-.34.16-.21.33-.42.51-.64.21-.23.42-.48.66-.72h0c.65-.57,1.23-1.18,1.73-1.83.07-.1.14-.2.23-.31.6-.77,1.15-1.72,1.56-3.07.03-.09.06-.18.08-.28,0-.03.02-.05.02-.08.24-.79.4-1.63.46-2.48v-.18s.66-.18.66-.18c.33.45.67.92,1.01,1.37.3.42.59.84.9,1.27.54.78,1.09,1.57,1.56,2.39.26.42.49.84.71,1.27.21.39.4.78.57,1.2.1.23.2.46.28.7.08.19.14.37.21.57h0c.05.17.11.33.15.49.05.19.1.37.14.56,0,.05.02.09.03.15.06.26.11.54.15.82.02.21.05.43.07.64v.05c0,.05-.01.1,0,.16Z"
-      />
-      <Path
-        fill={color}
-        d="M154.64,114.18c-.37-3.76-1.31-7.46-2.46-11.07-.64-2.02-1.25-4.16-2.16-6.07-1.85-3.88-5.23-6.54-7.85-10-3.91-5.22-6.83-11.26-10.7-16.6-.63-.89-1.89-.85-2.64-.06-.01,0-.01.01-.02.02-.92.79-2.07.95-3.04.95-2.85-.11-5.54-1.18-8.24-1.6-4.14-.71-8.04-.72-10.38,2.11-.32.42-.62.86-.86,1.34-1.25,2.83-4.32,4.66-7.29,4.89-8.11.84-13.25-5.28-20.51-1.81-2.37,1.02-5.4,2.86-8.36,2.99-4.72.37-8.78-2.84-13.36-1.89-1.19.37-2.77.89-4.17.93-2.31.28-4.54.99-7.08.43l-.6-.14c-1.65,1.78-3.17,3.66-4.51,5.62-.07.09-.13.19-.22.27l-.23.23s-.08.07-.13.12c-.65,1.09-1.27,2.18-1.83,3.31-.02.08-.07.13-.11.2-.75,1.41-1.37,2.79-1.93,4.21-5.64,15.05-6.3,20.7-.65,34.8,9.7,24.22,30.45,41.48,34.12,43.17,3.98,1.85,23.33-5,27.65-4.58,3.6.36,5.96,4.3,7.39,7.22.67,1.35,2.45,8.85,3.88,9.06.89.13,1.87-.16,2.91-.47.44-.13.86-.26,1.27-.34,1.44-.36,2.36-.7,2.85-.92-.28-.81-.67-1.87-.98-2.66-1.14-2.94-1.88-5.63-2.01-8.81,2.99-1.34,4.15,5.92,4.79,7.65.39,1.11.82,2.27,1.14,3.13,1.18-.35,3.08-.96,4.99-1.57,1.9-.64,3.81-1.26,4.96-1.67-.48-1.36-.81-2.8-1.4-4.1-.51-1.12-1.11-1.82-1.3-3.08-.12-.79-.6-5.69,1.35-4.5,1.25.76,1.68,2.6,2.06,3.9.41,1.43.97,2.65,1.43,4.05.29.88.75,2.2,1.09,2.91.42-.13.99-.27,1.66-.44,1.76-.47,5.47-1.43,7.09-1.95-.12-.6-.41-1.48-.77-2.69-.56-1.79-1.04-3.62-1.28-5.47-.09-.72-.04-1.44.62-2,.7-.6,3.33,5.98,3.59,6.54.54,1.13.78,2.42,2.04,2.6,1.57.26,3.2-.97,4.52-1.59,1.39-.68,2.87-1.23,3.36-2.85.72-2.43-.58-4.91-2.07-6.67-1.65-2-2.93-4.3-3.84-6.72-1.09-2.9-3.63-15.08-3.5-15.97.61-3.83,2.92-6.7,6.56-8.34,2.92-1.31,4.45-3.88,4.68-7.18.12-1.55-.12-3.15.19-4.68.29-1.5.47-2.59.3-4.18ZM112.28,126.14c-.35,13.26-15.48,23.48-27.03,11.4-6.92-6.92-7.95-20.42.99-26.01,10.82-7.04,25.02,2.1,26.06,14.38l-.02.23ZM125.73,142.21c-5.9-16.63-.51-18.6,5.09-1.25.99,3.11-4.09,4.42-5.09,1.25ZM146.64,124.67l-.13.15c-6.59,8.95-18.3,1.62-20.71-9.47-3.05-11.7,5.51-24.38,16.32-17.1,8.46,4.89,10.31,18.99,4.52,26.42Z"
-      />
-      <Path
-        fill={color}
-        d="M127.43,65.65c.14,1.55.05,3.09-1.51,3.06,0,0-.02,0-.03,0-2.67-.14-5.21-1.28-7.87-1.84-4.34-1.11-9.91-1.44-12.98,2.49-.62.69-1.06,1.55-1.56,2.26-2.31,3.02-6.74,2.76-10.07,1.87-9.92-3.39-11.63-3.29-20.88,1.59-5.3,2.29-10.83-2.26-16.21-.57-1.77.72-3.42.92-5.27,1.22-1.61.32-3.18.65-4.68.47-2.98-3.62,13.84-16.58,18.36-19.16,1.26-.72,1.89-1.7,2.2-2.83,0-.03.02-.05.02-.08.07-.2.12-.42.15-.64.03-.19.05-.4.07-.61.11-1.05.07-2.16.1-3.25,0-.31,0-.62.03-.94.17-3.48.2-7.2.12-10.7-.04-.54.52-.9.99-.73,9.38,2.54,19.76,2.7,29.13-.33,3.01-.92,5.9-2.19,8.68-3.64.59.76.43,2,.33,3.32-.04,1.55.13,2.95.18,4.44l.25,4.38c.09,2.19.11,4.72,1.39,6.7,2.15,3.32,18.39,6.14,19.05,13.5Z"
-      />
+    <Svg
+      width={scaledWidth}
+      height={scaledHeight}
+      viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
+    >
+      {/* Static skull */}
+      <G>
+        {SKULL_PATHS.map((d, i) => (
+          <Path key={`skull-${i}`} d={d} fill={color} />
+        ))}
+      </G>
+      {/* Animated candle flame */}
+      <Path d={CANDLE_FRAMES[frameIndex]} fill={color} />
     </Svg>
   );
-}
+});
 
-export function AnimatedSplash({ onReady, minDisplayTime = 400 }: AnimatedSplashProps) {
-  const { isDark } = useThemeMode();
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 
+export function AnimatedSplash({ onReady, minDisplayTime = 400, isDataReady = true, progress = 0, statusText = '' }: AnimatedSplashProps) {
+  const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
   const hasCalledOnReady = useRef(false);
+  const minTimeElapsed = useRef(false);
 
   const fadeOutAndComplete = useCallback(() => {
     if (hasCalledOnReady.current) return;
@@ -61,48 +137,66 @@ export function AnimatedSplash({ onReady, minDisplayTime = 400 }: AnimatedSplash
     });
   }, [fadeAnim, onReady]);
 
+  // Track when minimum time has elapsed
   useEffect(() => {
-    // Start rotation animation for skull
-    const rotateAnimation = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 2000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    rotateAnimation.start();
-
-    // Minimum display time before allowing fade out
     const timer = setTimeout(() => {
-      fadeOutAndComplete();
+      minTimeElapsed.current = true;
+      // If data is already ready, fade out now
+      if (isDataReady) {
+        fadeOutAndComplete();
+      }
     }, minDisplayTime);
 
     return () => {
       clearTimeout(timer);
-      rotateAnimation.stop();
     };
-  }, [minDisplayTime, fadeOutAndComplete, rotateAnim]);
+  }, [minDisplayTime, isDataReady, fadeOutAndComplete]);
 
-  // Interpolate rotation
-  const spin = rotateAnim.interpolate({
+  // Watch for data becoming ready after min time elapsed
+  useEffect(() => {
+    if (isDataReady && minTimeElapsed.current) {
+      fadeOutAndComplete();
+    }
+  }, [isDataReady, fadeOutAndComplete]);
+
+  // Animate progress bar width
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: progress,
+      duration: 200,
+      useNativeDriver: false, // width animation can't use native driver
+    }).start();
+  }, [progress, progressAnim]);
+
+  const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ['0%', '100%'],
   });
 
-  // Colors based on theme
-  const backgroundColor = isDark ? '#000000' : '#FFFFFF';
-  const skullColor = isDark ? '#FFFFFF' : '#000000';
-
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor }]}>
-      {/* Spinning skull logo */}
-      <Animated.View style={[styles.logoContainer, { transform: [{ rotate: spin }] }]}>
-        <SkullIcon color={skullColor} size={scale(120)} />
-      </Animated.View>
+    <Animated.View style={[styles.container, { opacity: fadeAnim, backgroundColor: colors.background.primary }]}>
+      {/* Animated skull with flickering candle */}
+      <View style={styles.logoContainer}>
+        <SkullCandle color={colors.text.primary} size={140} />
+      </View>
+
+      {/* Progress bar */}
+      <View style={styles.progressContainer}>
+        <View style={[styles.progressTrack, { backgroundColor: colors.progress.track }]}>
+          <Animated.View style={[styles.progressFill, { width: progressWidth, backgroundColor: colors.text.secondary }]} />
+        </View>
+        {/* Status text */}
+        {statusText ? (
+          <Text style={[styles.statusText, { color: colors.text.tertiary }]}>{statusText}</Text>
+        ) : null}
+      </View>
     </Animated.View>
   );
 }
+
+const PROGRESS_BAR_WIDTH = 120;
 
 const styles = StyleSheet.create({
   container: {
@@ -110,9 +204,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 9999,
+    // backgroundColor set dynamically via colors.background.primary
   },
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  progressContainer: {
+    marginTop: scale(24),
+    alignItems: 'center',
+  },
+  progressTrack: {
+    width: PROGRESS_BAR_WIDTH,
+    height: 3,
+    // backgroundColor set dynamically via colors.progress.track
+    borderRadius: 1.5,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    // backgroundColor set dynamically via colors.text.secondary
+    borderRadius: 1.5,
+  },
+  statusText: {
+    marginTop: scale(8),
+    fontSize: scale(9),
+    // color set dynamically via colors.text.tertiary
+    textAlign: 'center',
+    fontFamily: 'System',
+    letterSpacing: 0.5,
   },
 });

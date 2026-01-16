@@ -2,9 +2,9 @@
  * src/features/library/components/GenreSections.tsx
  *
  * Section components for the redesigned Genre Browse page:
- * - MetaCategorySection: Collapsible category with genres
- * - YourGenresSection: Personalized horizontal scroll
- * - PopularGenresSection: Top genres grid
+ * - MetaCategorySection: Collapsible category with genres (uses color dots)
+ * - YourGenresSection: Personalized grid with color dot cards
+ * - PopularGenresSection: Top genres grid with color dot cards
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -23,16 +23,22 @@ import {
   GenreCardCompact,
 } from './GenreCards';
 import { MetaCategory, GenreWithData } from '../constants/genreCategories';
-import { StackedCovers } from '@/shared/components';
-import { apiClient } from '@/core/api';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
-import { accentColors } from '@/shared/theme';
+import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+import { scale } from '@/shared/theme';
+// MIGRATED: Now using new spine system via adapter
+import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { useTheme } from '@/shared/theme';
 
-const ACCENT = accentColors.red;
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// Get deterministic color for a book based on its ID
+function getBookDotColor(bookId: string): string {
+  const hash = hashString(bookId);
+  return SPINE_COLOR_PALETTE[hash % SPINE_COLOR_PALETTE.length];
 }
 
 // =============================================================================
@@ -56,28 +62,26 @@ export function MetaCategorySection({
   onToggle,
   onGenrePress,
 }: MetaCategorySectionProps) {
-  const themeColors = useThemeColors();
-  const isDarkMode = useIsDarkMode();
+  const { colors, isDark } = useTheme();
 
   const handleToggle = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     onToggle();
   }, [onToggle]);
 
-  // Get cover URLs from genres in this category (up to 3 unique covers)
-  const coverUrls = useMemo(() => {
-    const urls: string[] = [];
+  // Get color dots from genres in this category (up to 5 unique dots)
+  const colorDots = useMemo(() => {
+    const bookIds: string[] = [];
     for (const genre of genres) {
       for (const coverId of genre.coverIds) {
-        if (urls.length >= 3) break;
-        const url = apiClient.getItemCoverUrl(coverId);
-        if (!urls.includes(url)) {
-          urls.push(url);
+        if (bookIds.length >= 5) break;
+        if (!bookIds.includes(coverId)) {
+          bookIds.push(coverId);
         }
       }
-      if (urls.length >= 3) break;
+      if (bookIds.length >= 5) break;
     }
-    return urls;
+    return bookIds.map(getBookDotColor);
   }, [genres]);
 
   return (
@@ -86,33 +90,34 @@ export function MetaCategorySection({
       <TouchableOpacity
         style={[
           styles.metaHeader,
-          { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }
+          isDark ? styles.metaHeaderDark : styles.metaHeaderLight,
         ]}
         onPress={handleToggle}
         activeOpacity={0.7}
       >
         <View style={styles.metaHeaderLeft}>
-          {/* Stacked covers instead of icon - NNGroup research: visual scent */}
-          <View style={styles.metaCoversContainer}>
-            <StackedCovers
-              coverUrls={coverUrls}
-              size={28}
-              offset={6}
-              maxCovers={3}
-              borderRadius={4}
-            />
+          {/* Color dots instead of stacked covers */}
+          <View style={styles.metaDotsContainer}>
+            {colorDots.map((color, index) => (
+              <View
+                key={`${index}-${color}`}
+                style={[styles.metaDot, { backgroundColor: color }]}
+              />
+            ))}
           </View>
-          <View>
-            <Text style={[styles.metaTitle, { color: themeColors.text }]}>{metaCategory.name}</Text>
-            <Text style={[styles.metaSubtitle, { color: themeColors.textSecondary }]}>
+          <View style={styles.metaTextContainer}>
+            <Text style={[styles.metaTitle, isDark && styles.metaTitleDark]}>
+              {metaCategory.name}
+            </Text>
+            <Text style={styles.metaSubtitle}>
               {genres.length} genres · {totalBooks} books
             </Text>
           </View>
         </View>
         {isExpanded ? (
-          <ChevronDown size={20} color={themeColors.textTertiary} strokeWidth={2} />
+          <ChevronDown size={20} color={secretLibraryColors.gray} strokeWidth={2} />
         ) : (
-          <ChevronRight size={20} color={themeColors.textTertiary} strokeWidth={2} />
+          <ChevronRight size={20} color={secretLibraryColors.gray} strokeWidth={2} />
         )}
       </TouchableOpacity>
 
@@ -125,6 +130,7 @@ export function MetaCategorySection({
                 key={genre.name}
                 genre={genre}
                 onPress={() => onGenrePress(genre.name)}
+                variant={isDark ? 'dark' : 'light'}
               />
             ))}
           </View>
@@ -135,7 +141,7 @@ export function MetaCategorySection({
 }
 
 // =============================================================================
-// YourGenresSection - Personalized horizontal scroll
+// YourGenresSection - Personalized grid
 // =============================================================================
 
 interface YourGenresSectionProps {
@@ -149,7 +155,7 @@ export function YourGenresSection({
   onGenrePress,
   onSeeAll,
 }: YourGenresSectionProps) {
-  const themeColors = useThemeColors();
+  const { colors, isDark } = useTheme();
 
   if (genres.length === 0) return null;
 
@@ -157,21 +163,22 @@ export function YourGenresSection({
     <View style={styles.section}>
       {/* Header */}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Your Genres</Text>
+        <Text style={styles.sectionTitle}>Your Genres</Text>
         {onSeeAll && (
           <TouchableOpacity onPress={onSeeAll}>
-            <Text style={[styles.seeAllText, { color: ACCENT }]}>See all</Text>
+            <Text style={[styles.seeAllText, { color: colors.accent.primary }]}>See all</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* 2-Column Grid */}
-      <View style={styles.genreGrid}>
+      {/* Single Column List */}
+      <View style={styles.genreList}>
         {genres.slice(0, 6).map((genre) => (
           <GenreCardLarge
             key={genre.name}
             genre={genre}
             onPress={() => onGenrePress(genre.name)}
+            variant={isDark ? 'dark' : 'light'}
           />
         ))}
       </View>
@@ -180,7 +187,7 @@ export function YourGenresSection({
 }
 
 // =============================================================================
-// PopularGenresSection - Top genres horizontal scroll (same style as Your Genres)
+// PopularGenresSection - Top genres list (same style as Your Genres)
 // =============================================================================
 
 interface PopularGenresSectionProps {
@@ -192,7 +199,7 @@ export function PopularGenresSection({
   genres,
   onGenrePress,
 }: PopularGenresSectionProps) {
-  const themeColors = useThemeColors();
+  const { isDark } = useTheme();
 
   if (genres.length === 0) return null;
 
@@ -200,16 +207,17 @@ export function PopularGenresSection({
     <View style={styles.section}>
       {/* Header */}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Popular Genres</Text>
+        <Text style={styles.sectionTitle}>Popular Genres</Text>
       </View>
 
-      {/* 2-Column Grid - same as Your Genres */}
-      <View style={styles.genreGrid}>
+      {/* Single Column List */}
+      <View style={styles.genreList}>
         {genres.slice(0, 6).map((genre) => (
           <GenreCardLarge
             key={genre.name}
             genre={genre}
             onPress={() => onGenrePress(genre.name)}
+            variant={isDark ? 'dark' : 'light'}
           />
         ))}
       </View>
@@ -232,7 +240,8 @@ export function AlphabetIndex({
   activeLetter,
   onLetterPress,
 }: AlphabetIndexProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
+  const ACCENT = colors.accent.primary;
 
   return (
     <View style={styles.alphabetIndex}>
@@ -248,8 +257,8 @@ export function AlphabetIndex({
           <Text
             style={[
               styles.alphabetText,
-              { color: themeColors.textSecondary },
-              activeLetter === letter && styles.alphabetTextActive,
+              { color: colors.text.secondary },
+              activeLetter === letter && [styles.alphabetTextActive, { color: colors.text.inverse }],
             ]}
           >
             {letter}
@@ -269,11 +278,11 @@ interface SectionStickyHeaderProps {
 }
 
 export function SectionStickyHeader({ letter }: SectionStickyHeaderProps) {
-  const themeColors = useThemeColors();
-  const isDarkMode = useIsDarkMode();
+  const { colors, isDark } = useTheme();
+  const ACCENT = colors.accent.primary;
 
   return (
-    <View style={[styles.stickyHeader, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)' }]}>
+    <View style={[styles.stickyHeader, { backgroundColor: isDark ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)' }]}>
       <Text style={[styles.stickyHeaderText, { color: ACCENT }]}>{letter}</Text>
     </View>
   );
@@ -296,21 +305,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    // color set via themeColors in JSX
-    letterSpacing: 0.5,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: secretLibraryColors.gray,
   },
   seeAllText: {
-    fontSize: 13,
-    // color set via themeColors in JSX
-    fontWeight: '500',
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  genreGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  genreList: {
     paddingHorizontal: 16,
-    gap: 12,
   },
 
   // Meta Category Section
@@ -321,41 +329,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    // backgroundColor set via themeColors in JSX
     marginHorizontal: 16,
-    borderRadius: 12,
+  },
+  metaHeaderLight: {
+    backgroundColor: secretLibraryColors.white,
+  },
+  metaHeaderDark: {
+    backgroundColor: secretLibraryColors.black,
   },
   metaHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  metaCoversContainer: {
-    width: 44, // Account for stacked offset
-    height: 42, // 28 * 1.5 = 42 for aspect ratio
-    marginRight: 12,
-    justifyContent: 'center',
+  metaDotsContainer: {
+    flexDirection: 'row',
+    gap: 3,
+    marginRight: 14,
+  },
+  metaDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+  },
+  metaTextContainer: {
+    flex: 1,
   },
   metaTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(16),
+    color: secretLibraryColors.black,
+    marginBottom: 2,
+  },
+  metaTitleDark: {
+    color: secretLibraryColors.white,
   },
   metaSubtitle: {
-    fontSize: 12,
-    // color set via themeColors in JSX
-    marginTop: 2,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: secretLibraryColors.gray,
   },
   metaContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   metaGenreGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    // Single column list
   },
 
   // Alphabet Index
@@ -376,27 +399,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   alphabetLetterActive: {
-    // backgroundColor set via themeColors in JSX
     borderRadius: 9,
   },
   alphabetText: {
-    fontSize: 10,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
     fontWeight: '600',
-    // color set via themeColors in JSX
   },
   alphabetTextActive: {
-    color: '#000',
+    // color applied inline
   },
 
   // Sticky Header
   stickyHeader: {
-    // backgroundColor set via themeColors in JSX
     paddingVertical: 6,
     paddingHorizontal: 16,
   },
   stickyHeaderText: {
-    fontSize: 14,
+    fontFamily: secretLibraryFonts.playfair.semiBold,
+    fontSize: scale(14),
     fontWeight: '700',
-    // color set via themeColors in JSX
   },
 });

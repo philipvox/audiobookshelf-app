@@ -27,7 +27,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { spacing, radius, wp, hp, scale, useThemeColors } from '@/shared/theme';
+import { spacing, radius, wp, hp, scale, useTheme } from '@/shared/theme';
 
 /** Animation duration in ms */
 const SHIMMER_DURATION = 1200;
@@ -52,7 +52,7 @@ interface ShimmerProps {
 }
 
 export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const translateX = useSharedValue(-1);
 
   useEffect(() => {
@@ -78,8 +78,8 @@ export function Shimmer({ width, height, borderRadius = 4, style }: ShimmerProps
   });
 
   // Theme-aware skeleton colors
-  const skeletonBg = themeColors.backgroundSecondary;
-  const shimmerColor = `${themeColors.text}15`;
+  const skeletonBg = colors.background.secondary;
+  const shimmerColor = `${colors.text.primary}15`;
 
   return (
     <View

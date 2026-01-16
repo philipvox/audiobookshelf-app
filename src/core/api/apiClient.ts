@@ -62,14 +62,15 @@ class ApiClient extends BaseApiClient {
       endpoints.user.itemsInProgress
     );
     const items = response.libraryItems || [];
+    console.log(`[API] getItemsInProgress: received ${items.length} items from ${endpoints.user.itemsInProgress}`);
 
     // Fetch user data to get mediaProgress array
     const user = await this.getCurrentUser();
-    const progressMap = new Map<string, any>();
+    const progressMap = new Map<string, MediaProgress>();
 
     // Build map of libraryItemId -> progress data
-    if ((user as any).mediaProgress) {
-      for (const mp of (user as any).mediaProgress) {
+    if (user.mediaProgress) {
+      for (const mp of user.mediaProgress) {
         if (mp.libraryItemId) {
           progressMap.set(mp.libraryItemId, mp);
         }
@@ -80,7 +81,7 @@ class ApiClient extends BaseApiClient {
     return items.map((item) => {
       const progress = progressMap.get(item.id);
       if (progress) {
-        (item as any).mediaProgress = progress;
+        item.mediaProgress = progress;
       }
       return item;
     });

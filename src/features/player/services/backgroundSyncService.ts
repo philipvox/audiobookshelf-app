@@ -16,7 +16,10 @@ import { audioService } from './audioService';
 import { audioLog, formatDuration, logSection } from '@/shared/utils/audioDebug';
 import { trackEvent } from '@/core/monitoring';
 import { eventBus } from '@/core/events';
+import { networkMonitor } from '@/core/services/networkMonitor';
 import { usePlayerStore } from '../stores/playerStore';
+import { getErrorMessage } from '@/shared/utils/errorUtils';
+import { useToastStore } from '@/shared/hooks/useToast';
 
 const DEBUG = __DEV__;
 const log = (...args: any[]) => audioLog.sync(args.join(' '));
@@ -95,6 +98,8 @@ class BackgroundSyncService {
    * Save progress locally only (SQLite) - FAST PATH
    * Use this during active playback for instant saves without network overhead.
    * Progress will be synced to server at key moments (pause, background, finish).
+   *
+   * UNIFIED PROGRESS: Also updates progressStore for instant UI reactivity.
    */
   async saveProgressLocal(
     itemId: string,
@@ -103,12 +108,24 @@ class BackgroundSyncService {
   ): Promise<void> {
     // SQLite write only - no network, no queue processing
     await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
+
+    // UNIFIED PROGRESS: Update progressStore for instant UI updates
+    // This makes spine progress bars, continue listening, etc. update immediately
+    try {
+      const { useProgressStore } = await import('@/core/stores/progressStore');
+      // Don't write to SQLite again - we just did that above
+      await useProgressStore.getState().updateProgress(itemId, position, duration, false);
+    } catch {
+      // Progress store not loaded yet, skip
+    }
   }
 
   /**
    * Save progress locally AND queue for server sync - KEY MOMENTS ONLY
    * Use this only at key moments: pause, app background, book finish.
    * This triggers server sync to ensure data durability.
+   *
+   * UNIFIED PROGRESS: Also updates progressStore for instant UI reactivity.
    */
   async saveProgress(
     itemId: string,
@@ -120,6 +137,15 @@ class BackgroundSyncService {
 
     // STEP 1: Write to SQLite immediately (fast, offline-capable)
     await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
+
+    // UNIFIED PROGRESS: Update progressStore for instant UI updates
+    try {
+      const { useProgressStore } = await import('@/core/stores/progressStore');
+      // Don't write to SQLite again - we just did that above
+      await useProgressStore.getState().updateProgress(itemId, position, duration, false);
+    } catch {
+      // Progress store not loaded yet, skip
+    }
 
     // STEP 2: Queue for server sync
     const existing = this.syncQueue.get(itemId);
@@ -201,6 +227,12 @@ class BackgroundSyncService {
    * Uses parallel processing with concurrency limit for better performance.
    */
   private async processSyncQueue(): Promise<void> {
+    // Skip sync if offline - don't waste retry counts
+    if (!networkMonitor.isConnected()) {
+      log('Offline - skipping sync');
+      return;
+    }
+
     if (this.syncQueue.size === 0) {
       // Check SQLite for unsynced items
       await this.syncUnsyncedFromStorage();
@@ -284,6 +316,12 @@ class BackgroundSyncService {
   private async syncToServer(item: SyncQueueItem): Promise<boolean> {
     log(`syncToServer: ${item.itemId} @ ${formatDuration(item.position)}`);
 
+    // Skip if offline - don't increment retry count
+    if (!networkMonitor.isConnected()) {
+      log(`  Skipping - offline`);
+      return false;
+    }
+
     // Skip sync if user is actively playing this book (they'll sync on pause)
     const playerState = usePlayerStore.getState();
     const isActivelyPlaying = playerState.isPlaying && playerState.currentBook?.id === item.itemId;
@@ -346,9 +384,10 @@ class BackgroundSyncService {
       });
 
       return true;
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
       // Handle 404 - resource doesn't exist on server, no point retrying
-      if (error.message === 'Resource not found' || error.status === 404) {
+      if (errorMessage === 'Resource not found' || (error as any)?.status === 404) {
         audioLog.warn(`Item ${item.itemId} not found on server (404), removing from sync queue`);
         this.syncQueue.delete(item.itemId);
         // Mark as synced to prevent future retries for this non-existent item
@@ -360,21 +399,21 @@ class BackgroundSyncService {
       item.retryCount++;
       item.lastAttempt = Date.now();
 
-      audioLog.warn(`Sync failed for ${item.itemId}: ${error.message}`);
+      audioLog.warn(`Sync failed for ${item.itemId}: ${errorMessage}`);
 
       // Track sync failures for monitoring
       trackEvent('sync_progress_failed', {
         item_id: item.itemId,
-        error: error.message,
+        error: errorMessage,
         retry_count: item.retryCount,
-        is_401: error.message?.includes('401') || error.message?.includes('Unauthorized'),
+        is_401: errorMessage.includes('401') || errorMessage.includes('Unauthorized'),
       });
 
       // Emit sync failed event
       eventBus.emit('progress:sync_failed', {
         bookId: item.itemId,
         position: item.position,
-        error: error.message,
+        error: errorMessage,
         retryCount: item.retryCount,
       });
 
@@ -383,8 +422,16 @@ class BackgroundSyncService {
 
         trackEvent('sync_max_retries_reached', {
           item_id: item.itemId,
-          error: error.message,
+          error: errorMessage,
         }, 'warning');
+
+        // Show user-facing notification (P1 Fix - sync failure visibility)
+        useToastStore.getState().addToast({
+          type: 'warning',
+          message: 'Sync failed. Progress saved locally and will sync when online.',
+          duration: 5000,
+        });
+
         this.syncQueue.delete(item.itemId);
         // Keep in SQLite as unsynced for future retry
       } else {
@@ -460,8 +507,8 @@ class BackgroundSyncService {
           } else {
             log('Background sync completed successfully');
           }
-        } catch (error: any) {
-          audioLog.error('Background sync failed:', error.message);
+        } catch (error) {
+          audioLog.error('Background sync failed:', getErrorMessage(error));
         }
       })();
     } else if (nextState === 'active') {

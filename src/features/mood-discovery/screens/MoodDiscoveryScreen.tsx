@@ -34,8 +34,8 @@ const isIOS = Platform.OS === 'ios';
 
 import { Icon } from '@/shared/components/Icon';
 import { haptics } from '@/core/native/haptics';
-import { spacing, radius, scale, useThemeColors } from '@/shared/theme';
-import { useColors } from '@/shared/theme/themeStore';
+import { spacing, radius, scale, useTheme } from '@/shared/theme';
+import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import {
   MOODS,
   PACES,
@@ -68,29 +68,29 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const STEP_CONFIG = {
   1: {
-    question: "It's your perfect listening moment. Where are you?",
-    subtitle: 'Choose the mood that fits right now',
+    question: 'What are you in the mood for?',
+    subtitle: 'Pick one',
     label: 'MOOD',
   },
   2: {
-    question: 'What kind of energy fits right now?',
+    question: 'How fast should it move?',
     subtitle: 'Optional',
-    label: 'ENERGY',
+    label: 'PACE',
   },
   3: {
-    question: 'What emotional territory feels right?',
+    question: 'How heavy or light?',
     subtitle: 'Optional',
     label: 'TONE',
   },
   4: {
-    question: 'Where do you want the story to take you?',
+    question: 'What kind of world?',
     subtitle: 'Optional',
-    label: 'WORLD',
+    label: 'SETTING',
   },
   5: {
-    question: 'How much time do you have?',
+    question: 'How long?',
     subtitle: 'Optional',
-    label: 'TIME',
+    label: 'LENGTH',
   },
 };
 
@@ -106,9 +106,8 @@ interface OptionCardProps<T> {
 }
 
 function OptionCard<T>({ config, selected, onSelect, compact }: OptionCardProps<T>) {
-  const themeColors = useThemeColors();
-  const colors = useColors();
-  const accent = colors.accent.primary;
+  const { colors } = useTheme();
+  const accentColor = colors.accent.primary;
   const cardScale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -136,26 +135,26 @@ function OptionCard<T>({ config, selected, onSelect, compact }: OptionCardProps<
         onPressOut={handlePressOut}
         style={[
           styles.compactCard,
-          { backgroundColor: themeColors.backgroundSecondary },
-          selected && { backgroundColor: accent, borderColor: accent },
+          { backgroundColor: colors.background.tertiary, borderColor: colors.border.default },
+          selected && { backgroundColor: accentColor, borderColor: accentColor },
           animatedStyle,
         ]}
       >
         <Icon
           name={config.icon}
           size={24}
-          color={selected ? '#000' : themeColors.textSecondary}
+          color={selected ? colors.text.inverse : colors.text.tertiary}
           set={config.iconSet as any}
         />
-        <Text style={[styles.compactLabel, { color: themeColors.text }, selected && styles.compactLabelSelected]}>
+        <Text style={[styles.compactLabel, { color: colors.text.primary }, selected && { color: colors.text.inverse }]}>
           {config.label}
         </Text>
-        <Text style={[styles.compactDesc, { color: themeColors.textSecondary }, selected && styles.compactDescSelected]} numberOfLines={2}>
+        <Text style={[styles.compactDesc, { color: colors.text.tertiary }, selected && { color: colors.text.inverse }]} numberOfLines={2}>
           {config.description}
         </Text>
         {config.isDefault && !selected && (
-          <View style={[styles.defaultBadge, { backgroundColor: themeColors.backgroundTertiary }]}>
-            <Text style={[styles.defaultBadgeText, { color: themeColors.textTertiary }]}>Default</Text>
+          <View style={[styles.defaultBadge, { backgroundColor: colors.background.secondary }]}>
+            <Text style={[styles.defaultBadgeText, { color: colors.text.tertiary }]}>Default</Text>
           </View>
         )}
       </AnimatedPressable>
@@ -169,29 +168,29 @@ function OptionCard<T>({ config, selected, onSelect, compact }: OptionCardProps<
       onPressOut={handlePressOut}
       style={[
         styles.optionCard,
-        { backgroundColor: themeColors.backgroundSecondary },
-        selected && { backgroundColor: accent, borderColor: accent },
+        { backgroundColor: colors.background.tertiary, borderColor: colors.border.default },
+        selected && { backgroundColor: accentColor, borderColor: accentColor },
         animatedStyle,
       ]}
     >
-      <View style={[styles.iconContainer, { backgroundColor: themeColors.backgroundTertiary }, selected && styles.iconContainerSelected]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.background.secondary }, selected && { backgroundColor: colors.overlay.light }]}>
         <Icon
           name={config.icon}
           size={28}
-          color={selected ? '#000' : themeColors.textSecondary}
+          color={selected ? colors.text.inverse : colors.text.tertiary}
           set={config.iconSet as any}
         />
       </View>
       <View style={styles.optionContent}>
-        <Text style={[styles.optionLabel, { color: themeColors.text }, selected && styles.optionLabelSelected]}>
+        <Text style={[styles.optionLabel, { color: colors.text.primary }, selected && { color: colors.text.inverse }]}>
           {config.label}
         </Text>
-        <Text style={[styles.optionDesc, { color: themeColors.textSecondary }, selected && styles.optionDescSelected]}>
+        <Text style={[styles.optionDesc, { color: colors.text.tertiary }, selected && { color: colors.text.inverse }]}>
           {config.description}
         </Text>
       </View>
       {selected && (
-        <Icon name="CircleCheck" size={24} color="#000" />
+        <Icon name="CircleCheck" size={24} color={colors.text.inverse} />
       )}
     </AnimatedPressable>
   );
@@ -202,9 +201,9 @@ function OptionCard<T>({ config, selected, onSelect, compact }: OptionCardProps<
 // ============================================================================
 
 function ProgressIndicator({ current, total }: { current: number; total: number }) {
-  const themeColors = useThemeColors();
-  const colors = useColors();
-  const accent = colors.accent.primary;
+  const { colors } = useTheme();
+  const accentColor = colors.accent.primary;
+
   return (
     <View style={styles.progressContainer}>
       {Array.from({ length: total }, (_, i) => (
@@ -212,8 +211,8 @@ function ProgressIndicator({ current, total }: { current: number; total: number 
           key={i}
           style={[
             styles.progressDot,
-            { backgroundColor: themeColors.backgroundTertiary },
-            i + 1 <= current && { backgroundColor: accent },
+            { backgroundColor: colors.border.default },
+            i + 1 <= current && { backgroundColor: accentColor },
           ]}
         />
       ))}
@@ -228,9 +227,8 @@ function ProgressIndicator({ current, total }: { current: number; total: number 
 export function MoodDiscoveryScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
-  const colors = useColors();
-  const accent = colors.accent.primary;
+  const { colors } = useTheme();
+  const accentColor = colors.accent.primary;
   const hasActiveSession = useHasActiveSession();
 
   // Quiz state
@@ -375,18 +373,18 @@ export function MoodDiscoveryScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Icon name="X" size={24} color={themeColors.text} />
+          <Icon name="X" size={24} color={colors.text.primary} />
         </TouchableOpacity>
 
         <ProgressIndicator current={draft.currentStep} total={TOTAL_QUIZ_STEPS} />
 
         {draft.currentStep > 1 && draft.mood ? (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-            <Text style={[styles.skipText, { color: themeColors.textSecondary }]}>Skip</Text>
+            <Text style={[styles.skipText, { color: colors.text.tertiary }]}>Skip</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.skipButton} />
@@ -395,9 +393,9 @@ export function MoodDiscoveryScreen() {
 
       {/* Session indicator */}
       {hasActiveSession && draft.currentStep === 1 && (
-        <View style={[styles.sessionBanner, { backgroundColor: `${accent}15` }]}>
-          <Icon name="Clock" size={16} color={accent} />
-          <Text style={[styles.sessionText, { color: accent }]}>
+        <View style={[styles.sessionBanner, { backgroundColor: colors.accent.primarySubtle, borderColor: colors.accent.primary }]}>
+          <Icon name="Clock" size={16} color={accentColor} />
+          <Text style={[styles.sessionText, { color: accentColor }]}>
             You have an active session. Edit or start fresh.
           </Text>
         </View>
@@ -413,13 +411,13 @@ export function MoodDiscoveryScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Step indicator */}
-        <Text style={[styles.stepIndicator, { color: themeColors.textTertiary }]}>
-          STEP {draft.currentStep} OF {TOTAL_QUIZ_STEPS} • {stepConfig.label}
+        <Text style={[styles.stepIndicator, { color: colors.text.tertiary }]}>
+          STEP {draft.currentStep} OF {TOTAL_QUIZ_STEPS} · {stepConfig.label}
         </Text>
 
         {/* Question */}
-        <Text style={[styles.question, { color: themeColors.text }]}>{stepConfig.question}</Text>
-        <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{stepConfig.subtitle}</Text>
+        <Text style={[styles.question, { color: colors.text.primary }]}>{stepConfig.question}</Text>
+        <Text style={[styles.subtitle, { color: colors.text.tertiary }]}>{stepConfig.subtitle}</Text>
 
         {/* Options */}
         {renderOptions()}
@@ -429,8 +427,8 @@ export function MoodDiscoveryScreen() {
           <View style={styles.footerButtons}>
             {draft.currentStep > 1 && (
               <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                <Icon name="ArrowLeft" size={20} color={themeColors.textSecondary} />
-                <Text style={[styles.backText, { color: themeColors.textSecondary }]}>Back</Text>
+                <Icon name="ArrowLeft" size={20} color={colors.text.tertiary} />
+                <Text style={[styles.backText, { color: colors.text.tertiary }]}>Back</Text>
               </TouchableOpacity>
             )}
 
@@ -445,25 +443,25 @@ export function MoodDiscoveryScreen() {
               disabled={!canProceed}
               style={[
                 styles.nextButton,
-                { backgroundColor: accent },
-                !canProceed && { backgroundColor: themeColors.backgroundTertiary },
+                { backgroundColor: accentColor },
+                !canProceed && { backgroundColor: colors.background.tertiary },
                 draft.currentStep === 1 && styles.nextButtonFull,
                 buttonAnimatedStyle,
               ]}
             >
-              <Text style={[styles.nextText, !canProceed && { color: themeColors.textTertiary }]}>
+              <Text style={[styles.nextText, { color: colors.text.inverse }, !canProceed && { color: colors.text.tertiary }]}>
                 {draft.currentStep === TOTAL_QUIZ_STEPS ? 'Find Books' : 'Next'}
               </Text>
               <Icon
                 name={draft.currentStep === TOTAL_QUIZ_STEPS ? 'Sparkles' : 'ArrowRight'}
                 size={20}
-                color={canProceed ? '#000' : themeColors.textTertiary}
+                color={canProceed ? colors.text.inverse : colors.text.tertiary}
               />
             </AnimatedPressable>
           </View>
 
           {!canProceed && draft.currentStep === 1 && (
-            <Text style={[styles.hint, { color: themeColors.textTertiary }]}>Select a mood to continue</Text>
+            <Text style={[styles.hint, { color: colors.text.tertiary }]}>Select a mood to continue</Text>
           )}
         </View>
       </ScrollView>
@@ -478,7 +476,7 @@ export function MoodDiscoveryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor set dynamically via colors.background.primary
   },
 
   // Header
@@ -486,8 +484,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: 20,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   closeButton: {
     width: 44,
@@ -502,8 +501,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   skipText: {
-    fontSize: 15,
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    // color set dynamically via colors.text.tertiary
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Progress
@@ -515,25 +517,29 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor set dynamically via colors.border.default or accentColor
   },
 
   // Session Banner
   sessionBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    // backgroundColor set via themeColors in JSX
-    marginHorizontal: spacing.lg,
+    // backgroundColor and borderColor set dynamically via accent
+    marginHorizontal: 24,
     marginBottom: spacing.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     gap: spacing.sm,
+    borderWidth: 1,
   },
   sessionText: {
     flex: 1,
-    fontSize: 13,
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    // color set dynamically via accentColor
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Content
@@ -541,35 +547,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
+    paddingHorizontal: 24,
+    paddingTop: spacing.lg,
   },
 
   // Step
   stepIndicator: {
-    fontSize: 12,
-    fontWeight: '600',
-    // color set via themeColors in JSX
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color set dynamically via colors.text.tertiary
+    textTransform: 'uppercase',
+    letterSpacing: 1.35,
+    marginBottom: spacing.md,
   },
   question: {
-    fontSize: 22,
-    fontWeight: '700',
-    // color set via themeColors in JSX
-    marginBottom: spacing.xxs,
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(28),
+    // color set dynamically via colors.text.primary
+    marginBottom: spacing.xs,
+    lineHeight: scale(28) * 1.15,
   },
   subtitle: {
-    fontSize: 14,
-    // color set via themeColors in JSX
-    marginBottom: spacing.md,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    // color set dynamically via colors.text.tertiary
+    marginBottom: spacing.xl,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Options Grid (2 columns for Mood and World)
   optionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
 
   // Options List (full width for Pace and Weight)
@@ -580,89 +591,77 @@ const styles = StyleSheet.create({
   // Compact Card (grid items)
   compactCard: {
     width: '47%',
-    // backgroundColor set via themeColors in JSX
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    // backgroundColor and borderColor set dynamically via theme
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
   },
   compactLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color set via themeColors in JSX
-    marginTop: spacing.xs,
-  },
-  compactLabelSelected: {
-    color: '#000',
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(17),
+    // color set dynamically via colors.text.primary or inverse
+    marginTop: spacing.sm,
+    marginBottom: 4,
   },
   compactDesc: {
-    fontSize: 12,
-    // color set via themeColors in JSX
-    marginTop: 2,
-  },
-  compactDescSelected: {
-    color: 'rgba(0, 0, 0, 0.7)',
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    // color set dynamically via colors.text.tertiary
+    letterSpacing: 0.3,
   },
   defaultBadge: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor set dynamically via colors.background.secondary
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
     borderRadius: radius.sm,
   },
   defaultBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(8),
+    // color set dynamically via colors.text.tertiary
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Full-width Option Card
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor and borderColor set dynamically via theme
     borderRadius: radius.lg,
     padding: spacing.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
     gap: spacing.md,
   },
   iconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor set dynamically via colors.background.secondary
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconContainerSelected: {
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   optionContent: {
     flex: 1,
   },
   optionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    // color set via themeColors in JSX
-  },
-  optionLabelSelected: {
-    color: '#000',
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(17),
+    // color set dynamically via colors.text.primary or inverse
   },
   optionDesc: {
-    fontSize: 14,
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    // color set dynamically via colors.text.tertiary or inverse
     marginTop: 2,
-  },
-  optionDescSelected: {
-    color: 'rgba(0, 0, 0, 0.7)',
   },
 
   // Footer
   footer: {
-    marginTop: spacing.lg,
+    marginTop: spacing.xl,
   },
   footerButtons: {
     flexDirection: 'row',
@@ -677,15 +676,18 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   backText: {
-    fontSize: 16,
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    // color set dynamically via colors.text.tertiary
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   nextButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    // backgroundColor set via themeColors in JSX
+    // backgroundColor set dynamically via accentColor
     paddingVertical: spacing.md,
     borderRadius: radius.md,
     gap: spacing.sm,
@@ -694,13 +696,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   nextText: {
-    fontSize: 17,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(12),
     fontWeight: '600',
-    color: '#000',
+    // color set dynamically via colors.text.inverse or tertiary
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   hint: {
-    fontSize: 13,
-    // color set via themeColors in JSX
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    // color set dynamically via colors.text.tertiary
     textAlign: 'center',
     marginTop: spacing.sm,
   },

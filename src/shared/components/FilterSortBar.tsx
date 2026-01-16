@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
 import { Icon } from './Icon';
-import { spacing, radius, scale, accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { spacing, radius, scale, accentColors, useTheme } from '@/shared/theme';
 
 export type SortOption = 'name-asc' | 'name-desc' | 'bookCount-asc' | 'bookCount-desc';
 
@@ -30,7 +29,7 @@ export function FilterSortBar({
   onGenreChange,
   showGenreFilter = false,
 }: FilterSortBarProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const [showSortModal, setShowSortModal] = useState(false);
   const [showGenreModal, setShowGenreModal] = useState(false);
 
@@ -38,43 +37,43 @@ export function FilterSortBar({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={[styles.button, { backgroundColor: themeColors.backgroundSecondary }]} onPress={() => setShowSortModal(true)}>
-        <Icon name="ArrowUpDown" size={18} color={themeColors.textSecondary} />
-        <Text style={[styles.buttonText, { color: themeColors.textSecondary }]}>{currentSortLabel}</Text>
-        <Icon name="ChevronDown" size={16} color={themeColors.textTertiary} />
+      <TouchableOpacity style={[styles.button, { backgroundColor: colors.background.secondary }]} onPress={() => setShowSortModal(true)}>
+        <Icon name="ArrowUpDown" size={18} color={colors.text.secondary} />
+        <Text style={[styles.buttonText, { color: colors.text.secondary }]}>{currentSortLabel}</Text>
+        <Icon name="ChevronDown" size={16} color={colors.text.tertiary} />
       </TouchableOpacity>
 
       {showGenreFilter && genres.length > 0 && (
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: selectedGenre ? accentColors.gold : themeColors.backgroundSecondary }]}
+          style={[styles.button, { backgroundColor: selectedGenre ? colors.accent.primary : colors.background.secondary }]}
           onPress={() => setShowGenreModal(true)}
         >
-          <Icon name="Filter" size={18} color={selectedGenre ? themeColors.background : themeColors.textSecondary} />
-          <Text style={[styles.buttonText, { color: selectedGenre ? themeColors.background : themeColors.textSecondary }]}>
+          <Icon name="Filter" size={18} color={selectedGenre ? colors.background.primary : colors.text.secondary} />
+          <Text style={[styles.buttonText, { color: selectedGenre ? colors.background.primary : colors.text.secondary }]}>
             {selectedGenre || 'Genre'}
           </Text>
-          <Icon name="ChevronDown" size={16} color={selectedGenre ? themeColors.background : themeColors.textTertiary} />
+          <Icon name="ChevronDown" size={16} color={selectedGenre ? colors.background.primary : colors.text.tertiary} />
         </TouchableOpacity>
       )}
 
       <Modal visible={showSortModal} transparent animationType="fade" onRequestClose={() => setShowSortModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowSortModal(false)}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated }]}>
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Sort By</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.background.elevated }]}>
+            <Text style={[styles.modalTitle, { color: colors.text.primary }]}>Sort By</Text>
             {SORT_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.value}
-                style={[styles.modalOption, { borderBottomColor: themeColors.border }, sortBy === option.value && { backgroundColor: `${accentColors.gold}20` }]}
+                style={[styles.modalOption, { borderBottomColor: colors.border.default }, sortBy === option.value && { backgroundColor: `${colors.accent.primary}20` }]}
                 onPress={() => {
                   onSortChange(option.value);
                   setShowSortModal(false);
                 }}
               >
-                <Text style={[styles.modalOptionText, { color: themeColors.text }, sortBy === option.value && { color: accentColors.gold, fontWeight: '600' }]}>
+                <Text style={[styles.modalOptionText, { color: colors.text.primary }, sortBy === option.value && { color: colors.accent.primary, fontWeight: '600' }]}>
                   {option.label}
                 </Text>
                 {sortBy === option.value && (
-                  <Icon name="Check" size={20} color={accentColors.gold} />
+                  <Icon name="Check" size={20} color={colors.accent.primary} />
                 )}
               </TouchableOpacity>
             ))}
@@ -84,33 +83,33 @@ export function FilterSortBar({
 
       <Modal visible={showGenreModal} transparent animationType="fade" onRequestClose={() => setShowGenreModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowGenreModal(false)}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.surfaceElevated }]}>
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Filter by Genre</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.background.elevated }]}>
+            <Text style={[styles.modalTitle, { color: colors.text.primary }]}>Filter by Genre</Text>
             <ScrollView style={styles.genreScroll}>
               <TouchableOpacity
-                style={[styles.modalOption, { borderBottomColor: themeColors.border }, !selectedGenre && { backgroundColor: `${accentColors.gold}20` }]}
+                style={[styles.modalOption, { borderBottomColor: colors.border.default }, !selectedGenre && { backgroundColor: `${colors.accent.primary}20` }]}
                 onPress={() => {
                   onGenreChange?.(null);
                   setShowGenreModal(false);
                 }}
               >
-                <Text style={[styles.modalOptionText, { color: themeColors.text }, !selectedGenre && { color: accentColors.gold, fontWeight: '600' }]}>All Genres</Text>
-                {!selectedGenre && <Icon name="Check" size={20} color={accentColors.gold} />}
+                <Text style={[styles.modalOptionText, { color: colors.text.primary }, !selectedGenre && { color: colors.accent.primary, fontWeight: '600' }]}>All Genres</Text>
+                {!selectedGenre && <Icon name="Check" size={20} color={colors.accent.primary} />}
               </TouchableOpacity>
               {genres.map((genre) => (
                 <TouchableOpacity
                   key={genre}
-                  style={[styles.modalOption, { borderBottomColor: themeColors.border }, selectedGenre === genre && { backgroundColor: `${accentColors.gold}20` }]}
+                  style={[styles.modalOption, { borderBottomColor: colors.border.default }, selectedGenre === genre && { backgroundColor: `${colors.accent.primary}20` }]}
                   onPress={() => {
                     onGenreChange?.(genre);
                     setShowGenreModal(false);
                   }}
                 >
-                  <Text style={[styles.modalOptionText, { color: themeColors.text }, selectedGenre === genre && { color: accentColors.gold, fontWeight: '600' }]}>
+                  <Text style={[styles.modalOptionText, { color: colors.text.primary }, selectedGenre === genre && { color: colors.accent.primary, fontWeight: '600' }]}>
                     {genre}
                   </Text>
                   {selectedGenre === genre && (
-                    <Icon name="Check" size={20} color={accentColors.gold} />
+                    <Icon name="Check" size={20} color={colors.accent.primary} />
                   )}
                 </TouchableOpacity>
               ))}

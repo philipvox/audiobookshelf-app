@@ -1,3 +1,3 @@
 export { AuthorCard } from './components/AuthorCard';
-export { AuthorDetailScreen } from './screens/AuthorDetailScreen';
+export { SecretLibraryAuthorDetailScreen } from './screens/SecretLibraryAuthorDetailScreen';
 export { useAuthors } from './hooks/useAuthors';

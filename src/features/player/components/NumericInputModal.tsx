@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { X, Delete } from 'lucide-react-native';
 import { haptics } from '@/core/native/haptics';
-import { spacing, scale, wp, hp, useThemeColors } from '@/shared/theme';
+import { spacing, scale, wp, hp, useTheme } from '@/shared/theme';
 
 // =============================================================================
 // TYPES
@@ -62,7 +62,7 @@ export function NumericInputModal({
   onApply,
   onCancel,
 }: NumericInputModalProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // For speed mode: single value string
   // For time mode: hours and minutes
@@ -181,61 +181,61 @@ export function NumericInputModal({
       onRequestClose={onCancel}
     >
       <View style={styles.overlay}>
-        <View style={[styles.container, { backgroundColor: themeColors.card }]}>
+        <View style={[styles.container, { backgroundColor: colors.background.elevated }]}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={[styles.title, { color: themeColors.text }]}>{title}</Text>
+            <Text style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
             <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-              <X size={24} color={themeColors.text} strokeWidth={2} />
+              <X size={24} color={colors.text.primary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
           {/* Input Display */}
           {mode === 'speed' ? (
             <View style={styles.inputRow}>
-              <View style={[styles.inputBox, { borderColor: themeColors.border }]}>
-                <Text style={[styles.inputText, { color: themeColors.text }]}>
+              <View style={[styles.inputBox, { borderColor: colors.border.default }]}>
+                <Text style={[styles.inputText, { color: colors.text.primary }]}>
                   {inputValue || '0'}
                 </Text>
               </View>
-              <Text style={[styles.suffix, { color: themeColors.textSecondary }]}>{suffix}</Text>
+              <Text style={[styles.suffix, { color: colors.text.secondary }]}>{suffix}</Text>
             </View>
           ) : (
             <View style={styles.timeInputRow}>
               <TouchableOpacity
                 style={[
                   styles.timeInputBox,
-                  { borderColor: activeField === 'hours' ? themeColors.text : themeColors.border },
+                  { borderColor: activeField === 'hours' ? colors.text.primary : colors.border.default },
                 ]}
                 onPress={() => setActiveField('hours')}
               >
-                <Text style={[styles.inputText, { color: themeColors.text }]}>
+                <Text style={[styles.inputText, { color: colors.text.primary }]}>
                   {hoursValue.padStart(2, '0') || '00'}
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.timeSeparator, { color: themeColors.textSecondary }]}>h</Text>
+              <Text style={[styles.timeSeparator, { color: colors.text.secondary }]}>h</Text>
               <TouchableOpacity
                 style={[
                   styles.timeInputBox,
-                  { borderColor: activeField === 'minutes' ? themeColors.text : themeColors.border },
+                  { borderColor: activeField === 'minutes' ? colors.text.primary : colors.border.default },
                 ]}
                 onPress={() => setActiveField('minutes')}
               >
-                <Text style={[styles.inputText, { color: themeColors.text }]}>
+                <Text style={[styles.inputText, { color: colors.text.primary }]}>
                   {minutesValue.padStart(2, '0') || '00'}
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.timeSeparator, { color: themeColors.textSecondary }]}>m</Text>
+              <Text style={[styles.timeSeparator, { color: colors.text.secondary }]}>m</Text>
             </View>
           )}
 
           {/* Error */}
           {error && (
-            <Text style={[styles.errorText, { color: themeColors.error }]}>{error}</Text>
+            <Text style={[styles.errorText, { color: colors.accent.primary }]}>{error}</Text>
           )}
 
           {/* Range hint */}
-          <Text style={[styles.rangeHint, { color: themeColors.textTertiary }]}>
+          <Text style={[styles.rangeHint, { color: colors.text.tertiary }]}>
             {mode === 'speed'
               ? `Range: ${min}x – ${max}x`
               : `Range: 1 min – 12 hours`}
@@ -247,10 +247,10 @@ export function NumericInputModal({
               {presets.map((preset) => (
                 <TouchableOpacity
                   key={preset.label}
-                  style={[styles.presetButton, { backgroundColor: themeColors.border }]}
+                  style={[styles.presetButton, { backgroundColor: colors.border.default }]}
                   onPress={() => handlePreset(preset.value)}
                 >
-                  <Text style={[styles.presetText, { color: themeColors.text }]}>
+                  <Text style={[styles.presetText, { color: colors.text.primary }]}>
                     {preset.label}
                   </Text>
                 </TouchableOpacity>
@@ -261,16 +261,16 @@ export function NumericInputModal({
           {/* Action Buttons */}
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={[styles.cancelButton, { borderColor: themeColors.border }]}
+              style={[styles.cancelButton, { borderColor: colors.border.default }]}
               onPress={onCancel}
             >
-              <Text style={[styles.cancelButtonText, { color: themeColors.text }]}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.text.primary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.applyButton, { backgroundColor: themeColors.text }]}
+              style={[styles.applyButton, { backgroundColor: colors.text.primary }]}
               onPress={handleApply}
             >
-              <Text style={[styles.applyButtonText, { color: themeColors.background }]}>Apply</Text>
+              <Text style={[styles.applyButtonText, { color: colors.background.primary }]}>Apply</Text>
             </TouchableOpacity>
           </View>
 
@@ -281,10 +281,10 @@ export function NumericInputModal({
                 {row.map((key) => (
                   <TouchableOpacity
                     key={key}
-                    style={[styles.keypadButton, { backgroundColor: themeColors.border }]}
+                    style={[styles.keypadButton, { backgroundColor: colors.border.default }]}
                     onPress={() => handleKeyPress(key)}
                   >
-                    <Text style={[styles.keypadText, { color: themeColors.text }]}>{key}</Text>
+                    <Text style={[styles.keypadText, { color: colors.text.primary }]}>{key}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -293,30 +293,30 @@ export function NumericInputModal({
             <View style={styles.keypadRow}>
               {showOffButton ? (
                 <TouchableOpacity
-                  style={[styles.keypadButton, { backgroundColor: themeColors.border }]}
+                  style={[styles.keypadButton, { backgroundColor: colors.border.default }]}
                   onPress={handleOff}
                 >
-                  <Text style={[styles.keypadText, { color: themeColors.text }]}>OFF</Text>
+                  <Text style={[styles.keypadText, { color: colors.text.primary }]}>OFF</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  style={[styles.keypadButton, { backgroundColor: themeColors.border }]}
+                  style={[styles.keypadButton, { backgroundColor: colors.border.default }]}
                   onPress={() => handleKeyPress('.')}
                 >
-                  <Text style={[styles.keypadText, { color: themeColors.text }]}>.</Text>
+                  <Text style={[styles.keypadText, { color: colors.text.primary }]}>.</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[styles.keypadButton, { backgroundColor: themeColors.border }]}
+                style={[styles.keypadButton, { backgroundColor: colors.border.default }]}
                 onPress={() => handleKeyPress('0')}
               >
-                <Text style={[styles.keypadText, { color: themeColors.text }]}>0</Text>
+                <Text style={[styles.keypadText, { color: colors.text.primary }]}>0</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.keypadButton, { backgroundColor: themeColors.border }]}
+                style={[styles.keypadButton, { backgroundColor: colors.border.default }]}
                 onPress={() => handleKeyPress('delete')}
               >
-                <Delete size={24} color={themeColors.text} strokeWidth={2} />
+                <Delete size={24} color={colors.text.primary} strokeWidth={2} />
               </TouchableOpacity>
             </View>
           </View>

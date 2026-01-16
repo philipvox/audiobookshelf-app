@@ -1,8 +1,16 @@
 /**
  * src/features/recommendations/hooks/useRecommendations.ts
  *
- * Generate personalized recommendations based on user preferences
- * and reading history (completed books have higher weight)
+ * Generate personalized recommendations using slot-based allocation:
+ * - 6 slots: Comfort picks (high author/narrator affinity)
+ * - 5 slots: Genre exploration (matching genres, new-to-you authors)
+ * - 2 slots: Narrator gateway (loved narrators, unfamiliar authors)
+ * - 2 slots: Wild cards (zero overlap with history, genre match only)
+ *
+ * Features:
+ * - Temporal decay: <6mo = 1.0x, 6-18mo = 0.7x, >18mo = 0.4x
+ * - Progress state machine: eligible, sampled, abandoned, active, finished
+ * - Abandonment penalty: -0.3x per abandoned book (max -0.9x)
  */
 
 import { useMemo, useState, useEffect } from 'react';
@@ -12,21 +20,23 @@ import { useMyLibraryStore } from '@/features/library';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { getGenres, getAuthorName, getNarratorName, getSeriesName, getDuration } from '@/shared/utils/metadata';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
-import { useDismissedItemsStore, useDismissedIds } from '../stores/dismissedItemsStore';
+import { useDismissedIds } from '../stores/dismissedItemsStore';
+import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
+import { Mood } from '@/features/mood-discovery/types';
+
+// === TYPES ===
 
 interface ReadHistoryStats {
   totalBooksRead: number;
-  favoriteAuthors: { name: string; count: number }[];
-  favoriteNarrators: { name: string; count: number }[];
-  favoriteGenres: { name: string; count: number }[];
-  // Source attribution for "Because you finished X" titles
+  favoriteAuthors: { name: string; count: number; weightedCount: number }[];
+  favoriteNarrators: { name: string; count: number; weightedCount: number }[];
+  favoriteGenres: { name: string; count: number; weightedCount: number }[];
   mostRecentFinished?: {
     id: string;
     title: string;
     author: string;
     finishedAt: number;
   };
-  // Currently listening for "More like X" titles
   currentlyListening?: Array<{
     id: string;
     title: string;
@@ -34,20 +44,25 @@ interface ReadHistoryStats {
   }>;
 }
 
-interface ListeningHistoryStats {
-  totalBooksInProgress: number;
-  listeningAuthors: { name: string; count: number }[];
-  listeningNarrators: { name: string; count: number }[];
-  listeningGenres: { name: string; count: number }[];
+interface AbandonedBook {
+  bookId: string;
+  author: string;
+  progress: number;
+  lastPlayedAt: string;
+  daysSincePlay: number;
 }
+
+type ProgressState = 'eligible' | 'sampled' | 'abandoned' | 'active' | 'finished';
+
+type SlotType = 'comfort' | 'genre_exploration' | 'narrator_gateway' | 'wild_card';
 
 interface ScoredItem {
   item: LibraryItem;
   score: number;
   reasons: string[];
+  slotType: SlotType;
 }
 
-// Source attribution for personalized row titles
 export interface RecommendationSourceAttribution {
   itemId: string;
   itemTitle: string;
@@ -60,8 +75,241 @@ export interface RecommendationGroup {
   sourceAttribution?: RecommendationSourceAttribution;
 }
 
-export function useRecommendations(allItems: LibraryItem[], limit: number = 20) {
-  // Select individual properties to avoid infinite re-render loop from store object reference changes
+// === SLOT CONFIGURATION ===
+
+const SLOT_CONFIG = {
+  comfort: 6,
+  genre_exploration: 5,
+  narrator_gateway: 2,
+  wild_card: 2,
+} as const;
+
+// === PROGRESS STATE MACHINE ===
+
+function getProgressState(
+  item: LibraryItem,
+  userBooksMap: Map<string, { progress: number; lastPlayedAt: string | null }>
+): ProgressState {
+  const userProgress = item.userMediaProgress;
+  const progress = userProgress?.progress || 0;
+  const isFinished = userProgress?.isFinished === true || progress >= 0.95;
+
+  if (isFinished) return 'finished';
+
+  // Check local user_books for last played info
+  const localData = userBooksMap.get(item.id);
+  const lastPlayedAt = localData?.lastPlayedAt;
+
+  let daysSincePlay = 0;
+  if (lastPlayedAt) {
+    const lastPlayed = new Date(lastPlayedAt);
+    daysSincePlay = Math.floor((Date.now() - lastPlayed.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  // Active: reading now (>30% or recently played)
+  if (progress > 0.30) return 'active';
+  if (progress > 0 && daysSincePlay < 14) return 'active';
+
+  // Abandoned: started but stale (5-30%, >90 days)
+  if (progress >= 0.05 && progress < 0.30 && daysSincePlay > 90) return 'abandoned';
+
+  // Sampled: barely touched and forgotten (<2%, >30 days)
+  if (progress > 0 && progress < 0.02 && daysSincePlay > 30) return 'sampled';
+
+  // Still active if any progress
+  if (progress > 0) return 'active';
+
+  return 'eligible';
+}
+
+// === POOL BUILDERS ===
+
+interface PoolContext {
+  availableItems: LibraryItem[];
+  authorAffinities: Map<string, number>;
+  narratorAffinities: Map<string, number>;
+  genreAffinities: Map<string, number>;
+  knownAuthors: Set<string>;
+  knownNarrators: Set<string>;
+  topGenres: string[];
+  authorPenalties: Map<string, number>;
+  preferredLength: string;
+  prefersSeries: boolean | null;
+}
+
+function buildComfortPool(ctx: PoolContext, limit: number): ScoredItem[] {
+  const scored: ScoredItem[] = [];
+
+  for (const item of ctx.availableItems) {
+    const author = getAuthorName(item).toLowerCase();
+    const narrator = getNarratorName(item).toLowerCase();
+
+    const authorAffinity = ctx.authorAffinities.get(author) || 0;
+    const narratorAffinity = ctx.narratorAffinities.get(narrator) || 0;
+
+    // Must have author OR narrator affinity for comfort picks
+    if (authorAffinity === 0 && narratorAffinity === 0) continue;
+
+    let score = 0;
+    const reasons: string[] = [];
+
+    // Author affinity (primary signal for comfort)
+    if (authorAffinity > 0) {
+      score += 50 + Math.min(authorAffinity * 10, 50); // 50-100 range
+      reasons.push(`More by ${getAuthorName(item)}`);
+    }
+
+    // Narrator affinity (secondary signal)
+    if (narratorAffinity > 0) {
+      score += 30 + Math.min(narratorAffinity * 8, 40); // 30-70 range
+      if (!reasons.length) reasons.push(`Narrated by ${getNarratorName(item)}`);
+    }
+
+    // Apply abandonment penalty
+    const penalty = ctx.authorPenalties.get(author) || 0;
+    if (penalty > 0) {
+      score *= (1 - Math.min(penalty, 0.9));
+    }
+
+    scored.push({ item, score, reasons, slotType: 'comfort' });
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit * 2); // Return extra for dedup
+}
+
+function buildGenreExplorationPool(ctx: PoolContext, limit: number): ScoredItem[] {
+  const scored: ScoredItem[] = [];
+
+  for (const item of ctx.availableItems) {
+    const author = getAuthorName(item).toLowerCase();
+    const genres = getGenres(item);
+
+    // Skip if we already know this author (genre exploration = new authors)
+    if (ctx.knownAuthors.has(author)) continue;
+
+    // Must have genre match
+    const matchingGenres = genres.filter(g =>
+      ctx.topGenres.some(tg => g.toLowerCase().includes(tg) || tg.includes(g.toLowerCase()))
+    );
+    if (matchingGenres.length === 0) continue;
+
+    let score = 0;
+    const reasons: string[] = [];
+
+    // Genre affinity score
+    for (const genre of genres) {
+      const affinity = ctx.genreAffinities.get(genre.toLowerCase()) || 0;
+      if (affinity > 0) {
+        score += Math.min(affinity * 5, 30);
+      }
+    }
+
+    if (matchingGenres.length > 0) {
+      score += matchingGenres.length * 20;
+      reasons.push(`Explore ${matchingGenres[0]}`);
+    }
+
+    // Bonus for new author
+    score += 15;
+    reasons.push(`Discover ${getAuthorName(item)}`);
+
+    scored.push({ item, score, reasons, slotType: 'genre_exploration' });
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit * 2);
+}
+
+function buildNarratorGatewayPool(ctx: PoolContext, limit: number): ScoredItem[] {
+  const scored: ScoredItem[] = [];
+
+  // Get top narrators (by affinity)
+  const topNarrators = Array.from(ctx.narratorAffinities.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name]) => name);
+
+  for (const item of ctx.availableItems) {
+    const author = getAuthorName(item).toLowerCase();
+    const narrator = getNarratorName(item).toLowerCase();
+    const genres = getGenres(item);
+
+    // Must be narrated by someone we love
+    if (!topNarrators.includes(narrator)) continue;
+
+    // Must be an author we DON'T know
+    if (ctx.knownAuthors.has(author)) continue;
+
+    // Must have some genre overlap
+    const hasGenreOverlap = genres.some(g =>
+      ctx.topGenres.some(tg => g.toLowerCase().includes(tg) || tg.includes(g.toLowerCase()))
+    );
+    if (!hasGenreOverlap) continue;
+
+    const narratorAffinity = ctx.narratorAffinities.get(narrator) || 0;
+    const score = 60 + Math.min(narratorAffinity * 10, 40); // 60-100 range
+
+    scored.push({
+      item,
+      score,
+      reasons: [`${getNarratorName(item)} narrates new author ${getAuthorName(item)}`],
+      slotType: 'narrator_gateway',
+    });
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit * 2);
+}
+
+function buildWildCardPool(ctx: PoolContext, limit: number): ScoredItem[] {
+  const scored: ScoredItem[] = [];
+
+  for (const item of ctx.availableItems) {
+    const author = getAuthorName(item).toLowerCase();
+    const narrator = getNarratorName(item).toLowerCase();
+    const genres = getGenres(item);
+    const duration = getDuration(item);
+
+    // Must have ZERO overlap with known authors/narrators
+    if (ctx.knownAuthors.has(author)) continue;
+    if (ctx.knownNarrators.has(narrator)) continue;
+
+    // Must have genre match (so it's not completely random)
+    const hasGenreMatch = genres.some(g =>
+      ctx.topGenres.some(tg => g.toLowerCase().includes(tg) || tg.includes(g.toLowerCase()))
+    );
+    if (!hasGenreMatch) continue;
+
+    let score = 50; // Base score for wild cards
+    const reasons: string[] = ['Something different'];
+
+    // Prefer medium-length books (8-15 hours) for wild cards
+    const hours = duration / 3600;
+    if (hours >= 8 && hours <= 15) {
+      score += 20;
+    }
+
+    // Prefer first-in-series for wild cards (low commitment if you don't like it)
+    const series = getSeriesName(item);
+    if (!series) {
+      score += 10; // Standalone bonus
+      reasons.push('Standalone');
+    }
+
+    scored.push({ item, score, reasons, slotType: 'wild_card' });
+  }
+
+  // Shuffle the top candidates for variety
+  const topCandidates = scored.sort((a, b) => b.score - a.score).slice(0, limit * 3);
+  for (let i = topCandidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [topCandidates[i], topCandidates[j]] = [topCandidates[j], topCandidates[i]];
+  }
+
+  return topCandidates.slice(0, limit * 2);
+}
+
+// === MAIN HOOK ===
+
+export function useRecommendations(allItems: LibraryItem[], limit: number = 15) {
   const favoriteGenres = usePreferencesStore((s) => s.favoriteGenres);
   const favoriteAuthors = usePreferencesStore((s) => s.favoriteAuthors);
   const favoriteNarrators = usePreferencesStore((s) => s.favoriteNarrators);
@@ -70,407 +318,312 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
   const moods = usePreferencesStore((s) => s.moods);
   const hasCompletedOnboarding = usePreferencesStore((s) => s.hasCompletedOnboarding);
 
-  const libraryIds = useMyLibraryStore((s) => s.libraryIds);
+  // Get active mood session (from Browse mood quiz) - this takes priority
+  const activeSession = useActiveSession();
+  const sessionMood = activeSession?.mood || null;
 
-  // Get dismissed items to filter from recommendations
+  const libraryIds = useMyLibraryStore((s) => s.libraryIds);
   const dismissedIds = useDismissedIds();
 
-  // Load read history stats for weighted scoring (finished books from SQLite)
+  // Load data from SQLite
   const [historyStats, setHistoryStats] = useState<ReadHistoryStats | null>(null);
   const [finishedBookIds, setFinishedBookIds] = useState<Set<string>>(new Set());
+  const [abandonedBooks, setAbandonedBooks] = useState<AbandonedBook[]>([]);
+  const [userBooksMap, setUserBooksMap] = useState<Map<string, { progress: number; lastPlayedAt: string | null }>>(new Map());
 
   useEffect(() => {
-    // Load finished books stats from SQLite read_history table
+    // Load history stats with temporal weighting
     sqliteCache.getReadHistoryStats().then(setHistoryStats).catch(() => {});
+
     // Load finished book IDs for series filtering
     sqliteCache.getFinishedUserBooks().then(books => {
       setFinishedBookIds(new Set(books.map(b => b.bookId)));
+
+      // Also build user books map for progress state machine
+      const map = new Map<string, { progress: number; lastPlayedAt: string | null }>();
+      books.forEach(b => {
+        map.set(b.bookId, { progress: b.progress, lastPlayedAt: b.lastPlayedAt });
+      });
+      setUserBooksMap(map);
     }).catch(() => {});
+
+    // Load in-progress books for user books map
+    sqliteCache.getInProgressUserBooks().then(books => {
+      setUserBooksMap(prev => {
+        const map = new Map(prev);
+        books.forEach(b => {
+          map.set(b.bookId, { progress: b.progress, lastPlayedAt: b.lastPlayedAt });
+        });
+        return map;
+      });
+    }).catch(() => {});
+
+    // Load abandoned books for penalty calculation
+    sqliteCache.getAbandonedBooks().then(setAbandonedBooks).catch(() => {});
   }, []);
 
-  // Build listening stats directly from library items (more reliable than SQLite user_books)
-  // This captures in-progress books with their metadata
-  const listeningStats = useMemo((): ListeningHistoryStats | null => {
-    if (!allItems.length) return null;
+  // Build author penalties from abandoned books
+  const authorPenalties = useMemo(() => {
+    const penalties = new Map<string, number>();
+    for (const book of abandonedBooks) {
+      const author = book.author.toLowerCase();
+      const current = penalties.get(author) || 0;
+      penalties.set(author, current + 0.3);
+    }
+    return penalties;
+  }, [abandonedBooks]);
 
-    const authorCounts = new Map<string, number>();
-    const narratorCounts = new Map<string, number>();
-    const genreCounts = new Map<string, number>();
-    let totalInProgress = 0;
+  // Build known authors/narrators from history
+  const { knownAuthors, knownNarrators } = useMemo(() => {
+    const authors = new Set<string>();
+    const narrators = new Set<string>();
 
-    for (const item of allItems) {
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      const isItemFinished = (item as any).userMediaProgress?.isFinished === true || progress >= 0.95;
-
-      // Only count in-progress books (started but not finished)
-      if (progress > 0 && !isItemFinished) {
-        totalInProgress++;
-
-        const author = getAuthorName(item);
-        const narrator = getNarratorName(item);
-        const genres = getGenres(item);
-
-        if (author) {
-          authorCounts.set(author.toLowerCase(), (authorCounts.get(author.toLowerCase()) || 0) + 1);
-        }
-        if (narrator) {
-          narratorCounts.set(narrator.toLowerCase(), (narratorCounts.get(narrator.toLowerCase()) || 0) + 1);
-        }
-        for (const genre of genres) {
-          genreCounts.set(genre.toLowerCase(), (genreCounts.get(genre.toLowerCase()) || 0) + 1);
-        }
-      }
+    if (historyStats) {
+      historyStats.favoriteAuthors.forEach(a => authors.add(a.name.toLowerCase()));
+      historyStats.favoriteNarrators.forEach(n => narrators.add(n.name.toLowerCase()));
     }
 
-    if (totalInProgress === 0) return null;
+    // Also add from in-progress items
+    allItems.forEach(item => {
+      const progress = item.userMediaProgress?.progress || 0;
+      if (progress > 0.1) {
+        const author = getAuthorName(item).toLowerCase();
+        const narrator = getNarratorName(item).toLowerCase();
+        if (author) authors.add(author);
+        if (narrator) narrators.add(narrator);
+      }
+    });
 
-    // Convert to sorted arrays
-    const listeningAuthors = Array.from(authorCounts.entries())
+    return { knownAuthors: authors, knownNarrators: narrators };
+  }, [historyStats, allItems]);
+
+  // Build affinity maps (using weighted counts from temporal decay)
+  const affinities = useMemo(() => {
+    const authorAffinities = new Map<string, number>();
+    const narratorAffinities = new Map<string, number>();
+    const genreAffinities = new Map<string, number>();
+
+    if (historyStats) {
+      historyStats.favoriteAuthors.forEach(a => {
+        authorAffinities.set(a.name.toLowerCase(), a.weightedCount);
+      });
+      historyStats.favoriteNarrators.forEach(n => {
+        narratorAffinities.set(n.name.toLowerCase(), n.weightedCount);
+      });
+      historyStats.favoriteGenres.forEach(g => {
+        genreAffinities.set(g.name.toLowerCase(), g.weightedCount);
+      });
+    }
+
+    // Add preference-based affinities
+    favoriteAuthors.forEach(a => {
+      const key = a.toLowerCase();
+      authorAffinities.set(key, (authorAffinities.get(key) || 0) + 2);
+    });
+    favoriteNarrators.forEach(n => {
+      const key = n.toLowerCase();
+      narratorAffinities.set(key, (narratorAffinities.get(key) || 0) + 2);
+    });
+    favoriteGenres.forEach(g => {
+      const key = g.toLowerCase();
+      genreAffinities.set(key, (genreAffinities.get(key) || 0) + 2);
+    });
+
+    // Apply mood-based genre boosts from preferences store (legacy)
+    // Only apply if no active session mood (session takes priority)
+    if (!sessionMood) {
+      moods.forEach(mood => {
+        const moodGenres = MOOD_GENRE_MAP[mood] || [];
+        moodGenres.forEach(genre => {
+          const key = genre.toLowerCase();
+          // Mood boost is significant (+3) to influence recommendations
+          genreAffinities.set(key, (genreAffinities.get(key) || 0) + 3);
+        });
+      });
+    }
+
+    // Apply session mood boosts (from Browse mood quiz) - HIGHER PRIORITY
+    // Session mood gives stronger boost (+5) since it's "what you want right now"
+    if (sessionMood) {
+      const sessionMoodGenres = SESSION_MOOD_GENRE_MAP[sessionMood] || [];
+      sessionMoodGenres.forEach(genre => {
+        const key = genre.toLowerCase();
+        // Session mood boost is stronger (+5) - this is the user's current intent
+        genreAffinities.set(key, (genreAffinities.get(key) || 0) + 5);
+      });
+    }
+
+    return { authorAffinities, narratorAffinities, genreAffinities };
+  }, [historyStats, favoriteAuthors, favoriteNarrators, favoriteGenres, moods, sessionMood]);
+
+  // Get top genres for filtering
+  const topGenres = useMemo(() => {
+    const genres = Array.from(affinities.genreAffinities.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+      .slice(0, 5)
+      .map(([name]) => name);
+    return genres;
+  }, [affinities.genreAffinities]);
 
-    const listeningNarrators = Array.from(narratorCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-
-    const listeningGenres = Array.from(genreCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-
-    return {
-      totalBooksInProgress: totalInProgress,
-      listeningAuthors,
-      listeningNarrators,
-      listeningGenres,
-    };
-  }, [allItems]);
-
+  // Main recommendations logic
   const recommendations = useMemo(() => {
     if (!allItems.length) return [];
 
-    // Helper to check if a book is finished
+    // Helpers for series filtering
     const isFinished = (bookId: string): boolean => {
       if (finishedBookIds.has(bookId)) return true;
       const item = allItems.find(i => i.id === bookId);
       if (!item) return false;
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      const serverFinished = (item as any).userMediaProgress?.isFinished === true;
-      return progress >= 0.95 || serverFinished;
+      const progress = item.userMediaProgress?.progress || 0;
+      return progress >= 0.95 || item.userMediaProgress?.isFinished === true;
     };
 
-    // Helper to check if a book has been started
     const hasStarted = (bookId: string): boolean => {
       const item = allItems.find(i => i.id === bookId);
       if (!item) return false;
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      return progress > 0;
+      return (item.userMediaProgress?.progress || 0) > 0;
     };
 
-    // Create series filter - only recommend first book or next book in series
-    const isSeriesAppropriate = createSeriesFilter({
-      allItems,
-      isFinished,
-      hasStarted,
-    });
+    const isSeriesAppropriate = createSeriesFilter({ allItems, isFinished, hasStarted });
 
-    // Filter out items already in user's library AND items with any progress (listened to)
+    // Filter available items using progress state machine
     const availableItems = allItems.filter(item => {
-      // Exclude items in user's library (downloaded/saved)
+      // Exclude items in user's library
       if (libraryIds.includes(item.id)) return false;
-      // Exclude items the user has started listening to
-      const progress = (item as any).userMediaProgress?.progress || 0;
-      if (progress > 0) return false;
-      // Exclude middle-of-series books (only show first book or next book)
-      if (!isSeriesAppropriate(item)) return false;
-      // Exclude dismissed items ("Not Interested")
+
+      // Exclude dismissed items
       if (dismissedIds.includes(item.id)) return false;
+
+      // Check progress state
+      const state = getProgressState(item, userBooksMap);
+      if (state === 'finished' || state === 'active') return false;
+      // 'eligible', 'sampled', and 'abandoned' can be recommended
+
+      // Exclude middle-of-series books
+      if (!isSeriesAppropriate(item)) return false;
+
       return true;
     });
 
-    // Create lookup maps for history-based scoring (finished books)
-    const historyAuthorWeights = new Map<string, number>();
-    const historyNarratorWeights = new Map<string, number>();
-    const historyGenreWeights = new Map<string, number>();
-
-    if (historyStats) {
-      historyStats.favoriteAuthors.forEach(({ name, count }) => {
-        historyAuthorWeights.set(name.toLowerCase(), count);
-      });
-      historyStats.favoriteNarrators.forEach(({ name, count }) => {
-        historyNarratorWeights.set(name.toLowerCase(), count);
-      });
-      historyStats.favoriteGenres.forEach(({ name, count }) => {
-        historyGenreWeights.set(name.toLowerCase(), count);
-      });
-    }
-
-    // Create lookup maps for listening history (in-progress books)
-    // These get slightly lower weights than finished books
-    const listeningAuthorWeights = new Map<string, number>();
-    const listeningNarratorWeights = new Map<string, number>();
-    const listeningGenreWeights = new Map<string, number>();
-
-    if (listeningStats) {
-      listeningStats.listeningAuthors.forEach(({ name, count }) => {
-        listeningAuthorWeights.set(name.toLowerCase(), count);
-      });
-      listeningStats.listeningNarrators.forEach(({ name, count }) => {
-        listeningNarratorWeights.set(name.toLowerCase(), count);
-      });
-      listeningStats.listeningGenres.forEach(({ name, count }) => {
-        listeningGenreWeights.set(name.toLowerCase(), count);
-      });
-    }
-
-    // Score each item
-    const scoredItems: ScoredItem[] = availableItems.map(item => {
-      let score = 0;
-      const reasons: string[] = [];
-
-      const genres = getGenres(item);
-      const author = getAuthorName(item);
-      const narrator = getNarratorName(item);
-      const series = getSeriesName(item);
-      const duration = getDuration(item);
-
-      // === READ HISTORY BOOSTING (highest priority - based on completed books) ===
-
-      // Author boost from read history (weight: 40 * multiplier based on times read)
-      const authorHistoryWeight = historyAuthorWeights.get(author.toLowerCase()) || 0;
-      if (authorHistoryWeight > 0) {
-        const boost = Math.min(40 + authorHistoryWeight * 10, 80); // Cap at 80
-        score += boost;
-        reasons.push(`More by ${author} (you've read ${authorHistoryWeight} of their books)`);
-      }
-
-      // Narrator boost from read history
-      const narratorHistoryWeight = historyNarratorWeights.get(narrator.toLowerCase()) || 0;
-      if (narratorHistoryWeight > 0) {
-        const boost = Math.min(30 + narratorHistoryWeight * 8, 60); // Cap at 60
-        score += boost;
-        if (!reasons.some(r => r.includes(narrator))) {
-          reasons.push(`Narrated by ${narrator} (${narratorHistoryWeight} books you've enjoyed)`);
-        }
-      }
-
-      // Genre boost from read history
-      let genreHistoryBoost = 0;
-      genres.forEach(g => {
-        const weight = historyGenreWeights.get(g.toLowerCase()) || 0;
-        if (weight > 0) {
-          genreHistoryBoost += Math.min(weight * 5, 25); // Cap per genre at 25
-        }
-      });
-      if (genreHistoryBoost > 0) {
-        score += Math.min(genreHistoryBoost, 50); // Total cap at 50
-        if (!reasons.some(r => r.includes('interest') || r.includes('read'))) {
-          reasons.push('Similar to books you\'ve finished');
-        }
-      }
-
-      // === LISTENING HISTORY BOOSTING (based on books currently being listened to) ===
-      // These get ~60% of the weight of finished books - still relevant but not as strong a signal
-
-      // Author boost from listening history (if not already boosted by finished books)
-      if (authorHistoryWeight === 0) {
-        const listeningAuthorWeight = listeningAuthorWeights.get(author.toLowerCase()) || 0;
-        if (listeningAuthorWeight > 0) {
-          const boost = Math.min(25 + listeningAuthorWeight * 6, 50); // Cap at 50 (60% of finished)
-          score += boost;
-          reasons.push(`More by ${author} (you're currently listening to their books)`);
-        }
-      }
-
-      // Narrator boost from listening history (if not already boosted)
-      if (narratorHistoryWeight === 0) {
-        const listeningNarratorWeight = listeningNarratorWeights.get(narrator.toLowerCase()) || 0;
-        if (listeningNarratorWeight > 0) {
-          const boost = Math.min(18 + listeningNarratorWeight * 5, 36); // Cap at 36 (60% of finished)
-          score += boost;
-          if (!reasons.some(r => r.includes(narrator))) {
-            reasons.push(`Narrated by ${narrator} (from your current listens)`);
-          }
-        }
-      }
-
-      // Genre boost from listening history
-      if (genreHistoryBoost === 0) {
-        let genreListeningBoost = 0;
-        genres.forEach(g => {
-          const weight = listeningGenreWeights.get(g.toLowerCase()) || 0;
-          if (weight > 0) {
-            genreListeningBoost += Math.min(weight * 3, 15); // Cap per genre at 15
-          }
-        });
-        if (genreListeningBoost > 0) {
-          score += Math.min(genreListeningBoost, 30); // Total cap at 30 (60% of finished)
-          if (!reasons.some(r => r.includes('listening') || r.includes('Similar'))) {
-            reasons.push('Similar to what you\'re currently listening to');
-          }
-        }
-      }
-
-      // === PREFERENCE-BASED SCORING ===
-
-      // Genre matching from preferences
-      const matchingGenres = genres.filter(g =>
-        favoriteGenres.some(fg =>
-          g.toLowerCase().includes(fg.toLowerCase()) ||
-          fg.toLowerCase().includes(g.toLowerCase())
-        )
-      );
-      if (matchingGenres.length > 0 && !reasons.some(r => r.includes('interest'))) {
-        score += matchingGenres.length * 30;
-        reasons.push(`Matches your interest in ${matchingGenres[0]}`);
-      }
-
-      // Author matching from preferences
-      if (favoriteAuthors.some(a =>
-        author.toLowerCase().includes(a.toLowerCase())
-      ) && !reasons.some(r => r.includes(author))) {
-        score += 25;
-        reasons.push(`By ${author}`);
-      }
-
-      // Narrator matching from preferences
-      if (favoriteNarrators.some(n =>
-        narrator.toLowerCase().includes(n.toLowerCase())
-      ) && !reasons.some(r => r.includes(narrator))) {
-        score += 20;
-        reasons.push(`Narrated by ${narrator}`);
-      }
-
-      // Series preference
-      if (prefersSeries !== null) {
-        const isSeries = !!series;
-        if (prefersSeries === isSeries) {
-          score += 10;
-          if (isSeries) reasons.push('Part of a series');
-        }
-      }
-
-      // Duration preference
-      const hours = duration / 3600;
-      if (preferredLength !== 'any') {
-        if (preferredLength === 'short' && hours <= 8) {
-          score += 10;
-        } else if (preferredLength === 'medium' && hours > 8 && hours <= 20) {
-          score += 10;
-        } else if (preferredLength === 'long' && hours > 20) {
-          score += 10;
-        }
-      }
-
-      // Mood matching
-      moods.forEach(mood => {
-        const moodGenres = MOOD_GENRE_MAP[mood] || [];
-        if (genres.some(g => moodGenres.some(mg =>
-          g.toLowerCase().includes(mg.toLowerCase())
-        ))) {
-          score += 15;
-          if (!reasons.some(r => r.includes('mood'))) {
-            reasons.push(`Great for ${mood.toLowerCase()} reading`);
-          }
-        }
-      });
-
-      // Small random factor for variety
-      score += Math.random() * 5;
-
-      return { item, score, reasons };
-    });
-
-    // Sort by score and return top items
-    return scoredItems
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
-  }, [allItems, favoriteGenres, favoriteAuthors, favoriteNarrators, prefersSeries, preferredLength, moods, libraryIds, limit, historyStats, listeningStats, finishedBookIds, dismissedIds]);
-
-  // Group recommendations by reason with source attribution
-  const groupedRecommendations = useMemo((): RecommendationGroup[] => {
-    const groups: Record<string, LibraryItem[]> = {
-      'Based on your reading history': [],
-      'Based on what you\'re listening to': [],
-      'Based on your genres': [],
-      'Authors you might like': [],
-      'Great narrators': [],
-      'Recommended for You': [], // Fallback for books with no specific reason
+    // Build pool context
+    const ctx: PoolContext = {
+      availableItems,
+      authorAffinities: affinities.authorAffinities,
+      narratorAffinities: affinities.narratorAffinities,
+      genreAffinities: affinities.genreAffinities,
+      knownAuthors,
+      knownNarrators,
+      topGenres,
+      authorPenalties,
+      preferredLength,
+      prefersSeries,
     };
 
-    recommendations.forEach(({ item, reasons }) => {
-      let grouped = false;
+    // Build pools
+    const comfortPool = buildComfortPool(ctx, SLOT_CONFIG.comfort);
+    const genrePool = buildGenreExplorationPool(ctx, SLOT_CONFIG.genre_exploration);
+    const narratorPool = buildNarratorGatewayPool(ctx, SLOT_CONFIG.narrator_gateway);
+    const wildCardPool = buildWildCardPool(ctx, SLOT_CONFIG.wild_card);
 
-      // Prioritize read history matches first
-      if (reasons.some(r => r.includes("you've read") || r.includes("you've finished") || r.includes("you've enjoyed"))) {
-        groups['Based on your reading history'].push(item);
-        grouped = true;
-      // Then listening history matches
-      } else if (reasons.some(r => r.includes("currently listening") || r.includes("current listens"))) {
-        groups['Based on what you\'re listening to'].push(item);
-        grouped = true;
-      } else if (reasons.some(r => r.includes('interest'))) {
-        groups['Based on your genres'].push(item);
-        grouped = true;
-      } else if (reasons.some(r => r.startsWith('By ') || r.startsWith('More by'))) {
-        groups['Authors you might like'].push(item);
-        grouped = true;
-      } else if (reasons.some(r => r.includes('Narrated'))) {
-        groups['Great narrators'].push(item);
-        grouped = true;
+    // Fill slots with deduplication
+    const seen = new Set<string>();
+    const result: ScoredItem[] = [];
+
+    // Comfort picks (6 slots)
+    for (const item of comfortPool) {
+      if (seen.has(item.item.id)) continue;
+      if (result.filter(r => r.slotType === 'comfort').length >= SLOT_CONFIG.comfort) break;
+      result.push(item);
+      seen.add(item.item.id);
+    }
+
+    // Genre exploration (5 slots)
+    for (const item of genrePool) {
+      if (seen.has(item.item.id)) continue;
+      if (result.filter(r => r.slotType === 'genre_exploration').length >= SLOT_CONFIG.genre_exploration) break;
+      result.push(item);
+      seen.add(item.item.id);
+    }
+
+    // Narrator gateway (2 slots)
+    for (const item of narratorPool) {
+      if (seen.has(item.item.id)) continue;
+      if (result.filter(r => r.slotType === 'narrator_gateway').length >= SLOT_CONFIG.narrator_gateway) break;
+      result.push(item);
+      seen.add(item.item.id);
+    }
+
+    // Wild cards (2 slots)
+    for (const item of wildCardPool) {
+      if (seen.has(item.item.id)) continue;
+      if (result.filter(r => r.slotType === 'wild_card').length >= SLOT_CONFIG.wild_card) break;
+      result.push(item);
+      seen.add(item.item.id);
+    }
+
+    // If we don't have enough, backfill from largest pools
+    while (result.length < limit && (comfortPool.length + genrePool.length > result.length)) {
+      for (const pool of [comfortPool, genrePool, narratorPool, wildCardPool]) {
+        for (const item of pool) {
+          if (!seen.has(item.item.id)) {
+            result.push(item);
+            seen.add(item.item.id);
+            break;
+          }
+        }
+        if (result.length >= limit) break;
       }
+    }
 
-      // Fallback: add ungrouped items to "Recommended for You"
-      if (!grouped) {
-        groups['Recommended for You'].push(item);
+    return result.slice(0, limit);
+  }, [allItems, finishedBookIds, libraryIds, dismissedIds, userBooksMap, affinities, knownAuthors, knownNarrators, topGenres, authorPenalties, preferredLength, prefersSeries, limit]);
+
+  // Group recommendations for display
+  const groupedRecommendations = useMemo((): RecommendationGroup[] => {
+    const groups: Record<string, LibraryItem[]> = {
+      'Comfort Picks': [],
+      'Explore New Authors': [],
+      'Narrator Gateway': [],
+      'Something Different': [],
+    };
+
+    recommendations.forEach(({ item, slotType }) => {
+      switch (slotType) {
+        case 'comfort':
+          groups['Comfort Picks'].push(item);
+          break;
+        case 'genre_exploration':
+          groups['Explore New Authors'].push(item);
+          break;
+        case 'narrator_gateway':
+          groups['Narrator Gateway'].push(item);
+          break;
+        case 'wild_card':
+          groups['Something Different'].push(item);
+          break;
       }
     });
 
-    // Build source attributions based on historyStats
     const sourceAttributions: Record<string, RecommendationSourceAttribution | undefined> = {};
 
-    // "Based on your reading history" -> most recently finished book
     if (historyStats?.mostRecentFinished) {
-      sourceAttributions['Based on your reading history'] = {
+      sourceAttributions['Comfort Picks'] = {
         itemId: historyStats.mostRecentFinished.id,
         itemTitle: historyStats.mostRecentFinished.title,
         type: 'finished',
       };
     }
 
-    // "Based on what you're listening to" -> first currently listening book
-    if (historyStats?.currentlyListening?.length) {
-      sourceAttributions['Based on what you\'re listening to'] = {
-        itemId: historyStats.currentlyListening[0].id,
-        itemTitle: historyStats.currentlyListening[0].title,
-        type: 'listening',
-      };
-    }
-
-    // "Based on your genres" -> top genre from history
     if (historyStats?.favoriteGenres?.length) {
-      sourceAttributions['Based on your genres'] = {
+      sourceAttributions['Explore New Authors'] = {
         itemId: '',
         itemTitle: historyStats.favoriteGenres[0].name,
         type: 'genre',
       };
     }
 
-    // "Authors you might like" -> top author from history
-    if (historyStats?.favoriteAuthors?.length) {
-      sourceAttributions['Authors you might like'] = {
-        itemId: '',
-        itemTitle: historyStats.favoriteAuthors[0].name,
-        type: 'author',
-      };
-    }
-
-    // "Great narrators" -> top narrator from history
     if (historyStats?.favoriteNarrators?.length) {
-      sourceAttributions['Great narrators'] = {
+      sourceAttributions['Narrator Gateway'] = {
         itemId: '',
         itemTitle: historyStats.favoriteNarrators[0].name,
         type: 'narrator',
@@ -490,14 +643,13 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 20) 
     recommendations: recommendations.map(r => r.item),
     scoredRecommendations: recommendations,
     groupedRecommendations,
-    // Enable recommendations if user has onboarded OR has any listening/reading history
     hasPreferences: hasCompletedOnboarding ||
       (historyStats?.totalBooksRead ?? 0) > 0 ||
-      (listeningStats?.totalBooksInProgress ?? 0) > 0,
+      recommendations.length > 0,
   };
 }
 
-// Map moods to genres
+// Map moods to genres (kept for backward compatibility with preferencesStore.moods)
 const MOOD_GENRE_MAP: Record<string, string[]> = {
   'Adventurous': ['adventure', 'action', 'thriller', 'fantasy', 'sci-fi'],
   'Relaxing': ['cozy', 'romance', 'slice of life', 'contemporary'],
@@ -507,4 +659,15 @@ const MOOD_GENRE_MAP: Record<string, string[]> = {
   'Romantic': ['romance', 'contemporary romance', 'historical romance'],
   'Educational': ['non-fiction', 'history', 'science', 'self-help', 'business'],
   'Funny': ['humor', 'comedy', 'satire', 'comedic'],
+};
+
+// Map session moods (from moodSessionStore) to genres
+// These are the 6 core moods from the mood discovery quiz
+const SESSION_MOOD_GENRE_MAP: Record<Mood, string[]> = {
+  'comfort': ['cozy', 'romance', 'slice of life', 'contemporary', 'feel-good', 'heartwarming'],
+  'thrills': ['thriller', 'mystery', 'horror', 'suspense', 'crime', 'action'],
+  'escape': ['fantasy', 'sci-fi', 'paranormal', 'urban fantasy', 'epic fantasy', 'space opera'],
+  'laughs': ['humor', 'comedy', 'satire', 'comedic', 'funny', 'lighthearted'],
+  'feels': ['literary', 'drama', 'emotional', 'contemporary', 'coming-of-age', 'family'],
+  'thinking': ['philosophy', 'non-fiction', 'history', 'science', 'literary', 'thought-provoking'],
 };

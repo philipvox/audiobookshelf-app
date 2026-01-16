@@ -20,7 +20,7 @@ import {
   TextInput,
   Dimensions,
 } from 'react-native';
-import { Search, X } from 'lucide-react-native';
+import { SearchIcon, CloseIcon } from '@/shared/components';
 import { Image } from 'expo-image';
 import Animated, {
   useSharedValue,
@@ -29,11 +29,18 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Helper to get book metadata
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
 import { getCoverUrl } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { logger } from '@/shared/utils/logger';
-import { wp, hp, moderateScale, spacing, radius, useThemeColors, useIsDarkMode } from '@/shared/theme';
+import { wp, hp, moderateScale, spacing, radius, useTheme } from '@/shared/theme';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
 import { SeriesHeartButton } from '@/shared/components';
 import { SeriesWithBooks } from '../types';
 
@@ -103,7 +110,8 @@ function formatTimeSince(lastUpdate?: number): string {
 }
 
 /**
- * Play button icon (simple white triangle, no circle)
+ * Play button icon (simple triangle, no circle)
+ * Always white for visibility on dark cover overlay
  */
 const PlayIcon = ({ size = 20 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -133,14 +141,14 @@ const SectionBadge = ({ title, textColor, bgColor }: { title: string; textColor:
 interface FannedSeriesCardProps {
   series: SeriesWithBooks;
   onPress: () => void;
-  themeColors: ReturnType<typeof useThemeColors>;
+  colors: ReturnType<typeof useTheme>['colors'];
   isDarkMode: boolean;
 }
 
 const FannedSeriesCard = React.memo(function FannedSeriesCard({
   series,
   onPress,
-  themeColors,
+  colors,
   isDarkMode,
 }: FannedSeriesCardProps) {
   // Get cover URLs for up to 5 books
@@ -208,10 +216,10 @@ const FannedSeriesCard = React.memo(function FannedSeriesCard({
       </View>
 
       {/* Series name */}
-      <Text style={[styles.fannedSeriesName, { color: themeColors.text }]} numberOfLines={2}>
+      <Text style={[styles.fannedSeriesName, { color: colors.text.primary }]} numberOfLines={2}>
         {series.name}
       </Text>
-      <Text style={[styles.fannedBookCount, { color: themeColors.textSecondary }]}>
+      <Text style={[styles.fannedBookCount, { color: colors.text.secondary }]}>
         {series.totalBooks} {series.totalBooks === 1 ? 'book' : 'books'}
       </Text>
     </TouchableOpacity>
@@ -230,10 +238,9 @@ interface BooksListProps {
 }
 
 interface ThemedColors {
-  text: string;
-  textSecondary: string;
-  textTertiary: string;
-  background: string;
+  text: { primary: string; secondary: string; tertiary: string };
+  background: { primary: string; secondary: string; elevated: string };
+  border: { default: string };
 }
 
 const BookRow = ({
@@ -247,21 +254,19 @@ const BookRow = ({
   onDetailsPress: () => void;
   themeColors: ThemedColors;
 }) => {
-  const metadata = book.media?.metadata as any;
+  const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Unknown';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || '';
 
   // Get lastUpdate from various possible locations in the API response
   // AudiobookShelf returns timestamps in seconds (Unix timestamp)
-  const bookAny = book as any;
   const rawLastUpdate =
-    bookAny.progressLastUpdate ||
-    bookAny.userMediaProgress?.lastUpdate ||
-    bookAny.mediaProgress?.lastUpdate ||
-    bookAny.recentEpisode?.progress?.lastUpdate;
+    book.userMediaProgress?.lastUpdate ||
+    book.mediaProgress?.lastUpdate;
 
   // Debug: log the book data to see what fields exist (only first book to reduce noise)
   if (__DEV__ && title === 'This Inevitable Ruin') {
+    const bookAny = book as unknown as Record<string, unknown>;
     logger.debug('[BookRow] Book:', title);
     logger.debug('[BookRow] rawLastUpdate:', rawLastUpdate, 'type:', typeof rawLastUpdate);
     logger.debug('[BookRow] progressLastUpdate:', bookAny.progressLastUpdate);
@@ -322,12 +327,12 @@ const BookRow = ({
         accessibilityLabel={`${title} by ${author}. Tap for details.`}
         accessibilityRole="button"
       >
-        {author ? <Text style={[styles.author, { color: themeColors.textSecondary }]}>{author}</Text> : null}
+        {author ? <Text style={[styles.author, { color: themeColors.text.secondary }]}>{author}</Text> : null}
         <View style={styles.titleRow}>
-          <Text style={[styles.bookTitle, { color: themeColors.text }]} numberOfLines={1}>
+          <Text style={[styles.bookTitle, { color: themeColors.text.primary }]} numberOfLines={1}>
             {title}
           </Text>
-          {timeSince ? <Text style={[styles.timeSince, { color: themeColors.textTertiary }]}>{timeSince}</Text> : null}
+          {timeSince ? <Text style={[styles.timeSince, { color: themeColors.text.tertiary }]}>{timeSince}</Text> : null}
         </View>
       </TouchableOpacity>
     </View>
@@ -335,14 +340,14 @@ const BookRow = ({
 };
 
 export function BooksList({ books, onBookPress, maxItems = 5 }: BooksListProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   if (books.length === 0) return null;
 
   const displayBooks = books.slice(0, maxItems);
 
   return (
     <View style={styles.section}>
-      <SectionBadge title="Books" textColor={themeColors.background} bgColor={themeColors.text} />
+      <SectionBadge title="Books" textColor={colors.background.primary} bgColor={colors.text.primary} />
       <View style={styles.list}>
         {displayBooks.map((book) => (
           <BookRow
@@ -350,7 +355,7 @@ export function BooksList({ books, onBookPress, maxItems = 5 }: BooksListProps) 
             book={book}
             onCoverPress={() => onBookPress(book)}
             onDetailsPress={() => onBookPress(book)}
-            themeColors={themeColors}
+            themeColors={colors}
           />
         ))}
       </View>
@@ -428,11 +433,11 @@ const DownloadedSeriesRow = ({
       accessibilityRole="button"
     >
       <View style={styles.progressCount}>
-        <Text style={[styles.progressText, { color: themeColors.textSecondary }]}>{progressText}</Text>
+        <Text style={[styles.progressText, { color: themeColors.text.secondary }]}>{progressText}</Text>
       </View>
       <View style={styles.seriesContent}>
-        {author ? <Text style={[styles.author, { color: themeColors.textSecondary }]}>{author}</Text> : null}
-        <Text style={[styles.seriesTitle, { color: themeColors.text }]} numberOfLines={1}>
+        {author ? <Text style={[styles.author, { color: themeColors.text.secondary }]}>{author}</Text> : null}
+        <Text style={[styles.seriesTitle, { color: themeColors.text.primary }]} numberOfLines={1}>
           {series.name}
         </Text>
       </View>
@@ -464,11 +469,11 @@ const SeriesRowWithProgress = ({
       accessibilityRole="button"
     >
       <View style={styles.progressCount}>
-        <Text style={[styles.progressText, { color: themeColors.textSecondary }]}>{progressText}</Text>
+        <Text style={[styles.progressText, { color: themeColors.text.secondary }]}>{progressText}</Text>
       </View>
       <View style={styles.seriesContent}>
-        {author ? <Text style={[styles.author, { color: themeColors.textSecondary }]}>{author}</Text> : null}
-        <Text style={[styles.seriesTitle, { color: themeColors.text }]} numberOfLines={1}>
+        {author ? <Text style={[styles.author, { color: themeColors.text.secondary }]}>{author}</Text> : null}
+        <Text style={[styles.seriesTitle, { color: themeColors.text.primary }]} numberOfLines={1}>
           {series.name}
         </Text>
       </View>
@@ -498,7 +503,7 @@ export function TabbedHomeContent({
   const [activeTab, setActiveTab] = useState<HomeTab>('inProgress');
   const [contentKey, setContentKey] = useState(0);
   const [, setTimeRefresh] = useState(0); // Force re-render for time updates
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
 
   // Live update the "time ago" display every 30 seconds
@@ -531,7 +536,7 @@ export function TabbedHomeContent({
     if (!searchQuery.trim()) return items;
     const query = searchQuery.toLowerCase();
     return items.filter(book => {
-      const metadata = book.media?.metadata as any;
+      const metadata = getBookMetadata(book);
       const title = metadata?.title?.toLowerCase() || '';
       const author = metadata?.authorName?.toLowerCase() || metadata?.authors?.[0]?.name?.toLowerCase() || '';
       return title.includes(query) || author.includes(query);
@@ -569,7 +574,7 @@ export function TabbedHomeContent({
             <Text
               style={[
                 styles.tabLabel,
-                { color: activeTab === tab ? themeColors.text : themeColors.textTertiary },
+                { color: activeTab === tab ? colors.text.primary : colors.text.tertiary },
               ]}
             >
               {HOME_TAB_LABELS[tab]}
@@ -580,12 +585,12 @@ export function TabbedHomeContent({
 
       {/* Search bar - minimal line style */}
       {onSearchChange && (
-        <View style={[styles.searchContainer, { borderBottomColor: themeColors.border }]}>
-          <Search size={wp(3.5)} color={themeColors.textTertiary} strokeWidth={1.5} />
+        <View style={[styles.searchContainer, { borderBottomColor: colors.border.default }]}>
+          <SearchIcon size={wp(3.5)} color={colors.text.tertiary} />
           <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
+            style={[styles.searchInput, { color: colors.text.primary }]}
             placeholder="Search..."
-            placeholderTextColor={themeColors.textTertiary}
+            placeholderTextColor={colors.text.tertiary}
             value={searchQuery}
             onChangeText={onSearchChange}
             autoCapitalize="none"
@@ -594,7 +599,7 @@ export function TabbedHomeContent({
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <X size={wp(3.5)} color={themeColors.textTertiary} strokeWidth={1.5} />
+              <CloseIcon size={wp(3.5)} color={colors.text.tertiary} />
             </TouchableOpacity>
           )}
         </View>
@@ -611,14 +616,14 @@ export function TabbedHomeContent({
                   book={book}
                   onCoverPress={() => onCoverPress(book)}
                   onDetailsPress={() => onDetailsPress(book)}
-                  themeColors={themeColors}
+                  themeColors={colors}
                 />
               </FadeInRow>
             ))}
           </View>
         ) : (
           <FadeInRow key={`${contentKey}-empty-books`} delay={0}>
-            <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>
+            <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>
               No {HOME_TAB_LABELS[activeTab].toLowerCase()} books
             </Text>
           </FadeInRow>
@@ -626,7 +631,7 @@ export function TabbedHomeContent({
 
         {/* Series section header */}
         <FadeInRow key={`${contentKey}-series-header`} delay={displayBooks.length * 30 + 30}>
-          <Text style={[styles.seriesSectionTitle, { color: themeColors.text }]}>
+          <Text style={[styles.seriesSectionTitle, { color: colors.text.primary }]}>
             Series
           </Text>
         </FadeInRow>
@@ -640,7 +645,7 @@ export function TabbedHomeContent({
                   key={item.id}
                   series={item}
                   onPress={() => onSeriesPress(item)}
-                  themeColors={themeColors}
+                  colors={colors}
                   isDarkMode={isDarkMode}
                 />
               ))}
@@ -648,7 +653,7 @@ export function TabbedHomeContent({
           </FadeInRow>
         ) : (
           <FadeInRow key={`${contentKey}-empty-series`} delay={displayBooks.length * 30 + 60}>
-            <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>
+            <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>
               No {HOME_TAB_LABELS[activeTab].toLowerCase()} series
             </Text>
           </FadeInRow>
@@ -673,11 +678,11 @@ interface SeriesListProps {
  */
 function getSeriesAuthor(series: SeriesWithBooks): string {
   if (series.books.length === 0) return '';
-  const metadata = series.books[0].media?.metadata as any;
+  const metadata = getBookMetadata(series.books[0]);
   if (!metadata) return '';
   if (metadata.authorName) return metadata.authorName;
   if (metadata.authors?.length > 0) {
-    return metadata.authors.map((a: any) => a.name).join(', ');
+    return metadata.authors.map((a) => a.name).join(', ');
   }
   return '';
 }
@@ -685,11 +690,11 @@ function getSeriesAuthor(series: SeriesWithBooks): string {
 const SeriesRow = ({
   series,
   onPress,
-  themeColors,
+  colors,
 }: {
   series: SeriesWithBooks;
   onPress: () => void;
-  themeColors: ThemedColors;
+  colors: ThemedColors;
 }) => {
   const author = getSeriesAuthor(series);
   const progressText = `${series.booksCompleted}/${series.totalBooks}`;
@@ -704,13 +709,13 @@ const SeriesRow = ({
     >
       {/* Progress count */}
       <View style={styles.progressCount}>
-        <Text style={[styles.progressText, { color: themeColors.textSecondary }]}>{progressText}</Text>
+        <Text style={[styles.progressText, { color: colors.text.secondary }]}>{progressText}</Text>
       </View>
 
       {/* Content */}
       <View style={styles.seriesContent}>
-        {author ? <Text style={[styles.author, { color: themeColors.textSecondary }]}>{author}</Text> : null}
-        <Text style={[styles.seriesTitle, { color: themeColors.text }]} numberOfLines={1}>
+        {author ? <Text style={[styles.author, { color: colors.text.secondary }]}>{author}</Text> : null}
+        <Text style={[styles.seriesTitle, { color: colors.text.primary }]} numberOfLines={1}>
           {series.name}
         </Text>
       </View>
@@ -719,21 +724,21 @@ const SeriesRow = ({
 };
 
 export function SeriesList({ series, onSeriesPress, maxItems = 5 }: SeriesListProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   if (series.length === 0) return null;
 
   const displaySeries = series.slice(0, maxItems);
 
   return (
     <View style={styles.section}>
-      <SectionBadge title="Series" textColor={themeColors.background} bgColor={themeColors.text} />
+      <SectionBadge title="Series" textColor={colors.background.primary} bgColor={colors.text.primary} />
       <View style={styles.list}>
         {displaySeries.map((item) => (
           <SeriesRow
             key={item.id}
             series={item}
             onPress={() => onSeriesPress(item)}
-            themeColors={themeColors}
+            colors={colors}
           />
         ))}
       </View>

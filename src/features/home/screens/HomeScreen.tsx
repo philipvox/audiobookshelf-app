@@ -17,7 +17,6 @@ import {
   Text,
   StyleSheet,
   StatusBar,
-  RefreshControl,
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
@@ -26,16 +25,29 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Headphones, BookOpen } from 'lucide-react-native';
+import { Headphones, BookOpen, Library, Clock } from 'lucide-react-native';
 
 import { apiClient } from '@/core/api';
 import { useCoverUrl } from '@/core/cache';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 import { usePlayerStore } from '@/features/player';
 import { haptics } from '@/core/native/haptics';
-import { spacing, scale, layout, wp, hp } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
-import { SCREEN_BOTTOM_PADDING, TOP_NAV_HEIGHT } from '@/constants/layout';
+import { spacing, scale, layout, wp, hp, useTheme } from '@/shared/theme';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
+import { SkullRefreshControl } from '@/shared/components';
+import { MINI_PLAYER_HEIGHT, TOP_NAV_HEIGHT } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 
 // Discover components (matching Browse page design)
@@ -62,7 +74,7 @@ export function HomeScreen() {
   useScreenLoadTime('HomeScreen');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
 
   // Home data
@@ -71,6 +83,9 @@ export function HomeScreen() {
     continueListeningGrid,
     seriesInProgress,
     recentlyAdded,
+    viewMode,
+    toggleViewMode,
+    discoverBooks,
     isRefreshing,
     refresh,
   } = useHomeData();
@@ -94,18 +109,19 @@ export function HomeScreen() {
   const heroRecommendation: HeroRecommendation | null = useMemo(() => {
     if (!heroBook) return null;
 
-    const metadata = (heroBook.book.media?.metadata as any) || {};
+    const metadata = getBookMetadata(heroBook.book);
     const coverUrl = apiClient.getItemCoverUrl(heroBook.book.id);
+    const duration = isBookMedia(heroBook.book.media) ? heroBook.book.media.duration || 0 : 0;
 
     return {
       book: {
         id: heroBook.book.id,
-        title: metadata.title || 'Untitled',
-        author: metadata.authorName || metadata.authors?.[0]?.name || '',
-        narrator: heroBook.narratorName || metadata.narratorName || undefined,
+        title: metadata?.title || 'Untitled',
+        author: metadata?.authorName || metadata?.authors?.[0]?.name || '',
+        narrator: heroBook.narratorName || metadata?.narratorName || undefined,
         coverUrl,
-        duration: (heroBook.book.media as any)?.duration || 0,
-        genres: metadata.genres || [],
+        duration,
+        genres: metadata?.genres || [],
         addedDate: heroBook.book.addedAt || 0,
         progress: heroBook.progress,
         isDownloaded: false,
@@ -124,19 +140,17 @@ export function HomeScreen() {
 
     const items: BookSummary[] = continueListeningGrid.map((book) => {
       const coverUrl = apiClient.getItemCoverUrl(book.id);
-      const bookAny = book as any;
 
       // ABS items-in-progress now has mediaProgress attached from /api/me
-      const progress = bookAny.mediaProgress?.progress
-        ?? bookAny.userMediaProgress?.progress
-        ?? bookAny.progress
+      // Access via typed properties on LibraryItem
+      const progress = book.mediaProgress?.progress
+        ?? book.userMediaProgress?.progress
         ?? 0;
 
       // Get lastUpdate from various possible locations in the API response
       const rawLastUpdate =
-        bookAny.mediaProgress?.lastUpdate ||
-        bookAny.progressLastUpdate ||
-        bookAny.userMediaProgress?.lastUpdate;
+        book.mediaProgress?.lastUpdate ||
+        book.userMediaProgress?.lastUpdate;
 
       // Convert to milliseconds if needed (ABS API returns seconds)
       let lastPlayedAt: number | undefined;
@@ -181,34 +195,57 @@ export function HomeScreen() {
     };
   }, [recentlyAdded]);
 
-  // Check if home screen is completely empty (new user)
-  const isCompletelyEmpty = !heroBook && continueListeningGrid.length === 0 && seriesInProgress.length === 0 && recentlyAdded.length === 0;
+  // Convert discoverBooks to ContentRow format for "Add to Library" view
+  const discoverRow: ContentRow | null = useMemo(() => {
+    if (discoverBooks.length === 0) return null;
 
-  // Show hero background when we have a hero book
-  const showHeroBackground = !!heroBook;
+    const items: BookSummary[] = discoverBooks.slice(0, 8).map((book) => {
+      const coverUrl = apiClient.getItemCoverUrl(book.id);
+      return libraryItemToBookSummary(book, coverUrl);
+    });
+
+    return {
+      id: 'discover-books',
+      type: 'new_this_week',
+      title: 'Add to Your Library',
+      items,
+      totalCount: discoverBooks.length,
+      priority: 1,
+      refreshPolicy: 'daily',
+      displayMode: 'grid',
+    };
+  }, [discoverBooks]);
+
+  // Check if home screen is completely empty (new user)
+  const isCompletelyEmpty = viewMode === 'lastPlayed'
+    ? (!heroBook && continueListeningGrid.length === 0 && seriesInProgress.length === 0 && recentlyAdded.length === 0)
+    : discoverBooks.length === 0;
+
+  // Show hero background when we have a hero book (only in lastPlayed mode)
+  const showHeroBackground = viewMode === 'lastPlayed' && !!heroBook;
+
+  // Handle view mode toggle with haptic
+  const handleToggleViewMode = useCallback(() => {
+    haptics.selection();
+    toggleViewMode();
+  }, [toggleViewMode]);
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor="transparent" translucent />
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top + TOP_NAV_HEIGHT + 8,
-            paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom,
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={themeColors.text}
-          />
-        }
-      >
+      <SkullRefreshControl refreshing={isRefreshing} onRefresh={refresh}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: insets.top + TOP_NAV_HEIGHT + 8,
+              paddingBottom: MINI_PLAYER_HEIGHT + insets.bottom ,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
         {/* Hero Background - scrolls with content (matches Browse page) */}
         {showHeroBackground && (
           <View style={styles.heroBackgroundScrollable}>
@@ -230,8 +267,8 @@ export function HomeScreen() {
             <LinearGradient
               colors={
                 isDarkMode
-                  ? ['transparent', 'transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.7)', themeColors.background]
-                  : ['transparent', 'transparent', 'rgba(255,255,255,0)', 'rgba(255,255,255,0.7)', themeColors.background]
+                  ? ['transparent', 'transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.7)', colors.background.primary]
+                  : ['transparent', 'transparent', 'rgba(255,255,255,0)', 'rgba(255,255,255,0.7)', colors.background.primary]
               }
               locations={[0, 0.5, 0.7, 0.85, 1]}
               style={StyleSheet.absoluteFill}
@@ -239,26 +276,111 @@ export function HomeScreen() {
           </View>
         )}
 
+        {/* View Mode Toggle */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              viewMode === 'discover' && styles.toggleButtonActive,
+              { borderColor: colors.border.default },
+              viewMode === 'discover' && { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary },
+            ]}
+            onPress={handleToggleViewMode}
+            activeOpacity={0.7}
+          >
+            <Library
+              size={16}
+              color={viewMode === 'discover' ? colors.accent.textOnAccent : colors.text.secondary}
+              strokeWidth={2}
+            />
+            <Text
+              style={[
+                styles.toggleText,
+                { color: viewMode === 'discover' ? colors.accent.textOnAccent : colors.text.secondary },
+              ]}
+            >
+              Add to Library
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              viewMode === 'lastPlayed' && styles.toggleButtonActive,
+              { borderColor: colors.border.default },
+              viewMode === 'lastPlayed' && { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary },
+            ]}
+            onPress={handleToggleViewMode}
+            activeOpacity={0.7}
+          >
+            <Clock
+              size={16}
+              color={viewMode === 'lastPlayed' ? colors.accent.textOnAccent : colors.text.secondary}
+              strokeWidth={2}
+            />
+            <Text
+              style={[
+                styles.toggleText,
+                { color: viewMode === 'lastPlayed' ? colors.accent.textOnAccent : colors.text.secondary },
+              ]}
+            >
+              Last Played
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Empty state for new users */}
         {isCompletelyEmpty ? (
           <View style={styles.emptyHomeContainer}>
-            <View style={[styles.emptyHomeIcon, { backgroundColor: themeColors.border }]}>
-              <Headphones size={48} color={themeColors.text} strokeWidth={1.5} />
+            <View style={[styles.emptyHomeIcon, { backgroundColor: colors.border.default }]}>
+              <Headphones size={48} color={colors.text.primary} strokeWidth={1.5} />
             </View>
-            <Text style={[styles.emptyHomeTitle, { color: themeColors.text }]}>Welcome</Text>
-            <Text style={[styles.emptyHomeDescription, { color: themeColors.textSecondary }]}>
-              Your audiobook collection is waiting. Browse your library to start listening.
+            <Text style={[styles.emptyHomeTitle, { color: colors.text.primary }]}>
+              {viewMode === 'discover' ? 'All Caught Up!' : 'Welcome'}
+            </Text>
+            <Text style={[styles.emptyHomeDescription, { color: colors.text.secondary }]}>
+              {viewMode === 'discover'
+                ? 'You\'ve added all available books to your library. Check back later for new additions!'
+                : 'Your audiobook collection is waiting. Browse your library to start listening.'}
             </Text>
             <TouchableOpacity
-              style={[styles.emptyHomeCTA, { backgroundColor: themeColors.text }]}
+              style={[styles.emptyHomeCTA, { backgroundColor: colors.text.primary }]}
               onPress={handleLibraryPress}
               activeOpacity={0.8}
             >
-              <BookOpen size={18} color={themeColors.background} strokeWidth={2} />
-              <Text style={[styles.emptyHomeCTAText, { color: themeColors.background }]}>Browse Library</Text>
+              <BookOpen size={18} color={colors.background.primary} strokeWidth={2} />
+              <Text style={[styles.emptyHomeCTAText, { color: colors.background.primary }]}>Browse Library</Text>
             </TouchableOpacity>
           </View>
+        ) : viewMode === 'discover' ? (
+          /* DISCOVER VIEW - Add to Library */
+          <>
+            {/* Discover Books Grid */}
+            {discoverRow && (
+              <ContentRowCarousel row={discoverRow} />
+            )}
+
+            {/* Show more discover books in subsequent rows */}
+            {discoverBooks.length > 8 && (
+              <ContentRowCarousel
+                row={{
+                  id: 'discover-more',
+                  type: 'new_this_week',
+                  title: 'More to Discover',
+                  items: discoverBooks.slice(8, 16).map((book) => {
+                    const coverUrl = apiClient.getItemCoverUrl(book.id);
+                    return libraryItemToBookSummary(book, coverUrl);
+                  }),
+                  totalCount: discoverBooks.length - 8,
+                  priority: 2,
+                  refreshPolicy: 'daily',
+                  displayMode: 'grid',
+                }}
+              />
+            )}
+          </>
         ) : (
+          /* LAST PLAYED VIEW - Continue Listening */
           <>
             {/* Hero Section - Large centered cover (matches Browse page) */}
             {heroRecommendation && (
@@ -297,7 +419,8 @@ export function HomeScreen() {
             )}
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </SkullRefreshControl>
     </View>
   );
 }
@@ -338,6 +461,31 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: layout.screenPaddingH,
     gap: spacing.md,
+  },
+  // View mode toggle
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: layout.screenPaddingH,
+    marginBottom: spacing.lg,
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: scale(20),
+    borderWidth: 1,
+  },
+  toggleButtonActive: {
+    // Colors applied inline
+  },
+  toggleText: {
+    fontSize: scale(13),
+    fontWeight: '600',
   },
   // Empty home state for new users
   emptyHomeContainer: {

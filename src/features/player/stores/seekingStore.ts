@@ -206,8 +206,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       log(`seekTo: ${clampedPosition.toFixed(1)}`);
 
-      // Fire seek command (don't block - audio will catch up)
-      audioService.seekTo(clampedPosition).catch(() => {});
+      // AWAIT seek to prevent race condition where playback continues
+      // while seeking is still in progress (caused skip back bug)
+      await audioService.seekTo(clampedPosition).catch(() => {});
 
       // Save position locally only - server sync happens on pause
       if (bookId) {

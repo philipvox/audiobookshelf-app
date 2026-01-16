@@ -21,6 +21,7 @@ import {
   Moon,
   Palette,
   Check,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
@@ -34,6 +35,7 @@ import {
   spacing,
   type AccentTheme,
 } from '@/shared/theme';
+import { useSpineCacheStore } from '@/features/home/stores/spineCache';
 
 // Accent theme options
 const ACCENT_THEMES: AccentTheme[] = ['red', 'electric', 'lime'];
@@ -49,10 +51,19 @@ export function AppearanceSettingsScreen() {
     setAccentTheme,
   } = useTheme();
 
+  // Colored spines setting
+  const useColoredSpines = useSpineCacheStore((state) => state.useColoredSpines);
+  const setUseColoredSpines = useSpineCacheStore((state) => state.setUseColoredSpines);
+
   // Toggle dark mode
   const handleDarkModeToggle = useCallback((value: boolean) => {
     setMode(value ? 'dark' : 'light');
   }, [setMode]);
+
+  // Toggle colored spines
+  const handleColoredSpinesToggle = useCallback((value: boolean) => {
+    setUseColoredSpines(value);
+  }, [setUseColoredSpines]);
 
   // Select accent theme
   const handleAccentSelect = useCallback((theme: AccentTheme) => {
@@ -98,7 +109,24 @@ export function AppearanceSettingsScreen() {
                 value={isDark}
                 onValueChange={handleDarkModeToggle}
                 trackColor={{ false: colors.border.default, true: colors.accent.primary }}
-                thumbColor="#fff"
+                thumbColor={colors.text.inverse}
+              />
+            </View>
+            <View style={[styles.settingsRow, { borderBottomWidth: 0 }]}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: colors.border.default }]}>
+                  <BookOpen size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
+                </View>
+                <View style={styles.rowContent}>
+                  <Text style={[styles.rowLabel, { color: colors.text.primary }]}>Colored Spines</Text>
+                  <Text style={[styles.rowNote, { color: colors.text.tertiary }]}>Genre-based book colors</Text>
+                </View>
+              </View>
+              <Switch
+                value={useColoredSpines}
+                onValueChange={handleColoredSpinesToggle}
+                trackColor={{ false: colors.border.default, true: colors.accent.primary }}
+                thumbColor={colors.text.inverse}
               />
             </View>
           </View>

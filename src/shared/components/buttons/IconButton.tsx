@@ -11,7 +11,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { colors, radius, elevation } from '../../theme';
+import { colors, radius, elevation, useTheme } from '../../theme';
 
 type IconButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type IconButtonSize = 'small' | 'medium' | 'large';
@@ -54,6 +54,7 @@ export function IconButton({
   noHaptics = false,
   hitSlop,
 }: IconButtonProps) {
+  const { colors: themeColors } = useTheme();
   const isDisabled = disabled || loading;
   const dimensions = SIZE_MAP[size];
 
@@ -93,8 +94,8 @@ export function IconButton({
       {loading ? (
         <ActivityIndicator
           color={variant === 'primary' || variant === 'danger'
-            ? '#FFFFFF'
-            : colors.accent}
+            ? themeColors.text.inverse
+            : themeColors.accent.primary}
           size={size === 'large' ? 'small' : 'small'}
         />
       ) : (
@@ -108,28 +109,28 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
+  } as ViewStyle,
 
   // Variants
   primary: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accent.primary,
     ...elevation.small,
-  },
+  } as ViewStyle,
   secondary: {
     backgroundColor: colors.progressTrack,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
+    borderColor: colors.border.light,
+  } as ViewStyle,
   ghost: {
     backgroundColor: 'transparent',
-  },
+  } as ViewStyle,
   danger: {
-    backgroundColor: '#EF4444',
+    backgroundColor: colors.error,
     ...elevation.small,
-  },
+  } as ViewStyle,
 
   // States
   disabled: {
     opacity: 0.5,
-  },
+  } as ViewStyle,
 });

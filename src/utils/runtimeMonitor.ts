@@ -10,6 +10,29 @@
  * - Generate reports with generateErrorReport()
  */
 
+// React Native global error handling utilities
+interface ErrorUtils {
+  getGlobalHandler?: () => ((error: Error, isFatal: boolean) => void) | undefined;
+  setGlobalHandler?: (handler: (error: Error, isFatal: boolean) => void) => void;
+}
+
+// V8/Browser performance memory API
+interface PerformanceMemory {
+  usedJSHeapSize?: number;
+  totalJSHeapSize?: number;
+  jsHeapSizeLimit?: number;
+}
+
+interface ExtendedPerformance extends Performance {
+  memory?: PerformanceMemory;
+}
+
+// Extend global with React Native and browser APIs
+declare const global: typeof globalThis & {
+  ErrorUtils?: ErrorUtils;
+  performance?: ExtendedPerformance;
+};
+
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
@@ -202,8 +225,8 @@ export const errorStore = new ErrorStore();
 
 export const setupGlobalErrorHandlers = () => {
   // Catch unhandled JS errors
-  const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.();
-  (global as any).ErrorUtils?.setGlobalHandler?.(
+  const originalHandler = global.ErrorUtils?.getGlobalHandler?.();
+  global.ErrorUtils?.setGlobalHandler?.(
     (error: Error, isFatal: boolean) => {
       errorStore.addError({
         type: 'js_error',
@@ -302,14 +325,15 @@ class NetworkMonitor {
         }
 
         return response;
-      } catch (error: any) {
+      } catch (error) {
         const duration = Date.now() - startTime;
+        const errorMessage = error instanceof Error ? error.message : String(error);
 
         errorStore.addError({
           type: 'network_error',
           severity: 'high',
-          message: `Fetch failed: ${error.message}`,
-          details: { url: url.slice(0, 100), duration, error: error.message },
+          message: `Fetch failed: ${errorMessage}`,
+          details: { url: url.slice(0, 100), duration, error: errorMessage },
         });
 
         throw error;
@@ -553,13 +577,14 @@ class StorageMonitor {
       const result = await operation();
       this.recordOperation('get', key, Date.now() - start, true);
       return result;
-    } catch (error: any) {
+    } catch (error) {
       this.recordOperation('get', key, Date.now() - start, false);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       errorStore.addError({
         type: 'storage_error',
         severity: 'medium',
         message: `Storage get failed: ${key}`,
-        details: { key, error: error.message },
+        details: { key, error: errorMessage },
       });
       throw error;
     }
@@ -570,13 +595,14 @@ class StorageMonitor {
     try {
       await operation();
       this.recordOperation('set', key, Date.now() - start, true);
-    } catch (error: any) {
+    } catch (error) {
       this.recordOperation('set', key, Date.now() - start, false);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       errorStore.addError({
         type: 'storage_error',
         severity: 'high',
         message: `Storage set failed: ${key}`,
-        details: { key, error: error.message },
+        details: { key, error: errorMessage },
       });
       throw error;
     }
@@ -741,7 +767,7 @@ class MemoryMonitor {
     }
 
     // JS fallback (limited accuracy)
-    const estimatedHeap = (global as any).performance?.memory?.usedJSHeapSize;
+    const estimatedHeap = global.performance?.memory?.usedJSHeapSize;
 
     if (!estimatedHeap) {
       if (this.samples.length === 0) {
@@ -819,7 +845,7 @@ class MemoryMonitor {
         // Fall through
       }
     }
-    const estimatedHeap = (global as any).performance?.memory?.usedJSHeapSize || 0;
+    const estimatedHeap = global.performance?.memory?.usedJSHeapSize || 0;
     return { heapUsed: estimatedHeap, usedMb: estimatedHeap / 1024 / 1024 };
   }
 

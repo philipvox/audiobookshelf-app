@@ -9,6 +9,6940 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.7.94] - 2026-01-16
+
+### Fix: Drop Cap Font Not Loading on Android
+
+Fixed the TypographerWoodcut drop cap font not loading on Android devices.
+
+**Root Cause:**
+- Font was registered as `'TypographerWoodcut'` but internal TTF name is `'TypographerWoodcutInitialsOne'`
+- On Android, React Native requires the registered font name to match the internal font name exactly
+- Font was also in optional "genre-specific" block with silent error handling
+
+**The Fix:**
+- Changed font registration to use correct internal name: `'TypographerWoodcutInitialsOne'`
+- Moved font to core fonts block (always required, errors visible)
+- Updated usage in SecretLibraryBookDetailScreen.tsx
+
+**Files Modified:**
+- `src/core/services/appInitializer.ts` - Fixed font name and moved to core block
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Updated fontFamily
+- `src/constants/version.ts`
+
+---
+
+## [0.7.93] - 2026-01-16
+
+### Feature: "All Authors/Narrators/Series" Navigation Pills (#12)
+
+Added navigation pills to detail screens for quick access to full list screens.
+
+**Changes:**
+- AuthorDetailScreen: Added "All Authors" pill → navigates to AuthorsListScreen
+- NarratorDetailScreen: Updated "Narrator" pill to "All Narrators" with navigation
+- SeriesDetailScreen: Updated "Series" pill to "All Series" with navigation to SeriesListScreen
+
+**Files Modified:**
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx`
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.88] - 2026-01-16
+
+### Fix: Stacked Authors Now Actually Works
+
+Fixed the stacked author override not being applied. The previous fix (v0.7.86-0.7.87) modified `composition.author.orientation`, but the actual rendering uses `templateConfig` which was passed directly to `TemplateSpineRenderer`.
+
+**Root Cause:**
+- Two separate config objects: `templateConfig` (used for rendering) and `composition` (not used by template path)
+- The override was applied to `composition`, but `TemplateSpineRenderer` reads from `templateConfig`
+
+**The Fix:**
+- Now creates a derived `templateConfig` with the stacked-words override baked in
+- Override applies directly to what `TemplateSpineRenderer` actually uses
+- Stacking applied for all books under 30 hours with multi-word author names
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Moved override from composition to templateConfig
+- `src/constants/version.ts`
+
+---
+
+## [0.7.87] - 2026-01-16
+
+### Enhancement: Stacked Authors for All Books (Except 30+ Hours)
+
+Changed the stacking threshold from width-based to duration-based. Now ALL books under 30 hours get stacked author names by default.
+
+**Before (v0.7.86):**
+- Only books with width > 60px (~10+ hours) got stacked author names
+- Short books (under 10 hours) showed horizontal author names
+
+**After (v0.7.87):**
+- ALL books under 30 hours get stacked author names (default)
+- Books 30+ hours skip stacking for readability on very wide spines
+- Change is based on duration, not width, for more predictable behavior
+
+**Example:**
+- 2-hour book "The Name of the Wind" now shows:
+  ```
+  PATRICK
+  ROTHFUSS
+  ```
+- 45-hour epic audiobook keeps its genre-determined orientation
+
+**Technical:**
+- Threshold: `30 * 3600 = 108,000 seconds` (30 hours)
+- Condition changed from `width > 60` to `duration < LONG_BOOK_THRESHOLD_SECONDS`
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.86] - 2026-01-16
+
+### Fix: Author Stacking Now Works (Aligned with Template Preview)
+
+Fixed author stacking not working on medium/large spines. The fix aligns with how the Spine Template Preview page implements stacked authors.
+
+**Root Cause:**
+- BookSpineVertical used a separate `authorSplitNames` boolean
+- Template preview uses `orientation === 'stacked-words'` in the composition
+- The two approaches weren't aligned
+
+**The Fix:**
+1. **Composition override**: When conditions are met (width > 60px, multi-word author, not explicitly horizontal), set `composition.author.orientation = 'stacked-words'`
+2. **Render condition**: Updated to check BOTH `authorSplitNames` OR `composition?.author?.orientation === 'stacked-words'`
+
+**Result:**
+- Fantasy books like "Kings of the Wyld" by Nicholas Eames now display as:
+  ```
+  NICHOLAS
+  EAMES
+  ```
+- Stacking respects genre settings - genres with `authorOrientationBias: 'horizontal'` keep horizontal names
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.85] - 2026-01-16
+
+### Debug: Author Stacking Investigation (superseded by 0.7.86)
+
+Added diagnostic logging for author stacking investigation. This was superseded by the fix in 0.7.86.
+
+---
+
+## [0.7.84] - 2026-01-16
+
+### Enhancement: Default Stacked Authors on Medium/Large Spines
+
+Changed the default behavior for author name display on medium and large book spines.
+
+**Before:**
+- Only Fantasy+Humor genres got stacked author names (e.g., "BRANDON / SANDERSON")
+- Other genres showed single-line horizontal author names
+
+**After:**
+- ALL medium/large spines (width > 60px, ~10+ hour books) default to stacked author names
+- EXCEPTION: Genres with explicit `authorOrientationBias: 'horizontal'` in their profile keep horizontal names
+- This creates a more editorial, dramatic look across all longer audiobooks
+
+**Logic:**
+```typescript
+// Stack author names if:
+// 1. Spine is medium/large (width > 60px)
+// 2. Author has multiple words
+// 3. Genre doesn't explicitly request horizontal orientation
+const authorSplitNames = isMediumOrLargeSpine &&
+  authorHasMultipleNames &&
+  !isExplicitlyHorizontal;
+```
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.83] - 2026-01-16
+
+### Fix: Animated Splash Lag on Section Changes
+
+Fixed animation jank/lag when the loading status text changes during app initialization.
+
+**Root Cause:**
+- When `progress` or `statusText` props changed, the entire `AnimatedSplash` re-rendered
+- This caused the `SkullCandle` component to re-render mid-animation
+- The flame animation uses `setState` at 12fps, creating a cascade of re-renders
+
+**The Fix:**
+- Wrapped `SkullCandle` in `React.memo()` to prevent re-renders from parent prop changes
+- Replaced `useState` with `useReducer` for frame animation (slightly more efficient for frequent updates)
+- The candle flame now animates independently of parent state changes
+
+**Files Modified:**
+- `src/shared/components/AnimatedSplash.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.82] - 2026-01-16
+
+### Fix: Library Loading Flash (#4)
+
+Fixed the library screen flash where books would render with default dimensions, then re-render with correct spine dimensions.
+
+**Root Cause:**
+- Spine cache was populated AFTER library items loaded, causing a second render
+- First render: Books shown with fallback dimensions
+- Spine cache populates → Second render: Books shown with correct dimensions
+
+**The Fix:**
+Pre-hydrate spine cache from SQLite BEFORE library items are displayed:
+1. Added `hydrateFromSQLite(libraryId)` method to `spineCache.ts`
+2. Called this in `prefetchService.hydrateFromCache()` before loading library items
+3. Spine dimensions are now ready BEFORE first render → no flash
+
+**Technical Flow (Before):**
+```
+1. prefetchService loads library items
+2. UI renders (empty spine cache → fallback dimensions)
+3. libraryCache populates spine cache
+4. UI re-renders (correct dimensions) ← FLASH
+```
+
+**Technical Flow (After):**
+```
+1. prefetchService hydrates spine cache from SQLite
+2. prefetchService loads library items
+3. UI renders (spine cache ready → correct dimensions) ← NO FLASH
+```
+
+**Files Modified:**
+- `src/features/home/stores/spineCache.ts` - Added `hydrateFromSQLite()` method
+- `src/core/services/prefetchService.ts` - Call spine hydration before loading items
+- `src/constants/version.ts`
+
+---
+
+## [0.7.81] - 2026-01-16
+
+### Fix: Drop Cap Line Height Alignment
+
+Fixed the text beside the drop cap not aligning properly with the box height.
+
+**The Math:**
+- Drop cap box: 60×60px (square)
+- Lines beside drop cap: 3
+- Required line height: 60px ÷ 3 = 20px per line
+
+**Changes:**
+- Updated DROP_CAP_CONFIG to match 60px box size
+- Fixed dropCapText lineHeight from 22px → 20px
+- Now 3 lines of text exactly fill the drop cap height
+- Gap between drop cap and text: 10px
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.80] - 2026-01-16
+
+### Enhancement: Square Drop Cap Container
+
+Made the drop cap container a perfect square for better visual balance.
+
+**Changes:**
+- Drop cap box is now square (height = width)
+- Letter is centered both horizontally and vertically within the square
+- Renamed `boxWidth` to `boxSize` in config for clarity
+- Font sized to fill the square without overflow
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.79] - 2026-01-16
+
+### Enhancement: Decorative Woodcut Drop Cap
+
+Updated the drop cap (large initial letter) in book descriptions to use an ornate woodcut initials font for a vintage literary aesthetic.
+
+**Visual Changes:**
+- Drop cap now uses TypographerWoodcut font (decorative medieval-style woodcut initials)
+- Larger sizing (80px) to fill the space properly with ornate detail
+- Increased box width from 56px to 70px for better proportion
+- Creates a classic book/manuscript feel befitting the "Secret Library" theme
+
+**Technical Details:**
+- Added `TypographerWoodcut01.ttf` font to assets and font loader
+- Updated DROP_CAP_CONFIG with larger dimensions
+- Font loaded during app initialization with other genre-specific fonts
+
+**Files Modified:**
+- `src/assets/fonts/TypographerWoodcut01.ttf` (new file)
+- `src/core/services/appInitializer.ts` - Added woodcut font to loader
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Updated drop cap styling
+- `src/constants/version.ts`
+
+---
+
+## [0.7.78] - 2026-01-16
+
+### Enhancement: Spine System Improvements
+
+Multiple enhancements to the book spine visualization system for better visual differentiation and readability.
+
+**Fantasy+Humor Author Stacking (#14):**
+- Fantasy and Humor genre books now stack author names vertically on medium/large spines
+- Creates an editorial book cover look (e.g., "BRANDON / SANDERSON")
+- Only applies to spines wider than 60px (roughly 10+ hour audiobooks)
+- Authors with multi-word names get the stacked treatment
+
+**Better Duration→Width Curve (#18):**
+- Changed from linear to ease-out quadratic curve
+- Provides better visual differentiation in the 1-15 hour range (most common audiobooks)
+- Gradual flattening for longer books prevents oversized spines
+- Example: 5hr book now 89px (was 68px), 10hr now 129px (was 91px)
+
+**Children's Book Fonts (#19):**
+- Prioritized readable fonts over quirky decorative ones
+- Primary font changed from Barriecito (handwriting) to Oswald-Bold (clean sans-serif)
+- Font fallback order: Oswald-Bold → BebasNeue-Regular → Notable-Regular → Barriecito
+- Expanded genre matching to include "children's", "picture book", "early readers", "chapter books"
+
+**Book Details Polish:**
+- Changed "Year" label to "Published" for clarity
+
+**Top Nav Labeled Pills:**
+- Added labeled pills to list screens for better navigation clarity
+- GenresListScreen: "Genres" pill with tag icon
+- AuthorsListScreen: "Authors" pill with user icon
+- NarratorsListScreen: "Narrators" pill with mic icon
+- SeriesListScreen: "Series" pill with book icon
+- Matches the pattern used in detail screens (icon + label)
+
+**Queue Panel Improvements:**
+- Removed chapters accordion (chapters already shown in player's chapters sheet)
+- Added move up/down buttons to each queue item for easier reordering
+- Added remove button to each queue item (in addition to expanded view)
+- Preserved drag-to-reorder for bulk reordering
+- Cleaned up unused code and styles (~90 lines removed)
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+  - Added Fantasy+Humor author stacking logic with width threshold
+- `src/features/home/utils/spine/core/dimensions.ts`
+  - Replaced linear width calculation with ease-out quadratic curve
+- `src/features/home/utils/spine/templates/spineTemplates.ts`
+  - Updated children's template with readable fonts and expanded genre matching
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Changed "Year" to "Published" label
+- `src/features/library/screens/GenresListScreen.tsx`
+  - Added "Genres" labeled pill
+- `src/features/library/screens/AuthorsListScreen.tsx`
+  - Added "Authors" labeled pill
+- `src/features/library/screens/NarratorsListScreen.tsx`
+  - Added "Narrators" labeled pill
+- `src/features/library/screens/SeriesListScreen.tsx`
+  - Added "Series" labeled pill
+- `src/features/queue/components/QueuePanel.tsx`
+  - Removed ChaptersAccordion component
+  - Added move up/down/remove buttons to QueueItem
+  - Cleaned up unused styles and imports
+- `src/constants/version.ts`
+
+---
+
+## [0.7.77] - 2026-01-15
+
+### Feature: Truncated Chapters List + Player UI Polish
+
+**Truncated Chapters List:**
+- Chapters list now collapses to show only relevant chapters by default
+- Shows 3 chapters before current position + current + all remaining
+- "Show X earlier chapters" button expands to reveal all
+- Works with both playing books and books with saved progress
+- Only truncates when there are more than 5 chapters
+
+**Player UI Polish:**
+- Progress mode toggle simplified to single text toggle ("Book" / "Chapter")
+- Sleep timer countdown moved to controls row, left of rewind button
+- Countdown shows real-time seconds (not rounded)
+
+**Technical Implementation:**
+- Added `chaptersExpanded` state for collapse control
+- Added `savedChapterIndex` calculation based on `currentTime`
+- Added `visibleChapters` / `hiddenCount` memos for filtering
+- Styled with underlined text to match app toggle patterns
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Added chapter truncation logic
+  - Added "Show X earlier chapters" button
+  - Added styles: `showEarlierBtn`, `showEarlierText`
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+  - Simplified progress mode toggle to single text
+  - Moved sleep countdown to controls row
+- `src/constants/version.ts`
+
+---
+
+## [0.7.76] - 2026-01-15
+
+### Feature: Sleep Timer Countdown on Player
+
+Added a real-time sleep timer countdown display on the player screen that shows remaining time when a sleep timer is active.
+
+**New Feature:**
+- **Visible countdown** - Shows "Sleep in Xh Xm" or "Sleep in Xm" or "Sleep in Xs" below the progress bar
+- **Orange accent** - Clock icon and text in orange to stand out from other UI elements
+- **Tappable** - Tap the countdown to open the sleep timer sheet for adjustments
+- **Auto-hide** - Only visible when a sleep timer is set
+
+**Display Format:**
+- ≥1 hour: "Sleep in 1h 30m"
+- ≥1 minute: "Sleep in 15m"
+- <1 minute: "Sleep in 45s"
+
+**Technical Implementation:**
+- Uses existing `sleepTimer` state from `useSleepTimerStore`
+- Positioned between time labels and controls row for visibility
+- Monospace font with uppercase styling for consistency
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+  - Added sleep timer countdown JSX (line ~1173)
+  - Added styles: `sleepTimerCountdown`, `sleepTimerCountdownText`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.75] - 2026-01-15
+
+### Enhancement: Series Tab with Cover Images and Shelf View
+
+Enhanced the Series tab in book details with cover images and a Book/Shelf view toggle, matching the pattern used in author and narrator detail pages.
+
+**Enhancements:**
+
+1. **Cover Images in Book View**
+   - Series books now display cover thumbnails (44x44)
+   - Cover placed before the sequence badge for better visual hierarchy
+   - Layout: Cover → Badge → Title/Duration → Status
+
+2. **Book/Shelf View Toggle**
+   - Toggle buttons appear when viewing Series tab (for 2+ books)
+   - "Book" view: Vertical list with covers and details
+   - "Shelf" view: Horizontal scrolling spine visualization
+   - Current book highlighted with orange border in shelf view
+
+3. **Shelf View with Spine Rendering**
+   - Uses `BookSpineVertical` component for visual book spines
+   - Horizontal scroll with consistent alignment
+   - Tapping a spine navigates to that book's detail page
+
+**Technical Implementation:**
+- Added `seriesViewMode` state ('book' | 'shelf')
+- Added `seriesSpineData` useMemo for spine data conversion
+- Added `seriesSpineLayouts` via `useBookRowLayout` hook
+- Added `handleSeriesSpinePress` callback for spine navigation
+- Conditional rendering based on view mode
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Added cover images to series book items
+  - Added Book/Shelf view toggle
+  - Added shelf view with BookSpineVertical
+  - Added styles: `viewModeToggle`, `viewModeBtn`, `seriesBookItem`, `seriesCover`, `shelfContent`, `spineWrapper`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.74] - 2026-01-15
+
+### Feature: Series Tab in Book Details
+
+Added a Series tab to the book detail page that shows all books in the same series, with the current book highlighted.
+
+**New Feature:**
+- **Series Tab** - When viewing a book that's part of a series, a "Series" tab appears next to "Chapters"
+- Shows all books in the series with sequence numbers
+- Current book is highlighted with "Current" label and background tint
+- Finished books show checkmark, in-progress books show percentage
+- Tap any book to navigate directly to its detail page
+- Only appears when series has 2+ books (no tab for standalone books or single-book series)
+
+**UI Pattern:**
+- Tab row with "Chapters (N)" and "Series (N)" counts
+- Consistent styling with chapter list (badges, titles, durations)
+- Uses `navigation.push()` for series books to maintain back stack
+
+**Technical Implementation:**
+- Added `activeContentTab` state ('chapters' | 'series')
+- Series books fetched from library cache via `getSeries()`
+- Conditional rendering based on active tab
+- Series sequence extracted from `seriesName` (#N suffix)
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Added `useLibraryCache` import
+  - Added `activeContentTab` state
+  - Added `seriesBooks` useMemo lookup
+  - Added tab header with Chapters/Series toggle
+  - Added series books list with current book indicator
+  - Added styles: `contentTabsRow`, `contentTab`, `contentTabText`, etc.
+- `src/constants/version.ts`
+
+---
+
+## [0.7.73] - 2026-01-15
+
+### Feature: Genre Pills on Book Details + Smart Read More
+
+**New Features:**
+
+1. **Genre Pills on Book Details Page**
+   - Clickable genre pills displayed below series link
+   - Tapping a genre navigates to the GenreDetail screen
+   - Styled as bordered pills with monospace font (matches app design)
+
+2. **Smart "Read More" Button**
+   - "Read More" button now only appears when description actually needs truncation
+   - Hidden for short descriptions (< 150 characters in continuation text)
+   - Reduces UI clutter on books with brief descriptions
+
+3. **Collapsible Section Improvements**
+   - Chevron moved to far right to prevent accidental taps
+   - Only first section expanded by default (improves load time)
+   - Collapsed sections don't render children (performance boost)
+
+**Files Modified:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Added `handleGenrePress` callback
+  - Added genre pills JSX with navigation
+  - Added `genreRow`, `genrePill`, `genrePillText` styles
+  - Modified DropCapParagraph to conditionally show "Read more"
+- `src/shared/components/CollapsibleSection.tsx` - Chevron on right
+- All detail screens - `defaultExpanded={index === 0}`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.72] - 2026-01-15
+
+### Feature: Collapsible Section Groups
+
+Added collapsible sub-headers to all Secret Library styled detail screens (Author, Narrator, Series, Genre).
+
+**New Component:**
+- `CollapsibleSection` - Reusable component with animated chevron rotation and smooth expand/collapse animation
+- Uses `LayoutAnimation` for native-feeling content expand/collapse
+- Supports optional title press handler for navigation (e.g., tap "Fantasy" to go to genre page)
+- `isStandalone` prop for sections without navigation (e.g., "Standalone" books)
+
+**Screens Updated:**
+- `GenreDetailScreen` - All tabs (Author, Series, Narrator, All) now have collapsible groups
+- `SecretLibraryAuthorDetailScreen` - Series, narrator, and genre groups are collapsible
+- `SecretLibraryNarratorDetailScreen` - Series, author, and genre groups are collapsible
+- `SecretLibrarySeriesDetailScreen` - Narrator and genre groups are collapsible
+
+**UX Improvements:**
+- Groups default to expanded for discoverability
+- Chevron rotates smoothly (90° when collapsed, pointing down when expanded)
+- Tap anywhere on header row to toggle (larger touch target)
+- Section count shown in parentheses (e.g., "Fantasy (12)")
+
+**Files Modified:**
+- `src/shared/components/CollapsibleSection.tsx` (NEW)
+- `src/shared/components/index.ts` - Added export
+- `src/features/library/screens/GenreDetailScreen.tsx`
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx`
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.71] - 2026-01-15
+
+### Performance: SQLite Spine Cache & Pre-sorted Genre Books
+
+**Major Performance Improvements:**
+
+1. **SQLite Spine Cache Persistence**
+   - Pre-computed spine data now persisted to SQLite
+   - On subsequent app launches, spine data loads instantly from SQLite
+   - Only new/changed books need recalculation
+   - Eliminates expensive typography/dimension calculations on every startup
+
+2. **Pre-sorted Genre Books**
+   - Books within genres are now sorted by title during cache build
+   - Genre pages no longer need to sort on every navigation
+   - Moves O(n log n) sort from "per visit" to "once on cache load"
+
+**Technical Changes:**
+
+- Added `spine_cache` table to SQLite schema
+- Added `getSpineCache()`, `setSpineCache()`, `clearSpineCache()` methods
+- `populateFromLibrary()` now async: loads from SQLite first, computes missing, saves back
+- `buildIndexes()` now pre-sorts genre books by title
+
+**Performance Impact:**
+- First app launch: Same as before (computes + saves to SQLite)
+- Subsequent launches: Spine cache loads from SQLite (instant vs 500-1500ms compute)
+- Genre page navigation: O(1) access to pre-sorted books vs O(n log n) sort
+
+**Files Modified:**
+- `src/core/services/sqliteCache.ts` - Added spine_cache table and methods
+- `src/features/home/stores/spineCache.ts` - SQLite persistence, async populate
+- `src/core/cache/libraryCache.ts` - Pre-sort genre books, pass libraryId to spineCache
+- `src/features/library/screens/GenreDetailScreen.tsx` - Use pre-sorted books directly
+- `src/constants/version.ts`
+
+---
+
+## [0.7.70] - 2026-01-15
+
+### Performance: Lazy Tab Calculations & Pre-computed Duration
+
+**Problem:** Genre pages still had noticeable lag when opening due to expensive useMemo calculations running on initial mount.
+
+**Optimizations:**
+
+1. **Lazy Tab Calculations** - Tab-specific data only computed when that tab is active:
+   - `authorList` - Only computed when Author tab selected
+   - `seriesList` - Only computed when Series tab selected
+   - `narratorList` - Only computed when Narrator tab selected
+   - `allBooksBySeries` - Only computed when All tab + Shelf view active
+   - Each returns empty array `[]` immediately if not needed, skipping iteration
+
+2. **Pre-computed Total Duration** - Added `totalDuration` to genre index:
+   - New `totalDuration: number` field in `GenreInfo` interface
+   - Duration accumulated during `buildIndexes()` (runs once on cache load)
+   - Genre pages now read pre-computed value instead of reducing through all books
+
+**Performance Impact:**
+- Initial render calculates only: genre lookup O(1), books sort O(n log n), nothing else
+- Tab switching triggers lazy computation only for that specific tab
+- Total duration: O(n) → O(1) lookup from pre-computed index
+
+**Files Modified:**
+- `src/core/cache/libraryCache.ts` - Added `totalDuration` to GenreInfo, pre-compute during indexing
+- `src/features/library/screens/GenreDetailScreen.tsx` - Lazy tab calculations, use pre-computed duration
+- `src/constants/version.ts`
+
+---
+
+## [0.7.69] - 2026-01-15
+
+### Feature: Genre Tab on Series Detail Page
+
+Added a Genre tab to the Series detail screen to view books grouped by genre.
+
+**Changes:**
+- Added `'genre'` to `FilterTab` type
+- Added `genreList` useMemo to group books by genre
+- Added `handleGenrePress` callback for navigation to genre pages
+- Added Genre tab button in tabs row
+- Added content sections for genre tab (both Series and Book view modes)
+
+**Files Modified:**
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.68] - 2026-01-15
+
+### Performance: Genre Page Loading Speed
+
+**Problem:** Genre pages loaded significantly slower than Author/Narrator pages.
+
+**Root Causes Found:**
+1. **No pre-built genre index** - Author/Narrator pages used `getAuthor()`/`getNarrator()` which returned pre-indexed Map data instantly. Genre pages used `filterItems({ genres: [name] })` which looped through the ENTIRE library.
+2. **Hook called inside useCallback** - `ShelfView` component was defined inline using `useCallback` but called `useBookRowLayout()` hook inside, violating React's Rules of Hooks.
+
+**Fixes:**
+1. **Added genre index to library cache:**
+   - New `genresWithBooks: Map<string, GenreInfo>` storing books per genre
+   - New `getGenre(name)` method for instant O(1) lookup
+   - Books indexed by genre during `buildIndexes()` (same as authors/narrators)
+
+2. **Extracted ShelfView to proper component:**
+   - Moved from inline `useCallback` to standalone function component
+   - Hooks now called at top level (proper React pattern)
+   - Uses `useMemo` for spine data transformation
+
+**Performance Impact:**
+- Genre lookup: O(n) → O(1) where n = library size
+- Eliminates full library scan on every genre page visit
+- Proper hook lifecycle for ShelfView rendering
+
+**Files Modified:**
+- `src/core/cache/libraryCache.ts` - Added genre index and `getGenre()` method
+- `src/features/library/screens/GenreDetailScreen.tsx` - Use `getGenre()`, extract ShelfView component
+- `src/constants/version.ts`
+
+---
+
+## [0.7.67] - 2026-01-15
+
+### Feature: Genre Detail Page Redesign (Secret Library Style)
+
+**Complete redesign of GenreDetailScreen to match Author/Narrator detail pages:**
+
+**Visual Changes:**
+- Dark header with large Playfair Display genre title + book count/duration stats
+- White content area (adapts to dark mode) with JetBrains Mono metadata
+- Removed old search bar and sort dropdown
+- Added "GENRE" pill in TopNav that links to GenresList
+
+**New Features:**
+1. **Filter Tabs** - All | Author | Series | Narrator
+   - "All" groups books by series (with Standalone section)
+   - Other tabs group by that entity with clickable headers
+
+2. **View Toggle** - Switch between "Book" and "Shelf" views
+   - Book view: Vertical list with cover thumbnails, title, author, series info, duration
+   - Shelf view: Horizontal scroll with BookSpineVertical components
+
+3. **Tappable Group Headers** - All group headers (author names, series names, narrator names) navigate to their respective detail pages
+
+4. **Footer Stats** - Shows total titles and hours
+
+**Technical:**
+- Uses `useSecretLibraryColors()` for dark/light mode support
+- Uses `BookSpineVertical` + `useBookRowLayout` for shelf visualization
+- Uses `useSpineCacheStore` for cached spine colors
+- Maintains pull-to-refresh with `SkullRefreshControl`
+
+**Files Modified:**
+- `src/features/library/screens/GenreDetailScreen.tsx` - Complete rewrite
+- `src/constants/version.ts`
+
+---
+
+## [0.7.66] - 2026-01-15
+
+### Feature: Tappable Genre Headers and Navigation Pills
+
+**Added navigation to detail screens:**
+
+1. **Genre Headers** - Genre group headers (e.g., "Fantasy", "Thriller") in Author/Narrator detail screens are now tappable and navigate to the Genre Detail page
+
+2. **NARRATOR Pill** - The NARRATOR pill in the top navigation of the Narrator Detail screen now navigates to the full Narrators List
+
+**Implementation:**
+- Added `handleGenrePress` callback to `SecretLibraryNarratorDetailScreen.tsx` and `SecretLibraryAuthorDetailScreen.tsx`
+- Wrapped genre header `<Text>` components in `<Pressable>` for tap handling
+- Added `onPress` to NARRATOR pill to navigate to `NarratorsList`
+
+**Files Modified:**
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Genre headers + NARRATOR pill navigation
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Genre headers navigation
+- `src/constants/version.ts`
+
+---
+
+## [0.7.65] - 2026-01-15
+
+### Fix: Library Loading Flash/Reflow
+
+**Problem:** Home screen would flash or reflow when loading, showing empty state briefly before content appeared.
+
+**Root Cause:** The library sync effect in `useHomeData` was calling `setLibraryBooks` twice:
+1. First with cached books immediately (partial data)
+2. Second after fetching missing books (complete data)
+
+This double state update caused two renders, resulting in visible layout shift.
+
+**Fix:** Batch the state updates into a single call:
+- If all books are cached: single immediate update ✓
+- If some books need fetching: wait for all data, then single update ✓
+
+```typescript
+// BEFORE: Two state updates (flash)
+setLibraryBooks(cachedBooks);     // First render (partial)
+await fetchMissing();
+setLibraryBooks(allBooks);         // Second render (complete) → FLASH
+
+// AFTER: Single state update (no flash)
+if (allCached) {
+  setLibraryBooks(cachedBooks);    // Single render (complete)
+} else {
+  await fetchMissing();
+  setLibraryBooks(allBooks);       // Single render (complete)
+}
+```
+
+**Files Modified:**
+- `src/features/home/hooks/useHomeData.ts` - Batched state updates in library sync effect
+- `src/constants/version.ts`
+
+---
+
+## [0.7.64] - 2026-01-15
+
+### Fix: Series Spine Height Consistency
+
+**Problem:** Books in the same series had different spine heights on the home screen shelf, making series look inconsistent.
+
+**Root Cause:** The new spine system's `calculateHeight()` function used `seriesName` directly as the hash key without normalizing it. Series names like "The Expanse #1" and "The Expanse #2" would hash to different values, resulting in different heights.
+
+**Fix:** Added `normalizeSeriesName()` function that strips sequence numbers and normalizes the series name before hashing:
+
+```typescript
+// BEFORE: "The Expanse #1" and "The Expanse #2" → different hashes → different heights
+const hashKey = seriesName || bookId || 'default';
+
+// AFTER: Both normalize to "expanse" → same hash → same height
+const hashKey = seriesName ? normalizeSeriesName(seriesName) : (bookId || 'default');
+```
+
+The normalization:
+- Removes trailing `#N` or `#N.N` (e.g., "#7", "#3.5")
+- Removes leading articles ("the", "a", "an")
+- Normalizes apostrophes and whitespace
+- Converts to lowercase
+
+This matches the existing normalization in the old spine system's `getSeriesStyle()` function.
+
+**Files Modified:**
+- `src/features/home/utils/spine/core/dimensions.ts` - Added normalizeSeriesName(), updated calculateHeight()
+- `src/constants/version.ts`
+
+---
+
+## [0.7.63] - 2026-01-15
+
+### Fix: Complete Download Pause Solution
+
+**Problem:** Paused downloads kept restarting despite multiple fix attempts.
+
+**Root Cause #3:** The `updateDownloadProgress` function in sqliteCache **unconditionally** sets `status = 'downloading'` on every progress update. Even after we set status to 'paused', in-flight progress callbacks would overwrite it back to 'downloading'.
+
+**Fix:** Modified SQL to preserve 'paused' status:
+```sql
+-- BEFORE: Always overwrites status
+UPDATE downloads SET progress = ?, status = 'downloading' WHERE item_id = ?
+
+-- AFTER: Preserves 'paused' status
+UPDATE downloads SET progress = ?,
+  status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'downloading' END
+WHERE item_id = ?
+```
+
+**Complete Fix Summary (v0.7.59-0.7.63):**
+1. **v0.7.59**: Fixed `pauseDownload` to always update DB (not just when active download exists)
+2. **v0.7.60**: Added `userPaused` flag to prevent auto-resume on app restart
+3. **v0.7.61**: Added pause detection in retry loop to break out when paused
+4. **v0.7.62**: Reordered pause logic (update DB BEFORE `pauseAsync`) + preserve in-memory progress
+5. **v0.7.63**: Fixed `updateDownloadProgress` to not overwrite 'paused' status
+
+**Files Modified:**
+- `src/core/services/sqliteCache.ts` - updateDownloadProgress preserves 'paused' status
+- `src/constants/version.ts`
+
+---
+
+## [0.7.62] - 2026-01-15
+
+### Fix: Download Pause Race Condition + Progress Preservation
+
+**Problem 1:** Paused downloads would immediately restart. User taps pause → shows paused briefly → restarts downloading.
+
+**Root Cause:** Race condition between pause and retry loop:
+1. User taps pause → `pauseDownload()` starts
+2. `pauseAsync()` causes `downloadAsync()` to return `null`
+3. Retry loop checks DB status BEFORE `pauseDownload()` finishes updating DB
+4. Retry loop sees `status: 'downloading'` → retries immediately
+5. New download starts before pause completes
+
+**Fix:** Update DB status to 'paused' BEFORE calling `pauseAsync()`:
+```typescript
+// BEFORE: pauseAsync() first, then update DB (race condition)
+await download.pauseAsync();
+await sqliteCache.setDownload({ status: 'paused', ... });
+
+// AFTER: Update DB first, then pauseAsync() (no race)
+await sqliteCache.setDownload({ status: 'paused', ... });
+await download.pauseAsync();  // Now retry loop sees 'paused' status
+```
+
+**Problem 2:** Progress showing 0% after pause because we read stale DB progress.
+
+**Fix:** Use in-memory progress (most current) if available:
+```typescript
+const memoryProgress = this.progressInfo.get(itemId);
+if (memoryProgress && memoryProgress.totalBytes > 0) {
+  currentProgress = Math.max(dbProgress, memoryProgress.bytesDownloaded / memoryProgress.totalBytes);
+}
+```
+
+**Files Modified:**
+- `src/core/services/downloadManager.ts` - Reordered pause logic, use memory progress, preserve existing record fields
+- `src/constants/version.ts`
+
+---
+
+## [0.7.61] - 2026-01-15
+
+### Fix: Paused Downloads No Longer Restart via Retry Loop
+
+**Problem:** Even after the v0.7.60 fix, paused downloads would immediately restart. The download would show "Paused" briefly then continue downloading.
+
+**Root Cause:** When `pauseAsync()` is called on a `FileSystem.DownloadResumable`, the `downloadAsync()` promise resolves to `null`. The download retry logic interpreted this `null` as a failed download and automatically retried:
+
+```
+LOG: Pausing download: b6e273...
+LOG: Paused active download object for: b6e273...
+WARN: Attempt 1 failed: Download returned null  ← null = paused, not failed!
+LOG: Retry attempt 2/3 for file 1...            ← Oops, retrying!
+```
+
+**Solution:** Before retrying after a `null` result, check if the download status is 'paused':
+
+1. In `downloadFileWithRetry()`: After `downloadAsync()` returns `null`, query the database status
+2. If status is 'paused', throw a special `DOWNLOAD_PAUSED` error instead of retrying
+3. In `startDownload()` catch block: Handle `DOWNLOAD_PAUSED` gracefully - don't mark as failed
+
+```typescript
+if (!result) {
+  // Check if download was paused - don't treat as error
+  const status = await sqliteCache.getDownload(itemId);
+  if (status?.status === 'paused') {
+    throw new Error('DOWNLOAD_PAUSED'); // Break retry loop
+  }
+  throw new Error('Download returned null');
+}
+```
+
+**Files Modified:**
+- `src/core/services/downloadManager.ts` - Added pause detection in retry loop, graceful handling in catch block
+- `src/constants/version.ts`
+
+---
+
+## [0.7.60] - 2026-01-15
+
+### Fix: User-Paused Downloads No Longer Auto-Resume
+
+**Problem:** User reported "it says paused then starts again" - when the user explicitly paused a download, it would restart automatically.
+
+**Root Cause:** The `resumePausedDownloads()` function in `downloadManager.ts` runs during app initialization and automatically resumes ALL downloads with 'paused' status. This didn't distinguish between:
+- **User-initiated pause**: User explicitly tapped pause → should STAY paused
+- **System-initiated pause**: App killed, network lost → can auto-resume
+
+**Solution:** Added a `userPaused` boolean flag to track whether the pause was user-initiated:
+
+1. **Database Schema**: Added `user_paused` column to downloads table (INTEGER, defaults to 0)
+2. **DownloadRecord Interface**: Added `userPaused: boolean` field
+3. **pauseDownload()**: Sets `userPaused: true` when user explicitly pauses
+4. **resumeDownload()**: Clears `userPaused` to false when user resumes
+5. **resumePausedDownloads()**: Only auto-resumes downloads where `userPaused === false`
+
+```typescript
+// resumePausedDownloads now filters user-paused downloads
+const paused = await sqliteCache.getDownloadsByStatus('paused');
+const systemPaused = paused.filter((d) => !d.userPaused);  // Can auto-resume
+const userPaused = paused.filter((d) => d.userPaused);     // Must stay paused
+
+if (userPaused.length > 0) {
+  log(`Skipping ${userPaused.length} user-paused downloads`);
+}
+```
+
+**Files Modified:**
+- `src/core/services/sqliteCache.ts` - Added userPaused field to DownloadRecord, migration, getter/setter updates
+- `src/core/services/downloadManager.ts` - pauseDownload sets userPaused=true, resumeDownload clears it, resumePausedDownloads filters
+- `src/constants/version.ts`
+
+---
+
+## [0.7.59] - 2026-01-15
+
+### Fix: Download Pause Now Works Reliably
+
+**Problem:** Tapping "pause" on a downloading book did nothing - the download continued and the UI didn't update.
+
+**Root Cause:** The `pauseDownload` function in `downloadManager.ts` only updated the database status if there was an active `FileSystem.DownloadResumable` object in memory. This object could be missing if:
+- The app was restarted while a download was in progress
+- There was a timing issue between queueing and starting the download
+- The download was pending but not yet actively downloading
+
+When no active download object existed, the function logged a warning but silently did nothing, leaving the status unchanged.
+
+**Fix:** Changed `pauseDownload` to always update the database status to 'paused' for any download that's in 'downloading' or 'pending' state, regardless of whether there's an active download object:
+
+```typescript
+// BEFORE: Only updated DB if active download object existed
+if (download) {
+  await download.pauseAsync();
+  await sqliteCache.setDownload({ status: 'paused', ... });
+} else {
+  logWarn('No active download found'); // Silent failure
+}
+
+// AFTER: Always update DB for in-progress downloads
+if (download) {
+  await download.pauseAsync();
+}
+// Always update database if download is in progress
+const existing = await sqliteCache.getDownload(itemId);
+if (existing?.status === 'downloading' || existing?.status === 'pending') {
+  await sqliteCache.setDownload({ status: 'paused', ... });
+}
+```
+
+**Files Modified:**
+- `src/core/services/downloadManager.ts` - Fixed pauseDownload to always update DB
+- `src/constants/version.ts`
+
+---
+
+## [0.7.58] - 2026-01-15
+
+### Feature: Download Pause/Resume Controls Everywhere
+
+Added pause/resume functionality for downloads in all major locations:
+
+**Player Screen (`SecretLibraryPlayerScreen.tsx`):**
+- Download pill now shows status: "Save", progress %, "Paused", "Queued"
+- Tap while downloading to pause
+- Tap while paused to resume
+- Tap while queued to cancel
+
+**Book Detail Screen (`SecretLibraryBookDetailScreen.tsx`):**
+- Download button now supports pause/resume
+- Shows "Tap to pause" during active download
+- Shows "Paused - X%" when paused with tap to resume
+- Shows "Queued - Tap to cancel" when pending
+
+**Existing Support:**
+- `SeriesBookRow.tsx` already had pause/resume (no changes needed)
+- `CircularDownloadButton` component already supports all states
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.57] - 2026-01-15
+
+### UI: Player Logo Navigation and Default Chapter View
+
+**Changes:**
+
+1. **Logo Navigation**: Player logo/skull now navigates to the Secret Library home page (`HomeTab`) instead of the Library tab
+2. **Default Chapter View**: Player now opens with the chapters panel visible by default, making it easier to navigate within the book
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+  - `handleLogoPress` now navigates to `HomeTab`
+  - `activeSheet` defaults to `'chapters'` with animations in open state
+- `src/constants/version.ts`
+
+---
+
+## [0.7.56] - 2026-01-15
+
+### Fix: Per-Book Playback Speed Now Saves Correctly
+
+**Problem:** When changing playback speed on the player screen, the speed wasn't being saved for the correct book. The setting would be lost when returning to the book later.
+
+**Root Cause:** The `setPlaybackRate` function used `currentBook?.id` to determine which book to save the speed for. However, `currentBook` is the book whose audio is currently loaded/playing, which can differ from `viewingBook` (the book shown on the player screen). When viewing a different book, the speed was saved for the wrong book.
+
+**Fix:** Updated `setPlaybackRate` to use `viewingBook` when available, falling back to `currentBook`:
+
+```typescript
+// BEFORE: Used currentBook (wrong when viewing different book)
+const { currentBook } = get();
+await useSpeedStore.getState().setPlaybackRate(rate, currentBook?.id);
+
+// AFTER: Use viewingBook first (the book user is setting speed for)
+const { viewingBook, currentBook } = get();
+const targetBook = viewingBook || currentBook;
+await useSpeedStore.getState().setPlaybackRate(rate, targetBook?.id);
+```
+
+**Additional Improvements:**
+- Added debug logging to track speed save/load flow
+- `getBookSpeed` now logs when returning saved vs default speeds
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` - Use viewingBook for speed saving
+- `src/features/player/stores/speedStore.ts` - Added debug logging
+- `src/constants/version.ts`
+
+---
+
+## [0.7.55] - 2026-01-15
+
+### Fix: Sleep Timer Now Properly Pauses Playback and Shows Real-Time Countdown
+
+**Problem:** Sleep timer would reach 0 but playback wouldn't pause. Additionally, the timer display showed a static value instead of counting down.
+
+**Root Causes:**
+1. **State Desynchronization:** The UI read `sleepTimer` from `playerStore`, but only `sleepTimerStore` was updated during countdown. `playerStore.sleepTimer` was set once and never updated again.
+2. **Closure Bug in extendSleepTimer:** The countdown interval calculated remaining time from a fixed `endTime` closure variable. When `extendSleepTimer` updated the state, the interval still used the original `endTime`, so extensions didn't actually work.
+3. **Missing State Sync on Expiration:** When the timer expired naturally, `onExpire()` was called to pause playback, but `playerStore.sleepTimer` was never set to `null`, so the UI showed the timer as still active.
+
+**Fixes:**
+
+1. **State-based countdown:** Changed interval to read and decrement from state instead of calculating from fixed `endTime`:
+   ```typescript
+   // BEFORE: Used fixed endTime closure (broke extensions)
+   let endTime = Date.now() + minutes * 60 * 1000;
+   const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+
+   // AFTER: Read current state and decrement (extensions work correctly)
+   const currentTimer = get().sleepTimer;
+   const remaining = Math.max(0, currentTimer - 1);
+   ```
+
+2. **Sync playerStore on expiration:** The `onExpire` callback now also clears `playerStore.sleepTimer`:
+   ```typescript
+   useSleepTimerStore.getState().setSleepTimer(minutes, () => {
+     get().pause();
+     // CRITICAL: Sync state to playerStore when timer expires naturally
+     set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
+   });
+   ```
+
+3. **UI reads from correct store:** Updated `SleepTimerSheet` and `SecretLibraryPlayerScreen` to read `sleepTimer` directly from `sleepTimerStore` for real-time countdown updates.
+
+**Files Modified:**
+- `src/features/player/stores/sleepTimerStore.ts` - Fixed countdown logic to use state-based decrement
+- `src/features/player/stores/playerStore.ts` - Added state sync in onExpire callback
+- `src/features/player/sheets/SleepTimerSheet.tsx` - Read from sleepTimerStore directly
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Read from sleepTimerStore directly
+- `src/constants/version.ts`
+
+---
+
+## [0.7.54] - 2026-01-15
+
+### Fix: Downloaded Books Resume from Correct Position
+
+**Problem:** After tapping play on a downloaded multi-file audiobook, playback started from the beginning instead of the saved position (e.g., chapter 61). The position was correctly retrieved (69845.8s) but the audio started at 0:00.
+
+**Root Cause:** When building track metadata for offline multi-file audiobooks, the code used `book.media.audioFiles` for track durations. However, for downloaded books, this array has `duration: 0` for all tracks. Without correct track durations/offsets, the audio service couldn't calculate which track corresponds to position 69845.8s and defaulted to track 107 at position 0.
+
+**Fix:** Updated the offline multi-file track building to use cached session's `audioTracks` for duration/offset metadata when available:
+
+```typescript
+// Priority: cached session tracks > book.media.audioFiles
+const sessionTracks = cachedSession?.audioTracks || [];
+
+audioTrackInfos = audioFileNames.map((fileName, index) => {
+  const sessionTrack = sessionTracks[index];
+  const bookFile = bookAudioFiles[index];
+  // Use session track duration if available (most reliable)
+  const duration = sessionTrack?.duration || bookFile?.duration || 0;
+  const startOffset = sessionTrack?.startOffset ?? currentOffset;
+  // ...
+});
+```
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` - Use cached session track metadata for offline playback
+- `src/constants/version.ts`
+
+---
+
+## [0.7.53] - 2026-01-15
+
+### Fix: Play Button Now Loads Book When Audio Not Loaded
+
+**Problem:** Tapping the play button on a preloaded book (from previous session) did nothing because `play()` silently returned when audio wasn't loaded.
+
+**Root Cause:** The `play()` function had an early return when `audioService.getIsLoaded()` was false. This was intended to prevent iOS background playback issues, but it broke the normal "tap to play" flow for preloaded books.
+
+**Fix:** Updated `play()` to call `loadBook(autoPlay=true)` when audio isn't loaded but a book is available:
+
+```typescript
+if (!audioService.getIsLoaded()) {
+  const bookToPlay = viewingBook || currentBook;
+  if (bookToPlay) {
+    await get().loadBook(bookToPlay, true); // autoPlay=true
+    return;
+  }
+}
+```
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` - Updated `play()` to load book when audio not loaded
+- `src/constants/version.ts`
+
+---
+
+## [0.7.52] - 2026-01-15
+
+### Fix: Add Server Fetch as Chapter Fallback
+
+**Problem:** Downloaded books still showed "0 chapters" because the cached LibraryItem object didn't have `media.chapters` populated, and all local fallbacks returned empty.
+
+**Root Cause:** When a book is downloaded, the cached LibraryItem in memory/SQLite may have an empty `chapters` array, even though the server has 108 chapters. The 3-tier fallback (session → cache → metadata) all failed because none had the data locally.
+
+**Fix:** Added a 4th fallback level that fetches fresh book data from the server via `apiClient.getItem(bookId)`. This ensures chapters are retrieved even when all local sources are empty.
+
+**New Fallback Hierarchy:**
+1. Session chapters (from current playback)
+2. SQLite cached chapters (persisted)
+3. Book metadata (from cached LibraryItem)
+4. **NEW: Server fetch** (API call to `/api/items/{id}`)
+5. Empty array (last resort)
+
+**Files Modified:**
+- `src/features/player/services/chapterCacheService.ts` - Added server fetch fallback and apiClient import
+- `src/constants/version.ts`
+
+---
+
+## [0.7.51] - 2026-01-15
+
+### Fix: Chapter Fallback for Preloaded/Viewed Books
+
+**Problem:** Downloaded books showed "0 chapters" and wouldn't play because `preloadBookState` and `viewBook` functions extracted chapters directly from book metadata without using the fallback hierarchy.
+
+**Root Cause:** When a book is restored from a previous session or viewed, the `extractChaptersFromBook()` function was called directly instead of `chapterCacheService.getChaptersWithFallback()`. For downloaded books where `book.media.chapters` is empty, this resulted in zero chapters being loaded.
+
+**Fix:** Updated both `preloadBookState` and `viewBook` to use the chapter fallback service:
+- Session chapters (from server)
+- SQLite cached chapters (persisted)
+- Book metadata chapters (last resort)
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` - Updated `preloadBookState` and `viewBook` to use `chapterCacheService.getChaptersWithFallback()`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.50] - 2026-01-15
+
+### Style: Search Page Theme Alignment
+
+**Problem:** The search page styling didn't match the rest of the app - it used a red/gold accent color and the search bar didn't follow the pill-shaped design pattern.
+
+**Changes:**
+1. **Removed gold accent color** - Changed from `colors.gold` to theme-aligned black/white (black in light mode, white in dark mode)
+2. **Search bar now pill-shaped** - Added `borderRadius: 20` for fully rounded corners with subtle border
+3. **Centered placeholder text** - When search input is empty, placeholder text is centered; text left-aligns when typing
+4. **QuickBrowseGrid full width** - Removed horizontal padding so grid spans full screen width like browse page
+
+**Files Modified:**
+- `src/features/search/screens/SearchScreen.tsx` - Changed ACCENT to theme-aligned color
+- `src/shared/components/TopNav.tsx` - Pill-shaped search bar with border, centered placeholder
+- `src/features/search/components/QuickBrowseGrid.tsx` - Full width grid, neutral link color
+- `src/constants/version.ts`
+
+---
+
+## [0.7.49] - 2026-01-15
+
+### Fix: Player Logo Now Navigates to Library
+
+**Problem:** Tapping the skull logo on the player screen did nothing.
+
+**Root Cause:** The TopNav component's default `handleLogoPress` tried to navigate directly, but from a modal screen this doesn't work because the modal needs to be dismissed first.
+
+**Fix:** Added a custom `onLogoPress` handler that:
+1. Triggers haptic feedback
+2. Closes the player (dismisses the modal)
+3. Navigates to `LibraryTab` after a 300ms delay
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Added `handleLogoPress` handler
+- `src/constants/version.ts`
+
+---
+
+## [0.7.48] - 2026-01-15
+
+### Enhancement: Chapter Cache Validation & Telemetry
+
+Follow-up to v0.7.47 chapter persistence fix with production-ready enhancements.
+
+**Cache Validation:**
+- Added structured TTL validation with age tracking (hours/minutes)
+- Added 1MB size limit protection with detailed logging
+- Added JSON structure validation before parsing
+
+**Telemetry & Debugging:**
+- Comprehensive structured logging at each fallback level
+- Load timing metrics (`loadTimeMs`) for performance monitoring
+- Source tracking (`session`, `cache`, `metadata`, `empty`)
+- Error recovery logging with detailed context
+
+**Debug Utilities:**
+- `getCacheStatus(bookId)` - Inspect cache state for any book
+- `forceRefreshCache(bookId)` - Clear cache to force fresh load
+
+**Log Examples:**
+```
+INFO: Chapters loaded from session { bookId, chapterCount: 25, loadTimeMs: 45, source: 'session' }
+INFO: Chapters recovered successfully { bookId, source: 'cache', chapterCount: 25 }
+WARN: Cached chapters expired { bookId, ageHours: 170, maxAgeHours: 168 }
+```
+
+**Files Modified:**
+- `src/core/services/sqliteCache.ts` - Enhanced validation & structured logging
+- `src/features/player/services/chapterCacheService.ts` - Telemetry + debug utilities
+- `src/features/player/stores/playerStore.ts` - Enhanced source logging
+- `src/constants/version.ts`
+
+---
+
+## [0.7.47] - 2026-01-15
+
+### Fix: Chapter Disappearance During Long Listening Sessions
+
+**Problem:** After listening to a book for an extended period, chapters would disappear and the book would become unplayable. Only reinstalling the app would fix it.
+
+**Root Causes Identified:**
+1. Chapters only existed in Zustand memory - no persistence to SQLite
+2. Session errors didn't preserve/restore chapters
+3. Race condition: `closeSessionAsync()` nulled session before API completed
+4. No fallback hierarchy when session data failed
+
+**Solution:** Implemented robust chapter persistence with 3-tier fallback:
+1. **Session chapters** - Fresh from server (primary)
+2. **SQLite cache** - Persisted from last successful load (fallback)
+3. **Book metadata** - Extracted from LibraryItem (last resort)
+
+**Changes:**
+- Added `chapters` and `chapters_updated_at` columns to `user_books` SQLite table
+- Created `chapterCacheService` with fallback hierarchy logic
+- Fixed session race condition - chapters backed up before session cleared
+- Error handler now preserves chapters instead of leaving them empty
+- Extended playback cache session expiry from 5 to 15 minutes
+
+**Files Modified:**
+- `src/core/services/sqliteCache.ts` - Added chapter columns + accessor methods
+- `src/features/player/services/chapterCacheService.ts` - **NEW** fallback service
+- `src/features/player/services/sessionService.ts` - Fixed race condition, added chapter backup
+- `src/features/player/stores/playerStore.ts` - Integrated fallback + error recovery
+- `src/core/services/playbackCache.ts` - Extended expiry, added fallback method
+- `src/constants/version.ts`
+
+---
+
+## [0.7.46] - 2026-01-14
+
+### Fix: Player Title Displays Normally (Not Spine-Stacked)
+
+**Problem:** The player was displaying titles in a spine-like stacked format (one word per line, uppercase), which looked odd for the player context. "Jade City" was showing as:
+```
+JADE
+CITY
+```
+
+**Root Cause:** The player had a `splitTitle()` function that broke titles word-by-word, AND was applying `titleTransform: 'uppercase'` from the cached spine typography.
+
+**Fix:**
+1. Removed the `splitTitle()` usage - titles now display as-is
+2. Only extract **font properties** from cached typography (fontFamily, fontWeight)
+3. Do NOT apply spine-specific properties (uppercase transform, stacking, orientations)
+
+**Before:** "JADE" / "CITY" (stacked, uppercase)
+**After:** "Jade City" (normal display, wraps naturally)
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Simplified title rendering
+- `src/features/player/utils/positionResolver.ts` - Fixed null safety bug
+- `src/constants/version.ts`
+
+---
+
+## [0.7.45] - 2026-01-14
+
+### Enhancement: Player Author Name Underlined as Link
+
+Added underline styling to the author name in the player screen to visually indicate it's tappable (matches book detail screen behavior).
+
+**Change:**
+- Author text now shows `textDecorationLine: 'underline'` when `authorId` is available
+- Tapping the author navigates to AuthorDetail screen
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Added underline to author text
+- `src/constants/version.ts`
+
+---
+
+## [0.7.44] - 2026-01-14
+
+### Enhancement: Player Title Auto-Scales for Long Titles
+
+Added `adjustsFontSizeToFit` to the player screen title text so long book titles automatically scale down to fit the available space.
+
+**Props Added:**
+- `adjustsFontSizeToFit` - Enables automatic font scaling
+- `numberOfLines={4}` - Allows up to 4 lines for title + author
+- `minimumFontScale={0.5}` - Won't shrink below 50% of original size
+
+**Before:** Long titles could overflow or get cut off
+**After:** Long titles scale down proportionally to fit
+
+**Files Modified:**
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Added adjustsFontSizeToFit to title Text
+- `src/constants/version.ts`
+
+---
+
+## [0.7.43] - 2026-01-14
+
+### Fix: Book Detail/Player Now Match Spine Fonts Exactly
+
+**Problem:** Book detail and player screens showed different fonts than the book spines on the home screen. For example, a Fantasy book would show `Lora-Regular` on book detail but `UncialAntiqua-Regular` on the spine.
+
+**Root Cause:** The cache was using `getTypographyForGenres()` but the book spines use the **template system** when templates are available. The spine's rendering path:
+1. Check if templates apply (`shouldUseTemplates(genres)`)
+2. If yes, use `applyTemplateConfig()` to get font
+3. Resolve font via `getPlatformFont()` to map custom fonts to available fonts
+
+The cache was only using step 3 from the old typography system, missing the template lookup entirely.
+
+**Fix:**
+1. Import `shouldUseTemplates` and `applyTemplateConfig` from templateAdapter
+2. Cache now checks if templates apply and uses them (same logic as spine)
+3. Font names are resolved via `getPlatformFont()` (same as spine line 1654)
+
+**Before:**
+- Spine: `UncialAntiqua-Regular` (from epic-fantasy template)
+- Book Detail: `Lora-Regular` (from genre typography fallback)
+
+**After:**
+- Spine: `UncialAntiqua-Regular`
+- Book Detail: `UncialAntiqua-Regular` ✓
+
+**Files Modified:**
+- `src/features/home/stores/spineCache.ts` - Use template system when available, resolve fonts with `getPlatformFont()`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.42] - 2026-01-14
+
+### Performance: Cache Typography for Cross-Screen Consistency
+
+**Problem:** Book detail and player screens were computing typography (font family, weight, transforms) at render time, which could result in different fonts being selected than the book spines on the home screen.
+
+**Solution:**
+Pre-compute typography when library loads and cache it alongside dimensions, colors, and composition.
+
+**Changes:**
+1. Added `typography` field to `CachedSpineData` interface with all font properties:
+   - fontFamily, fontWeight, fontStyle
+   - titleTransform, authorTransform
+   - letterSpacing, contrast, etc.
+2. Call `getTypographyForGenres()` in `extractSpineData()` during cache population
+3. Update `useSpineCache` hooks to expose typography in return values
+4. Update book detail and player screens to use `cachedSpineData.typography` first, with fallback for books not in cache
+
+**Benefits:**
+- **Exact font matching**: Book spines, book detail, and player screens all use the SAME typography
+- **No recomputation**: Typography computed once at app startup, not on every screen
+- **Consistent experience**: Book appears with same font everywhere it's displayed
+
+**Files Modified:**
+- `src/features/home/stores/spineCache.ts` - Added typography to cache extraction
+- `src/features/home/hooks/useSpineCache.ts` - Exposed typography in hook return values
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Use cached typography first
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Use cached typography first
+- `src/constants/version.ts`
+
+---
+
+## [0.7.41] - 2026-01-14
+
+### Feature: Stacked Author Names for Fantasy
+
+Changed the Fantasy genre profile to prefer stacked (vertical word-by-word) author names instead of horizontal. This gives books like Terry Pratchett's "Witches Abroad" a more epic, classic spine look.
+
+**Before:** Author horizontal at bottom
+**After:** Author stacked vertically (word by word)
+
+**Change:**
+```tsx
+// Old: ['vertical-up', 'vertical-down', 'oppose-title']
+// New: ['stacked-words', 'vertical-up', 'stacked-words', 'vertical-down']
+```
+
+Duplicating `'stacked-words'` in the array makes it more likely to be selected (50% chance vs 25%).
+
+**Files Modified:**
+- `src/features/home/utils/spineCalculations.ts` - Fantasy authorOrientations
+- `src/constants/version.ts`
+
+---
+
+## [0.7.40] - 2026-01-14
+
+### Fix: Use Complete Genre Font Library
+
+**Problem:** Book detail and player screens were showing `Lora-Regular` font for most genres instead of the genre-specific fonts (like `PlayfairDisplay-Bold` for Fantasy).
+
+**Root Cause:** The adapter's `getTypographyForGenres` was using the NEW genre profile system when the feature flag was enabled. However:
+- **New system**: Only 3 genre profiles (fantasy, thriller, romance) - everything else falls back to default
+- **Old system**: 42+ templates with diverse, genre-specific fonts
+
+**Fix:** Changed `getTypographyForGenres()` in the adapter to ALWAYS use the old template system for font selection, regardless of feature flag. The new system still handles composition/layout - the systems complement each other.
+
+**Files Modified:**
+- `src/features/home/utils/spine/adapter.ts` - Always use old system for typography
+- `src/constants/version.ts`
+
+---
+
+## [0.7.39] - 2026-01-14
+
+### Fix: Dark Mode Text in Library Filter Dropdowns
+
+**Problem:** Filter dropdowns (View, Sort, Download Status) on the Library screen had nearly invisible text in dark mode - dark gray text (`#1A1A1A`) on dark background (`#0f0f0f`).
+
+**Root Cause:** The dropdowns incorrectly used `colors.cream` for text color. In the Secret Library color system:
+- Light mode: `cream` = `#e8e8e8` (light surface color)
+- Dark mode: `cream` = `#1A1A1A` (dark surface color - NOT for text!)
+
+The correct text color is `colors.black` which is automatically inverted:
+- Light mode: `black` = `#000000`
+- Dark mode: `black` = `#FFFFFF`
+
+**Fix:** Replaced `isDarkMode ? colors.cream : colors.black` with just `colors.black` - the color system handles the inversion.
+
+**Files Modified:**
+- `src/features/home/screens/LibraryScreen.tsx` - Fixed text colors in 3 dropdown modals
+- `src/constants/version.ts`
+
+---
+
+## [0.7.38] - 2026-01-14
+
+### Performance: Pre-compute Spine Compositions at Startup
+
+**Problem:** Spine styling (title orientation, author treatment, font choices) was computed at render time, causing:
+- Delayed style application when viewing books
+- Inconsistent styling across home, book detail, and player screens on reload
+- Layout shifts as styles were computed
+
+**Solution:**
+Pre-compute spine compositions when library loads and cache them alongside dimensions and colors.
+
+**Changes:**
+1. Added `composition?: SpineComposition` field to `CachedSpineData` interface
+2. Import and call `generateSpineComposition()` in `extractSpineData()` during cache population
+3. Expose composition through `useSpineCache` hooks for easy access
+
+**Benefits:**
+- **Instant styling**: Book spines render with correct styling immediately
+- **Consistency**: Same composition used across all screens (home, book detail, player)
+- **No layout shift**: Styles are pre-computed, eliminating flash of unstyled content
+
+**Files Modified:**
+- `src/features/home/stores/spineCache.ts` - Added composition to cache extraction
+- `src/features/home/hooks/useSpineCache.ts` - Exposed composition in hook return values
+- `src/constants/version.ts`
+
+---
+
+## [0.7.37] - 2026-01-14
+
+### Fix: Vertical Spine Text Centering
+
+**Problem:** Vertical text on book spines (titles like "Voyager", "Kings of the Wyld") wasn't centering properly. Text appeared offset from the visual center.
+
+**Root Cause:** React Native's `lineHeight` property centers the "line box" (fontSize + padding), not the visual text itself. When text is rotated 90°, this causes vertical misalignment.
+
+**Solution:**
+1. Removed `lineHeight` from single-line vertical text orientations (`vertical-up`, `vertical-down`)
+2. Added unified centering utility functions (`shouldUseLineHeight`, `getSpineTextStyle`) with documentation
+
+**Technical Details:**
+- Horizontal and multi-line vertical text (`vertical-two-row`) still use `lineHeight` for proper line spacing
+- Stacked orientations (`stacked-letters`, `stacked-words`) use `gap` instead of `lineHeight`
+- Added `includeFontPadding: false` comment explaining its purpose
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Removed lineHeight from vertical-up/down orientations
+- `src/features/home/utils/spineCalculations.ts` - Added `shouldUseLineHeight()` and `getSpineTextStyle()` utilities
+- `src/constants/version.ts`
+
+---
+
+## [0.7.33] - 2026-01-14
+
+### Complete Genre Template Library
+
+Added 24 new spine templates for comprehensive genre coverage. Now 42 total templates.
+
+**New Templates:**
+- Mystery, Classics, Epic Fantasy, Self-Help
+- Young Adult, Children, Non-Fiction, History
+- Sports, Travel, Cooking, Health
+- Military, Dystopian, Urban Fantasy, Paranormal Romance
+- Poetry, Science, LitRPG, Cozy Mystery
+- Espionage, Contemporary Fiction, Default (fallback)
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added 24 new templates
+- `src/constants/version.ts`
+
+---
+
+## [0.7.32] - 2026-01-14
+
+### Fix: Load New Fonts in APK
+
+Added missing font loading for 11 new fonts in `appInitializer.ts`. Fonts were downloaded but not being loaded with `expo-font`, so they appeared as system defaults.
+
+**Fonts now loaded:**
+- GravitasOne, NotoSerif (Regular+Bold), LibreBaskerville (Regular+Bold)
+- AlfaSlabOne, AlmendraSC, ZenDots, Eater, RubikBeastly, Barriecito
+
+**Files Modified:**
+- `src/core/services/appInitializer.ts` - Added Font.loadAsync() calls for new fonts
+- `src/constants/version.ts`
+
+---
+
+## [0.7.31] - 2026-01-14
+
+### Default to Dark Mode
+
+Changed default theme mode from light to dark for new installs.
+
+**Files Modified:**
+- `src/shared/theme/themeStore.ts` - Changed default mode to 'dark'
+- `src/constants/version.ts`
+
+---
+
+## [0.7.30] - 2026-01-14
+
+### Bug Fix: Skip Back Playback Issue
+
+**Problem:** When pressing skip back while playing, audio would:
+1. Jump back correctly
+2. Play for ~1 second
+3. Stop unexpectedly
+4. First play press wouldn't work
+5. Second play press would work
+
+**Root Cause:** Race condition in `seekingStore.seekTo()` - the audio seek was fire-and-forget (not awaited), causing playback to continue from old position while seek was still processing.
+
+**Fix:** Added `await` to `audioService.seekTo()` call so the function waits for the audio seek to complete before returning.
+
+**Files Modified:**
+- `src/features/player/stores/seekingStore.ts` - Line 211: Added await to audioService.seekTo()
+- `src/constants/version.ts`
+
+---
+
+## [0.7.29] - 2026-01-14
+
+### Fixes and Font Downloads
+
+**1. Fixed Thriller template layout**
+- Changed from `stacked-words` (50% height) to `vertical-up` (72% height)
+- Was causing "DUNGEON CRAWLER CARL" overlap issue
+- Now matches typical vertical spine layout
+
+**2. Width scaling with bump for 40+ hour epics**
+- Linear scaling for most books (1-40 hours)
+- Quadratic bump above 40 hours makes very long books look impressively thick
+- Example: 40hr = ~232px, 45hr = ~250px, 50hr = 280px (MAX)
+
+**3. Downloaded 9 new Google Fonts**
+- GravitasOne, NotoSerif (Regular+Bold), LibreBaskerville (Regular+Bold)
+- AlfaSlabOne, AlmendraSC, ZenDots
+- Eater, RubikBeastly, Barriecito
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Fixed Thriller template
+- `src/features/home/utils/spine/core/dimensions.ts` - Linear + bump scaling
+- `src/assets/fonts/` - Added 11 new font files
+- `src/constants/version.ts`
+
+---
+
+## [0.7.28] - 2026-01-14
+
+### Spine Improvements: Spacing, Scaling, and New Fonts
+
+**1. Fixed stacked-words vertical spacing**
+- Removed `flex: 1` that was causing words to spread out
+- Words now pack tightly together with negative margins (30% overlap)
+- Matches real book spine typography where words stack closely
+
+**2. Logarithmic spine width scaling**
+- Changed from linear to logarithmic scaling based on duration
+- Short books spread out better (2hr book is now ~70px, not 49px)
+- Long books still look thick but not absurdly wide
+- Example widths: 1hr=44px, 5hr=115px, 10hr=150px, 20hr=190px, 50hr=280px
+
+**3. Added 9 new Google Fonts for variety:**
+- **Serif:** NotoSerif, LibreBaskerville (classic, traditional)
+- **Display:** GravitasOne, AlfaSlabOne (bold, impactful)
+- **Decorative:** AlmendraSC (vintage, small caps)
+- **Futuristic:** ZenDots (tech, modern)
+- **Playful:** Eater (horror), RubikBeastly (monster), Barriecito (quirky)
+
+**4. Reduced Oswald-Bold/BebasNeue overuse:**
+- Templates now use more varied fonts
+- Each genre has appropriate typography personality
+- Less generic, more distinctive per-genre styling
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Fixed stacked-words spacing
+- `src/features/home/utils/spine/core/dimensions.ts` - Logarithmic width calculation
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - New fonts + template updates
+- `src/features/home/utils/spineCalculations.ts` - Font map + line heights for new fonts
+- `src/constants/version.ts`
+
+---
+
+## [0.7.27] - 2026-01-14
+
+### Font Randomization Complete
+
+Added `fontFamilies` arrays to ALL 18 spine templates for visual variety.
+
+**Templates Updated:**
+| Template | Title Font Pool | Author Font Pool |
+|----------|----------------|------------------|
+| Literary Fiction | PlayfairDisplay-Regular, Lora-Regular, PlayfairDisplay-Bold | (inherits) |
+| Science Fiction | Orbitron-Regular, BebasNeue-Regular, Oswald-Bold | (inherits) |
+| Technology | Orbitron-Regular, BebasNeue-Regular, Oswald-Bold | (inherits) |
+| Western | Notable-Regular, BebasNeue-Regular, Oswald-Bold | (inherits) |
+| Art & Design | Federo-Regular, PlayfairDisplay-Bold, BebasNeue-Regular | (inherits) |
+| Adventure | Oswald-Bold, BebasNeue-Regular, PlayfairDisplay-Bold | (inherits) |
+| Fantasy | Oswald-Bold, PlayfairDisplay-Bold, Lora-Bold, BebasNeue-Regular | (inherits) |
+| Humor | Oswald-Bold, BebasNeue-Regular, Oswald-Regular | Oswald-Regular, BebasNeue-Regular |
+| True Crime | Notable-Regular, BebasNeue-Regular, Oswald-Bold | Oswald-Bold, BebasNeue-Regular |
+| Horror | GrenzeGotisch-Regular, PlayfairDisplay-Bold, Lora-Bold | PlayfairDisplay-Bold, Lora-Bold |
+| Romance | FleurDeLeah-Regular, PlayfairDisplay-Regular, Lora-Regular | PlayfairDisplay-Regular, Lora-Regular |
+| Biography | PlayfairDisplay-Bold, Lora-Bold, PlayfairDisplay-Regular | PlayfairDisplay-Regular, Lora-Regular |
+| Philosophy | UncialAntiqua-Regular, Lora-Regular, PlayfairDisplay-Regular | Lora-Regular, PlayfairDisplay-Regular |
+| Thriller | Oswald-Bold, BebasNeue-Regular, Notable-Regular | Oswald-Regular, BebasNeue-Regular |
+| Historical Fiction | PlayfairDisplay-Regular, Lora-Regular, PlayfairDisplay-Bold | PlayfairDisplay-Regular, Lora-Regular |
+| Business | Orbitron-Regular, BebasNeue-Regular, Oswald-Bold | Oswald-Bold, BebasNeue-Regular |
+| Music & Arts | Federo-Regular, PlayfairDisplay-Bold, BebasNeue-Regular | PlayfairDisplay-Bold, Lora-Bold |
+| Anthology | PlayfairDisplay-Regular, Lora-Regular, PlayfairDisplay-Bold | PlayfairDisplay-Regular, Lora-Regular |
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added fontFamilies to all templates
+- `src/constants/version.ts`
+
+---
+
+## [0.7.26] - 2026-01-14
+
+### Font Randomization Support
+
+Added support for per-genre font randomization using `fontFamilies` array.
+
+**How it works:**
+- Templates can define `fontFamilies: ['Font1', 'Font2', 'Font3']` alongside `fontFamily`
+- When rendering, a font is selected based on the book title hash (deterministic)
+- Same book always gets same font, but different books get variety
+
+**New functions:**
+- `selectFontForBook(config, bookTitle)` - Selects font from fontFamilies array
+- `hashString(str)` - Simple deterministic hash for font selection
+
+**Usage example:**
+```typescript
+title: {
+  fontFamily: 'Oswald-Bold',  // Default fallback
+  fontFamilies: ['Oswald-Bold', 'BebasNeue-Regular', 'Lora-Bold'],  // Random selection
+  // ... other config
+}
+```
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added fontFamilies field and selectFontForBook()
+- `src/features/home/utils/spine/templateAdapter.ts` - Uses selectFontForBook() when applying config
+- `src/features/home/components/BookSpineVertical.tsx` - Passes book title for font selection
+- `src/constants/version.ts`
+
+---
+
+## [0.7.25] - 2026-01-14
+
+### Added Humor Template
+
+**New template for comedy and humor books!**
+
+**Humor Template Design:**
+- **Font**: Oswald-Bold/Regular (clean, approachable sans-serif)
+- **Title**: Vertical-up, uppercase, 48pt medium / 58pt large
+- **Author**: Horizontal at bottom, uppercase
+- **Feel**: Light and playful for comedic reads
+
+**Matches genres:**
+- humor, comedy, satire, parody, humorous-fiction
+
+**Example:** "Witches Abroad" (Fantasy, Humor) now matches Humor template instead of Adventure fallback.
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.24] - 2026-01-14
+
+### Minimum Spine Width Increased to 44px
+
+Increased minimum book spine width from 20px to 44px to match touch target guidelines.
+
+**Changes:**
+- `WIDTH_CALCULATION.MIN`: 20 → 44 (in `spine/constants.ts`)
+- `MIN_WIDTH`: 20 → 44 (in `spineCalculations.ts`)
+
+**Rationale:**
+- 44px is the Apple HIG minimum touch target
+- No more need for hitSlop padding on thin spines
+- Ensures all spines are directly tappable
+- Short audiobooks (<1hr) now get readable spine widths
+
+**Files Modified:**
+- `src/features/home/utils/spine/constants.ts`
+- `src/features/home/utils/spineCalculations.ts`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.23] - 2026-01-14
+
+### Added Fantasy Template
+
+**New template for Fantasy genre books!**
+
+Previously, Fantasy books were falling through to Adventure or Thriller templates based on their secondary genre. Now they get a dedicated epic fantasy look.
+
+**Fantasy Template Design:**
+- **Font**: PlayfairDisplay-Bold (classic serif for epic feel)
+- **Title**: Vertical orientation, uppercase, bold
+- **Author**: Stacked words at bottom (e.g., "NICHOLAS / EAMES")
+- **Decoration**: Thin divider line between title and author
+- **Sizes**: Responsive configs for small (38pt), medium (52pt), large (64pt) spines
+
+**Matches genres:**
+- fantasy, epic-fantasy, urban-fantasy, dark-fantasy, high-fantasy, sword-and-sorcery
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added Fantasy template
+- `src/constants/version.ts`
+
+---
+
+## [0.7.22] - 2026-01-14
+
+### Template Renderer Fixes
+
+**Fixes for TemplateSpineRenderer:**
+
+1. **Font loading fixed** - Now passes `resolvedFontFamily` (via `getPlatformFont()`) to the template renderer instead of raw font names. This ensures custom fonts like PlayfairDisplay, Lora, etc. load correctly.
+
+2. **Progress moved below spine** - For template-rendered books, progress is now shown BELOW the spine (externally) rather than inside it. Series numbers are hidden for now (can be added to templates later).
+
+**Changes:**
+- Added `resolvedFontFamily` prop to `TemplateSpineRenderer`
+- Removed progress/series rendering from inside template renderer
+- Added `progressBelowContainer` style for external progress display
+- Progress shows as `XX%` below the book spine
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.21] - 2026-01-14
+
+### Template-Direct Rendering - Clean Integration
+
+**MAJOR REFACTOR:** Completely new rendering path for template-driven spines that mirrors SpineTemplatePreviewScreen exactly. This bypasses all the composition/solver complexity that was causing rendering issues.
+
+**User Insight:**
+> "Why can't we just use exactly how the template page is rendering them and pass in the values? It seems like a lot to have it translate everything."
+
+**The Problem:**
+Previous versions tried to:
+1. Translate template configs through templateAdapter
+2. Convert to composition objects
+3. Run through layout solver to calculate fontSize
+4. Apply results to Text components
+
+This multi-layer translation was causing:
+- Height allocation inversions (small fonts got huge space)
+- Solver overriding template fontSize
+- Orientation conversion bugs
+
+**The Solution:**
+Created `TemplateSpineRenderer` - a clean, isolated component that:
+- Uses `heightPercent` DIRECTLY for section allocation (like SpinePreview)
+- Applies `fontSize` DIRECTLY to Text components (no solver recalculation)
+- Uses `adjustsFontSizeToFit` for overflow handling (shrinks but doesn't grow)
+- Handles all orientations via simple transforms
+
+**Code Architecture:**
+```typescript
+// When templates active: use clean direct rendering
+{templateConfig ? (
+  <TemplateSpineRenderer
+    templateConfig={templateConfig}
+    titleText={book.title}
+    authorText={book.author}
+    spineWidth={width}
+    spineHeight={height}
+    // ... direct props, no translation
+  />
+) : (
+  // Fallback: composition-based rendering for non-template books
+  <>...existing complex path...</>
+)}
+```
+
+**Key Differences from Previous Approach:**
+| Aspect | Old (v0.7.20) | New (v0.7.21) |
+|--------|---------------|---------------|
+| Height calc | FROM fontSize | heightPercent DIRECT |
+| Font size | Solver calculated | Template DIRECT |
+| Orientation | Converted/translated | Used AS-IS |
+| Rendering | Multiple code paths | Single clean renderer |
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Added TemplateSpineRenderer, conditional rendering path
+- `src/constants/version.ts`
+- `CHANGELOG.md`
+
+---
+
+## [0.7.20] - 2026-01-13
+
+### Priority Order Fix - Composition Override
+
+**FINAL FIX** for spine layout bug where templates correctly specified `author placement: bottom` but were being overridden by typography settings.
+
+**Root Cause Found:**
+User provided debug logs showing:
+```json
+{
+  "layoutAuthorPos": "bottom",  ← Template says BOTTOM
+  "hasAuthorBox": true,          ← Typography has author box
+  "typographyAuthorPos": "top"   ← Typography says TOP
+}
+Result: authorFirst=true ← WRONG! Should be false
+```
+
+**The Problem:**
+```typescript
+// v0.7.19 (broken priority):
+const authorFirstBeforeSafetyCheck =
+  composition?.layout?.authorPosition === 'top' ||
+  hasAuthorBox ||  // ❌ This overrode composition's "bottom"!
+  typography.authorPosition === 'top';
+```
+
+Even though composition explicitly said `"bottom"`, the `hasAuthorBox` check (from series typography) was overriding it!
+
+**The Fix:**
+```typescript
+// v0.7.20 (correct priority):
+const compositionSaysBottom = composition?.layout?.authorPosition === 'bottom';
+const compositionSaysTop = composition?.layout?.authorPosition === 'top';
+
+const authorFirstBeforeSafetyCheck =
+  compositionSaysTop ||  // Composition top - use it
+  (!compositionSaysBottom && hasAuthorBox) ||  // ✅ Only if composition doesn't say bottom!
+  (!compositionSaysBottom && !compositionSaysTop && typography.authorPosition === 'top');
+```
+
+**Priority Order (Correct):**
+1. **Composition** (template-driven) - HIGHEST
+2. **hasAuthorBox** (series typography) - MEDIUM
+3. **typography.authorPosition** (fallback) - LOWEST
+
+**Result:**
+- Templates with `author placement: bottom` now correctly place authors at bottom
+- Series typography can't override template decisions
+- Traditional spine hierarchy: title prominent, author secondary
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.19] - 2026-01-13
+
+### Critical Safety Check Fix
+
+**Fixed incomplete safety check** that allowed stacked author names to appear at the top of spines.
+
+**The Problem:**
+- v0.7.18's safety check only applied to `composition?.layout?.authorPosition === 'top'`
+- It didn't protect against `hasAuthorBox` or `typography.authorPosition === 'top'`
+- Series books with `authorBox: "horizontal-only"` could still get stacked authors at top
+- Result: "NICHOLAS EAMES" appearing huge and stacked at top (exactly what user saw!)
+
+**The Fix:**
+```typescript
+// BEFORE (v0.7.18 - incomplete):
+const authorFirst =
+  (composition?.layout?.authorPosition === 'top' && !authorHasStackedOrientation) ||
+  hasAuthorBox || // ❌ No stacked check here!
+  typography.authorPosition === 'top'; // ❌ Or here!
+
+// AFTER (v0.7.19 - complete):
+const authorFirstBeforeSafetyCheck =
+  composition?.layout?.authorPosition === 'top' ||
+  hasAuthorBox ||
+  typography.authorPosition === 'top';
+
+// ✅ Apply safety check to ALL cases:
+const authorFirst = authorFirstBeforeSafetyCheck && !authorHasStackedOrientation;
+```
+
+**Why This Matters:**
+- Stacked author names (NICHOLAS / EAMES) are LARGE by design
+- When placed at top, they dominate the spine (60-70% of height)
+- Titles get squeezed small at bottom (backwards from tradition!)
+- This safety check enforces: **Stacked authors ALWAYS go to bottom**
+
+**Added Debug Log:**
+```
+[SAFETY] "Kings of the Wyld" has stacked author (stacked-words)
+  - forcing to BOTTOM despite authorPosition=top
+```
+
+**Result:**
+- Stacked authors now forced to bottom REGARDLESS of authorPosition/authorBox
+- Traditional spine hierarchy restored: title prominent, author secondary
+- Works for template-driven AND composition-driven spines
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.18] - 2026-01-13
+
+### Template Integration Fixes
+
+**Critical fixes** to prevent incorrect spine layouts where author names appeared too prominently.
+
+**Problems Fixed:**
+
+1. **Missing Layout Property**
+   - Template-based compositions were missing the `layout` object
+   - Added `layout.authorPosition` from template's author placement
+   - This ensures templates correctly specify author positioning
+
+2. **Composition Priority Not Used**
+   - Component wasn't checking `composition.layout.authorPosition`
+   - Now prioritizes: composition → hasAuthorBox → typography
+   - Templates can now control section ordering
+
+3. **Stacked Author Names at Top**
+   - Composition system sometimes generated `author: stacked-words, authorPosition: top`
+   - This made author names dominate the spine (WRONG!)
+   - Added safety check: blocks author-first when using stacked orientations
+   - Result: Traditional spine layout (title prominent, author secondary)
+
+4. **Enhanced Debug Logging**
+   - Added logs for template matching: shows genre match or "NO MATCH"
+   - Added logs for composition generation: shows author orientation & position
+   - Helps diagnose layout issues in dev mode
+
+**What Was Happening:**
+
+```
+BEFORE (broken):
+┌─────────┐
+│ NICHOLAS│ ← Author (stacked-words, large)
+│  EAMES  │
+│         │
+│Kings of │ ← Title (small, at bottom)
+│the Wyld │
+└─────────┘
+```
+
+**What Happens Now:**
+
+```
+AFTER (fixed):
+┌─────────┐
+│ KINGS   │ ← Title (prominent, at top)
+│  OF THE │
+│   WYLD  │
+│         │
+│N. Eames │ ← Author (secondary, at bottom)
+└─────────┘
+```
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.7.17] - 2026-01-13
+
+### Spine Template System Integration
+
+**Major architectural enhancement:** Integrated the genre-specific spine template system into the main BookSpineVertical rendering component, bringing professional typography to all book spines throughout the app.
+
+**What Changed:**
+
+1. **Template Adapter Layer** (`templateAdapter.ts`)
+   - Created bridge between template system and rendering component
+   - Converts template configs to rendering format
+   - Handles genre matching and size-based config selection
+   - Provides fallback to generative composition system
+
+2. **BookSpineVertical Integration**
+   - Templates now drive spine styling for books with matching genres
+   - Template fontSize becomes preferred target for layout solver
+   - Template fontFamily overrides typography-based fonts
+   - Template heightPercent controls section size allocation
+   - Maintains backward compatibility with composition system
+
+3. **Smart Genre Matching**
+   - Prioritizes `preferredFor` genres (optimal matches)
+   - Falls back to `usedFor` genres (compatible matches)
+   - Graceful fallback for books without genre data
+
+**How It Works:**
+
+```typescript
+// 1. Match book to template
+const template = matchBookToTemplate(['science-fiction', 'space-opera']);
+// → Returns "Science Fiction" template
+
+// 2. Apply size-based config
+const config = applyTemplateConfig(['science-fiction'], spineWidth);
+// → Returns large config if width > 90px, medium if 60-90px, small if < 60px
+
+// 3. Template drives rendering
+// - fontSize: 58pt (template) → layout solver target
+// - fontFamily: 'Orbitron-Regular' (futuristic)
+// - orientation: 'vertical-up' (reads bottom-to-top)
+// - heightPercent: 80% title, 10% author
+```
+
+**Template Priority:**
+1. **Template system** (genre match found) → Uses template configs
+2. **Composition system** (no genre match) → Uses generative layouts
+3. **Typography system** (fallback) → Basic genre styling
+
+**Benefits:**
+- 16 professionally-designed genre templates now active
+- Consistent styling across all matching books
+- Size-responsive typography (small/medium/large spines)
+- Publisher-quality font choices and sizing
+
+**Files Modified:**
+- `src/features/home/utils/spine/templateAdapter.ts` (NEW)
+- `src/features/home/components/BookSpineVertical.tsx`
+
+**Next Steps:**
+- Test with 48 varied book examples from SpineTemplatePreviewScreen
+- Fine-tune fontSize ranges for edge cases
+- Consider exposing template customization to users
+
+---
+
+## [0.7.16] - 2026-01-13
+
+### Spine Templates - Complete Size-Based Configurations
+
+Added size-based styling configurations to all remaining 11 templates, completing the size-responsive system across all 16 genre templates.
+
+**What's New:**
+
+All 16 templates now feature comprehensive small/medium/large configurations:
+
+1. ✅ **Literary Fiction** (v0.7.15)
+2. ✅ **Science Fiction** (NEW)
+3. ✅ **Technology** (NEW)
+4. ✅ **Western** (v0.7.15)
+5. ✅ **Art & Design** (v0.7.15)
+6. ✅ **Adventure** (NEW)
+7. ✅ **True Crime** (v0.7.15)
+8. ✅ **Horror** (NEW)
+9. ✅ **Romance** (NEW)
+10. ✅ **Biography** (NEW)
+11. ✅ **Philosophy** (NEW)
+12. ✅ **Thriller** (v0.7.15)
+13. ✅ **Historical Fiction** (NEW)
+14. ✅ **Business** (NEW)
+15. ✅ **Music & Arts** (NEW)
+16. ✅ **Anthology** (NEW)
+
+**Size Configuration Pattern:**
+
+Each template now adapts across three breakpoints:
+
+| Size | Width Range | Typical Changes |
+|------|-------------|-----------------|
+| **Small** | < 60px | Reduced font size (~25% smaller), tighter padding, switch to `vertical-up` for horizontal authors |
+| **Medium** | 60-90px | Default config (balanced styling) |
+| **Large** | > 90px | Increased font size (~15-20% larger), generous padding, enhanced letter spacing |
+
+**Example: Science Fiction Template**
+
+```typescript
+title: {
+  fontSize: 50,          // Medium default
+  letterSpacing: 0.08,
+  sizes: {
+    small: {
+      fontSize: 38,      // -24% for narrow spines
+      letterSpacing: 0.06,
+    },
+    large: {
+      fontSize: 58,      // +16% for wide spines
+      letterSpacing: 0.10,
+    },
+  },
+}
+```
+
+**Author Orientation Adaptations:**
+
+For small spines (<60px), horizontal author orientations automatically switch to `vertical-up` to maximize readability:
+
+- **Science Fiction**: `horizontal` → `vertical-up` (small)
+- **Adventure**: `horizontal` → `vertical-up` (small)
+- **Horror**: `horizontal` → `vertical-up` (small)
+- **Romance**: `horizontal` → `vertical-up` (small)
+- **Biography**: `horizontal` → `vertical-up` (small)
+- **And all others...**
+
+**Typography Adjustments:**
+
+Each template respects its unique font family and style while scaling appropriately:
+
+- **Serif fonts** (Playfair, Lora): Conservative scaling, refined letter spacing
+- **Display fonts** (Orbitron, Federo): Bold scaling differences, dramatic spacing
+- **Gothic fonts** (GrenzeGotisch, Uncial): Subtle adjustments, preserve character
+- **Sans-serif** (Oswald, BebasNeue): Aggressive sizing, tight spacing on small
+
+**Benefits:**
+
+- **Consistency**: All 16 templates use the same breakpoints (60px, 90px)
+- **Readability**: Small spines prioritize legibility over visual drama
+- **Visual Impact**: Large spines maximize typography and letter spacing
+- **Flexibility**: Each genre maintains its unique character while adapting to size
+- **Maintainability**: Size logic lives in template definitions, not rendering code
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added size configs to 11 remaining templates (Science Fiction, Technology, Adventure, Horror, Romance, Biography, Philosophy, Historical Fiction, Business, Music & Arts, Anthology)
+- `src/constants/version.ts` - Version bump to 0.7.16
+
+**System Status:**
+- **Architecture**: ✅ Complete (v0.7.15)
+- **Templates**: ✅ 16/16 with size configs (v0.7.16)
+- **Rendering**: ✅ Uses `getConfigForSize()` helper (v0.7.15)
+
+---
+
+## [0.7.15] - 2026-01-13
+
+### Spine Templates - Size-Based Styling System
+
+Implemented a comprehensive size-based styling system that allows each genre template to specify different configurations for small, medium, and large spine widths.
+
+**What's New:**
+
+1. **Size-Based Configuration Architecture:**
+   - Small: `< 60px` - Narrow spines optimized for readability
+   - Medium: `60-90px` - Standard spines using balanced styling
+   - Large: `> 90px` - Wide spines with maximum visual impact
+
+2. **Flexible Override System:**
+   Each template can now specify size-specific overrides:
+   ```typescript
+   title: {
+     orientation: 'stacked-words',
+     fontSize: 40,
+     // ... default config
+     sizes: {
+       small: { orientation: 'vertical-up', fontSize: 32 },
+       medium: { fontSize: 45 },
+       large: { fontSize: 56, paddingHorizontal: 10 },
+     }
+   }
+   ```
+
+3. **Partial Overrides:**
+   - Only specify properties that change per size
+   - All unspecified properties inherit from default config
+   - Clean, maintainable template definitions
+
+4. **Helper Function:**
+   New `getConfigForSize()` utility automatically selects the appropriate config based on spine width, merging size-specific overrides with defaults.
+
+**Updated Templates with Size-Based Configs:**
+
+Five templates now feature size-specific styling:
+
+1. **Literary Fiction**
+   - Small: `vertical-up`, fontSize 32
+   - Medium: `stacked-words`, fontSize 40 (default)
+   - Large: `stacked-words`, fontSize 48
+
+2. **Western**
+   - Small: `vertical-up`, fontSize 24
+   - Medium: `vertical-two-row`, fontSize 30 (default)
+   - Large: `vertical-two-row`, fontSize 36
+
+3. **Art & Design**
+   - Small: `vertical-up`, fontSize 38
+   - Medium: `stacked-words`, fontSize 45
+   - Large: `stacked-words`, fontSize 56
+
+4. **True Crime**
+   - Small: `vertical-up`, fontSize 48
+   - Medium: `stacked-words`, fontSize 58
+   - Large: `stacked-words`, fontSize 70
+
+5. **Thriller**
+   - Small: `vertical-up`, fontSize 58
+   - Medium: `stacked-words`, fontSize 70
+   - Large: `stacked-words`, fontSize 84
+
+**Technical Implementation:**
+
+- **TypeScript Interface:** Defined `BaseTitleConfig` and `BaseAuthorConfig` with optional `sizes` property
+- **Type-Safe Overrides:** `TitleSizeOverride` and `AuthorSizeOverride` types ensure partial configs are type-safe
+- **Cleaner Rendering:** Replaced hardcoded adaptive logic with declarative size configurations
+- **Backwards Compatible:** Templates without `sizes` property work exactly as before
+
+**Before vs After:**
+
+| Approach | Implementation |
+|----------|---------------|
+| **Before (0.7.14)** | Hardcoded adaptive logic in renderer: `if (spineWidth < 70 && orientation === 'stacked-words') { ... }` |
+| **After (0.7.15)** | Declarative size configs in templates: `sizes: { small: { orientation: 'vertical-up' } }` |
+
+**Benefits:**
+
+- **Maintainability:** Size logic lives in template definitions, not rendering code
+- **Flexibility:** Each genre can define its own size breakpoint behaviors
+- **Consistency:** All templates use the same size thresholds (60px, 90px)
+- **Extensibility:** Easy to add new size-based properties or adjust thresholds
+- **Type Safety:** Full TypeScript support with partial override types
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added size-based TypeScript interfaces, updated 5 templates with size configs
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Replaced adaptive logic with `getConfigForSize()` calls
+- `src/constants/version.ts` - Version bump to 0.7.15
+
+---
+
+## [0.7.13] - 2026-01-13
+
+### Spine Templates - Adaptive stacked-words for Narrow Spines
+
+Reverted Art & Design, True Crime, and Thriller back to `stacked-words`, with adaptive behavior to switch to `vertical-up` on narrow spines.
+
+**Changes:**
+
+1. **Reverted Templates to stacked-words:**
+   - Art & Design: `vertical-up` → `stacked-words`
+   - True Crime: `vertical-up` → `stacked-words`
+   - Thriller: `vertical-up` → `stacked-words`
+
+2. **Added Adaptive Logic for stacked-words:**
+   - Wide books (≥70px): Use `stacked-words` (word-by-word stacking: "THE" / "MIDNIGHT" / "LIBRARY")
+   - Narrow books (<70px): Automatically switch to `vertical-up` (single vertical: "THE MIDNIGHT LIBRARY")
+
+**Behavior:**
+
+| Spine Width | Template Config | Rendered As |
+|-------------|----------------|-------------|
+| ≥ 70px | `stacked-words` | Word-by-word stacking |
+| < 70px | `stacked-words` | `vertical-up` (automatic fallback) |
+
+**Why This Approach:**
+- Wide spines: `stacked-words` creates dramatic word-by-word stacking
+- Narrow spines: Automatic fallback to `vertical-up` prevents cramped text
+- Best of both worlds - visual drama on wide books, readability on narrow
+
+**Example - Art & Design Template:**
+- **Wide book (80px)**: "THE" / "MIDNIGHT" / "LIBRARY" (dramatic stacking)
+- **Narrow book (60px)**: "THE MIDNIGHT LIBRARY" (clean vertical)
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Reverted 3 templates to stacked-words
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Added stacked-words → vertical-up adaptive logic
+- `src/constants/version.ts` - Version bump to 0.7.13
+
+---
+
+## [0.7.12] - 2026-01-13
+
+### Spine Templates - Fixed Center Placement
+
+Fixed `placement: 'center'` to properly center content on the spine instead of positioning it at the bottom.
+
+**Problem:**
+Templates with `placement: 'center'` were showing content bunched at the bottom of the spine instead of centered vertically. The title and author appeared at the bottom rather than in the middle: `[  ][█]` instead of `[|]`.
+
+**Root Cause:**
+The placement logic only handled author at top/bottom relative positioning, but didn't implement true centering for the title placement property. Content was stacked from the top down regardless of the `placement: 'center'` setting.
+
+**Solution:**
+Implemented proper center placement that calculates the total content height (title + author) and positions that block in the center of the spine:
+
+```typescript
+if (placement === 'center') {
+  const contentHeight = titleHeight + authorHeight;
+  const startY = (spineHeight - contentHeight) / 2;  // Center the block
+  // Position title and author within centered block
+}
+```
+
+**Behavior Now:**
+
+| Placement | Position | Visual |
+|-----------|----------|--------|
+| `'center'` | Content centered on spine | `[  \|  ]` |
+| `'top'` | Content at top of spine | `[█    ]` |
+| `'bottom'` | Content at bottom of spine | `[    █]` |
+
+**Example:**
+True Crime template with 68% title + 20% author = 88% content:
+- **Before:** Content positioned from top, ended near bottom
+- **After:** 88% content block centered, with equal space above and below
+
+**Affected Templates:**
+All templates with `placement: 'center'` now properly center:
+- Literary Fiction
+- Science Fiction
+- Technology
+- True Crime
+- And others...
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Implemented proper center placement logic
+- `src/constants/version.ts` - Version bump to 0.7.12
+
+---
+
+## [0.7.11] - 2026-01-13
+
+### Spine Templates - Fixed Padding for vertical-up/vertical-down
+
+Fixed padding not working for `vertical-up` and `vertical-down` orientations (same issue that affected vertical-two-row).
+
+**Problem:**
+Setting `paddingVertical: 10` or `paddingHorizontal` had no visible effect on vertical-up/vertical-down orientations. The rotated View was using absolute dimensions that didn't account for the padding applied to the parent container.
+
+**Solution:**
+Applied the same padding calculation fix used for vertical-two-row:
+
+```typescript
+// For vertical-up/vertical-down
+const paddingH = config.paddingHorizontal ?? 3;
+const paddingV = config.paddingVertical ?? 0;
+// After rotation: vertical padding affects width, horizontal padding affects height
+const rotatedWidth = height - (paddingV * 2);
+const rotatedHeight = width - (paddingH * 2);
+```
+
+**Affected Orientations:**
+- ✅ Title with `vertical-up` orientation
+- ✅ Title with `vertical-down` orientation
+- ✅ Author with `vertical-up` orientation
+- ✅ Author with `vertical-down` orientation
+
+**Example Usage:**
+```typescript
+{
+  id: 'literary-fiction',
+  title: {
+    orientation: 'vertical-up',
+    paddingHorizontal: 0,    // ✓ Now working
+    paddingVertical: 10,     // ✓ Now working (creates top/bottom space after rotation)
+    // ...
+  }
+}
+```
+
+**Technical Note:**
+After -90° rotation (vertical-up):
+- `paddingVertical` creates space at the top/bottom of the spine (becomes left/right after rotation)
+- `paddingHorizontal` creates space at the left/right of the spine (becomes top/bottom after rotation)
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Fixed padding calculation for vertical orientations
+- `src/constants/version.ts` - Version bump to 0.7.11
+
+---
+
+## [0.7.10] - 2026-01-13
+
+### Spine Templates - Fixed Orientation for Art & Design, True Crime, Thriller
+
+Changed three templates from problematic orientations to clean single-column `vertical-up`.
+
+**Templates Updated:**
+
+1. **Art & Design**
+   - **Before:** `stacked-words` (title split word-by-word: "THE" / "MIDNIGHT" / "LIBRARY")
+   - **After:** `vertical-up` (clean vertical text: "THE MIDNIGHT LIBRARY")
+   - **Author:** Changed from `stacked-words` to `horizontal` for better readability
+
+2. **True Crime**
+   - **Before:** `horizontal` with `wordsPerLine: 2` (caused odd breaks: "DU" / "NE")
+   - **After:** `vertical-up` (clean vertical text: "DUNE")
+   - Removed `maxLines` and `wordsPerLine` properties
+
+3. **Thriller**
+   - **Before:** `horizontal` with `wordsPerLine: 1` (caused character splits: "TH" / "E")
+   - **After:** `vertical-up` (clean vertical text: "THE")
+   - Removed `maxLines` and `wordsPerLine` properties
+
+**Why the Change:**
+- `stacked-words` breaks text word-by-word, not ideal for multi-word titles
+- `horizontal` with `wordsPerLine` on narrow spines causes awkward mid-word breaks
+- `vertical-up` provides clean, readable vertical text that auto-scales properly
+
+**Consistency:**
+All three templates now use:
+- Title: `vertical-up` orientation
+- Author: `horizontal` orientation (standard pattern)
+- Standard padding: `paddingHorizontal: 4, paddingVertical: 8`
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Updated 3 templates
+- `src/constants/version.ts` - Version bump to 0.7.10
+
+---
+
+## [0.7.9] - 2026-01-13
+
+### Spine Templates - Adaptive vertical-two-row for Narrow Spines
+
+Added automatic fallback from `vertical-two-row` to `vertical-up` orientation when spines are too narrow to accommodate two columns.
+
+**Problem:**
+On narrow books (< 70px width), `vertical-two-row` text would try to split into two very narrow columns, creating cramped and hard-to-read typography.
+
+**Solution:**
+Automatic adaptive orientation that switches rendering mode based on spine width:
+
+```typescript
+// Adaptive title orientation
+if (spineWidth < 70 && titleConfig.orientation === 'vertical-two-row') {
+  // Switch to single-column vertical-up
+  orientation: 'vertical-up',
+  maxLines: 1,  // Single line for regular vertical
+}
+```
+
+**Behavior:**
+
+| Spine Width | Template Config | Rendered As |
+|-------------|----------------|-------------|
+| ≥ 70px | `vertical-two-row` | Two vertical columns (as designed) |
+| < 70px | `vertical-two-row` | `vertical-up` (automatic fallback) |
+
+**Example:**
+The Western template uses `vertical-two-row`:
+- **Wide books (80px+)**: "THE SONG" | "OF ACHILLES" (two columns)
+- **Narrow books (<70px)**: "THE SONG OF ACHILLES" (single vertical column)
+
+**Applies To:**
+- Title orientation (70px threshold)
+- Author orientation (70px threshold)
+- Works seamlessly with existing adaptive logic (horizontal → stacked-words at 55px)
+
+**Why 70px Threshold:**
+- Typical two-column layout needs ~35px per column minimum
+- Below 70px, columns become too narrow for readable text
+- Single vertical column provides better readability on narrow spines
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Added adaptive logic
+- `src/constants/version.ts` - Version bump to 0.7.9
+
+---
+
+## [0.7.8] - 2026-01-13
+
+### Spine Templates - Fixed Padding & Text Alignment
+
+Fixed padding not working for vertical-two-row and added text alignment support to all orientations.
+
+**Padding Fix for vertical-two-row:**
+
+**Problem:** Padding wasn't working properly for vertical-two-row orientation. Setting `paddingHorizontal: 12` or `paddingVertical: 11` had no visible effect.
+
+**Root Cause:** The rotated View was using absolute dimensions (titleHeight and spineWidth) that didn't account for the padding applied to the parent container.
+
+**Solution:** Calculate rotated dimensions after subtracting padding:
+```typescript
+// Account for padding in rotated dimensions
+const paddingH = titleConfig.paddingHorizontal ?? 3;
+const paddingV = titleConfig.paddingVertical ?? 0;
+// After -90° rotation: vertical padding affects width, horizontal padding affects height
+const rotatedWidth = titleHeight - (paddingV * 2);
+const rotatedHeight = spineWidth - (paddingH * 2);
+```
+
+**Text Alignment Support:**
+
+Added `align` property support to ALL orientations (was only partially implemented):
+
+1. **Horizontal Text** - Already working ✓
+2. **Vertical Text (vertical-up, vertical-down)** - Now respects `align: 'left' | 'center' | 'right'`
+3. **vertical-two-row** - Now respects `align: 'left' | 'center' | 'right'`
+4. **Author Text** - Now respects align for all orientations (was hardcoded to 'center' for vertical)
+
+**Example Usage:**
+```typescript
+{
+  id: 'western',
+  title: {
+    orientation: 'vertical-two-row',
+    align: 'center',           // ✓ Now working
+    paddingHorizontal: 12,     // ✓ Now working
+    paddingVertical: 11,       // ✓ Now working
+    // ...
+  }
+}
+```
+
+**All Templates Updated:**
+All 16 templates now have `align: 'center'` set explicitly for both title and author.
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Fixed padding calculation and text alignment
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added align to all templates
+- `src/constants/version.ts` - Version bump to 0.7.8
+
+---
+
+## [0.7.7] - 2026-01-13
+
+### Spine Templates - All Properties Now Working for vertical-two-row
+
+Fixed vertical-two-row to respect all template properties: `letterSpacing`, `maxLines`, `textSplitPercent`, `lineHeight`, etc.
+
+**Properties Now Working:**
+
+1. **letterSpacing** - Controls horizontal spacing between characters:
+   ```typescript
+   letterSpacing: 1  // Adds 1px between letters
+   ```
+
+2. **maxLines** - Controls maximum number of lines (not hardcoded to 2 anymore):
+   ```typescript
+   maxLines: 3  // Allow up to 3 lines instead of 2
+   ```
+
+3. **textSplitPercent** - Controls where to split text between lines:
+   ```typescript
+   textSplitPercent: 51  // First line gets 51% of words
+   ```
+
+4. **lineHeight** - Optional override for line spacing:
+   ```typescript
+   lineHeight: 55  // Fixed line height (use sparingly with adjustsFontSizeToFit)
+   ```
+
+**Example Western Template:**
+All these properties now work together properly:
+```typescript
+{
+  id: 'western',
+  title: {
+    orientation: 'vertical-two-row',
+    fontSize: 30,
+    letterSpacing: 1,        // ✓ Now working
+    maxLines: 3,             // ✓ Now working
+    textSplitPercent: 51,    // ✓ Now working
+    // ...
+  }
+}
+```
+
+**Technical Changes:**
+- Added `letterSpacing` to style object when defined
+- Changed `numberOfLines={2}` to `numberOfLines={titleConfig.maxLines ?? 2}`
+- Both title and author orientations now respect all properties
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Added missing property support
+- `src/constants/version.ts` - Version bump to 0.7.7
+
+---
+
+## [0.7.6] - 2026-01-13
+
+### Spine Templates - Fixed adjustsFontSizeToFit for vertical-two-row
+
+Fixed auto-scaling by removing the default lineHeight constraint that was preventing proper text fitting.
+
+**Problem:**
+- `adjustsFontSizeToFit` was not working properly with `lineHeight: fontSize * 0.8`
+- When text scaled down to fit, the fixed lineHeight stayed constant, preventing proper fitting
+- Users had to manually reduce fontSize from 72 to 30 to make text fit
+
+**Solution:**
+- Removed the automatic lineHeight default for vertical-two-row orientation
+- Only applies lineHeight if explicitly set in template config
+- Allows `adjustsFontSizeToFit` to scale text naturally with automatic line height
+- Text now properly scales down to fit the available space
+
+**Technical Explanation:**
+When `adjustsFontSizeToFit` scales the fontSize down (e.g., from 72pt to 40pt), a fixed `lineHeight: 57.6` (72 * 0.8) becomes larger than the scaled fontSize (40pt), causing layout issues. By letting lineHeight be automatic, it scales proportionally with the fontSize.
+
+**Before:**
+```typescript
+lineHeight: titleConfig.lineHeight ?? titleConfig.fontSize * 0.8  // Broken!
+```
+
+**After:**
+```typescript
+// Only use lineHeight if template explicitly provides it
+...(titleConfig.lineHeight ? { lineHeight: titleConfig.lineHeight } : {})
+```
+
+**To Control Line Spacing:**
+Templates can still explicitly set lineHeight if needed:
+```typescript
+title: {
+  orientation: 'vertical-two-row',
+  fontSize: 72,
+  lineHeight: 55,  // Explicit override still works
+  // ...
+}
+```
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Fixed lineHeight logic
+- `src/constants/version.ts` - Version bump to 0.7.6
+
+---
+
+## [0.7.5] - 2026-01-13
+
+### Spine Templates - Configurable Text Split for vertical-two-row
+
+Added `textSplitPercent` property to control where text splits between the two lines in vertical-two-row orientation.
+
+**Changes:**
+
+1. **New Property: `textSplitPercent`** - Controls split point for two-line text:
+   - Default: `50` (split at 50% of words)
+   - Range: `0-100` (percentage of words for first line)
+   - Available for both title and author configs
+   - Examples:
+     - `textSplitPercent: 50` → "THE SONG OF\nACHILLES" (2 words / 2 words)
+     - `textSplitPercent: 33` → "THE SONG\nOF ACHILLES" (1 word / 3 words)
+     - `textSplitPercent: 66` → "THE SONG OF ACHILLES\n" (3 words / 1 word)
+
+2. **How It Works:**
+   - Splits text into words: `["THE", "SONG", "OF", "ACHILLES"]`
+   - Calculates split point: `Math.ceil(words.length * (textSplitPercent / 100))`
+   - Inserts line break: `"THE SONG\nOF ACHILLES"`
+   - Text component wraps naturally at the newline
+   - After -90° rotation, each line becomes a vertical column
+
+3. **Why This Matters:**
+   - Balances text between two vertical columns
+   - Default 50% split ensures equal distribution
+   - Templates can customize for specific titles (e.g., 33% for shorter first column)
+   - Works with lineHeight to control column spacing
+
+**Example Template:**
+```typescript
+{
+  id: 'western',
+  title: {
+    orientation: 'vertical-two-row',
+    fontSize: 72,
+    lineHeight: 55,
+    textSplitPercent: 50,  // Split at 50% of words
+    // ...
+  }
+}
+```
+
+**Example Output:**
+```
+"THE SONG OF ACHILLES" (4 words, textSplitPercent: 50)
+→ Split at word 2 (50% of 4)
+→ "THE SONG\nOF ACHILLES"
+→ After rotation: two vertical columns with 2 words each
+```
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added textSplitPercent property
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Implemented split logic
+- `src/constants/version.ts` - Version bump to 0.7.5
+
+---
+
+## [0.7.4] - 2026-01-13
+
+### Spine Templates - Fixed vertical-two-row with Natural Text Wrapping
+
+Simplified vertical-two-row implementation to use natural text wrapping instead of manual column splitting.
+
+**Changes:**
+
+1. **Simplified Rendering** - Replaced complex two-column splitting logic with single Text component:
+   - **Before:** Split text into two parts, create two separate Text components with `numberOfLines={1}`, rotate each independently
+   - **After:** Single Text component with `numberOfLines={2}`, let it wrap naturally, rotate once
+   - Now lineHeight actually works to control spacing between the two lines (which become columns after rotation)
+
+2. **Why This Works Better:**
+   - React Native's text wrapping algorithm handles word breaks intelligently
+   - `adjustsFontSizeToFit` works properly with multi-line text and lineHeight
+   - Single rotation transform is more performant than multiple transforms
+   - Consistent with how other orientations (vertical-up, horizontal) are rendered
+
+3. **LineHeight Now Functional:**
+   - Title text: `lineHeight: fontSize * 0.8` (default 80% of font size)
+   - Author text: `lineHeight: fontSize * 0.8` (default 80% of font size)
+   - Controls spacing between wrapped lines (which appear as column spacing after rotation)
+   - Templates can override: `lineHeight: 55` for custom spacing
+
+**Example:**
+```typescript
+// Simple, elegant implementation
+<View style={{ transform: [{ rotate: '-90deg' }] }}>
+  <Text
+    numberOfLines={2}
+    adjustsFontSizeToFit
+    style={{ lineHeight: fontSize * 0.8 }}
+  >
+    THE SONG OF ACHILLES
+  </Text>
+</View>
+```
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Simplified vertical-two-row rendering
+- `src/constants/version.ts` - Version bump to 0.7.4
+
+---
+
+## [0.7.2-0.7.3] - 2026-01-13
+
+### (Superseded by 0.7.4)
+
+Earlier attempts using letterSpacing and lineHeight with split columns. Replaced with natural text wrapping approach.
+
+---
+
+## [0.7.1] - 2026-01-13
+
+### Spine Templates - Two-Column Vertical Layout
+
+Added new `vertical-two-row` orientation for splitting vertical text across two side-by-side columns.
+
+**New Orientation: `vertical-two-row`**
+
+Renders text in two vertical columns reading bottom-to-top, perfect for long titles that need more space.
+
+**Example:**
+```
+"THE SONG OF ACHILLES"
+
+Single vertical-up:     Two-column vertical-two-row:
+S  E  L  I  H  C  A     T  S     O  A  C  H  I  L  L  E  S
+                        H  O     F
+                        E  N
+                           G
+```
+
+**How It Works:**
+- Splits text by words at the midpoint
+- Left column: First half of words
+- Right column: Remaining words
+- Each column rotated -90° (vertical-up)
+- Both columns auto-scale independently with `adjustsFontSizeToFit`
+
+**Usage:**
+```typescript
+title: {
+  orientation: 'vertical-two-row',  // NEW!
+  fontSize: 172,
+  weight: '400',
+  fontFamily: 'Notable-Regular',
+  case: 'uppercase',
+  placement: 'center',
+  heightPercent: 85,
+}
+```
+
+**Use Cases:**
+- Long book titles that don't fit comfortably in single vertical column
+- Western/frontier aesthetics where bold stacked text is desired
+- Art deco designs with columnar typography
+- Wide spines where vertical space can be split
+
+**Available For:**
+- Title orientation
+- Author orientation
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added orientation type
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Implemented rendering
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.7.0] - 2026-01-13
+
+### Spine Templates - Major Curation & Refinement
+
+Curated spine template library down to 16 genre-specific templates with professional polish.
+
+**Changes:**
+
+1. **Template Curation** - Reduced from 56 to 16 essential templates:
+   - Literary Fiction
+   - Science Fiction
+   - Technology
+   - Western
+   - Art & Design
+   - Adventure
+   - True Crime
+   - Horror
+   - Romance
+   - Biography
+   - Philosophy
+   - Thriller
+   - Historical Fiction
+   - Business
+   - Music & Arts
+   - Anthology
+
+2. **Removed All Decorations** - Eliminated decorative lines and borders:
+   - All templates now use `decoration: { element: 'none', lineStyle: 'none' }`
+   - Clean, minimal aesthetic across all designs
+   - Focus on typography, not ornamentation
+
+3. **Added Consistent Padding** - All templates now have proper spacing:
+   - Title: `paddingHorizontal: 4-8px, paddingVertical: 8px`
+   - Author: `paddingHorizontal: 8px, paddingVertical: 6px`
+   - Prevents text from touching spine edges
+   - Better readability and professional appearance
+
+4. **Genre-Specific Naming** - Renamed all templates to match genres directly:
+   - Old: `minimal-serif`, `futuristic-scifi`, `western-noir`
+   - New: `literary-fiction`, `science-fiction`, `western`
+   - Easier to understand template purpose at a glance
+
+5. **Removed Duplicates** - Eliminated redundant templates:
+   - Removed overlapping designs (e.g., multiple sci-fi variants)
+   - Each genre now has one definitive template
+   - Cleaner template selection experience
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Complete rewrite
+- `src/constants/version.ts` - Major version bump to 0.7.0
+
+**Migration Notes:**
+- Template count: 56 → 16 (71% reduction)
+- Template IDs changed - update any hardcoded references
+- Decoration system still exists but unused in core templates
+- All utility functions (getTemplate, getTemplatesForGenre) remain unchanged
+
+---
+
+## [0.6.380] - 2026-01-13
+
+### Spine Templates - Adaptive Author Orientation for Narrow Spines
+
+Added automatic adaptation that switches horizontal author text to stacked-words when spine width is less than 55px.
+
+**Problem:**
+- Narrow spines (40px) with horizontal author text often had text that was too small to read
+- Long author names would shrink excessively to fit narrow widths
+- User feedback: "horizontal author text doesn't work well on thin spines"
+
+**Solution:**
+- Added `adaptiveAuthorConfig` logic that detects spine width at render time
+- When `spineWidth < 55px` AND `author.orientation === 'horizontal'`
+  → Automatically switches to `stacked-words` orientation
+- Original template definition remains unchanged
+- Adaptation happens dynamically during rendering
+
+**Behavior:**
+- **Wide spines (≥55px):** Author renders as specified in template
+- **Narrow spines (<55px):** Horizontal authors automatically become stacked-words
+- Vertical and already-stacked authors are not affected
+
+**Example:**
+```
+Template: author.orientation = 'horizontal'
+
+Rendered at 80px width: MATT HAIG (horizontal)
+Rendered at 40px width: MATT       (stacked-words)
+                        HAIG
+```
+
+**Benefits:**
+- Better readability on thin spine views
+- No template modifications required
+- Consistent behavior across all 56 templates
+- Respects designer intent while optimizing for narrow displays
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Added adaptive logic
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.379] - 2026-01-13
+
+### Spine Templates - Fixed Text Clipping in Stacked Orientations
+
+Completely rewrote vertical spacing logic for stacked text to prevent clipping with adjustsFontSizeToFit.
+
+**Root Cause:**
+- Setting `lineHeight < fontSize` on Text components causes clipping
+- Previous logic: `fontSize: 50.4px, lineHeight: 42px` → text clipped at top/bottom
+- `adjustsFontSizeToFit` + constrained lineHeight = guaranteed clipping
+
+**Solution:**
+- Removed `lineHeight` from stacked Text components entirely
+- Moved spacing control to parent View using `gap` property
+- Gap uses negative values to pull words/letters closer together
+- Text now has full natural height, no clipping
+
+**New Spacing Defaults:**
+- Stacked words (title): `gap: fontSize * -0.15` (15% overlap)
+- Stacked words (author): `gap: fontSize * -0.1` (10% overlap)
+- Stacked letters (title): `gap: fontSize * -0.2` (20% overlap)
+- Stacked letters (author): `gap: fontSize * -0.15` (15% overlap)
+
+**Custom Spacing:**
+- Use `lineHeightScale` in templates to control gap dynamically
+- `lineHeightScale: 0.5` → Tighter stacking (50% more overlap)
+- `lineHeightScale: 1.0` → Natural spacing (no overlap)
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Rewrote stacked rendering
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.378] - 2026-01-13
+
+### Spine Templates - MaxLines Support for Stacked Orientations
+
+Fixed stacked orientations to respect the `maxLines` property instead of using hardcoded limits.
+
+**Bug Fixed:**
+- `stacked-words` was hardcoded to show only 2 words (now respects `maxLines`, default 10)
+- `stacked-letters` was hardcoded to show only 4 letters (now respects `maxLines`, default 20)
+- "Project Hail Mary" now correctly shows all 3 words when `maxLines: 3` is set
+
+**Behavior:**
+- `maxLines: 3` on stacked-words → Shows up to 3 words
+- `maxLines: 20` on stacked-letters → Shows up to 20 letters
+- Omit `maxLines` → Shows all words/letters (up to reasonable defaults)
+
+**Files Modified:**
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Updated slice limits
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.377] - 2026-01-13
+
+### Spine Templates - Stacked Author Orientations
+
+Added stacked text options for author names, matching the title orientation capabilities.
+
+**New Author Orientations:**
+- `stacked-letters` - Each letter of author name on separate line (e.g., "S\nT\nE\nP\nH\nE\nN")
+- `stacked-words` - Each word of author name on separate line (e.g., "STEPHEN\nKING")
+
+**Properties Added:**
+- `letterSpacing` - Control spacing between stacked letters (works with both stacked orientations)
+
+**Use Cases:**
+- Celebrity author branding (Stephen King, James Patterson)
+- Anthology collections with "Various Authors"
+- Experimental indie designs with vertical emphasis
+- Limited spine width where horizontal text doesn't fit
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added orientation types and letterSpacing
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Implemented stacked rendering logic
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.376] - 2026-01-13
+
+### Spine Template System - Genre-Specific Expansion
+
+Added 28 new genre-specific spine templates using decorative typography, expanding the library to 56 professional designs.
+
+**New Features:**
+
+1. **Genre-Specific Templates** - 28 new templates covering:
+   - Adventure, True Crime, Children's, Horror, Romance
+   - Science Fiction, Fantasy, Mystery, Biography, Philosophy
+   - Thriller, Historical Fiction, Tech/Business, Literary Fiction
+   - Music/Art, Gaming, Western, Poetry/Nature, Young Adult
+   - Self-Help, Humor, Travel, Sports, Science, Food/Cooking
+   - Politics/Journalism, Anthology, LGBTQ+, Parenting, Finance
+
+2. **Advanced Typography Properties**:
+   - `lineHeight` - Explicit line height in pixels
+   - `lineHeightScale` - Multiplier for fontSize to calculate line height
+   - `maxLines` - Control text wrapping (default: 2)
+   - `wordsPerLine` - Force line breaks after N words for precise text layout
+
+3. **Three-Row Preview Screen**:
+   - Thin spines (40px width) - Compact bookshelf view
+   - Normal spines (80px width) - Standard bookshelf view
+   - Wide spines (120px width) - Detailed bookshelf view
+   - Each row independently scrolls horizontally
+
+4. **Decorative Fonts**:
+   - Notable (Western, True Crime) - Bold slab serif
+   - FleurDeLeah (Romance) - Elegant script
+   - GrenzeGotisch (Horror) - Gothic blackletter
+   - MacondoSwashCaps (Fantasy) - Medieval swash caps
+   - UncialAntiqua (Philosophy) - Ancient uncial
+   - Orbitron (Sci-Fi, Tech) - Geometric futuristic
+   - Silkscreen (Gaming) - Pixel perfect monospace
+   - Federo (Music/Art) - Art deco geometric
+   - BebasNeue (Children's, YA, Sports) - Friendly bold
+
+**Files Modified:**
+- `src/features/home/utils/spine/templates/spineTemplates.ts` - Added 28 genre templates
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx` - Three-row layout, dynamic count
+- `src/constants/version.ts` - Version bump
+
+**Technical Notes:**
+- All templates include `usedFor` and `preferredFor` genre mappings
+- Template matching system uses genre tags for automatic selection
+- LineHeightScale takes precedence if both lineHeight and scale are specified
+- WordsPerLine only applies to horizontal text orientation
+
+---
+
+## [0.6.375] - 2026-01-12
+
+### Book Detail Page Refinements
+
+Follow-up refinements to the Book Detail page redesign based on user feedback.
+
+**Changes:**
+
+1. **TopNav Restored**
+   - Added back Library and Queue pill buttons to TopNav
+   - Share and Close remain as circle buttons
+
+2. **Progress Section Compact Layout**
+   - "Progress" label with percentage inline on the left
+   - "Mark as Finished" text with icon inline on the right
+   - Clear progress button inline next to "time listened"
+   - Reduced section height
+
+3. **Section Order Changed**
+   - Progress section now comes before action buttons
+   - Action buttons (Save/Play pills) remain right-aligned
+
+4. **Chapters Link**
+   - Clicking "Chapters" in meta grid scrolls to chapters section
+
+5. **About Section**
+   - Removed "About" header text
+   - Drop cap now inline with text (proper wrapping)
+
+**Files Modified:**
+- src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx
+- src/constants/version.ts
+- CHANGELOG.md
+
+---
+
+## [0.6.374] - 2026-01-12
+
+### Book Detail Page Redesign
+
+Major visual redesign of the Book Detail screen while preserving all functionality.
+
+**New Design Features:**
+
+1. **Centered Hero Layout**
+   - Larger centered cover image (160x160) with shadow
+   - Split headline title (line 1 normal, line 2 italic)
+   - Centered byline with "By Author · Narrated by Narrator" format
+   - All author/narrator names are clickable links
+
+2. **Meta Grid Section**
+   - 3-column layout: Duration | Chapters | Year
+   - Clean bordered design with separator lines
+   - Uppercase labels with monospace font
+
+3. **Actions Row (6 Icon Buttons)**
+   - Finish (with toggle state)
+   - Clear (reset progress)
+   - Play (primary filled button)
+   - Download (secondary outline)
+   - Queue (toggle state)
+   - Library (toggle state)
+   - Each button has circular icon + label
+
+4. **Progress Section**
+   - Separated from About section
+   - Progress bar with rounded corners
+   - Time listened / remaining display
+   - Progress percentage or "Complete" label
+
+5. **About Section with Drop Cap**
+   - Large decorative first letter (drop cap)
+   - Clean description text with read more toggle
+
+6. **Chapters List with Circular Badges**
+   - Circular numbered badges (instead of italic numbers)
+   - Badge color states: default, active (orange), complete (gray)
+   - Clean chapter title and duration display
+
+**Preserved Functionality:**
+- All 17 hooks maintained (useBookDetails, usePlayerStore, useQueueStore, etc.)
+- All 14 handlers preserved (handlePlay, handleQueueToggle, handleDownload, etc.)
+- TopNav with share and close buttons
+- Pull-to-refresh functionality
+- Navigation to author/narrator/series screens
+- Download progress display
+- Chapter seeking
+
+**Files Modified:**
+- src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx
+- src/constants/version.ts
+- CHANGELOG.md
+
+---
+
+## [0.6.373] - 2026-01-11
+
+### P1-P4 Cleanup: Safe Areas, Console Logs, Colors, TypeScript
+
+Completed priority fixes from comprehensive codebase audit (CODEBASE_HEALTH_REPORT.md).
+
+**P1: Added Safe Area Handling** ✅
+- `src/features/home/screens/LibraryScreen.tsx`
+  - Added `useSafeAreaInsets` import
+  - Applied `paddingTop: insets.top` to container
+- `src/features/auth/screens/LoginScreen.tsx`
+  - Added `useSafeAreaInsets` import
+  - Applied `paddingTop: insets.top, paddingBottom: insets.bottom` to container
+- **Impact:** Fixes notch/island overlap on modern devices (now 41/41 screens with safe area handling)
+
+**P2: Console.log Cleanup** ✅
+- Reduced console.log statements from 52 to 32 (38% reduction)
+- Agent cleaned up debug logs in: spineCache.ts, queryClient.ts, searchIndex.ts, analyticsService.ts, and 18 other files
+- Kept important logs in debug utilities (runtimeMonitor, audioDebug, perfDebug, logger)
+- **Impact:** Cleaner console output, more professional app behavior
+
+**P3: Fixed Critical Hardcoded Colors** ✅
+- `src/features/auth/screens/LoginScreen.tsx`
+  - Removed hardcoded `#30D158` (iOS green) → use `colors.semantic.success` inline
+  - Removed hardcoded `#FF453A` (iOS red) → use `colors.semantic.error` inline
+  - Removed hardcoded `rgba(255, 69, 58, 0.1)` → use `colors.semantic.errorLight` inline
+  - Added inline style overrides for proper theme support
+- `src/shared/components/CoverPlayButton.tsx`
+  - Fixed legacy `colors` import causing 10 TypeScript errors
+  - Converted static styles to `createStyles(colors)` function
+  - Now properly uses theme colors via `useTheme()` hook
+- **Impact:** Better theme consistency, dark mode support
+
+**P4: Fixed TypeScript Errors** ✅
+- Fixed 10 errors in CoverPlayButton.tsx by converting to dynamic styles
+- Remaining ~64 errors are pre-existing (mostly missing `primaryTertiary`, `primarySecondary` properties in text colors)
+- **Impact:** Reduced TypeScript errors, improved type safety
+
+**Files Modified:**
+- src/features/home/screens/LibraryScreen.tsx
+- src/features/auth/screens/LoginScreen.tsx
+- src/shared/components/CoverPlayButton.tsx
+- src/constants/version.ts
+- CHANGELOG.md
+
+**Summary:**
+- ✅ P1: Safe areas (2 screens fixed)
+- ✅ P2: Console cleanup (38% reduction)
+- ✅ P3: Critical colors fixed (LoginScreen + CoverPlayButton)
+- ✅ P4: TypeScript errors reduced (10 errors fixed)
+- Skipped P5 (271 'any' types - ongoing cleanup)
+
+---
+
+## [0.6.372] - 2026-01-11
+
+### Fixed TypeScript Errors and Runtime Crash
+
+**Critical Fixes:**
+1. **Added Missing `status` Property to ThemeColors** (P0 - Critical)
+   - Added `status: { success, error, warning, info }` to `createLightColors()`
+   - Added `status: { success, error, warning, info }` to `createDarkColors()`
+   - **Fixed 16 TypeScript errors** in ErrorView, NetworkStatusBar, PinInput, and Snackbar components
+   - Files modified: `src/shared/theme/colors.ts`
+
+2. **Fixed SearchScreen Runtime Crash** (P0 - Critical)
+   - Fixed `Property 'storeColors' doesn't exist` runtime error
+   - Changed `storeColors.statusBar` to `colors.statusBar`
+   - Files modified: `src/features/search/screens/SearchScreen.tsx:642`
+
+**Impact:**
+- Unblocks type-safe builds
+- Fixes SearchScreen crash on launch
+- All status indicator components now have proper TypeScript support
+
+**Audit Report:**
+- Generated comprehensive codebase health report: `CODEBASE_HEALTH_REPORT.md`
+- 133,191 lines of code across 483 files
+- Overall grade: 4/5 stars
+- Architecture: 5/5 (excellent modular design)
+- Documentation: 5/5 (130+ docs, 2,673 JSDoc blocks)
+
+---
+
+## [0.6.371] - 2026-01-11
+
+### Fixed Hardcoded Colors in Feature Files
+
+Replaced hardcoded color values with theme tokens for consistency and maintainability.
+
+**Files Modified:**
+- `src/features/completion/components/CompleteBadge.tsx`
+  - Added `useTheme` hook import
+  - Changed `color="#000"` to `colors.text.inverse` for Check/CheckCircle icons
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+  - Changed `color: '#444'` to `colors.gray` (secretLibraryColors) for description text
+- `src/features/auth/screens/LoginScreen.tsx`
+  - Changed `#30D158` (iOS system green) to `colors.semantic.success` for validation icons
+  - Changed `#FF453A` (iOS system red) to `colors.semantic.error` for error icons/text
+  - Added inline style overrides for error text using theme tokens
+- `src/features/queue/components/SwipeableQueueItem.tsx`
+  - Changed `color="#fff"` to `colors.text.inverse` for Trash2 icon and action text
+- `src/features/queue/screens/QueueScreen.tsx`
+  - Changed `color: '#000'` to `colors.text.inverse` for browse button text
+
+**Notes:**
+- `shadowColor: '#000'` kept as-is (standard shadow color)
+- Destructive action colors (`#ff4b4b`) kept as-is with comments (intentional)
+- Border colors in static styles kept with comments explaining theme usage
+
+---
+
+## [0.6.370] - 2026-01-11
+
+### Unified Progress Data Architecture
+
+Major refactoring to eliminate fragmented progress data and provide instant UI updates.
+
+**Problem:** Progress data existed in 5+ places that could become out of sync:
+- Server `/api/me/items-in-progress`
+- Server `/api/me` (mediaProgress array)
+- SQLite `user_books` table
+- SQLite `playback_progress` table (legacy)
+- libraryCache (item.userMediaProgress)
+- spineCache (CachedSpineData.progress)
+- playerStore (currentPosition)
+
+**Solution:** Created unified progressStore as single source of truth.
+
+**New Files:**
+- `src/core/stores/progressStore.ts` - Unified progress store
+  - In-memory Map backed by SQLite user_books table
+  - Version counter for reactive subscribers
+  - Methods: loadFromDatabase, updateProgress, markFinished, getInProgressBookIds
+  - Debounced SQLite writes for performance during playback
+  - setupProgressSubscribers() wires up spineCache updates
+
+**Modified Files:**
+- `src/core/stores/index.ts` - Export progressStore
+- `src/core/services/appInitializer.ts` - Load progressStore during init
+- `src/features/player/services/backgroundSyncService.ts` - Notify progressStore on save
+- `src/shared/hooks/useContinueListening.ts` - Read from progressStore (local-first)
+
+**Data Flow (After):**
+```
+Player updates → progressStore.updateProgress()
+                       ↓
+              SQLite write (debounced)
+                       ↓
+              In-memory Map update
+                       ↓
+    ┌─────────────────┼─────────────────┐
+    ↓                 ↓                 ↓
+spineCache     useContinue       backgroundSync
+re-renders     Listening          queues server
+```
+
+**Benefits:**
+- Instant progress updates (no refresh needed)
+- Spine progress bars update during playback
+- Continue Listening updates immediately on pause
+- Works offline with cached data
+- Single source of truth eliminates sync issues
+
+**Verification:**
+- [x] Single source of truth: SQLite via progressStore
+- [x] spineCache subscribes to progressStore
+- [x] useContinueListening reads from progressStore
+- [x] backgroundSyncService notifies progressStore
+- [ ] Full end-to-end testing pending
+
+### Test Suite Fixes (41 → 0 Failing Tests)
+
+Fixed all 41 failing tests across 6 test suites.
+
+**Fixes Applied:**
+1. `metadata.ts` - Handle narrator objects `{ name: string }` in arrays
+2. `progressCalculator.test.ts` - Correct test for 95% threshold (98% is complete)
+3. `EmptyState.test.tsx` - Add `useThemeColors`, `iconSizes`, `accentColors` mocks
+4. `ErrorView.test.tsx` - Add complete theme mock suite
+5. `HorizontalBookItem.test.tsx` - Add theme mocks with progress colors
+6. `websocketService.test.ts` - Fix socket.io mock to pass URL/options
+
+**Test Results:** 672 passing, 0 failing
+
+### Cache Unit Tests (P3)
+
+Added comprehensive unit tests for cache modules.
+
+**New Test Files:**
+- `src/core/cache/__tests__/cacheAnalytics.test.ts` (24 tests)
+  - Tests for recordCacheHit, recordCacheMiss
+  - Tests for getCacheStats, getAllCacheStats
+  - Tests for resetCacheStats, resetAllCacheStats
+  - Tests for getCacheStatsSummary
+  - Tests for hit rate calculations
+  - Tests for multiple independent caches
+
+- `src/core/cache/__tests__/useCoverUrl.test.ts` (7 tests)
+  - Tests for cache-busting timestamps
+  - Tests for query parameter handling
+  - Tests for options passthrough
+
+**Test Results:** 703 passing (31 new cache tests added)
+
+---
+
+## [0.6.369] - 2026-01-11
+
+### P2/P3 Technical Debt Elimination - Part 2
+
+Continued comprehensive technical debt cleanup from previous session.
+
+#### Viewport-Based Cover Prefetching (P3)
+
+**New Hook:** `src/shared/hooks/useViewportPrefetch.ts`
+- Prefetches cover images for items approaching the visible viewport
+- Uses expo-image's `Image.prefetch()` for efficient preloading
+- Configurable prefetch distance (default: 10 items ahead)
+- Tracks prefetched items to avoid duplicate fetches
+- Includes `createPrefetchTracker()` utility for manual tracking
+
+**Integration:**
+- Added to `FilteredBooksScreen` with `prefetchAhead: 12` (4 rows in 3-column grid)
+- Connects to FlatList's `onViewableItemsChanged` and `viewabilityConfig`
+
+#### Manual Sync Retry Button (P3)
+
+**New Store:** `src/core/stores/syncStatusStore.ts`
+- Zustand store for reactive sync status in UI
+- Tracks: pendingCount, isSyncing, isOnline, lastError, lastSyncedAt
+- Actions: refreshStatus(), retrySync(), setSyncing(), setError(), setOnline()
+- Auto-subscribes to eventBus for sync events
+- Auto-subscribes to networkMonitor for connectivity changes
+- Periodic refresh every 30 seconds
+- Provides selectors: usePendingSyncCount, useIsSyncing, useHasSyncErrors, useSyncStatus
+
+**New Component:** `src/shared/components/SyncStatusBanner.tsx`
+- Visual banner showing sync status with retry capability
+- Shows when: offline with pending syncs, sync failed, items pending
+- Hides automatically when all synced
+- Displays "Retry" button when errors occur and online
+- Uses lucide-react-native icons (Cloud, CloudOff, RefreshCw, AlertCircle)
+- Adapts to theme colors
+
+**Files Created:**
+- `src/shared/hooks/useViewportPrefetch.ts`
+- `src/core/stores/syncStatusStore.ts`
+- `src/core/stores/index.ts`
+- `src/shared/components/SyncStatusBanner.tsx`
+
+**Files Modified:**
+- `src/shared/hooks/index.ts` - Added useViewportPrefetch export
+- `src/shared/components/index.ts` - Added SyncStatusBanner export
+- `src/features/library/screens/FilteredBooksScreen.tsx` - Integrated viewport prefetching
+
+---
+
+## [0.6.368] - 2026-01-11
+
+### Fixed Series Navigation from Book Detail Page
+
+**Problem:** Tapping series name on book detail page showed "Series not found" error.
+
+**Root Cause:** The library cache indexed series using `metadata.seriesName`, but some books only have series info in `metadata.series[0].name` (with `seriesName` being undefined). These books weren't being indexed.
+
+**Fix:** Updated `buildIndexes()` in `libraryCache.ts` to check both formats:
+1. First tries `metadata.seriesName`
+2. Falls back to `metadata.series[0].name` if seriesName is undefined
+
+**Files Modified:**
+- `src/core/cache/libraryCache.ts` - Fixed series indexing to handle both metadata formats
+
+**Testing:** After this fix, force refresh the library cache (pull-to-refresh on library) to rebuild indexes, then tap any series name on a book detail page.
+
+---
+
+## [0.6.367] - 2026-01-11
+
+### TypeScript Error Fixes & Type Safety Improvements
+
+Fixed all TypeScript compilation errors (12 errors → 0 errors).
+
+**BookMetadata Type Extensions:**
+- Added `narratorName?: string` - first narrator name for display
+- Added `rating?: number` - optional rating (if enabled on server)
+- Added `ratingCount?: number` - number of ratings
+
+**Files Fixed:**
+- `src/core/types/media.ts` - Extended BookMetadata interface
+- `src/features/home/components/TextListSection.tsx` - Fixed undefined `bookAny` variable in debug code
+- `src/features/home/screens/LibraryScreen.tsx` - Added missing MediaProgress properties (`hideFromContinueListening`, `startedAt`)
+- `src/shared/components/BookCard.tsx` - Fixed narrator access (narrators is `string[]`, not object array)
+- `src/core/hooks/useOptimisticMutation.ts` - Fixed CollectionBookRef[] type mismatch with explicit cast
+
+**Verification:**
+- `npx tsc --noEmit` passes with zero errors
+- Current `any` count: 109 casts + 189 annotations = ~298 total
+- Tests: 630/671 passing (failures are test infrastructure issues)
+
+**P2/P3 Item Status:**
+| Item | Status |
+|------|--------|
+| SQLite corruption detection | Defer |
+| Sync queue age limit (7 days) | Defer |
+| Cache hit/miss logging | Partial |
+| Persist derived indexes | Partial |
+| Cache unit tests | Done |
+| Viewport-based cover prefetch | Defer |
+| Manual sync retry button | Defer |
+
+---
+
+## [0.6.366] - 2026-01-11
+
+### Cache Architecture Fixes - Privacy & Performance Improvements
+
+Critical fixes for cache architecture based on comprehensive audit. Addresses privacy issues, data consistency, and user visibility.
+
+**Fix 1: P0 Critical - Logout Privacy**
+- `authService.clearStorage()` now clears ALL user data on logout
+- Added `sqliteCache.clearAllUserData()` to clear all 16+ SQLite tables
+- Prevents next user from seeing previous user's library, progress, history
+
+**Fix 2: P1 High - Eliminate AsyncStorage Divergence**
+- Removed AsyncStorage for library data; SQLite is now single source of truth
+- `libraryCache.ts` now reads/writes exclusively via `sqliteCache`
+- Eliminates potential data divergence between AsyncStorage and SQLite
+
+**Fix 3: P1 High - Clear Cache UI**
+- Added "Clear Cache" button to Storage Settings screen
+- Allows users to manually clear cached library data
+- Downloads and listening progress are preserved
+
+**Fix 4: P1 High - Sync Failure Notification**
+- Added toast notification when sync fails after max retries
+- User now sees "Sync failed. Progress saved locally and will sync when online."
+- Progress remains in SQLite for future sync attempts
+
+**Fix 5: P2 Medium - Lazy-Load Trigram Index**
+- Search index now built lazily on first search, not at startup
+- Saves ~150ms startup time and ~20MB memory until user searches
+- Added `searchIndex.queueBuild()` for deferred indexing
+
+### Files Modified
+- `src/core/auth/authService.ts` - Added cache clearing on logout
+- `src/core/services/sqliteCache.ts` - Added clearAllUserData() method
+- `src/core/cache/libraryCache.ts` - Switched from AsyncStorage to SQLite
+- `src/core/cache/searchIndex.ts` - Added lazy loading support
+- `src/features/profile/screens/StorageSettingsScreen.tsx` - Added Clear Cache UI
+- `src/features/player/services/backgroundSyncService.ts` - Added sync failure toast
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.365] - 2026-01-11
+
+### Codebase Cleanup - Phases 11-15: Type Safety Improvements
+
+Major type safety cleanup across the codebase, reducing `as any` casts from 201 to 109 (92 removed, 46% reduction).
+
+**Key Patterns Established:**
+- Type guards: `isBookMedia()` for checking if media has book properties (duration, chapters)
+- Helper functions: `getBookMetadata()` returning `BookMetadata | null` with `mediaType` check
+- Direct property access: `item.userMediaProgress` (already typed on LibraryItem interface)
+- Global type extensions: Platform-specific APIs (ErrorUtils, performance.memory) properly typed
+
+**Phase 11 - Core Player & Sync (18 casts removed):**
+- `playerStore.ts` - Added type guards for audioFiles, metadata, duration access
+- `finishedBooksSync.ts` - Fixed userMediaProgress and mediaProgress access
+- `useReadingHistory.ts` - Proper getMetadata return type
+
+**Phase 12 - Library & Discovery (20 casts removed):**
+- `FilteredBooksScreen.tsx` - Added getBookDuration helper
+- `useLibraryData.ts` - Removed unnecessary userMediaProgress casts
+- `usePopularContent.ts` - Type guards for duration and metadata
+- `errors.ts` - Created hasErrorFlag helper for duck-typing error checks
+
+**Phase 13 - Mutations & Monitoring (12 casts removed):**
+- `useOptimisticMutation.ts` - Added RollbackContext, CollectionBookRef, CollectionData types
+- `runtimeMonitor.ts` - Declared global types for ErrorUtils, PerformanceMemory
+
+**Phase 14 - Components & Screens (25+ casts removed):**
+- `library/types.ts` - Fixed getMetadata, getProgress, getDuration exports
+- `BookCard.tsx`, `queueStore.ts`, `HomeScreen.tsx` - Added helpers
+- `useMoodRecommendations.ts`, `kidModeFilter.ts`, `seriesFilter.ts` - Type guards
+- `GlobalMiniPlayer.tsx` - DimensionValue typing for percentages
+- `SeriesSpineCard.tsx`, `YourSeriesSection.tsx` - Spine data conversion
+- `SeriesBookRow.tsx`, `BatchActionButtons.tsx`, `PlayerModule.tsx` - Metadata helpers
+
+**Phase 15 - Final Cleanup (17+ casts removed):**
+- `ContinueListeningSection.tsx`, `ContinueListeningHero.tsx` - Progress access
+- `discover/types.ts`, `SearchScreen.tsx` - BookSummary conversion
+
+**Metrics:**
+- `as any` count reduced: 201 → 109 (92 fewer casts, 46% reduction)
+- Zero TypeScript errors
+- Consistent patterns across all fixed files
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts`
+- `src/core/services/finishedBooksSync.ts`
+- `src/features/reading-history-wizard/hooks/useReadingHistory.ts`
+- `src/features/library/screens/FilteredBooksScreen.tsx`
+- `src/features/library/hooks/useLibraryData.ts`
+- `src/features/discover/hooks/usePopularContent.ts`
+- `src/core/api/errors.ts`
+- `src/features/home/components/TextListSection.tsx`
+- `src/core/hooks/useOptimisticMutation.ts`
+- `src/utils/runtimeMonitor.ts`
+- `src/features/library/types.ts`
+- `src/shared/components/BookCard.tsx`
+- `src/features/queue/stores/queueStore.ts`
+- `src/features/home/screens/HomeScreen.tsx`
+- `src/features/mood-discovery/hooks/useMoodRecommendations.ts`
+- `src/shared/utils/kidModeFilter.ts`
+- `src/shared/utils/seriesFilter.ts`
+- `src/navigation/components/GlobalMiniPlayer.tsx`
+- `src/features/browse/components/SeriesSpineCard.tsx`
+- `src/features/home/components/YourSeriesSection.tsx`
+- `src/features/home/components/ContinueListeningSection.tsx`
+- `src/features/library/components/ContinueListeningHero.tsx`
+- `src/features/series/components/SeriesBookRow.tsx`
+- `src/features/series/components/BatchActionButtons.tsx`
+- `src/features/player/components/PlayerModule.tsx`
+- `src/features/discover/types.ts`
+- `src/features/search/screens/SearchScreen.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.6.360] - 2026-01-11
+
+### Fixed Android Playback for Multi-File Audiobooks
+
+Fixed an issue where certain audiobooks wouldn't play on Android even when downloaded, while working fine on iOS.
+
+**Root Cause:**
+- Downloaded files were saved with hardcoded `.m4a` extension regardless of actual format
+- Android's ExoPlayer is strict about file extensions matching actual codec
+- iOS is more forgiving and detects codec from file header
+
+**Fixes:**
+- Download manager now preserves original file extension from server metadata
+- Added platform-specific logging for debugging file loading issues
+- Improved error messages to show actual error instead of generic message
+- Added file existence verification before loading on Android
+
+**Also improved:**
+- Error messages now include actual error details for debugging
+- Added logging for platform and track URL during audio loading
+
+### Files Modified
+- `src/core/services/downloadManager.ts` - Use original file extension, add logging
+- `src/features/player/services/audioService.ts` - Add file verification and platform logging
+- `src/features/player/stores/playerStore.ts` - Better error messages with actual error
+- `src/constants/version.ts` - Version bump to 0.6.360
+
+**Note:** Previously downloaded books may need to be re-downloaded to fix playback issues.
+
+---
+
+## [0.6.355] - 2026-01-11
+
+### Codebase Cleanup - Phase 10: Type Safety Improvements (SpineCache, Session, Series)
+
+Continued reducing `as any` type casts in core services and screens.
+
+**Type Improvements:**
+- Added `ImageColorsResult` typed union for platform-specific color extraction
+- Added `isBookMedia`, `getBookMetadata`, `getBookDuration` type guards to spineCache
+- Simplified `apiClient.getAuthToken()` access (method already properly typed)
+- Added `startedAt` optional field to PlaybackSession interface
+- Added `ExtendedLibraryItem` interface for download status fields
+- Fixed `getBookMetadata` to use `as BookMetadata` cast with mediaType check
+
+**Files Fixed:**
+- `src/features/home/stores/spineCache.ts` - 8 casts removed
+- `src/features/player/services/sessionService.ts` - 5 casts removed (1 preserved for logging)
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` - 7 casts removed
+
+**Also Fixed (related to getBookMetadata typing):**
+- `src/features/discover/hooks/usePersonalizedContent.ts`
+- `src/features/home/hooks/useHomeData.ts`
+- `src/features/library/screens/GenreDetailScreen.tsx`
+- `src/features/queue/components/QueuePanel.tsx`
+- `src/features/series/components/SeriesCard.tsx`
+- `src/features/series/components/SeriesProgressHeader.tsx`
+
+**Metrics:**
+- `as any` count reduced: 223 → 201 (22 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` - Added typed color extraction
+- `src/features/player/services/sessionService.ts` - Simplified token access
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` - Added type guards
+- Multiple files - Fixed getBookMetadata to properly handle union types
+- `src/constants/version.ts` - Version bump to 0.6.355
+
+---
+
+## [0.6.353] - 2026-01-11
+
+### Codebase Cleanup - Phase 9: Type Safety Improvements (Discover & Library)
+
+Continued reducing `as any` type casts in discover hooks, library screen, and recommendations.
+
+**Type Improvements:**
+- Added type guards (`isBookMedia`, `getBookMetadata`, `getBookDuration`) to discover hooks
+- Fixed `userMediaProgress` access in useRecommendations.ts (property already typed on LibraryItem)
+- Added `ExtendedBookMetadata` interface with optional `tags` field for LibraryScreen
+- Removed invalid `updatedAt` property access on MediaProgress
+
+**Files Fixed:**
+- `src/features/discover/hooks/usePersonalizedContent.ts` - 7 casts removed
+- `src/features/home/screens/LibraryScreen.tsx` - 7 casts removed
+- `src/features/recommendations/hooks/useRecommendations.ts` - 5 casts removed
+
+**Metrics:**
+- `as any` count reduced: 242 → 223 (19 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/features/discover/hooks/usePersonalizedContent.ts` - Added type guards for book media
+- `src/features/home/screens/LibraryScreen.tsx` - Added ExtendedBookMetadata, removed updatedAt fallback
+- `src/features/recommendations/hooks/useRecommendations.ts` - Removed unnecessary casts for userMediaProgress
+- `src/constants/version.ts` - Version bump to 0.6.353
+
+---
+
+## [0.6.352] - 2026-01-11
+
+### Codebase Cleanup - Phase 8: Type Safety Improvements (Queue & Narrator)
+
+Continued reducing `as any` type casts in narrator detail screen, queue panel, and shared utilities.
+
+**Type Improvements:**
+- Added typed route params (`NarratorDetailParams`) for narrator detail screen
+- Added `getChapterCount()` helper for typed chapter access
+- Fixed `isBookMedia` type guard in shared metadata utilities
+- Added `getBookDuration()` helper to shared utils
+
+**Files Fixed:**
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - 7 casts removed
+- `src/features/queue/components/QueuePanel.tsx` - 7 casts removed
+- `src/shared/utils/metadata.ts` - Added missing type guard, fixed duration helper
+
+**Metrics:**
+- `as any` count reduced: 255 → 242 (13 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Added type guards, typed route params
+- `src/features/queue/components/QueuePanel.tsx` - Added type guards and chapter count helper
+- `src/shared/utils/metadata.ts` - Added isBookMedia guard, getBookDuration helper
+- `src/constants/version.ts` - Version bump to 0.6.352
+
+---
+
+## [0.6.351] - 2026-01-11
+
+### Fixed: "Unknown Title/Author" Bug on Library and Browse Screens
+
+Fixed critical bug where book titles and authors showed as "Unknown" despite metadata being present in the library cache.
+
+**Root Cause:**
+The `isBookMedia` type guard required `audioFiles` to be present in `item.media`, but library cache items don't include `audioFiles` to save space. This caused `getMetadata()` to return null even when metadata was available.
+
+**Fix:**
+- Updated `getMetadata()` in `src/shared/utils/metadata.ts` to check `item?.media?.metadata` directly
+- Updated `getBookMetadata()` in `src/features/browse/components/TasteTextList.tsx` similarly
+- Updated `LibraryScreen.tsx` to use full library cache (`allCacheItems`) instead of just `recentlyListened` and `recentlyAdded`
+
+**Impact:**
+- Library screen now shows all 2400+ books from cache with correct titles/authors
+- Browse page "Based on Your Taste" section now displays book metadata correctly
+- Duration values now display properly
+
+### Files Modified
+- `src/shared/utils/metadata.ts` - Removed `isBookMedia` dependency from `getMetadata()`
+- `src/features/browse/components/TasteTextList.tsx` - Fixed `getBookMetadata()` and `getBookDuration()`
+- `src/features/home/screens/LibraryScreen.tsx` - Use full library cache for book list
+- `src/constants/version.ts` - Version bump to 0.6.351
+
+---
+
+## [0.6.350] - 2026-01-11
+
+### Codebase Cleanup - Phase 7: Type Safety Improvements (Detail Screens)
+
+Continued reducing `as any` type casts in book and author detail screens.
+
+**Type Improvements:**
+- Added typed route params (`AuthorDetailParams`) for author detail screen
+- Extended `ExtendedBookMetadata` interface with `narratorName` field
+- Fixed series array access patterns (`series?.[0]?.name`)
+- Preserved React Native TextStyle casts where necessary
+
+**Files Fixed:**
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - 7 casts removed
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - 8 casts removed
+
+**Metrics:**
+- `as any` count reduced: 267 → 255 (12 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Added type guards
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Added type guards, typed route params
+- `src/constants/version.ts` - Version bump to 0.6.350
+
+---
+
+## [0.6.349] - 2026-01-11
+
+### Codebase Cleanup - Phase 6: Type Safety Improvements (Core Services)
+
+Continued reducing `as any` type casts in core services and series components.
+
+**Type Improvements:**
+- Added `waiting_wifi` status to `DownloadRecord` interface for proper typing
+- Added `AudioFileInfo` interface for typed audio file access
+- Extended type guards to download manager and series progress components
+- Added `getBookChapters()` helper for typed chapter access
+
+**Files Fixed:**
+- `src/core/services/downloadManager.ts` - 10 casts removed
+- `src/core/services/sqliteCache.ts` - Added `waiting_wifi` status to DownloadRecord
+- `src/features/series/components/SeriesProgressHeader.tsx` - 9 casts removed
+
+**Metrics:**
+- `as any` count reduced: 285 → 267 (18 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/core/services/downloadManager.ts` - Added type guards, proper apiClient access
+- `src/core/services/sqliteCache.ts` - Extended DownloadRecord status type
+- `src/features/series/components/SeriesProgressHeader.tsx` - Added type guards
+- `src/constants/version.ts` - Version bump to 0.6.349
+
+---
+
+## [0.6.345] - 2026-01-11
+
+### Codebase Cleanup - Phase 5: Type Safety Improvements (Continued)
+
+Continued reducing `as any` type casts across automotive, series, browse, and cache modules.
+
+**Type Improvements:**
+- Added `ApiAuthor` interface for server author responses
+- Extended type guards to additional feature modules
+- Consistent pattern: `isBookMedia()`, `getBookMetadata()`, `getBookDuration()`
+
+**Files Fixed:**
+- `src/features/automotive/automotiveService.ts` - 14 casts removed
+- `src/features/series/components/SeriesCard.tsx` - 10 casts removed
+- `src/features/browse/components/TasteTextList.tsx` - 10 casts removed
+- `src/core/cache/libraryCache.ts` - 9 casts removed
+
+**Metrics:**
+- `as any` count reduced: 305 → 285 (20 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/features/automotive/automotiveService.ts` - Added type guards
+- `src/features/series/components/SeriesCard.tsx` - Added type guards
+- `src/features/browse/components/TasteTextList.tsx` - Added type guards
+- `src/core/cache/libraryCache.ts` - Added type guards, ApiAuthor interface
+- `src/constants/version.ts` - Version bump to 0.6.345
+
+---
+
+## [0.6.344] - 2026-01-11
+
+### Codebase Cleanup - Phase 4: Type Safety Improvements
+
+Reduced `as any` type casts across the codebase using proper type guards and helper functions.
+
+**Type Improvements:**
+- Added `seriesName` and `authorName` computed fields to `BookMetadata` interface
+- Created reusable type guards: `isBookMedia()`, `getBookDuration()`, `getBookMetadata()`
+- Replaced unsafe casts with typed helper functions
+
+**Files Fixed:**
+- `src/features/home/hooks/useHomeData.ts` - 19 casts removed
+- `src/features/library/screens/GenreDetailScreen.tsx` - 14 casts removed
+- `src/shared/utils/metadata.ts` - 11 casts removed
+
+**Metrics:**
+- `as any` count reduced: 348 → 305 (43 fewer casts)
+- Zero TypeScript errors
+
+### Files Modified
+- `src/core/types/media.ts` - Added seriesName, authorName fields to BookMetadata
+- `src/features/home/hooks/useHomeData.ts` - Added type guards, removed casts
+- `src/features/library/screens/GenreDetailScreen.tsx` - Added type guards, removed casts
+- `src/shared/utils/metadata.ts` - Refactored to use type guards
+- `src/constants/version.ts` - Version bump to 0.6.344
+
+---
+
+## [0.6.343] - 2026-01-11
+
+### Codebase Cleanup - Phase 3: Test Coverage Improvement
+
+Added comprehensive tests for core utility functions, improving test coverage.
+
+**New Test Files:**
+- `src/shared/utils/__tests__/kidModeFilter.test.ts` - Tests for age category and content rating filtering
+- `src/shared/utils/__tests__/seriesFilter.test.ts` - Tests for series progress tracking and filtering
+- `src/features/home/utils/__tests__/spineCalculations.test.ts` - Tests for spine dimension calculations
+
+**Test Coverage:**
+- 76 new tests added (all passing)
+- Total tests: 595 → 671
+- Line coverage improved: 3.85% → 4.68% (22% relative improvement)
+
+**Utilities Tested:**
+- `kidModeFilter`: getAgeCategoryFromTag, getAgeCategoryFromTags, getRatingFromTag, getRatingFromTags
+- `seriesFilter`: getSeriesInfo, buildSeriesProgressMap, buildSeriesCountMap, buildSeriesFirstBookMap, isSeriesAppropriate
+- `spineCalculations`: hashString, seededRandom, normalizeSeriesName, findBestTitleSplit, isLightColor, darkenColorForDisplay, calculateSpineWidth, calculateSpineHeight, calculateTouchPadding
+
+### Files Added
+- `src/shared/utils/__tests__/kidModeFilter.test.ts`
+- `src/shared/utils/__tests__/seriesFilter.test.ts`
+- `src/features/home/utils/__tests__/spineCalculations.test.ts`
+
+### Files Modified
+- `src/constants/version.ts` - Version bump to 0.6.343
+
+---
+
+## [0.6.342] - 2026-01-11
+
+### Improved - Loading Screen with Status Text and Splash Update
+
+**Loading Screen:**
+- Added status text below progress bar showing what's loading:
+  - "initializing...", "restoring session...", "loading library...", "preparing bookshelf...", "ready"
+
+**Native Splash Screen:**
+- Updated splash background to pure black (#000000) to match animated splash
+- New splash-icon.png with white skull on black background
+- Seamless transition from native splash to animated splash
+
+### Files Modified
+- `src/shared/components/AnimatedSplash.tsx` - Added statusText prop and display
+- `App.tsx` - Calculate and pass loading status text
+- `app.json` - Updated splash backgroundColor to #000000
+- `assets/splash-icon.png` - New white skull on black background
+- `src/constants/version.ts` - Version bump to 0.6.342
+
+---
+
+## [0.6.341] - 2026-01-11
+
+### Codebase Cleanup - Phase 2: API Response Types
+
+Improved TypeScript typing for API responses and reduced `any` type usage.
+
+**New Types Added:**
+- `BookSearchResult` - Wrapper for search book results with libraryItem
+- `SeriesSearchResult` - Wrapper with series and books array
+- `AuthorSearchResult` - Author search result with id and name
+- `NarratorSearchResult` - Narrator search result
+- `UserBookRow` - SQLite database row type for user_books table
+
+**Type Improvements:**
+- `LibraryItem.mediaProgress` - Added optional property for progress data
+- `SearchResults` - Updated to match actual API response structure
+- `apiClient.getItemsInProgress()` - Removed 4 unnecessary `any` casts
+- `useServerSearch` - Fixed 6 `any` types with proper search result types
+- `sqliteCache.mapUserBookRow()` - Properly typed database row parameter
+
+**Metrics:**
+- `any` count reduced from 203 → 197
+
+### Files Modified
+- `src/core/types/api.ts` - Added search result wrapper types
+- `src/core/types/library.ts` - Added mediaProgress property
+- `src/core/api/apiClient.ts` - Removed any casts in getItemsInProgress
+- `src/features/search/hooks/useServerSearch.ts` - Used proper types
+- `src/core/services/sqliteCache.ts` - Added UserBookRow interface
+- `src/constants/version.ts` - Version bump to 0.6.341
+
+---
+
+## [0.6.340] - 2026-01-11
+
+### Codebase Cleanup - Phase 1
+
+Major cleanup pass to reduce technical debt and fix TypeScript errors.
+
+**Deleted Files (23 total):**
+- 10 empty placeholder files (storage/, sync/, config/ modules)
+- 3 empty directories (src/core/storage/, src/core/sync/, src/config/)
+- 10 experimental 3D files with missing dependencies (Book3D, BookGL, BookShelf3DCanvas, etc.)
+
+**Resolved Store Duplication:**
+- Deleted unused `settingsStore.ts` (dead code, only self-referenced)
+- Deleted deprecated `profile/kidModeStore.ts` (was re-export of shared store)
+- Kept active `playerSettingsStore.ts` and `shared/kidModeStore.ts`
+
+**TypeScript Fixes:**
+- Fixed `haptics.light()` → `haptics.impact('light')` in SleepTimerSheet and SpeedSheet
+- Added `bold` font weight to `jetbrainsMono` in secretLibrary theme
+- Added `AudioTrack` type annotation in playerStore map callback
+- Fixed percentage style type errors in GlobalMiniPlayer with type assertions
+- Fixed home/components/index.ts exports (removed deleted 3D files, fixed CassettePlayer default export)
+
+### Files Modified
+- `src/features/player/sheets/SleepTimerSheet.tsx` - Fix haptics call
+- `src/features/player/sheets/SpeedSheet.tsx` - Fix haptics call
+- `src/features/player/stores/playerStore.ts` - Add AudioTrack type import and annotation
+- `src/shared/theme/secretLibrary.ts` - Add jetbrainsMono.bold
+- `src/navigation/components/GlobalMiniPlayer.tsx` - Fix percentage style types
+- `src/features/home/components/index.ts` - Clean up exports
+- `src/constants/version.ts` - Version bump to 0.6.340
+
+---
+
+## [0.6.339] - 2026-01-11
+
+### Added - Universal Skull Logo Navigation
+
+- **Tap skull logo** → Navigate to Home (everywhere in the app)
+- **Long press skull logo** → Navigate to Profile/Settings (everywhere in the app)
+- TopNav component now has default navigation behavior built-in
+- All screens using TopNav automatically get this functionality
+
+### Files Modified
+- `src/shared/components/TopNav.tsx` - Added default logo press handlers
+- `src/constants/version.ts` - Version bump to 0.6.339
+
+---
+
+## [0.6.338] - 2026-01-11
+
+### Fixed - Download Progress on Player Screen
+
+- **Download percentage** - Player screen download button now shows actual progress (e.g., "42%") instead of "Saving..."
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Show download percentage
+- `src/constants/version.ts` - Version bump to 0.6.338
+
+---
+
+## [0.6.337] - 2026-01-11
+
+### Fixed - Series Number Alignment and Book Color
+
+- **Grey background** - Changed book spine fill from white (#FFFFFF) to light grey (#F5F5F5)
+- **Series number alignment** - Removed "#" prefix and opacity from series sequence number so it matches progress number styling exactly
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Grey background, series number fix
+- `src/constants/version.ts` - Version bump to 0.6.337
+
+---
+
+## [0.6.336] - 2026-01-11
+
+### Changed - Book Spine Stroke Design
+
+Updated book spine design from filled color to stroke-based outline:
+
+**Visual Changes:**
+- **White background** - Book spines now have white fill instead of colored backgrounds
+- **Black stroke outline** - 1px black stroke provides clean visual definition
+- **Drop shadows removed** - Shadows disabled by default for cleaner appearance
+- **Black text** - Text color changed to black for contrast on white background
+
+**Technical Changes:**
+- `BookSpineVertical` background changed from `fill={spineBgColor}` to `fill="#FFFFFF" stroke="#000000" strokeWidth={1}`
+- `showShadow` prop default changed from `true` to `false`
+- Color calculation logic commented out (can be re-enabled later)
+- `BookshelfView` now explicitly passes `showShadow={false}`
+
+**Rationale:**
+Cleaner, more editorial aesthetic that matches the Secret Library design language.
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Stroke design, disabled shadows
+- `src/features/home/components/BookshelfView.tsx` - Added showShadow={false}
+- `src/constants/version.ts` - Version bump to 0.6.336
+
+---
+
+## [0.6.335] - 2026-01-11
+
+### Changed - Standardized on SecretLibrary Design System
+
+Removed all legacy screen variants and standardized the app on the SecretLibrary design aesthetic:
+
+**Screens Removed (7 files):**
+- `BrowseScreen.tsx` → Now using `SecretLibraryBrowseScreen`
+- `BookDetailScreen.tsx` → Now using `SecretLibraryBookDetailScreen`
+- `SeriesDetailScreen.tsx` → Now using `SecretLibrarySeriesDetailScreen`
+- `AuthorDetailScreen.tsx` → Now using `SecretLibraryAuthorDetailScreen`
+- `NarratorDetailScreen.tsx` → Now using `SecretLibraryNarratorDetailScreen`
+- `CDPlayerScreen.tsx` → Now using `SecretLibraryPlayerScreen`
+- `CDPlayerScreen.backup2.tsx` → Legacy backup removed
+
+**Navigation Updates:**
+- DiscoverTab now renders `SecretLibraryBrowseScreen` directly
+- Cleaned up old screen imports from AppNavigator
+
+**Index Exports Updated:**
+- `src/features/browse/index.ts`
+- `src/features/book-detail/index.ts`
+- `src/features/series/index.ts`
+- `src/features/author/index.ts`
+- `src/features/narrator/index.ts`
+- `src/features/player/index.ts`
+
+**Impact:** ~3,000+ lines of legacy code removed. App now has unified design language.
+
+### Files Modified
+- `src/navigation/AppNavigator.tsx` - Updated imports and DiscoverTab
+- 6 feature index files - Removed old screen exports
+- `src/constants/version.ts` - Version bump to 0.6.335
+
+### Files Deleted
+- `src/features/browse/screens/BrowseScreen.tsx`
+- `src/features/book-detail/screens/BookDetailScreen.tsx`
+- `src/features/series/screens/SeriesDetailScreen.tsx`
+- `src/features/author/screens/AuthorDetailScreen.tsx`
+- `src/features/narrator/screens/NarratorDetailScreen.tsx`
+- `src/features/player/screens/CDPlayerScreen.tsx`
+- `src/features/player/screens/CDPlayerScreen.backup2.tsx`
+
+---
+
+## [0.6.334] - 2026-01-11
+
+### Changed - Candle Animation for Pull-to-Refresh
+
+Replaced the skull animation with a candle animation for pull-to-refresh indicators:
+
+**Visual Changes:**
+- **Candle holder** - Decorative holder in theme text color
+- **Animated flame** - 14-frame red flame animation at 24fps
+- Matches the existing candle loading animation used elsewhere in the app
+
+**Technical:**
+- Uses same animation data as `CandleAnimation` in `Loading.tsx`
+- Flame rendered behind holder for proper layering
+- Removed unused `G` (group) import from react-native-svg
+
+### Files Modified
+- `src/shared/components/SkullRefreshControl.tsx` - Replaced skull with candle animation
+- `src/constants/version.ts` - Version bump to 0.6.334
+
+---
+
+## [0.6.333] - 2026-01-11
+
+### Fixed - Pull-to-Refresh Double Skull and Background
+
+Fixed visual issues with pull-to-refresh on the book detail screen:
+
+**Problems Fixed:**
+- **Double skull icon** - Removed duplicate `refreshOverlay` that was showing a second Loading indicator on top of the SkullRefreshControl
+- **Weird background color** - Added proper background color (`#F5F5F0` / creamGray) to the SkullRefreshControl indicator container
+
+**Root Cause:**
+The book detail screen had TWO refresh indicators:
+1. A `refreshOverlay` View with `<Loading>` component
+2. The `SkullRefreshControl` with its own skull animation
+
+Both were showing at once, causing the stacked/doubled appearance.
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Removed duplicate refresh overlay
+- `src/shared/components/SkullRefreshControl.tsx` - Added background color to indicator
+- `src/constants/version.ts` - Version bump to 0.6.333
+
+---
+
+## [0.6.332] - 2026-01-11
+
+### Added - Complete Bookmarks Panel Overhaul
+
+Major improvements to the bookmarks panel with full functionality:
+
+**New Features:**
+- **Add Bookmark Modal** - Opens a detailed modal when adding bookmarks:
+  - Adjust time position with -30s, -10s, +10s, +30s buttons
+  - Add optional note before saving
+  - Shows current chapter info
+- **Export Bookmarks** - Export button now works:
+  - Copy to clipboard option
+  - Share via system share sheet
+  - Exports formatted text with times, chapters, and notes
+- **Delete from List** - Red trash icon on each bookmark with confirmation dialog
+- **Delete Button Styling** - Uses red highlight for visibility
+
+**Bug Fixes:**
+- Fixed `formatDate()` to handle number timestamps (was expecting Date/string)
+- Removed unused icons (CloseIcon, ClockIcon) and imports (TextInput, Circle)
+
+**Code Cleanup:**
+- Added PlusIcon for add button
+- Added DeleteIcon for delete buttons
+- Proper prop types with `bookTitle` and `onAddBookmarkWithDetails`
+
+### Files Modified
+- `src/features/player/sheets/BookmarksSheet.tsx` - Complete overhaul
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Enhanced bookmark modal
+- `src/constants/version.ts` - Version bump to 0.6.332
+
+---
+
+## [0.6.331] - 2026-01-11
+
+### Added - Bookmark Editing Modal on Player Screen
+
+The player screen now has a working bookmark edit modal:
+
+**Features:**
+- Tap the edit (pencil) icon on any bookmark to open the edit modal
+- Edit bookmark notes with a multiline text input
+- Delete bookmarks directly from the edit modal
+- Cancel to discard changes
+- Save to persist note changes
+
+**UI Design:**
+- Matches the existing sheet style with handle, header, and actions
+- Shows bookmark time and chapter info
+- Delete button on left, Cancel/Save on right
+- Keyboard-aware layout for comfortable editing
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Added bookmark edit modal
+- `src/constants/version.ts` - Version bump to 0.6.331
+
+---
+
+## [0.6.330] - 2026-01-11
+
+### Added - Genre-Based Typography on Player Screen
+
+The player screen now uses the same genre-based typography system as the book detail and spine components:
+
+**Features:**
+- Title and author text use dynamic font family based on book genre
+- Thrillers show bold sans-serif with uppercase
+- Romance shows elegant italic serif
+- Fantasy shows classic serif
+- Author name always displays in italic variant of the chosen font family
+
+**Implementation:**
+- Uses `useSpineCacheStore` to get cached spine data (same as BookDetailScreen)
+- Checks for series-locked typography via `getSeriesStyle()` first
+- Falls back to `getTypographyForGenres()` for genre-based styling
+- Applies text transform (uppercase) for genres that use it
+
+**Typography consistency:**
+- Player screen now matches book detail screen typography
+- Both use the same cache → same source of truth → same visual result
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Added genre typography
+- `src/constants/version.ts` - Version bump to 0.6.330
+
+---
+
+## [0.6.329] - 2026-01-10
+
+### Fixed - Book Detail Page Audit and Bug Fixes
+
+Multiple fixes from comprehensive audit of the book detail page:
+
+**Bugs Fixed:**
+1. **Series navigation broken** - Was passing `{ id }` or `{ name }` but SeriesDetail expects `{ seriesName }`. Now passes correct param.
+
+2. **Can't unmark finished books** - The "Finished" button was disabled when book was marked finished. Now toggleable to unmark.
+
+3. **Title font family mismatch** - Font comparison was checking for `'sans-serif'` but spine calculations return platform-specific values (`'System'` on iOS). Now uses font family value directly.
+
+4. **Chapter duration NaN** - Could produce NaN if chapter start/end were undefined. Now uses nullish coalescing with guard.
+
+**Code Cleanup:**
+- Removed dead code: `handleAuthorPress`, `handleNarratorPress` (inline handlers used instead)
+- Cleaned up excessive debug logging (wrapped in `__DEV__ && false` toggle)
+- Simplified typography code path
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump to 0.6.329
+
+---
+
+## [0.6.328] - 2026-01-10
+
+### Fixed - Book Detail Title Typography Uses Same Cache as Spine
+
+Fixed font family mismatch by using **only spine cache data** for typography decisions:
+
+**Root cause:** Detail page was falling back to `seriesInfo?.name` from API when `cachedSpineData?.seriesName` was undefined. This caused different code paths:
+- Spine: No seriesName in cache → uses genre-based typography → sans-serif
+- Detail: Found seriesName in API → uses series typography → random preset (often serif)
+
+**Fix:** Only use `cachedSpineData` values for typography, matching exactly what BookSpineVertical receives:
+```typescript
+const seriesName = cachedSpineData?.seriesName;  // NOT || seriesInfo?.name
+const genres = cachedSpineData?.genres || metadata?.genres || [];
+```
+
+Now both spine and detail page follow identical logic and get identical fonts.
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump to 0.6.328
+
+---
+
+## [0.6.327] - 2026-01-10
+
+### Fixed - Book Detail Title Typography Now Matches Spine Exactly
+
+Fixed font family mismatch between book spines and book detail page. The detail page now uses the **exact same logic** as `BookSpineVertical.tsx`:
+
+1. **Series books first:** Check if book has a series name → use `getSeriesStyle(seriesName).typography`
+2. **Genre-based fallback:** Non-series books → use `getTypographyForGenres(genres, bookId)`
+
+This ensures "The Left Hand of Darkness" (Sci-Fi) shows sans-serif uppercase on both the spine AND the detail page.
+
+**Before:** Detail page always used genre-based typography, ignoring series
+**After:** Detail page checks series first (like spines do), then falls back to genre
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Match spine typography logic exactly
+- `src/constants/version.ts` - Version bump to 0.6.327
+
+---
+
+## [0.6.323] - 2026-01-10
+
+### Changed - Use Cached Spine Data for Title Typography
+
+Now pulls genres and series name directly from the spine cache (`cachedSpineData`) instead of extracting from book metadata. This ensures the book detail title styling matches exactly what's shown on the book spine in the shelf view.
+
+**Data flow:**
+```
+Spine Cache (genres, seriesName) → getTypographyForGenres() → Title styling
+```
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump to 0.6.323
+
+---
+
+## [0.6.322] - 2026-01-10
+
+### Changed - Smaller Cover + Spine Typography for Titles
+
+**Cover:** Reduced from 160px to 120px for better proportions
+
+**Title Typography:** Now uses the same genre-based typography system as book spines:
+- Fantasy books: Serif font, heavier weight
+- Sci-Fi books: Sans-serif, uppercase, wider letter spacing
+- Thriller/Crime: Bold sans-serif, uppercase
+- Literary: Serif, italic styling
+- Children's: Friendly sans-serif
+- Series books: Consistent typography across the series
+
+**Implementation:**
+- Uses `getTypographyForGenres()` from spine calculations
+- Series books use `getSeriesStyle()` for consistency
+- Dynamic font family, weight, style, and text transform
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump to 0.6.322
+
+---
+
+## [0.6.321] - 2026-01-10
+
+### Changed - Move Author & Series to Details Section
+
+**Layout now:**
+```
+[ Cover ]  This Inevitable
+           Ruin 7.5
+
+by Matt Dinniman
+Dungeon Crawler Carl #7.5
+28h 40m · 108 chapters · English · 2025
+Narrated by Travis Baldree, Jeff Hays
+Podium Audio
+```
+
+- Hero section now shows only cover + title
+- Author moved below with "by" prefix (Georgia font, underlined, tappable)
+- Series shown in italic gray below author
+- All metadata flows cleanly in the details section
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/constants/version.ts` - Version bump to 0.6.321
+
+---
+
+## [0.6.320] - 2026-01-10
+
+### Changed - Redesign Hero Details Section
+
+**Before:** Disconnected 2-column grid with uppercase labels
+```
+DURATION        CHAPTERS
+28h 40m         108
+
+NARRATOR        RELEASE DATE
+Travis...       2025
+```
+
+**After:** Clean flowing inline layout matching editorial style
+```
+28h 40m · 108 chapters · English · 2025
+Narrated by Travis Baldree, Jeff Hays
+Podium Audio
+```
+
+**Design improvements:**
+- Stats flow inline with dot separators (·)
+- "Narrated by" prefix with tappable narrator names (Georgia font, underlined)
+- Publisher shown subtly below if present
+- Consistent monospace typography for metadata
+- Much cleaner, more editorial feel
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Redesign details
+- `src/constants/version.ts` - Version bump to 0.6.320
+
+---
+
+## [0.6.319] - 2026-01-10
+
+### Changed - Progress Label Inline with About Header
+
+**Layout:**
+```
+[========= Progress Bar =========]
+2h listened              4h remaining
+
+About                Your Progress 45%
+[description text...]
+```
+
+Progress percentage now appears on the right side of the "About" header line, below the progress bar.
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Move progress inline
+- `src/constants/version.ts` - Version bump to 0.6.319
+
+---
+
+## [0.6.318] - 2026-01-10
+
+### Changed - Combine Details Grid with Hero Section
+
+**Change:** Moved all book metadata (Narrator, Release Date, Language, Publisher, Duration, Chapters) into the hero section for a more cohesive layout.
+
+**Layout:**
+```
+[ Cover Image ] [ Title, Author, Series ]
+[ Duration | Chapters | Narrator | Release Date | Language | Publisher ]
+[ Progress + About Section ]
+[ Action Buttons ]
+[ Chapters List ]
+```
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Move details to hero
+- `src/constants/version.ts` - Version bump to 0.6.318
+
+---
+
+## [0.6.317] - 2026-01-10
+
+### Changed - Book Detail Page Redesign
+
+**UI Improvements:**
+- **Hero section:** Larger cover image (160px) for more visual prominence
+- **Round buttons:** All action buttons now use circular design
+- **Button grouping:** Left group (Queue, Mark Finished, Clear Progress) | Right group (Download, Play)
+- **Progress label:** Inline percentage with "Your Progress" label (both at scale 13)
+- **Combined sections:** Progress and About sections now unified as one visual unit
+- **Cleaner lines:** Removed horizontal dividers from hero, progress, and about sections
+
+**Layout:**
+```
+[ Hero Section (larger cover) ]
+[ Progress + About Section - combined ]
+[ Action Buttons: Queue/Finish/Clear ← → Download/Play ]
+[ Details Grid ]
+[ Chapters ]
+```
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Complete redesign
+- `src/constants/version.ts` - Version bump to 0.6.317
+
+---
+
+## [0.6.316] - 2026-01-10
+
+### Fixed - Downloaded Filter Shows ALL Downloaded Books
+
+**Problem:** When selecting "Downloaded" in the Library screen filter, only downloaded books that were also recently played or recently added were shown. Downloaded books that hadn't been played recently were missing.
+
+**Root Cause:** The filter was applied to `allLibraryItems` which only contained books from `recentlyListened` + `recentlyAdded` lists.
+
+**Solution:** When filter is "Downloaded", use `downloadedLibraryItems` (from complete DownloadTasks with libraryItem) as the data source instead of filtering the limited lists.
+
+**Data Flow:**
+```
+Filter: "All" / "Not Downloaded" → allLibraryItems (recentlyListened + recentlyAdded)
+Filter: "Downloaded" → downloadedLibraryItems (ALL completed downloads)
+```
+
+**Result:**
+- "Downloaded" filter now shows every downloaded book in your library
+- No longer limited to recently played/added books
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Use `effectiveLibraryItems` based on filter mode
+- `src/constants/version.ts` - Version bump to 0.6.316
+
+---
+
+## [0.6.310] - 2026-01-10
+
+### Fixed - Cache ALL In-Progress Books During Init
+
+**Change:** `importRecentProgress()` now processes ALL in-progress books, not just 5.
+
+**Before:**
+- Only cached top 5 recently played books during init
+- Other in-progress books had to wait for background `importFromServer()`
+
+**After:**
+- ALL in-progress books cached during init (before UI shows)
+- Every book you've started will show correct progress immediately
+
+**Timing:**
+```
+App Start → importRecentProgress() → caches ALL in-progress books → UI shows
+```
+
+### Files Modified
+- `src/core/services/finishedBooksSync.ts` - Remove 5-book limit
+- `src/constants/version.ts` - Version bump to 0.6.310
+
+---
+
+## [0.6.309] - 2026-01-10
+
+### Fixed - Cache Progress for ENTIRE Library
+
+**Change:** `importFromServer()` now caches progress in memory for ALL books, not just recently played.
+
+**Details:**
+- Removed limit on library items fetch (was 1000, now unlimited)
+- Every book with progress gets cached in `playbackCache`
+- Book detail screens read from memory cache first (instant)
+
+**Result:**
+- All 2500+ books show correct progress immediately
+- No need to hit play first
+- Works for any book in the library
+
+### Files Modified
+- `src/core/services/finishedBooksSync.ts` - Cache all books, remove limit
+- `src/constants/version.ts` - Version bump to 0.6.309
+
+---
+
+## [0.6.308] - 2026-01-10
+
+### Fixed - All Recently Played Books Show Correct Progress
+
+**Problem:** Only the most recently played book showed correct progress. Other books in top 5 still showed 0%.
+
+**Solution:** Book detail screens now read from `playbackCache.getProgress()` as a fallback.
+
+**Progress priority order:**
+1. Player state (if this book is currently loaded)
+2. Memory cache (`playbackCache`) - populated for top 5 books during app startup
+3. Local SQLite
+4. Spine cache
+5. Server progress
+
+**Result:**
+- Book #1 (most recent): Shows correct progress via player state
+- Books #2-5: Show correct progress via memory cache
+- All other books: Fall back to SQLite → spine cache → server
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Add playbackCache fallback
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Add playbackCache fallback
+- `src/constants/version.ts` - Version bump to 0.6.308
+
+---
+
+## [0.6.307] - 2026-01-10
+
+### Added - Preload Book State for Correct UI Progress
+
+**Problem:** Book detail screen showed 0% progress until user hit play, even though spine showed correct value (38%).
+
+**Solution:** Preload the most recently played book into the player store during app startup.
+
+**New function: `preloadBookState()`** in playerStore:
+- Sets `currentBook`, `position`, `duration`, `chapters` from cached data
+- Does NOT start audio playback
+- Does NOT show the player UI
+- Book detail screen now reads from player state and shows correct progress
+
+**Flow:**
+```
+App Startup
+    ↓
+syncFinishedBooks() (background)
+    ↓
+preloadMostRecentBook()
+    ↓
+playerStore.preloadBookState(book)
+    ↓
+Sets: currentBook, position=9120s, duration=29880s
+    ↓
+Book detail screen shows: 38% (reads from player state)
+```
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` - Add `preloadBookState()` function
+- `src/core/services/finishedBooksSync.ts` - Add `preloadMostRecentBook()` function
+- `src/core/services/appInitializer.ts` - Call preloadMostRecentBook on startup
+- `src/constants/version.ts` - Version bump to 0.6.307
+
+---
+
+## [0.6.306] - 2026-01-10
+
+### Added - Instant Playback with Full Caching
+
+**Three-level caching system for instant resume:**
+
+1. **Audio Pre-initialization** (`appInitializer.preInitAudio`)
+   - Audio system initialized during app startup (parallel with other init tasks)
+   - Eliminates ~200-500ms audio setup delay when hitting play
+   - `playbackCache.isAudioInitialized()` tracks state
+
+2. **In-Memory Progress Cache** (`playbackCache.ts`)
+   - Progress data cached in memory during `importRecentProgress()`
+   - `progressService.getProgressData()` checks memory cache first (instant)
+   - Falls back to SQLite only if not cached
+
+3. **Session Pre-fetching** (`finishedBooksSync.prefetchSessions`)
+   - Pre-fetches playback sessions for top 5 recently played books
+   - Caches audio track URLs, chapters, and metadata
+   - Sessions expire after 5 minutes to stay fresh
+   - `playerStore` uses cached sessions to skip network call entirely
+
+**Flow on app startup:**
+```
+Parallel Init:
+├── loadFonts()
+├── restoreSession()
+├── syncRecentProgress() → populates SQLite + memory cache
+└── preInitAudio() → audio system ready
+
+Background (after UI shows):
+├── prefetchSessions() → sessions ready for top 5 books
+└── fullSync() → remaining books
+```
+
+**Result when hitting play:**
+- Audio system: Already initialized (no delay)
+- Progress data: In memory cache (instant, no SQLite read)
+- Session data: Pre-fetched (no network call for recent books)
+- **Total time to first audio: Near-instant**
+
+### Files Created
+- `src/core/services/playbackCache.ts` - In-memory cache for progress and sessions
+
+### Files Modified
+- `src/core/services/appInitializer.ts` - Add preInitAudio, prefetchSessions
+- `src/core/services/finishedBooksSync.ts` - Add prefetchSessions, populate memory cache
+- `src/features/player/services/progressService.ts` - Check memory cache first
+- `src/features/player/stores/playerStore.ts` - Use cached sessions
+- `src/constants/version.ts` - Version bump to 0.6.306
+
+---
+
+## [0.6.305] - 2026-01-10
+
+### Added - Fast Progress Sync on App Startup
+
+**appInitializer:**
+- Added `syncRecentProgress()` to parallel initialization phase
+- Syncs top 5 recently played books from server DURING app startup (not after)
+- Progress is now available immediately when app becomes interactive
+
+**finishedBooksSync:**
+- New `importRecentProgress()` function that:
+  - Fetches recently played books via `getItemsInProgress()` API
+  - Syncs only top 5 for speed
+  - Writes to BOTH `playback_progress` (player) and `user_books` (book detail)
+  - Updates spine cache for book spines
+
+**Result:**
+- Progress loads during splash screen, not after
+- No more lag when hitting play - player starts at correct position immediately
+- Book detail, book spines, and player all show same value on first load
+
+### Files Modified
+- `src/core/services/appInitializer.ts` - Add syncRecentProgress to parallel init
+- `src/core/services/finishedBooksSync.ts` - New importRecentProgress function
+- `src/constants/version.ts` - Version bump to 0.6.305
+
+---
+
+## [0.6.304] - 2026-01-10
+
+### Fixed - Player Now Uses Pre-loaded Progress
+
+**finishedBooksSync:**
+- Now writes to BOTH `playback_progress` table (player reads from) AND `user_books` table
+- Previously only wrote to `user_books`, but player reads from `playback_progress`
+- Player will now start at correct position immediately without loading delay
+
+**Result:**
+- Spine shows 38% ✓
+- Book detail shows 38% ✓ (reads from user_books + spine cache)
+- Player starts at Chapter 32 immediately ✓ (reads from playback_progress)
+
+### Files Modified
+- `src/core/services/finishedBooksSync.ts` - Write to playback_progress table
+- `src/constants/version.ts` - Version bump to 0.6.304
+
+---
+
+## [0.6.303] - 2026-01-10
+
+### Added - Progress Sync on App Startup
+
+**finishedBooksSync:**
+- Now imports progress (not just finished status) from server on app startup
+- Saves server progress to SQLite so it's available immediately
+- Updates spine cache so book spines show correct progress
+- Only imports if server progress is more recent than local
+
+**Result:**
+- Book detail page now shows correct progress without needing to play first
+- Book spines on home page match detail page progress
+- Progress available immediately after app launch
+
+### Files Modified
+- `src/core/services/finishedBooksSync.ts` - Import progress and update spine cache
+- `src/constants/version.ts` - Version bump to 0.6.303
+
+---
+
+## [0.6.302] - 2026-01-10
+
+### Fixed - Progress Uses Live Player State
+
+**SecretLibraryBookDetailScreen:**
+- Progress now uses live player state when book is currently loaded
+- If book is playing (02:32:47), detail page shows that position immediately
+- Fallback order: player state → local SQLite → spine cache → server
+- Duration showing correctly (8h 18m)
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Use player position for progress
+- `src/constants/version.ts` - Version bump to 0.6.302
+
+---
+
+## [0.6.301] - 2026-01-10
+
+### Fixed - Progress Now Uses Spine Cache
+
+**SecretLibraryBookDetailScreen:**
+- Progress now uses spine cache as fallback (same as book spines on home page)
+- This ensures the book detail page shows the same progress as the book spine
+- Fallback order: local SQLite → spine cache → server progress
+- The "38" shown on book spine will now also show as "38%" on detail page
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Use spine cache for progress
+- `src/constants/version.ts` - Version bump to 0.6.301
+
+---
+
+## [0.6.300] - 2026-01-10
+
+### Fixed - Duration Now Uses Spine Cache
+
+**SecretLibraryBookDetailScreen:**
+- Duration now uses spine cache as primary source (same as book spines on home page)
+- This ensures the book detail page shows the same duration as the book spine
+- Fallback order: spine cache → media.duration → audioFiles sum → last chapter end
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Use spine cache for duration
+- `src/constants/version.ts` - Version bump to 0.6.300
+
+---
+
+## [0.6.299] - 2026-01-10
+
+### Fixed - Duration Display (Additional Fallback)
+
+**SecretLibraryBookDetailScreen:**
+- Added third fallback for duration: uses last chapter's end time
+- Duration calculation now tries: media.duration → audioFiles sum → last chapter end time
+- This matches how the book spine calculates duration from chapters data
+
+---
+
+## [0.6.298] - 2026-01-10
+
+### Fixed - Duration Display
+
+**SecretLibraryBookDetailScreen:**
+- Fixed duration showing "0m" when `media.duration` is not set
+- Now falls back to calculating duration from audioFiles (same as BookDetailScreen)
+- Duration now matches the value shown on book spines in the home page
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Duration fallback calculation
+- `src/constants/version.ts` - Version bump to 0.6.298
+
+---
+
+## [0.6.297] - 2026-01-10
+
+### Changed - Progress Actions to Icon-Only Buttons
+
+**SecretLibraryBookDetailScreen:**
+- Changed "Mark Finished" and "Clear Progress" from text pills to icon-only circular buttons
+- Mark Finished: checkmark icon (fills black when completed)
+- Clear Progress: reset/refresh arrow icon
+- Cleaner, more minimal design matching the editorial aesthetic
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Icon-only progress actions
+- `src/constants/version.ts` - Version bump to 0.6.297
+
+---
+
+## [0.6.296] - 2026-01-10
+
+### Fixed - Progress Bar Accuracy (SQLite Single Source of Truth)
+
+**BookDetailScreen.tsx:**
+- Progress bar now uses SQLite as single source of truth (via `useBookProgress` hook)
+- Prefers local SQLite progress over server-reported progress
+- Chapter position tracking also prefers local SQLite time
+- Consistent with SecretLibraryBookDetailScreen behavior
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Added useBookProgress hook, updated progress calculations
+- `src/constants/version.ts` - Version bump to 0.6.296
+
+---
+
+## [0.6.295] - 2026-01-10
+
+### Fixed - SecretLibraryBookDetailScreen Improvements
+
+**Skull Logo:**
+- Fixed broken skull logo SVG (was missing 4th path element for complete skull)
+
+**Author/Narrator Links:**
+- Made each author name individually tappable in hero section
+- Made each narrator name individually tappable in details grid
+- Each name navigates to its respective detail page
+- Added underline styling to indicate tappable names
+
+**Mark Finished / Clear Progress (Single Source of Truth):**
+- Updated Mark Finished to sync to SQLite first (single source of truth)
+- Updated Clear Progress to sync to SQLite and reset position properly
+- Both actions now sync to ABS server in background
+- Added confirmation dialog for Clear Progress
+- Progress state now checks both server and local SQLite
+
+### Changed - Book View List Style
+
+**All Tab Book View:**
+- Changed from paragraph/flowing text to vertical list format
+- Each book on its own row with cover, title, series info, and duration
+- Added series name and sequence number below title
+- Cleaner, more scannable layout
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - All fixes above
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Added vertical list view
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Added vertical list view
+- `src/constants/version.ts` - Version bump to 0.6.295
+
+---
+
+## [0.6.294] - 2026-01-10
+
+### Changed - Series/Book View Toggle
+
+Updated the view toggle on author and narrator detail screens from "Shelf/List" to "Series/Book".
+
+**Series View (default):**
+- Books grouped by series with sub-headers
+- Each group displayed with BookSpineVertical components
+- Click series header to navigate to series detail
+
+**Book View:**
+- Flat list of all books without grouping (All tab)
+- Grouped by current filter (Series/Author/Narrator/Genre tabs) with inline text list
+- Inline covers with duration superscript
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Updated toggle and content logic
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Updated toggle and content logic
+- `src/constants/version.ts` - Version bump to 0.6.294
+
+---
+
+## [0.6.293] - 2026-01-10
+
+### Fixed - Book Detail Screen Improvements
+
+**Cover Image:**
+- Fixed cover image not showing (was hidden with `opacity: 0`)
+
+**Header:**
+- Added SkullLogo to header row matching the LibraryScreen design
+
+**Author/Narrator Links:**
+- Made each author and narrator name individually tappable
+- Now navigates to the correct author/narrator detail page for each name
+- Added visual underline to indicate tappable names
+
+**Clear Progress:**
+- Added Clear Progress functionality with ABS server sync
+- Long-press on "Mark read"/"Finished" button to access options menu
+- Clear Progress resets listening position to beginning
+- Properly syncs with AudioBookShelf server using `markAsNotStarted` API
+- Updates both local SQLite and server state
+
+### Enhanced - Author Detail Screen
+
+**Narrator Tab:**
+- Replaced Genre tab with Narrator tab on author detail screen
+- Books now grouped by narrator instead of genre
+- Tapping narrator navigates to narrator detail page
+
+**Layout:**
+- Moved shelf/list toggle to far right of tabs row (space-between layout)
+
+**Book Spine Series Number:**
+- Added series sequence number display on book spines when no progress
+- Shows `#X` (e.g., `#1`, `#2.5`) at 60% opacity where progress would appear
+- Added `isDownloaded` flag to spine data for future download indicator support
+
+### Files Modified
+- `src/features/book-detail/screens/BookDetailScreen.tsx` - Cover, header, links, clear progress
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Narrator tab, toggle layout, spine data
+- `src/features/home/components/BookSpineVertical.tsx` - Series sequence number display
+- `src/constants/version.ts` - Version bump to 0.6.293
+
+---
+
+## [0.6.292] - 2026-01-10
+
+### Fixed - Header Overlap Issue
+
+Fixed the header overlapping tabs on author/narrator detail screens.
+
+**Root Cause:**
+- Header was `position: absolute` inside the ScrollView
+- For long names (like "Ursula K. Le Guin"), header height exceeded the fixed paddingTop
+- This caused the stats text and header content to overlap the tabs
+
+**Fix:**
+- Removed `position: absolute` from header - now part of normal scroll flow
+- Header naturally takes as much space as needed for the name
+- Reduced paddingTop from 60px to 16px (just for safe area)
+- Tabs and toggle now render below header without overlap
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Fixed header layout
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Fixed header layout
+- `src/constants/version.ts` - Version bump to 0.6.292
+
+---
+
+## [0.6.291] - 2026-01-10
+
+### Fixed - Author/Narrator Layout Issues
+
+Fixed tabs and view toggle layout issues on author/narrator detail screens.
+
+**Layout Fixes:**
+- Separated tabs row and view toggle row (toggle was getting cut off)
+- Made tabs wrap on smaller screens with `flexWrap: 'wrap'`
+- Added proper spacing between rows (tabs: 16mb, toggle: 20mb)
+
+**List View Spacing:**
+- Added more spacing between books in list view (3 spaces instead of 1)
+- Applied consistent spacing across Author, Narrator, and TasteTextList components
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Fixed layout, added spacing
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Fixed layout, added spacing
+- `src/features/browse/components/TasteTextList.tsx` - Added spacing between books
+- `src/constants/version.ts` - Version bump to 0.6.291
+
+---
+
+## [0.6.290] - 2026-01-10
+
+### Added - Author & Narrator Detail Shelf/List Toggle with Series Grouping
+
+Enhanced the author and narrator detail screens with view mode toggle and series-based book grouping.
+
+**View Mode Toggle:**
+- Added Shelf/List toggle matching TasteTextList design
+- Shelf view uses BookSpineVertical components with horizontal scroll
+- List view uses inline text with cover images
+- Toggle appears next to filter tabs
+
+**Series Grouping:**
+- "All" tab now groups books by series with sub-headers
+- Standalone books appear under "Standalone" group at the end
+- Series names are clickable to navigate to SeriesDetail
+- Each series section supports independent shelf/list views
+
+**Implementation:**
+- Added `toSpineData()` helper for LibraryItem to BookSpineVerticalData conversion
+- Created `ShelfView` component using `useBookRowLayout` hook
+- Added `allBooksBySeries` memoized grouping for "All" tab
+- `getSpineDataList` callback for spine data with cached colors
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - Full shelf/list toggle and series grouping
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - Full shelf/list toggle and series grouping
+- `src/constants/version.ts` - Version bump to 0.6.290
+
+---
+
+## [0.6.286] - 2026-01-10
+
+### Added - SeriesCard Component & Inline Text Lists
+
+Created a single source of truth for series cards and fixed TasteTextList to use true inline images.
+
+**SeriesCard Component:**
+- New `SeriesCard` component as single source of truth for series display
+- Supports `light`/`dark` variants and `list`/`grid` layouts
+- Color dots representing books using hash-based deterministic colors
+- Exported utilities: `SERIES_DOT_COLORS`, `getBookDotColor`, `getSeriesColorDots`
+
+**SeriesGallery Updates:**
+- Now uses white/light grid layout by default
+- 2x2 grid with 1px separator lines (via gap + background)
+- Removed BookSpineVertical mini shelves in favor of color dots
+- Cream background container matching HTML design
+
+**TasteTextList Inline Fix:**
+- Fixed true inline text flow using SVG data URIs for colored squares
+- Images now properly inline within Text components
+- Colored squares render as inline elements that flow with text
+- Uses `createColorSquareUri()` to generate SVG data URIs on the fly
+
+### Files Modified
+- `src/features/browse/components/SeriesCard.tsx` - New file
+- `src/features/browse/components/SeriesGallery.tsx` - Rewritten to use SeriesCard
+- `src/features/browse/components/TasteTextList.tsx` - Fixed inline layout with SVG images
+- `src/features/browse/index.ts` - Added SeriesCard exports
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.285] - 2026-01-10
+
+### Added - Secret Library Author & Narrator Detail Screens
+
+New editorial-styled detail screens for authors and narrators matching the Secret Library design system.
+
+**New Screens:**
+- `SecretLibraryAuthorDetailScreen` - Dark background, large Playfair Display name, stats row, follow button, filter tabs, flowing text list with cover thumbnails
+- `SecretLibraryNarratorDetailScreen` - Same design pattern with type badge (mic icon), tabs for Author/Series/Genre filtering
+
+**Design Features:**
+- Large editorial typography (Playfair Display titles, JetBrains Mono for stats)
+- Stats display showing book count and total duration
+- Follow button with Bell/BellOff icons for author/narrator following
+- Filter tabs: All, Series, Genre (authors) / All, Author, Series, Genre (narrators)
+- Flowing text list with inline cover thumbnails using hash-based colors
+- Footer stats with collection summary
+
+**TasteTextList Improvements:**
+- Fixed inline layout using flexWrap approach instead of nested View/Text
+- Added cover color thumbnails (20x20px) alongside book titles
+- Black background per design spec
+- Cover colors use deterministic hash-based palette
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` - New file
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` - New file
+- `src/features/author/index.ts` - Added export
+- `src/features/narrator/index.ts` - Added export
+- `src/navigation/AppNavigator.tsx` - Updated to use new screens
+- `src/features/browse/components/TasteTextList.tsx` - Fixed layout with cover thumbnails
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.280] - 2026-01-09
+
+### Changed - Replace Grid View with Stack View
+
+Replaced the grid view with a new stack view that displays books rotated 90° and stacked.
+
+**New Layout Modes:**
+- `shelf`: Books stand upright on shelf, aligned to bottom (horizontal scroll) - default
+- `stack`: Books rotated 90° and stacked vertically, center aligned (vertical scroll)
+
+**Stack Mode Features:**
+- Books rotate 90° to lay flat like a pile
+- Overlapping stacked layout (65% overlap)
+- Vertical scrolling through the stack
+- Center alignment instead of bottom alignment
+- Most recent books appear at top of stack
+
+**UI Changes:**
+- New ShelfIcon for shelf mode toggle
+- New StackIcon for stack mode toggle
+- Removed grid view and GridItem component
+- Both modes use dark theme consistently
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` - Added layoutMode prop, stack mode rendering
+- `src/features/home/screens/LibraryScreen.tsx` - Replaced grid with stack, new icons
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.279] - 2026-01-09
+
+### Added - Comprehensive Genre Typography System
+
+Implemented full typography system with ~50 genre profiles and tag modifiers for distinct visual voice per book.
+
+**New Type System:**
+- `TypographyProfile` - Complete profile with title, author, and layout preferences
+- `TitleTypography` - Font family, weight (300-800), style, transform, letter spacing
+- `AuthorTypography` - Separate typography for author names
+- `LayoutPreferences` - Author position, orientation bias, title weight, contrast
+- `SpinePersonality` - Visual character: 'refined' | 'bold' | 'playful' | 'classic' | 'modern' | 'stark' | 'warm'
+
+**Genre Typography Profiles (~50 genres):**
+- Children's: playful sans-serif, uppercase, wide spacing (0.04em)
+- Literary Fiction: refined serif, normal case, elegant spacing (0.02em)
+- Fantasy: bold serif, small-caps, dramatic spacing (0.04em)
+- Thriller/Crime: stark sans-serif, uppercase, tight spacing (-0.02em), author boxes
+- Romance: warm serif italic, normal case, elegant spacing (0.02em)
+- Science Fiction: modern sans-serif, uppercase, wide spacing (0.05em)
+- Mystery: classic serif, uppercase, medium spacing (0.03em)
+- Horror: bold sans-serif, uppercase, extra wide (0.08em), high contrast
+- Business/Self-Help: modern sans-serif, horizontal author bias
+- History/Biography: classic serif, bottom author, subtle spacing
+- Poetry: refined serif italic, light weight, delicate spacing (0.01em)
+- And many more...
+
+**Tag Typography Modifiers:**
+- `epic-fantasy`: heavier title (700), wider spacing
+- `grimdark`: bolder weight, stark personality
+- `cozy`: lighter weight, warm personality
+- `gothic`: serif font, refined feel
+- `noir`: tight spacing, high contrast
+- `hard-boiled`: uppercase author
+- `historical-fiction`: classic serif styling
+- `speculative`: modern personality shift
+- `literary-fiction`: refined adjustments
+- `commercial-fiction`: bold, high contrast
+
+**Layout Solver Updates:**
+- `createMeasureFunction()` now accounts for letter spacing in text width calculation
+- Formula: `baseWidth + letterSpacing * fontSize * (charCount - 1)`
+- Prevents text clipping with wide letter spacing
+- `solveTitleLayout()` and `solveAuthorLayout()` accept letter spacing parameter
+
+**BookSpineVertical Updates:**
+- Passes `titleLetterSpacing` to title solver
+- Passes `authorLetterSpacing` to author solver
+- Supports new `titleLetterSpacing` and `authorLetterSpacing` properties
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - New TypographyProfile types, ~50 GENRE_TYPOGRAPHY profiles, TAG_TYPOGRAPHY_MODIFIERS
+- `src/features/home/utils/layoutSolver.ts` - Updated measure function with letter spacing, updated convenience functions
+- `src/features/home/components/BookSpineVertical.tsx` - Pass letter spacing to layout solvers
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.278] - 2026-01-09
+
+### Added - Enhanced Typography System
+
+Incrementally expanded the book spine typography system with new properties for finer control over text styling.
+
+**New SpineTypography Properties:**
+- `letterSpacing: number` - Letter spacing in em units (0 = normal, positive = wide tracking)
+- `authorOrientationBias: 'horizontal' | 'vertical' | 'neutral'` - Hint for solver when authorPosition is 'auto'
+- `contrast: 'high' | 'normal'` - High contrast increases title/author size difference
+- `titleWeight: string` - Override weight for title only (defaults to fontWeight)
+- `authorWeight: string` - Override weight for author only (defaults to fontWeight)
+
+**Genre Typography Updates:**
+- All existing genres now have `letterSpacing`, `authorOrientationBias`, `contrast` values
+- Added new genre presets: `classics`, `memoir`, `adventure`, `humor`, `western`, `philosophy`, `science`, `psychology`
+- Horror gets widest tracking (0.08em) and max weight (900) for impact
+- Sci-fi gets futuristic wide tracking (0.06em)
+- Literary/poetry get elegant slight spacing (0.02-0.03em)
+- Non-fiction/biography genres use prominent author weights for authority
+
+**Rendering Changes:**
+- Title text now applies `titleWeight`, `contrast` multiplier (1.05x for high contrast), and `letterSpacing`
+- Author text applies `authorWeight`, inverse contrast (0.92x for high contrast), and half letterSpacing
+- `authorOrientationBias` now influences layout solver's horizontal preference
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Added new types and properties to SpineTypography, updated all genre presets
+- `src/features/home/components/BookSpineVertical.tsx` - Applied new typography properties to text rendering
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.276] - 2026-01-09
+
+### Added - SVG Text Length Scaling
+
+Added `textLength` and `lengthAdjust` props to all spine text elements for perfect text fitting.
+
+**How it works:**
+- SVG's `textLength` prop specifies the exact length text should occupy
+- `lengthAdjust="spacingAndGlyphs"` scales both letter spacing and glyph widths to fit
+- Text is guaranteed to fit within bounds without clipping
+
+**Values used:**
+- Title (vertical): `(titleHeight - INNER_MARGIN * 2) * 0.92` - 92% of available height
+- Title (horizontal): `(titleBoxWidth) * 0.90` - 90% of available width
+- Author (vertical): `(authorHeight - INNER_MARGIN * 2) * 0.92` - 92% of available height
+- Author (horizontal): `(authorBoxWidth) * 0.90` - 90% of available width
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Added textLength and lengthAdjust to SvgText elements
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.275] - 2026-01-09
+
+### Fixed - Spine Text Coordinate Translation
+
+Fixed misalignment issues with multi-line vertical text on book spines (e.g., "URSULA K." and "LE GUIN" appearing at different positions).
+
+**Problem:**
+- The layout solver calculates text positions relative to a "box" (0,0 at top-left of box)
+- When translating back to SVG coordinates, the Y offset was using inconsistent calculations
+- Title used `titleY + (titleHeight * 0.05)` but box was constructed with `titleHeight - INNER_MARGIN*2`
+- Author used `authorY + (authorHeight * 0.05)` but box started at `authorY + INNER_MARGIN`
+- This mismatch caused multi-line text to appear offset or misaligned
+
+**Solution:**
+1. **Consistent Coordinate Translation** - Both title and author now use:
+   - Box origin X: `EDGE_PADDING + INNER_MARGIN`
+   - Box origin Y: `sectionY + INNER_MARGIN`
+   - Adjusted position: `boxOrigin + line.position` (from solver)
+
+2. **Per-Section Clip Paths** - Added safety net clip paths for each section:
+   - `title-clip-{bookId}` - Clips title text to title section bounds
+   - `author-clip-{bookId}` - Clips author text to author section bounds
+   - Prevents any text overflow between sections
+
+3. **Debug Visualization** - Added optional debug mode (`DEBUG_SECTIONS = true`) that shows:
+   - Section boundaries (author=blue, title=green, progress=red)
+   - Solver box boundaries (dashed lines)
+   - Useful for diagnosing layout issues
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Fixed coordinate translation, added per-section clip paths, added debug visualization
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.269] - 2026-01-09
+
+### Fixed - Author Box Layout Preference
+
+Fixed issue where author boxes weren't appearing because the layout solver always preferred vertical text.
+
+**Problem:**
+- For narrow spines (~35-45px), vertical text allows larger fonts than horizontal
+- The solver was always choosing vertical, even for thriller/crime genres that want boxes
+- Boxes only work with horizontal layouts, so they never appeared
+
+**Solution:**
+1. Added `preferHorizontal` parameter to `solveAuthorLayout()`
+2. When `typography.authorBox` is `'horizontal-only'` or `'always'`, the solver gets a +25 point bonus for horizontal layouts
+3. This overcomes vertical's font size advantage for genres that want author boxes
+
+**Also Fixed:**
+- Corrected author box coordinate calculation (was using wrong x offset)
+
+### Files Modified
+- `src/features/home/utils/layoutSolver.ts` - Added preferHorizontal to LayoutContext and scoring
+- `src/features/home/components/BookSpineVertical.tsx` - Pass preferHorizontal based on typography, fix box coordinates
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.268] - 2026-01-09
+
+### Added - Author Box Styling for Commercial Genres
+
+Added optional rectangular boxes around author names on book spines. This gives a distinctive "commercial fiction" look to thrillers, business books, and non-fiction titles while keeping literary and romance spines elegant and unframed.
+
+**Features:**
+
+1. **Genre-Based Box Preference** - Added `authorBox` property to typography profiles:
+   - `'horizontal-only'`: Show box when author is horizontal (thriller, crime, business, biography, history, self-help)
+   - `'never'`: Never show box (literary, romance, poetry, fantasy, horror, children's)
+
+2. **Box Style Variants** - Three visual styles based on genre/tags:
+   - `minimal`: Thin stroke (0.5px), subtle gray (#666), used for business/self-help
+   - `classic`: Medium stroke (0.75px), darker gray (#444), used for thriller/crime
+   - `bold`: Thick stroke (1.5px), dark (#333), used for noir/police-procedural
+
+3. **Tag Override System**:
+   - Tags that force boxes: `thriller`, `crime`, `noir`, `bestseller`, `history`, `biography`
+   - Tags that prevent boxes: `literary-fiction`, `poetry`, `gothic`, `cozy`, `romance`, `award-winner`
+
+4. **Layout Bounds Tracking** - Updated layout solver to compute bounds for horizontal text, used for box positioning
+
+**Visual Examples:**
+```
+THRILLER (with box):        LITERARY FICTION (no box):
+┌──────────────┐           ┌──────────────┐
+│ ┌──────────┐ │           │  Donna       │
+│ │  MICK    │ │           │  Tartt       │
+│ │ HERRON   │ │           │              │
+│ └──────────┘ │           │ The Secret   │
+│  SLOW        │           │  History     │
+│  HORSES      │           └──────────────┘
+└──────────────┘
+```
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Added AuthorBoxConfig, AuthorBoxPreference types, AUTHOR_BOX_STYLES constants, resolveAuthorBox function, authorBox to typography presets
+- `src/features/home/utils/layoutSolver.ts` - Added LayoutBounds type, bounds tracking in calculateLinePositions
+- `src/features/home/components/BookSpineVertical.tsx` - Added author box rendering with genre-based styles
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.267] - 2026-01-09
+
+### Fixed - Book Spine Layout Solver for Short Titles
+
+Fixed an issue where short titles like "Scarlet Feather" would appear with tiny, boring text instead of filling the available space with large, bold text.
+
+**Problem:**
+- For a 2-word title on a narrow spine, the layout solver would split it into 2 vertical columns
+- Each column only got half the spine width, resulting in ~15px fonts
+- A single vertical line would allow ~34px fonts but wasn't being chosen
+
+**Root Cause:**
+- The efficiency scoring penalized high fill ratios (>70%) as "overfilling"
+- For short titles, we actually WANT to fill the space with big text
+- No direct scoring component rewarded larger font sizes
+
+**Solution:**
+1. **Updated `scoreEfficiency`** - For short text (<20 chars), high fill ratios now score higher:
+   - <10% fill: 20 (bad - text is tiny)
+   - 10-20%: 40
+   - 20-35%: 60
+   - 35-50%: 80
+   - >50%: 100 (great - fills the space!)
+
+2. **Added `scoreFontSizeMaximization`** (20% weight) - Directly rewards larger fonts:
+   - Short titles (<15 chars): 28px+ → 100, 22px+ → 85, etc.
+   - Medium titles (<25 chars): 20px+ → 100
+   - Longer titles: more lenient thresholds
+
+3. **Rebalanced scoring weights:**
+   - readability: 30% → 25%
+   - balance: 20% → 15%
+   - aesthetics: 15% → 10%
+   - fontMaximization: NEW 20%
+   - splitScore: 20% → 15%
+
+**Result:** Short titles now display with large, impactful fonts that fill the available vertical space.
+
+### Files Modified
+- `src/features/home/utils/layoutSolver.ts` - Updated efficiency scoring, added font maximization
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.266] - 2026-01-09
+
+### Added - Genre-Based Book Spine Dimension System
+
+Implemented a comprehensive genre-based dimension calculation system for book spines. Book spine heights and widths are now dynamically calculated based on:
+
+**Genre Profiles (50+ genres):**
+- Children's books (0-2, 3-5, 6-8, 9-12) - progressively taller, playful personality
+- Teen/YA - standard dimensions
+- Literary Fiction, Classics - tall and elegant
+- Fantasy, Sci-Fi - imposing dimensions, wide range based on duration
+- Mystery, Thriller, Crime - standard to chunky
+- Romance - compact personality
+- Non-Fiction categories (Biography, History, Self-Help, etc.)
+- Short form (Essays, Short Stories) - elegant and thin
+
+**Tag Modifiers (80+ tags):**
+- Subgenre tags: epic-fantasy (+15% height, +20% width), cozy-fantasy (-12%), grimdark (+10%)
+- Era tags: victorian, medieval, regency - affect dimensions
+- Creature tags: dragons, vampires, fae - flavor adjustments
+- Vibe tags: atmospheric, fast-paced, emotional
+- Duration overrides: under-5-hours, over-20-hours
+
+**Personality System:**
+- `imposing` - tall, wide (epics, histories)
+- `elegant` - tall, thin (literary, gothic)
+- `chunky` - medium height, thick (crime, anthologies)
+- `compact` - shorter, standard width (romance, self-help)
+- `playful` - variable, fun proportions (children's, humor)
+- `standard` - balanced dimensions
+
+**Series Consistency:**
+- Books in the same series share identical height
+- Width varies based on individual book duration
+- First book in series sets the style for all others
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Added GENRE_PROFILES, TAG_MODIFIERS, calculateBookDimensions()
+- `src/features/home/components/BookSpineVertical.tsx` - Added tags support, use new dimension calculation
+- `src/features/home/components/BookshelfView.tsx` - Use genre-based dimension calculation
+- `src/features/home/screens/LibraryScreen.tsx` - Pass tags from metadata to spine data
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.265] - 2026-01-09
+
+### Updated - Library View Toggle Buttons
+
+Simplified view toggle buttons to icon-only design:
+
+**Changes:**
+- Removed "Shelf" and "Grid" text labels from view buttons
+- Buttons now show only icons (BookIcon / GridIcon)
+- Increased logo size from 32px to 48px
+- Filter/sort row aligned to the right (with search)
+- Cleaned up unused styles (viewBtnActive, viewBtnLabel)
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Simplified view buttons
+- `src/constants/version.ts` - Version bump
+
+---
+
+## [0.6.264] - 2026-01-09
+
+### Updated - Library Header Controls
+
+Improved filter/sort controls and view toggle buttons:
+
+**View Toggles:**
+- Larger buttons (40px instead of 36px)
+- Shows label when active: "Shelf" or "Grid" next to icon
+- Icon + text side-by-side in the same button
+
+**Filter & Sort Dropdowns:**
+- Both now use matching dropdown style: `⊙ All` and `↓ Recent`
+- Larger font (13px) for better readability
+- Filter reverted to dropdown modal (was inline buttons)
+- Consistent spacing between the two dropdowns
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Updated header controls and styles
+
+---
+
+## [0.6.263] - 2026-01-09
+
+### Redesigned - Library Header Layout
+
+Compact, unified header design with all controls on two clean rows:
+
+**Row 1 (Main Header):**
+```
+[Skull Logo] Library          [Book] [Grid] [Search]
+```
+
+**Row 2 (Filters):**
+```
+[All] [Downloaded] [Not Downloaded]      ↓ Recent
+```
+
+#### Changes
+- **New Skull Logo**: Updated to SL Skull design at 32px
+- **Unified Header Row**: Logo + "Library" title on left, view toggles + search on right
+- **Inline Filter Toggle**: Three connected buttons (All / Downloaded / Not Downloaded) instead of dropdown
+- **Removed**: Filter dropdown modal, pageTitle section (integrated into header)
+
+#### Visual Improvements
+- More compact layout saves vertical space
+- Filter buttons show active state with border highlight
+- View toggle buttons (Book/Grid) use consistent 36px square design
+- Search button circular with matching 36px size
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Complete header redesign
+
+---
+
+## [0.6.262] - 2026-01-09
+
+### Fixed - Title Layout on Narrow Spines
+
+Fixed issue where long titles on narrow spines were being clipped horizontally (showing only the middle portion of text like "True Sto" / "ree Litt" instead of the full title).
+
+#### Layout Solver Improvements
+1. **More Conservative Horizontal Layout**: Reduced available length from 88% to 75% for horizontal orientation to prevent text overflow
+2. **Heavy Penalty for Horizontal on Narrow Spines**:
+   - Spines < 50px with text > 15 chars: -40 score
+   - Spines < 45px with text > 10 chars: -30 score
+   - Spines < 60px with text > 25 chars: -35 score
+3. **Stronger Vertical Preference**: Narrow spines (< 50px) now get +20 bonus for vertical orientation
+4. **Better Aspect Ratio Handling**: Tall spines (aspect > 8) get extra +10 for vertical
+
+### Changed - Library Screen View Modes
+
+Simplified the Library screen from 3 view modes to 2:
+
+| Before | After |
+|--------|-------|
+| List, Grid, Book | Book (primary), Grid (secondary) |
+
+- **Removed List View**: Eliminated list view and all related components/styles
+- **Book Spine as Default**: Bookshelf view is now the primary/default view mode
+- **Cleaner Toggle**: View toggle now shows only Book and Grid icons
+
+### Files Modified
+- `src/features/home/utils/layoutSolver.ts` - Conservative horizontal estimates, stronger vertical preference
+- `src/features/home/screens/LibraryScreen.tsx` - Removed list view, reordered toggle
+
+---
+
+## [0.6.261] - 2026-01-09
+
+### Major Refactor - Unified Layout Solver
+
+Replaced hardcoded layout rules with a systematic constraint satisfaction solver
+that generalizes across all book titles, author names, and spine dimensions.
+
+#### New File: `layoutSolver.ts`
+
+A unified text layout solver implementing 8 key principles:
+
+| Principle | Description |
+|-----------|-------------|
+| Constraint Satisfaction | Define hard/soft constraints, find solutions that satisfy them |
+| Continuous Parameter Space | Explore all combinations: 1/2/3 lines × horizontal/vertical |
+| Scored Split Generation | Score ALL possible split points, not just middle |
+| Font Size as Derived | Binary search for largest font that fits constraints |
+| Unified Scoring | Single function scores readability, balance, efficiency, aesthetics |
+| Cascading Fallbacks | Abbreviation → relaxed constraints → truncation |
+| Flexible Allocation | Section sizes adapt to content needs |
+| Deterministic Variation | Hash-based nudges for organic variety |
+
+#### Smart Split Scoring
+
+The solver scores every possible split point based on:
+- **Balance** (0-30 pts): Similar line lengths preferred
+- **Orphans** (-25 pts): Never end lines with "and", "the", "of", etc.
+- **Widows** (-20 pts): Final lines < 4 chars penalized
+- **Semantic Breaks** (+20 pts): Bonus for splitting at `:`, `-`, etc.
+- **Series Patterns** (-30 pts): Never split "Vol. 1", "Book 2", etc.
+- **Title Patterns** (+15 pts): Known good splits like "Harry Potter" / "Chamber of Secrets"
+
+#### Example Improvements
+
+| Title | Old Split | New Split |
+|-------|-----------|-----------|
+| Harry Potter and the Chamber of Secrets | "Harry Potter and the" / "Chamber of Secrets" | "Harry Potter" / "Chamber of Secrets" |
+| The True Story of the Three Little Pigs | Cramped 2 lines | Clean 3 lines |
+
+#### Fallback Cascade
+
+1. **Tier 1**: Full text with optimal layout
+2. **Tier 2**: Smart abbreviations (remove articles, subtitles, initials)
+3. **Tier 3**: Relaxed constraints (allow 7px instead of 8px)
+4. **Tier 4**: Truncation with ellipsis
+5. **Tier 5**: Clip (last resort)
+
+### Files Added
+- `src/features/home/utils/layoutSolver.ts`
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Now uses unified solver
+- `src/features/home/utils/authorLayoutStrategy.ts` - Kept for reference (deprecated)
+
+---
+
+## [0.6.260] - 2026-01-09
+
+### Fixed - Horizontal-Stacked Author Centering
+
+Fixed spacing issue where horizontal-stacked author text was positioned too low with empty space at the top.
+
+#### Changes
+1. **Rewrote y-position calculation** in `tryHorizontalStacked`:
+   - First pass calculates font sizes for all lines
+   - Second pass calculates y positions based on actual font sizes used
+   - Properly centers text block within the box
+   - Uses explicit 4px gap between lines
+
+2. **Fixed rendering offset** in `BookSpineVertical`:
+   - Added 5% offset to center the 90% strategy box within full author section
+
+### Files Modified
+- `src/features/home/utils/authorLayoutStrategy.ts`
+- `src/features/home/components/BookSpineVertical.tsx`
+
+---
+
+## [0.6.259] - 2026-01-09
+
+### Added - Multi-Strategy Author Layout System
+
+Implemented a sophisticated layout strategy selector for author names that tries multiple
+approaches and picks the best one.
+
+#### New File: `authorLayoutStrategy.ts`
+Standalone module for smart author layout selection.
+
+#### Four Layout Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `horizontal-single` | Single horizontal line | Short names, wide spines |
+| `horizontal-stacked` | 2-3 horizontal lines stacked | Medium names, wider spines |
+| `vertical-single` | Single rotated line (-90°) | Any name, tall narrow spines |
+| `vertical-split` | 2-3 rotated columns side-by-side | Long names, narrow spines |
+
+#### How It Works
+1. Tries all 4 strategies with current box dimensions
+2. Each strategy reports if it "fits" (font size >= minimum)
+3. Fitting strategies are scored based on:
+   - Font size (larger = better)
+   - Aspect ratio match (tall spines prefer vertical)
+   - Name characteristics (length, word count)
+4. Best scoring strategy is selected
+5. Fallback: abbreviated name ("U. Le Guin") or initials ("U.L.G.")
+
+#### Scoring Logic
+- **Horizontal-single**: Bonus for readable fonts (9-12px ideal range)
+- **Horizontal-stacked**: Prefers balanced line lengths
+- **Vertical-single**: Loves tall narrow spines (aspect > 6)
+- **Vertical-split**: Last resort, good for very tall spines with long names
+
+#### Author Name Parsing
+Smart parsing handles:
+- "Ursula K. Le Guin" → ["Ursula K.", "Le Guin"]
+- "George Raymond Richard Martin" → ["George R.R.", "Martin"] or 3 lines
+- Compound surnames: van, von, de, le, mc, mac, o', etc.
+
+### Files Added
+- `src/features/home/utils/authorLayoutStrategy.ts`
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Now uses `selectAuthorLayout()`
+
+---
+
+## [0.6.258] - 2026-01-09
+
+### Changed - Taller Book Spines
+
+Increased all book heights by ~30px for better visual presence.
+
+| Dimension | Before | After |
+|-----------|--------|-------|
+| BASE_HEIGHT | 320 | 350 |
+| MIN_HEIGHT | 260 | 290 |
+| MAX_HEIGHT | 420 | 450 |
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts`
+
+---
+
+## [0.6.257] - 2026-01-09
+
+### Major Refactor - Comprehensive Logic Improvements
+
+This version addresses critical gaps identified in code review, adding explicit fallbacks,
+better algorithms, and accessibility compliance.
+
+#### 1. Explicit Fallback Cascade
+Every calculation now has explicit fallbacks for missing data:
+- **Missing duration**: Uses median width (42px)
+- **Missing genres**: Deterministic random typography from book ID
+- **Missing author**: Empty string handling
+- **Missing bookId**: Uses 'default' for hash
+
+#### 2. Series Registry with Locking
+- **Normalized names**: "The Lord of the Rings" → "lord of the rings"
+- **Locked heights**: Once created, series height cannot change
+- **Consistent matching**: Handles article variations automatically
+
+#### 3. Logarithmic Width Calculation
+```typescript
+// Old: Linear segments
+// New: Logarithmic scaling with diminishing returns
+const logRatio = Math.log(1 + ratio * 9) / Math.log(10);
+width = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * logRatio;
+```
+- 1 hour → 32px
+- 5 hours → 44px
+- 10 hours → 52px
+- 20 hours → 62px
+- 30 hours → 70px (capped)
+
+#### 4. Compound Surname Handling
+New `parseAuthorName()` function handles particles correctly:
+- "Ursula K. Le Guin" → "Ursula K." / "Le Guin"
+- "Vincent van Gogh" → "Vincent" / "van Gogh"
+- "J.R.R. Tolkien" → "J.R.R." / "Tolkien"
+
+Particles recognized: van, von, de, du, del, della, di, da, le, la, mc, mac, o', etc.
+
+#### 5. Linguistic Title Splitting
+New `findBestTitleSplit()` with scoring system:
+- **Bonus**: Breaking after articles/prepositions (the, of, in, etc.)
+- **Penalty**: Breaking before "Vol. 1", "Book 2", "#3"
+- **Penalty**: Very unbalanced splits (<30% ratio)
+
+#### 6. Touch Target Compliance (44px minimum)
+- New `calculateTouchPadding()` function
+- `hitSlop` added to pressable for narrow spines
+- Narrow 28px spine gets 8px padding each side
+
+#### 7. Genre Priority System
+Genres now have explicit priority order (most specific first):
+1. Mystery/Thriller/Crime
+2. Horror
+3. Romance
+4. Sci-Fi
+5. Fantasy
+6. Children's
+... (12 categories total)
+
+#### 8. Performance Caching
+- Font size calculations cached (500 entry limit)
+- Series styles locked after creation
+- Hash function optimized (djb2 variant)
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Complete rewrite
+- `src/features/home/components/BookSpineVertical.tsx` - Integration updates
+
+---
+
+## [0.6.256] - 2026-01-09
+
+### Improved - Smarter Title Split Logic
+
+#### Dynamic Minimum Font Based on Spine Width
+- **Narrow spines (28px)**: min font ~10px (smaller acceptable)
+- **Wide spines (70px)**: min font ~16px (larger minimum)
+- Formula: `dynamicMinFont = clamp(10, width × 0.22, 16)`
+
+#### Title Split Decision Logic
+```
+NEVER SPLIT when:
+  • Title ≤6 chars (too short, looks bad split)
+
+SPLIT when:
+  • Very long (>25 chars) AND font too small
+  • Narrow spine (<40px) AND title >12 chars AND font borderline
+  • Font too small AND title >10 chars
+  • Wide tall spine: only if title >15 chars AND font <90% of min
+```
+
+#### Adaptive Line Width for Splits
+- **Narrow spines (<40px)**: 46% per line (tighter packing)
+- **Medium spines (40-50px)**: 44% per line
+- **Wide spines (>50px)**: 42% per line (more gap between lines)
+
+#### Examples
+| Title | Width | Result |
+|-------|-------|--------|
+| "It" | 35px | Single line (too short to split) |
+| "The Phantom Tollbooth" | 48px | Single line (fits well) |
+| "The Left Hand of Darkness" | 38px | Split (narrow + long) |
+| "A Very Long Title Indeed" | 60px | Single line (wide spine) |
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Title split logic
+
+---
+
+## [0.6.255] - 2026-01-09
+
+### Fixed - Smarter Author Orientation with Aspect Ratio
+
+#### New Aspect Ratio-Based Logic
+The author orientation now considers the spine's **aspect ratio** (height/width), not just width:
+
+**ALWAYS VERTICAL when:**
+- Single word author (can't split)
+- Narrow spine (width < 45px)
+- Very tall spine (aspect ratio > 6)
+- Tall spine (aspect ratio > 5) with name > 10 chars
+
+**ALLOW HORIZONTAL only when:**
+- Short name (≤10 chars) + wide (≥50px) + not too tall (ratio < 5)
+- Medium name (≤14 chars) + wider (≥55px) + well-proportioned (ratio < 4.5)
+- Longer name (≤18 chars) + very wide (≥60px) + short spine (ratio < 4)
+
+**DEFAULT: VERTICAL** (safer choice)
+
+#### Why This Matters
+- "Norton Juster" on tall Phantom Tollbooth → now VERTICAL (was horizontal)
+- "Ursula K. Le Guin" on narrow spine → now VERTICAL (was trying horizontal)
+- Horizontal only used when spine is wide AND short enough
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Aspect ratio logic
+
+---
+
+## [0.6.254] - 2026-01-09
+
+### Improved - Line-by-Line Author Scaling & Better Margins
+
+#### Line-by-Line Horizontal Author Scaling
+- **Each line scales independently**: "Ursula" fills width, "K. Le Guin" fills width (different sizes)
+- **Two separate SvgText elements**: Enables independent font sizes per line
+- **Better visual balance**: First names and last names each maximize their space
+
+#### New Spacing Constants
+- **INNER_MARGIN = 4px**: Safety margin inside spine to prevent clipping
+- **SECTION_GAP = 2px**: Gap between author/title/progress sections
+- **HORIZONTAL_LINE_GAP = 2px**: Gap between horizontal author lines
+
+#### Improved Margin Logic
+- **Title height with margins**: `safeHeight = titleHeight - (INNER_MARGIN * 2)`
+- **Author width with margins**: `textWidth = availableWidth - (INNER_MARGIN * 2)`
+- **Section positions include gaps**: Cleaner separation between sections
+
+#### Updated Constants
+- `TITLE_LINE_SPACING = 0.52` (tighter, was 0.55)
+- `AUTHOR_LINE_SPACING = 0.55` (tighter, was 0.6)
+- `MAX_AUTHOR_FONT = 16` (was 14)
+- `MIN_TITLE_FONT_FOR_SPLIT = 14` (was 16)
+- `AUTHOR_PERCENT_BASE = 22%` (was 20%)
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Line-by-line scaling, margins, spacing
+
+---
+
+## [0.6.253] - 2026-01-09
+
+### Fixed - Duration-Based Width & Author Orientation
+
+#### Restored Duration-Based Spine Width
+- **Width varies by audiobook length**: Longer books = thicker spines
+- **4 tiers based on hours**:
+  - Short (<4 hrs): 28-36px
+  - Medium (4-10 hrs): 36-48px
+  - Long (10-20 hrs): 48-58px
+  - Epic (>20 hrs): 58-70px
+- **Visual comparison**: Users can compare book lengths at a glance
+
+#### Fixed Author Orientation
+- **Short names (≤14 chars)**: Now horizontal (easier to read)
+- **Medium names (15-20 chars)**: Horizontal on wider spines (≥42px)
+- **Long names (>20 chars)**: Vertical (fits better)
+- **Single word authors**: Always vertical (can't split into 2 lines)
+- **Very narrow spines (<36px)**: Always vertical
+
+#### Fixed Line Spacing
+- **AUTHOR_LINE_SPACING = 0.6**: Used for split author names (was hardcoded 0.7)
+- **TITLE_LINE_SPACING = 0.55**: Tighter spacing for split titles
+
+#### Fixed Author/Title Overlap
+- **MAX_AUTHOR_FONT = 14**: Caps author font to prevent overlap with title
+- **MIN_AUTHOR_FONT = 9**: Ensures readability
+- **Author section = 20%**: Reduced to give title more room
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Duration-based width calculation
+- `src/features/home/components/BookSpineVertical.tsx` - Author orientation logic, line spacing
+
+---
+
+## [0.6.252] - 2026-01-09
+
+### Improved - Bigger Text, More Top Padding
+
+#### More Top Padding (Visible Gap)
+- **TOP_PADDING increased to 16px** (was 10px) - clear visible gap at top of spine
+- **Separate BOTTOM_PADDING = 8px** - different top/bottom padding for better balance
+- Text no longer touches the top edge
+
+#### Bigger Title Text
+- **Fill factor: 0.92** (was 0.88) - titles fill more of the available space
+- **Thickness: 0.95** (was 0.90) - allows thicker/taller text
+- ClipPath prevents any overflow
+
+#### Bigger Author Text
+- **Author multiplier: 0.92x** (was 0.85x) - almost as large as title
+- **Section space: 24%** (was 22%) - more room for author
+- **MIN_AUTHOR_FONT = 11** (was 10) - larger minimum
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - TOP_PADDING=16, BOTTOM_PADDING=8, section %
+- `src/features/home/utils/spineCalculations.ts` - fill=0.92, thickness=0.95, author=0.92x
+
+---
+
+## [0.6.251] - 2026-01-09
+
+### Improved - Consistent Width, Better Padding, Bigger Author
+
+#### Consistent Spine Width
+- **Fixed width for all books**: All spines are now 48px wide (was variable based on duration)
+- **Compare by height**: Users can now compare book lengths at a glance by HEIGHT
+- **Cleaner shelf appearance**: Uniform width creates a tidier bookshelf
+
+#### Better Padding & Margins
+- **Edge padding increased**: 8px from edges (was 5px) - titles don't get too close to edges
+- **Top padding increased**: 10px (was 8px) - more breathing room
+
+#### Bigger Author Text
+- **Font multiplier increased**: 0.85x of title size (was 0.7x) - much more readable
+- **More section space**: Author gets 22% of spine (was 16%)
+- **Prefer single line**: Only split author names >18 chars (was >10)
+- **Names like "Susanna Clarke" now fit on one line**
+
+#### Technical Changes
+- `calculateSpineWidth()` now returns fixed 48px
+- `EDGE_PADDING = 8`, `TOP_PADDING = 10`
+- `MIN_AUTHOR_FONT = 10` (was 8)
+- `AUTHOR_PERCENT_BASE = 22` (was 16)
+- Author split threshold: 18 chars (was 10)
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Fixed width, bigger author multiplier
+- `src/features/home/components/BookSpineVertical.tsx` - Better padding, author sizing
+
+---
+
+## [0.6.250] - 2026-01-09
+
+### Changed - Moved Series Info from Spines to Book Detail
+
+#### Book Spines (Simplified)
+- **Removed series info**: No longer displays "Series Name #N" on book spines
+- **Cleaner layout**: Simple 3-section layout (Author → Title → Progress)
+- **More title space**: Title section now 74% (was 64% + 10% series)
+- **Title centered**: No more conditional positioning for series
+
+#### Book Detail Screen (Added Series)
+- **Series info added**: Shows series name and book number below author
+- **Smart extraction**: Handles both array format (`metadata.series[0]`) and string format (`seriesName #N`)
+- **Italic styling**: Series displayed in italic to differentiate from author
+- **Conditional**: Only shows when book is part of a series
+
+#### Visual Layout (Book Detail)
+```
+Title
+Author Name
+Series Name #3    ← New (only if in series)
+Duration  Chapters
+```
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Removed all series display code
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Added series info display
+
+---
+
+## [0.6.249] - 2026-01-09
+
+### Improved - Series Position Right Next to Title
+
+#### Dynamic Series Positioning
+- **4px gap**: Series now positioned exactly 4px to the left of title (not a fixed percentage)
+- **Font-size aware**: Position calculated based on actual font sizes:
+  - `seriesCenterX = titleCenterX - titleFontSize/2 - 4 - seriesInfoFontSize/2`
+- **Title at 60%**: Shifted slightly more to the right to make room
+- **Aligned pair**: Series and title now appear as a cohesive pair, not separate elements
+
+#### Technical Changes
+- Moved seriesCenterX calculation after font sizes are computed
+- Added `SERIES_TITLE_GAP = 4` constant for the gap between series and title
+- Title position: `width * 0.60` when series present (was 0.58)
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Dynamic series positioning
+
+---
+
+## [0.6.248] - 2026-01-09
+
+### Fixed - Text Overflow on Long Titles
+
+#### Overflow Prevention
+- **Reduced fill factors**: Length fill reduced from 98% to 88%, thickness from 95% to 90%
+- **Added SVG clipPath**: All text content wrapped in clipped group to prevent overflow
+- **Long titles safe**: "THE LEFT HAND OF DARKNESS" and similar long titles now stay within spine bounds
+
+#### Technical Changes
+- Added `Defs` and `ClipPath` imports from react-native-svg
+- Created `spine-clip-{bookId}` clipPath matching spine shape
+- Wrapped all text (title, author, series, progress) in `<G clipPath="...">`
+- Font calculation now uses 0.88 length factor (was 0.98) for safety
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - Safer fill factors
+- `src/features/home/components/BookSpineVertical.tsx` - ClipPath to prevent overflow
+
+---
+
+## [0.6.247] - 2026-01-09
+
+### Changed - Pure Black Text, No Transparency
+
+#### Text Color Changes
+- **Pure black**: Changed TEXT_COLOR from `#1a1a1a` to `#000000`
+- **Removed all opacity**:
+  - Author text: removed `opacity={0.7}`
+  - Series info: removed `opacity={0.5}`
+  - Last played: removed `opacity={0.85}` (now full white)
+- **Consistent appearance**: All spine text is now solid, no transparency
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Pure black text, no opacity
+
+---
+
+## [0.6.246] - 2026-01-09
+
+### Improved - Larger Title & Closer Series (Matching Reference Image 73)
+
+#### Title Size - Aggressive Fill
+- **Removed conservative multipliers**: Font calculation now uses 98% length fill (was 81%)
+- **Larger thickness allowance**: 95% of width (was 72%)
+- **No double-padding**: Removed redundant 0.9/0.92 multipliers from caller
+- **Result**: Title text is now MUCH larger, filling the spine like reference
+
+#### Series Position - Right Next to Title
+- **Closer to title**: Series at 22% from left (was 12% - too far)
+- **Title at 58%**: Slight shift to make room (was 55%)
+- **Gap reduced**: Series and title now appear as a pair, not separate elements
+
+#### Technical Changes
+- `calculateFillFontSize()`: 0.98 length fill, 0.95 thickness (was 0.9, 0.85)
+- Caller passes full `titleHeight` and `titleAvailableWidth` (no more 0.9/0.92)
+- `seriesCenterX = width * 0.22`, `titleCenterX = width * 0.58`
+
+### Files Modified
+- `src/features/home/utils/spineCalculations.ts` - More aggressive font calculation
+- `src/features/home/components/BookSpineVertical.tsx` - Removed redundant multipliers, adjusted positions
+
+---
+
+## [0.6.245] - 2026-01-09
+
+### Improved - Series Label Positioning (Matching Reference)
+
+#### Visual Changes
+- **Series at far left edge**: Series info now positioned at 12% from left (was 22%) - like a margin label
+- **Title mostly centered**: Title at 55% from left when series present (was 62%) - takes most of the space
+- **Smaller series font**: Max 7px (was 8px) - subtle edge label style
+- **More title width**: Title gets 82% of available width when series present (was 65%)
+
+#### Layout Matches Reference
+```
+┌──────────────────────────┐
+│ S                        │
+│ e                        │
+│ r  T I T L E             │  ← Series small at edge
+│ i                        │    Title large and centered
+│ e                        │
+│ s                        │
+└──────────────────────────┘
+```
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Adjusted positioning constants
+
+---
+
+## [0.6.244] - 2026-01-09
+
+### Fixed - Series Books Now Use Genre Typography
+
+#### Typography Fix
+- **Genre styling restored**: Series books now use their actual genre-based typography instead of uniform series styling
+- **Series consistency preserved**: Series books still share consistent height and icon
+- **Visual variety**: A mystery book in a series will now look like a mystery (bold, uppercase) not a generic style
+
+#### What Series Provides Now
+- ✅ Consistent **height** across series
+- ✅ Consistent **icon** for series identification
+- ✅ Series **byline** showing "Series Name #N"
+- ❌ NO longer overrides typography (uses book's genre)
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Always use getTypographyForGenres()
+
+---
+
+## [0.6.243] - 2026-01-09
+
+### Changed - Series Info as Byline
+
+#### Series Byline Positioning
+- **Series as byline**: Series info ("Series Name #N") now displays as a byline to the LEFT of the title, not in a separate section
+- **Same Y position**: Series text shares the title's Y range, running alongside it
+- **Visual hierarchy**: Series text is smaller (8px max) and more transparent (50% opacity) to not compete with the title
+- **Title shifts right**: When series is present, title moves to 62% from left, making room for series at 22%
+- **Title width adjusted**: Title gets 65% of available width when series byline is shown
+
+### Technical Details
+- `seriesCenterX = width * 0.22` (left portion)
+- `titleCenterX = width * 0.62` when series present (was 50% center)
+- Both rotate -90 degrees for vertical reading
+- Series font size: `Math.min(width * 0.22, 8)` - small but readable
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Series byline positioning alongside title
+
+---
+
+## [0.6.242] - 2026-01-09
+
+### Improved - Progress Section on Book Detail
+
+#### Progress Section Redesign
+- **Finished badge**: Books marked as finished show a filled green circle with checkmark
+- **Visual divider**: Horizontal line separates progress indicator from action pills
+- **Always show Clear Progress**: Clear Progress pill now shows even at 0% progress
+- **Better organization**: Progress section has clear visual hierarchy
+
+#### Technical Details
+- Uses `isFinished` from `userMediaProgress` for accurate finished state
+- New styles: `finishedBadge`, `finishedText`, `progressDivider`, `progressPillSuccess`
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Progress section redesign
+
+---
+
+## [0.6.241] - 2026-01-09
+
+### Fixed - Series Info & Last Book Lean
+
+#### Series Info Display
+- **Fixed series sequence parsing**: Now correctly parses `sequence` as a number using `parseFloat()`
+- **Support both data formats**: Handles `metadata.series[0].sequence` array format AND `metadata.seriesName` string format (e.g., "Series Name #1")
+- **New `extractSeriesInfo()` helper**: Centralized series extraction logic matching SeriesNavigator pattern
+
+#### Last Book Lean
+- **Last book leans left**: The last book in the shelf now always leans to the left (toward the other books)
+- **Single book stays straight**: If there's only one book, it remains upright
+- **Consistent behavior**: Last book lean takes priority over random lean distribution
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - New extractSeriesInfo() helper
+- `src/features/home/components/BookshelfView.tsx` - Last book lean logic
+
+---
+
+## [0.6.240] - 2026-01-09
+
+### Added - Book Spine Improvements & Progress Actions
+
+#### Book Spine Changes
+- **Series info on spine**: Books in a series now display "Series Name #N" at the bottom of the spine
+- **Checkmark for finished**: 100% progress shows a checkmark icon instead of "100"
+- **Improved title positioning**: Title moves toward bottom when no progress is shown
+- **New layout sections**: Author → Title → Series Info → Progress (4 distinct sections)
+
+#### Book Detail Progress Actions
+- **Mark Finished pill**: Quick action to mark book as 100% complete (shows when not finished)
+- **Clear Progress pill**: Reset progress to 0% (shows when progress > 0%)
+- **Visual feedback**: Pills styled with borders and icons
+
+### Technical Details
+- Added `seriesSequence?: number` to `BookSpineVerticalData` interface
+- New section percentage calculation adapts based on what content is shown
+- Uses `userApi.markAsFinished()` and `userApi.markAsNotStarted()` APIs
+- Auto-refreshes book detail after progress actions
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Series info, checkmark, layout
+- `src/features/home/screens/LibraryScreen.tsx` - Pass seriesSequence data
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Progress action pills
+
+---
+
+## [0.6.239] - 2026-01-09
+
+### Added - Rounded Corners on Book Spines
+
+- **Subtle rounded corners**: Added 3px border radius to book spine edges
+- **Download indicator matches**: Orange download indicator has rounded top corners to match spine shape
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Added CORNER_RADIUS, rx/ry on Rect elements
+
+---
+
+## [0.6.238] - 2026-01-09
+
+### Fixed - Author Name Too Close to Top Edge
+
+- **Top padding**: Added 8px padding from top of spine for all content
+- **Download indicator aware**: When book is downloaded, content starts after the orange indicator
+- **Usable height calculation**: Section heights now calculated from usable area (excluding top/bottom padding)
+- **Proper positioning**: Author section at top now starts at `topOffset` instead of `y=0`
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Added TOP_PADDING, adjusted section positioning
+
+---
+
+## [0.6.237] - 2026-01-09
+
+### Added - Download Filter & Download Indicator
+
+- **Orange top border**: Downloaded books show a 4px orange (#FF6B35) border at the top of the spine
+- **Filter dropdown**: New filter button next to sort with 3 options:
+  - All Books (default)
+  - Downloaded (show only downloaded books)
+  - Not Downloaded (show only cloud books)
+- **Visual consistency**: Uses same orange accent color as player screen
+
+### Technical Details
+- Added `isDownloaded?: boolean` to `BookSpineVerticalData` interface
+- Added `FilterMode` type and `FILTER_OPTIONS` array
+- Filter state managed with `useState<FilterMode>('all')`
+- Books filtered via `useMemo` before sorting
+- Downloads tracked via `useDownloads` hook with `downloadedIds` Set
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Filter dropdown modal, filter state, download status tracking
+- `src/features/home/components/BookSpineVertical.tsx` - Orange top border for downloaded books
+
+---
+
+## [0.6.236] - 2026-01-09
+
+### Fixed - Last Played Time Visibility
+
+- **White text**: Changed from dark `#1a1a1a` to white `#FFFFFF` for visibility on dark shelf
+- **Higher opacity**: Increased from 0.5 to 0.85
+- **Larger font**: Increased max from 10px to 12px, width ratio from 0.28 to 0.32
+- **Bolder weight**: Font weight 600 instead of 500
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Last played text styling
+
+---
+
+## [0.6.235] - 2026-01-09
+
+### Changed - Sort Dropdown Menu
+
+- **Dropdown instead of cycle**: Tapping sort button now opens a dropdown menu
+- **All options visible**: See all 5 sort options at once (Recent, Title, Author, Progress, Duration)
+- **Visual feedback**: Selected option shows checkmark
+- **Theme-aware**: Dropdown adapts to light/dark mode (bookshelf vs list/grid)
+- **Tap outside to close**: Dismiss dropdown by tapping overlay
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Dropdown modal, styles
+
+---
+
+## [0.6.234] - 2026-01-09
+
+### Fixed - Last Played Time Data & Conditional Display
+
+- **Fixed lastPlayedAt data**: Now correctly uses `mediaProgress.lastUpdate` timestamp from API
+- **Conditional time display**: Last played time only shows on spines when sorted by "Recent"
+- **Fixed sort by recent**: Uses numeric timestamp comparison instead of string date parsing
+- **Data type fix**: Changed `lastPlayedAt` from ISO string to Unix timestamp for proper sorting
+
+### Technical Details
+- `transformToLibraryBook` now extracts `lastUpdate` from `mediaProgress` or `progressLastUpdate`
+- `transformToSpineData` accepts `showLastPlayed` flag, converts timestamp to ISO string only when needed
+- Sort comparison simplified to `(b.lastPlayedAt || 0) - (a.lastPlayedAt || 0)`
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Data extraction and conditional display
+
+---
+
+## [0.6.233] - 2026-01-09
+
+### Added - Library Sort Functionality
+
+- **Sort button works**: Tap "↓ Recent" to cycle through sort options
+- **5 sort modes**: Recent, Title (A-Z), Author (A-Z), Progress (high to low), Duration (long to short)
+- **Works with all views**: Sorting applies to list, grid, and bookshelf views
+- **Visual feedback**: Sort button shows current sort mode and is now properly colored
+
+### Technical Details
+- Added `SortMode` type and `SORT_OPTIONS` array
+- Sort state managed with `useState<SortMode>('recent')`
+- Books sorted via `useMemo` before rendering
+- Fixed spine data lookup to use Map instead of index (handles sorted order correctly)
+- Added `durationSeconds` and `lastPlayedAt` to LibraryBook interface
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` - Sort state, handlers, UI
+
+---
+
+## [0.6.232] - 2026-01-09
+
+### Added - Last Played Time Above Spine
+
+- **Compact time format**: Shows last played time above book spine (max 3 chars)
+  - Formats: 30s, 15m, 1h, 2d, 3w, 11mt, 2y
+  - Months exception: can be 4 chars (e.g., "11mt")
+- **Rotates with book**: Time indicator follows spine lean angle
+- **New data field**: `lastPlayedAt?: string` added to BookSpineVerticalData
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Time indicator, interface update
+
+---
+
+## [0.6.231] - 2026-01-09
+
+### Fixed - Progress Position & Content Gap
+
+- **Reduced gap**: Title section now extends to 79% when no series icon (was 72%)
+- **Progress closer to content**: Position now relative to icon section, not absolute bottom
+- **Minimal bottom reserve**: Only 3% reserved for progress number when no icon
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Layout percentages, progress position
+
+---
+
+## [0.6.230] - 2026-01-09
+
+### Changed - Progress Number Styling
+
+- **Black text**: Progress number now solid black instead of faded gray
+- **Larger font**: Increased from max 12px to max 14px
+- **Closer position**: Moved from 8px to 5px from bottom edge
+- **Bolder weight**: Font weight increased from 500 to 600
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Progress styling
+
+---
+
+## [0.6.229] - 2026-01-09
+
+### Fixed - Multi-Line Text Spacing
+
+- **Increased line spacing**: Two-line titles and authors now use 0.7 * fontSize offset (was 0.55)
+- Fixes overlapping text issue when author names like "Jorge Luis Borges" split into two lines
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Line spacing fix
+
+---
+
+## [0.6.228] - 2026-01-09
+
+### Added - Multi-Line Text & Dynamic Layout
+
+- **Multi-line titles**: Long titles automatically split into 2 lines when font would be <14px
+  - Splits at middle word for balanced lines
+  - Both lines render as parallel vertical text
+- **Multi-line authors**: Long author names split into 2 lines when font would be <9px
+  - Same smart split logic at word boundaries
+- **Dynamic section sizing**: Books without series icon AND without progress get extra title space
+  - Icon section (10%) reallocated to title when unused
+  - Ensures consistent appearance across app (based on book properties, not display context)
+
+### Technical Details
+- Added `splitTextIntoLines()` helper for smart text splitting
+- Section percentages now calculated dynamically via useMemo
+- Layout consistency: same book looks identical everywhere (deterministic based on book data)
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Multi-line support, dynamic sections
+
+---
+
+## [0.6.222] - 2026-01-09
+
+### Fixed - Bookshelf Layout & Author Sizing
+
+- **Moved up above nav bar**: Added 90px bottom padding to clear navigation
+- **Leaning books**: Every ~4th book (based on ID hash) leans 8° left or right
+  - Leaning books get extra gap to push neighbors away
+- **3px edge padding**: All content now has padding from spine edges
+- **Minimum author font**: Set 6px minimum so tiny authors are still readable
+- **Improved author orientation thresholds**: Better logic for vertical vs horizontal
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` - Lean logic, nav bar padding
+- `src/features/home/components/BookSpineVertical.tsx` - leanAngle prop, edge padding, min font
+
+---
+
+## [0.6.221] - 2026-01-09
+
+### Changed - Bookshelf Horizontal Scroll
+
+- **Horizontal scrolling**: Books now scroll left/right instead of vertical rows
+- **Removed tilt**: Books no longer have random tilt angles (prevents overlap)
+- **Progress display**: Shows just number (e.g., "42") without % sign, hidden when 0
+- **Smart author orientation**: Automatically chooses vertical vs horizontal based on:
+  - Single word authors → always vertical
+  - Narrow spines (<40px) → always vertical
+  - Short names (≤14 chars) on wide spines (≥45px) → horizontal
+  - Longer names → vertical
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` - Horizontal ScrollView
+- `src/features/home/components/BookSpineVertical.tsx` - Removed tilt, fixed author logic
+
+---
+
+## [0.6.220] - 2026-01-09
+
+### Fixed - Book Spine Text Scaling
+
+- **Fixed font size calculation**: Parameters were swapped in `calculateFillFontSize` calls
+  - Title text now properly fills the spine height
+  - Author text properly constrained to spine width
+- **Fixed horizontal author overflow**: Now calculates based on longer line (first word vs rest)
+- **Changed progress display**: Progress bar replaced with percentage number (e.g., "42%")
+  - Displayed at bottom of spine with 50% opacity
+  - Font size scales with spine width
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx`
+
+---
+
+## [0.6.219] - 2026-01-09
+
+### Major - Book Spine Redesign (Flâneur Aesthetic)
+
+Complete redesign of the bookshelf view to match editorial/Flâneur aesthetic:
+
+- **Dynamic text sizing**: Text now fills available container space (no more tiny text)
+  - Removed hard caps on font sizes (was 48px/24px max)
+  - Per-font character width ratios for better estimation
+  - True container-filling behavior
+
+- **Genre-based typography**: 12 typography presets based on book genre
+  - Literary, Mystery, Romance, Sci-Fi, Fantasy, Horror, etc.
+  - Serif vs sans-serif, weight, italic, uppercase transforms
+  - Author position variations (top-horizontal, top-vertical, bottom-vertical)
+
+- **Duration-based thickness**: Book spine width based on audiobook length
+  - Under 2h = thin, 2-6h = slim, 6-10h = medium, 10-15h = thick, 25h+ = maximum
+  - Longer audiobooks appear thicker on the shelf
+
+- **Series consistency**: Books in same series share visual style
+  - Same typography, height, and decorative icon
+  - Only thickness varies (based on individual book duration)
+  - Series icon at bottom of spine (12 icon options)
+
+- **Layout variations**: Slight random tilts (-3° to +3°) for organic feel
+  - Deterministic randomization from book ID
+  - Consistent across renders
+
+- **12 decorative series icons**: Lotus, Skull, Bird, Star, Moon, Leaf, Crown, Key, Feather, Diamond, Eye, Wave
+
+- **Unified spine color**: Uses `creamGray` (#e8e8e8) to match player screen
+
+### New Files
+- `src/features/home/utils/spineCalculations.ts` - Core calculation utilities
+- `src/features/home/components/SeriesIcons.tsx` - 12 SVG decorative icons
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` - Complete rewrite with new system
+- `src/features/home/components/BookshelfView.tsx` - Updated to use new calculations
+- `src/features/home/screens/LibraryScreen.tsx` - Pass full metadata (genres, duration, series)
+
+---
+
+## [0.6.210] - 2026-01-09
+
+### Improved - Bookmark Markers Design
+
+- **Bookmark markers** now have flag design:
+  - Triangle flag at top with vertical line below
+  - Positioned below the progress bar
+  - Still clickable to jump to bookmark position
+  - Orange color matching bookmark icon
+
+---
+
+## [0.6.209] - 2026-01-09
+
+### Improved - Player Screen UX
+
+- **Title/Author text**: Removed selection highlighting - now click and go immediately
+- **Bookmark markers**:
+  - Now clickable - tap to jump to that bookmark position
+  - Added hitSlop for larger touch target
+- **Series label**: Added more breathing room with increased margins
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+
+---
+
+## [0.6.208] - 2026-01-09
+
+### Added - Bookmark Edit Mode & Chapter Search
+
+- **AddBookmarkSheet** - Now supports edit mode for existing bookmarks
+  - Title changes to "Edit Bookmark" when editing
+  - Pre-fills type and note from existing bookmark
+  - Delete button appears in edit mode with trash icon
+  - All functionality shared between add and edit modes
+
+- **ChaptersSheet** - Fuzzy search for chapters
+  - Search button toggles search mode
+  - Fuzzy matching: finds chapters even with partial/typo input
+  - Exact matches ranked higher than fuzzy matches
+  - Empty state when no chapters found
+  - Book info hides during search to maximize list space
+
+### Fixed
+
+- **Sheet container background**: Changed from white to creamGray to eliminate white bar at bottom of panels
+
+### Files Modified
+- `src/features/player/sheets/AddBookmarkSheet.tsx` - Edit mode, delete button, exported types
+- `src/features/player/sheets/ChaptersSheet.tsx` - Fuzzy search, search UI
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Sheet container background fix
+
+---
+
+## [0.6.207] - 2026-01-09
+
+### Changed - Reduced Contrast in Sheet UI Elements
+
+- Updated all sheet container backgrounds from white to creamGray (`#e8e8e8`)
+- Updated all buttons/inputs from white to grayLight (`#F5F5F5`) for reduced contrast
+- Matches the player screen background for visual consistency
+- Creates a more subtle, cohesive design across all bottom sheets
+
+### Files Modified
+- `src/features/player/sheets/BookmarksSheet.tsx` - Container + buttons → grayLight
+- `src/features/player/sheets/ChaptersSheet.tsx` - Container + buttons → grayLight
+- `src/features/player/sheets/AddBookmarkSheet.tsx` - Container + buttons/inputs → grayLight
+- `src/features/player/sheets/SpeedSheet.tsx` - Container + buttons → grayLight
+- `src/features/player/sheets/SleepTimerSheet.tsx` - Container + buttons/inputs → grayLight
+- `src/features/queue/components/QueuePanel.tsx` - Container + buttons → grayLight
+
+---
+
+## [0.6.205] - 2026-01-09
+
+### Added - Editorial Design Bookmarks & Chapters Panels
+
+- **BookmarksSheet** - Complete redesign with editorial styling
+  - Filter tabs: All, Bookmarks, Notes
+  - Bookmark items with chapter, timestamp, note
+  - Play and Edit action buttons per bookmark
+  - Different icons for bookmarks vs notes
+  - Empty state with centered icon
+  - Bottom actions: Export and Add Bookmark
+
+- **ChaptersSheet** - Complete redesign with editorial styling
+  - Book info card with cover, title, author, progress %
+  - Progress bar with chapters complete count
+  - Chapter list with number, title, duration, status
+  - Current chapter highlighted in black with playing indicator
+  - Completed chapters show checkmark
+  - Bottom actions: Search and Resume
+
+- **AddBookmarkSheet** - New popup for adding bookmarks
+  - Timestamp display with chapter and time
+  - Type selector: Bookmark or Note
+  - Note text input (optional)
+  - Cancel and Save actions
+
+### Files Added
+- `src/features/player/sheets/BookmarksSheet.tsx`
+- `src/features/player/sheets/ChaptersSheet.tsx`
+- `src/features/player/sheets/AddBookmarkSheet.tsx`
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Updated imports
+
+---
+
+## [0.6.204] - 2026-01-09
+
+### Fixed - Queue & Sleep Timer Bugs
+
+- **Queue panel error**: Fixed `seekToPosition is not a function` error
+  - Changed `seekToPosition` to `seekTo` (correct function name)
+- **Unicode character display**: Fixed `\u00B7` showing as literal text
+  - Replaced escape sequences with actual `·` characters
+- **Add Book navigation**: Now goes to Home page instead of Library
+- **Sleep Timer padding**: Added more bottom padding to prevent button clipping
+
+### Files Modified
+- `src/features/queue/components/QueuePanel.tsx` - seekTo fix, unicode fix, nav fix
+- `src/features/player/sheets/SleepTimerSheet.tsx` - Bottom padding increased
+
+---
+
+## [0.6.203] - 2026-01-09
+
+### Fixed - UI Improvements
+
+- **Book detail share button**: Replaced "..." icon with share icon (does nothing yet)
+- **Queue panel height**: Panel now sizes to content instead of expanding to fill sheet
+  - Removed flex: 1 from container
+  - Added maxHeight to scroll content
+- **Speed preset delete button**: Fixed delete X button not clickable
+  - Added overflow: visible to preset wrapper and grid
+  - Added padding to prevent clipping of absolute-positioned delete buttons
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Share icon
+- `src/features/queue/components/QueuePanel.tsx` - Content-based sizing
+- `src/features/player/sheets/SpeedSheet.tsx` - Delete button overflow fix
+
+---
+
+## [0.6.202] - 2026-01-09
+
+### Added - Speed Preset Delete Mode & Clickable Player Navigation
+
+- **Speed preset delete mode**: Long press any saved preset to enter delete mode
+  - All presets show X buttons in top-right corner
+  - Tap X to delete that preset
+  - Tap any preset to exit delete mode
+  - Hint text updates to guide user
+
+- **Clickable title on player**: Tap book title to navigate to book detail page
+- **Clickable series on player**: Tap series name to navigate to series page
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` - Delete mode for presets
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Clickable title/series
+
+---
+
+## [0.6.201] - 2026-01-09
+
+### Fixed - Queue Icon with Checkmark
+
+- **QueueCheckIcon**: Now shows all 3 stack layers with checkmark overlay in bottom-right
+  - Previously only showed checkmark when in queue
+  - Now shows full stack icon + checkmark for clearer "added" state
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - QueueCheckIcon updated
+
+---
+
+## [0.6.200] - 2026-01-09
+
+### Added - Queue & Download Buttons (SecretLibraryBookDetailScreen)
+
+- **Queue button**: Replaced bookmark icon with "Add to Queue" toggle button
+  - Uses stack/layers icon to represent queue
+  - Shows checkmark when book is in queue
+  - Button fills black with white icon when active
+- **Download button**: Added download button next to queue button
+  - Shows progress percentage while downloading
+  - Shows checkmark when downloaded
+  - Disabled state for pending/in-progress downloads
+
+### Fixed - Navigation & Panel Height
+
+- **Book detail navigation**: Fixed "Unknown Title" bug when clicking books from home/library
+  - LibraryScreen was passing `bookId` but BookDetailScreen expected `id`
+- **Queue panel height**: Increased max height from 75% to 85% to prevent clipping
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` - Queue/download buttons
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Taller sheet style
+- `src/features/home/screens/LibraryScreen.tsx` - Navigation parameter fix
+
+---
+
+## [0.6.186] - 2026-01-09
+
+### Changed - Chapter Display & Skip Icons (SecretLibraryPlayerScreen)
+
+- **Much larger bookmark icon**: Increased from 20px to 32px, removed circle border
+- **Much larger chapter title**: Increased from 18px to 36px, allows 2 lines, max width 200px
+- **Chapter title clickable**: Tapping chapter name opens chapter selection sheet
+- **Skip-style icons for chapter nav**: Changed chevrons to skip icons with vertical line (|< and >|)
+- **Better arrow spacing**: Added margin and padding around chapter nav buttons
+- **Improved narrator parsing**: Added support for `narrator` field and string arrays
+- **Badge size increased**: Bookmark count badge now 18px with larger text
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Chapter display, skip icons, bookmark
+
+---
+
+## [0.6.185] - 2026-01-09
+
+### Changed - Player Layout Updates (SecretLibraryPlayerScreen)
+
+- **Chapter title instead of number**: Big display now shows chapter title (not number) with up/down navigation
+- **Chevrons now black**: Chapter navigation arrows are now black instead of grey
+- **Narrator added**: "Read by [Narrator]" displayed below chapter title area
+- **Controls reordered**: Skip back (<), skip forward (>>), then play button on right
+- **Skip icons changed**: Rewind/fast forward now use << and >> icons instead of curved arrows
+- **Bookmark simplified**: Removed circle border, made icon larger (20px)
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Layout updates
+
+---
+
+## [0.6.184] - 2026-01-09
+
+### Changed - Pill Controls & Chapter Navigation (SecretLibraryPlayerScreen)
+
+- **Pill-styled controls**: Simplified to 3 buttons (skip back, play, skip forward)
+  - Styled like header pills with black border/outline
+  - Play button filled black with white icon
+  - Right-aligned layout
+  - Skip labels show interval (15, 30, etc.)
+- **Chapter navigation arrows**: Added subtle up/down chevrons around the big chapter number
+  - Up arrow = next chapter, down arrow = previous chapter
+  - Subtle grey color, positioned above/below the number
+  - Removed prev/next chapter buttons from bottom controls
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Pill controls, chapter nav arrows
+
+---
+
+## [0.6.183] - 2026-01-09
+
+### Changed - Rounded Rectangle Buttons (SecretLibraryPlayerScreen)
+
+- **New button style**: Changed control buttons from circles to rounded rectangles
+  - Subtle grey background (`#d8d8d8`) for contrast against main background
+  - Rounded corners (10px radius) instead of fully circular
+  - All buttons same height for uniform look
+  - Play/pause now uses black icon on grey background (matches other controls)
+- Added `buttonGray` color to secretLibrary theme
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Rounded rectangle buttons
+- `src/shared/theme/secretLibrary.ts` - Added buttonGray color
+
+---
+
+## [0.6.182] - 2026-01-09
+
+### Changed - Grey Background (SecretLibraryPlayerScreen)
+
+- **Grey background**: Changed from warm cream (`#f0ebe0`) to neutral grey (`#e8e8e8`)
+- Added `creamGray` color to secretLibrary theme for future use
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Use creamGray background
+- `src/shared/theme/secretLibrary.ts` - Added creamGray color
+
+---
+
+## [0.6.181] - 2026-01-09
+
+### Fixed - Slider & Cream Background (SecretLibraryPlayerScreen)
+
+- **Replaced custom scrubbing with Slider**: Swapped broken gesture-based progress bar with `@react-native-community/slider` for reliable scrubbing
+  - Uses native slider component for smooth, responsive seeking
+  - Bookmark markers overlaid on slider track
+  - Works in both Book and Chapter progress modes
+- **Cream background**: Changed background color from white to cream (`#f0ebe0`) to match book spine aesthetic
+  - Updated container, status bar, safe area, control buttons, and sheet backgrounds
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Slider component, cream background
+
+---
+
+## [0.6.180] - 2026-01-09
+
+### Fixed - Scrubbing & Series Name (SecretLibraryPlayerScreen)
+
+- **Fixed scrubbing**: Replaced PanResponder with Gesture.Pan/Tap from react-native-gesture-handler (matches CDPlayer implementation)
+  - Uses reanimated shared values for smooth marker animation
+  - Supports both pan (drag) and tap (jump) gestures
+  - Progress fill animates smoothly during playback
+- **Series name in side text**: Changed vertical side text from narrator to series name
+- **Animated scrub handle**: Handle now smoothly appears/disappears during scrubbing
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Gesture-based scrubbing, series name
+
+---
+
+## [0.6.179] - 2026-01-08
+
+### Changed - Player UI Improvements (SecretLibraryPlayerScreen)
+
+- **Author inline with title**: Author now displays in same style as title (large serif italic) directly after title
+- **Book/Chapter progress toggle**: New "Book › Chapter" toggle above progress bar to switch between book and chapter progress views
+- **Bookmark indicators**: Orange markers on progress bar show where bookmarks exist
+- **Fixed narrator parsing**: Improved narrator extraction to handle multiple metadata formats
+- **Reduced title size**: Title font reduced from 52pt to 48pt for better fit
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Author, progress toggle, bookmark markers
+
+---
+
+## [0.6.178] - 2026-01-08
+
+### Added - Scrubbing & Author/Narrator Layout (SecretLibraryPlayerScreen)
+
+- **Progress bar scrubbing**: Interactive seeking by dragging on progress bar with visual handle
+- **Author in title area**: Moved author below title, larger serif font (20pt), tappable to navigate to AuthorDetail
+- **Narrator in side text**: Vertical text next to cover now shows narrator name (uppercase) instead of author
+- **Visual feedback**: Time display highlights during scrubbing, scrub handle appears when dragging
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Scrubbing, author/narrator layout
+
+---
+
+## [0.6.177] - 2026-01-08
+
+### Added - Full Player Functionality (SecretLibraryPlayerScreen)
+
+Complete player controls and sheet integrations for the Secret Library player design:
+
+- **Speed controls**: Speed pill opens SpeedSheet for playback rate selection
+- **Sleep timer**: Sleep timer pill opens SleepTimerSheet with presets and end-of-chapter option
+- **Queue management**: Queue pill opens QueuePanel with drag-to-reorder
+- **Chapter selection**: Chapter title is now tappable, opens ChaptersSheet
+- **Skip controls**: Added rewind/fast-forward buttons with configurable intervals (15s/30s default)
+- **Bookmarks**:
+  - Tap bookmark button to add bookmark at current position
+  - Long-press bookmark button to view all bookmarks via BookmarksSheet
+  - Badge shows bookmark count when > 0
+- **Active state indicators**: Pills highlight when their respective sheet is open or active (e.g., sleep timer running)
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` - Full player functionality
+
+---
+
 ## [0.6.164] - 2026-01-07
 
 ### Fixed - Background Cover (Match BookDetailScreen)

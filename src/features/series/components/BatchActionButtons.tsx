@@ -23,11 +23,22 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { useDownloads } from '@/core/hooks/useDownloads';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 import { usePlayerStore } from '@/features/player';
-import { scale } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode } from '@/shared/theme/themeStore';
+import { scale, useTheme } from '@/shared/theme';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
 
 const MAX_BATCH_DOWNLOAD = 3;
 
@@ -41,7 +52,7 @@ interface CustomAlertProps {
 }
 
 function CustomAlert({ visible, title, message, buttons, onDismiss }: CustomAlertProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
 
   return (
@@ -64,8 +75,8 @@ function CustomAlert({ visible, title, message, buttons, onDismiss }: CustomAler
           ]}
           onPress={(e) => e.stopPropagation()}
         >
-          <Text style={[styles.modalTitle, { color: themeColors.text }]}>{title}</Text>
-          <Text style={[styles.modalMessage, { color: themeColors.textSecondary }]}>{message}</Text>
+          <Text style={[styles.modalTitle, { color: colors.text.primary }]}>{title}</Text>
+          <Text style={[styles.modalMessage, { color: colors.text.secondary }]}>{message}</Text>
 
           <View style={styles.modalButtons}>
             {buttons.map((button, index) => (
@@ -73,7 +84,7 @@ function CustomAlert({ visible, title, message, buttons, onDismiss }: CustomAler
                 key={index}
                 style={[
                   styles.modalButton,
-                  index < buttons.length - 1 && [styles.modalButtonBorder, { borderBottomColor: themeColors.border }]
+                  index < buttons.length - 1 && [styles.modalButtonBorder, { borderBottomColor: colors.border.default }]
                 ]}
                 onPress={() => {
                   onDismiss();
@@ -83,7 +94,7 @@ function CustomAlert({ visible, title, message, buttons, onDismiss }: CustomAler
               >
                 <Text style={[
                   styles.modalButtonText,
-                  { color: button.style === 'cancel' ? themeColors.textSecondary : '#007AFF' }
+                  { color: button.style === 'cancel' ? colors.text.secondary : '#007AFF' }
                 ]}>
                   {button.text}
                 </Text>
@@ -110,8 +121,9 @@ interface BatchActionButtonsProps {
 }
 
 function getRawSequence(item: LibraryItem): number | null {
-  const metadata = (item.media?.metadata as any) || {};
-  if (metadata.series?.length > 0) {
+  const metadata = getBookMetadata(item);
+  if (!metadata) return null;
+  if (metadata.series && metadata.series.length > 0) {
     const primarySeries = metadata.series[0];
     if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
       const parsed = parseFloat(primarySeries.sequence);
@@ -131,7 +143,7 @@ function getSequenceForDisplay(item: LibraryItem, hasReal: boolean): number | nu
 }
 
 function getTitle(item: LibraryItem): string {
-  return (item.media?.metadata as any)?.title || 'Unknown';
+  return getBookMetadata(item)?.title || 'Unknown';
 }
 
 function formatTimeRemaining(seconds: number): string {
@@ -158,7 +170,7 @@ export function BatchActionButtons({
   const navigation = useNavigation<any>();
   const { queueDownload } = useDownloads();
   const { loadBook } = usePlayerStore();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // Alert state
   const [alertConfig, setAlertConfig] = useState<{
@@ -199,7 +211,7 @@ export function BatchActionButtons({
 
   const currentBookRemaining = useMemo(() => {
     if (!inProgressBook) return 0;
-    const duration = (inProgressBook.media as any)?.duration || 0;
+    const duration = isBookMedia(inProgressBook.media) ? inProgressBook.media.duration || 0 : 0;
     return duration * (1 - (inProgressPercent / 100));
   }, [inProgressBook, inProgressPercent]);
 
@@ -335,21 +347,21 @@ export function BatchActionButtons({
         />
         <View style={styles.container}>
           <TouchableOpacity
-            style={[styles.button, styles.outlineButton, { borderColor: themeColors.text }]}
+            style={[styles.button, styles.outlineButton, { borderColor: colors.text.primary }]}
             onPress={handleListenAgain}
             activeOpacity={0.7}
           >
-            <RefreshCw size={scale(18)} color={themeColors.text} strokeWidth={2} />
-            <Text style={[styles.outlineButtonText, { color: themeColors.text }]}>Listen Again</Text>
+            <RefreshCw size={scale(18)} color={colors.text.primary} strokeWidth={2} />
+            <Text style={[styles.outlineButtonText, { color: colors.text.primary }]}>Listen Again</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, styles.continueButton, { backgroundColor: themeColors.text }]}
+            style={[styles.button, styles.continueButton, { backgroundColor: colors.text.primary }]}
             onPress={handleFindSimilar}
             activeOpacity={0.7}
           >
-            <Compass size={scale(18)} color={themeColors.background} strokeWidth={2} />
-            <Text style={[styles.continueButtonText, { color: themeColors.background }]}>Find Similar</Text>
+            <Compass size={scale(18)} color={colors.background.primary} strokeWidth={2} />
+            <Text style={[styles.continueButtonText, { color: colors.background.primary }]}>Find Similar</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -372,7 +384,7 @@ export function BatchActionButtons({
             style={[
               styles.button,
               styles.outlineButton,
-              { borderColor: canDownload ? themeColors.text : themeColors.border },
+              { borderColor: canDownload ? colors.text.primary : colors.border.default },
             ]}
             onPress={handleDownloadNext}
             disabled={!canDownload}
@@ -380,12 +392,12 @@ export function BatchActionButtons({
           >
             <DownloadIcon
               size={scale(18)}
-              color={canDownload ? themeColors.text : themeColors.textTertiary}
+              color={canDownload ? colors.text.primary : colors.text.tertiary}
               strokeWidth={2}
             />
             <Text style={[
               styles.outlineButtonText,
-              { color: canDownload ? themeColors.text : themeColors.textTertiary },
+              { color: canDownload ? colors.text.primary : colors.text.tertiary },
             ]}>
               {downloadText}
             </Text>
@@ -397,7 +409,7 @@ export function BatchActionButtons({
           style={[
             styles.button,
             styles.outlineButton,
-            { borderColor: themeColors.text },
+            { borderColor: colors.text.primary },
             !showDownloadButton && styles.buttonFull,
           ]}
           onPress={handleContinue}
@@ -406,11 +418,11 @@ export function BatchActionButtons({
         >
           <ContinueIcon
             size={scale(18)}
-            color={themeColors.text}
+            color={colors.text.primary}
             strokeWidth={2}
-            fill={ContinueIcon === Play ? themeColors.text : undefined}
+            fill={ContinueIcon === Play ? colors.text.primary : undefined}
           />
-          <Text style={[styles.outlineButtonText, { color: themeColors.text }]}>
+          <Text style={[styles.outlineButtonText, { color: colors.text.primary }]}>
             {continueText}
           </Text>
         </TouchableOpacity>

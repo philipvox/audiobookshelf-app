@@ -4,8 +4,13 @@
  * Shared types for the Library feature.
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { type LucideIcon } from 'lucide-react-native';
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 
 // ============================================================================
 // TAB TYPES
@@ -91,20 +96,20 @@ export interface LibraryTabProps {
 // ============================================================================
 
 /** Extract metadata safely from LibraryItem */
-export function getMetadata(item: LibraryItem): any {
-  return (item.media?.metadata as any) || {};
+export function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return {};
+  return item.media.metadata as BookMetadata;
 }
 
 /** Get progress from item */
 export function getProgress(item: LibraryItem): number {
-  const userProgress = (item as any).userMediaProgress;
-  return userProgress?.progress || 0;
+  return item.userMediaProgress?.progress || 0;
 }
 
 /** Get duration from item */
 export function getDuration(item: LibraryItem): number {
-  const media = item.media as any;
-  return media?.duration || 0;
+  if (!isBookMedia(item.media)) return 0;
+  return item.media.duration || 0;
 }
 
 /** Format time remaining */

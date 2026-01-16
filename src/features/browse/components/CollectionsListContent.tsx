@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, RefreshControl } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { CollectionCard } from '@/features/collections';
 import { useCollections } from '@/features/collections/hooks/useCollections';
 import { SearchBar } from '@/features/search/components/SearchBar';
-import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
+import { Loading, EmptyState, ErrorView, SkullRefreshControl } from '@/shared/components';
 import { Collection } from '@/core/types';
-import { spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { spacing, useTheme } from '@/shared/theme';
 
 export function CollectionsListContent() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const { collections, isLoading, error, refetch } = useCollections();
 
@@ -20,7 +20,7 @@ export function CollectionsListContent() {
     : collections;
 
   if (isLoading) {
-    return <LoadingSpinner text="Loading collections..." />;
+    return <Loading text="Loading collections..." />;
   }
 
   if (error) {
@@ -38,7 +38,7 @@ export function CollectionsListContent() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -48,33 +48,28 @@ export function CollectionsListContent() {
         />
       </View>
 
-      <FlashList
-        data={filteredCollections}
-        renderItem={({ item }) => (
-          <View style={styles.itemWrapper}>
-            <CollectionCard collection={item} />
-          </View>
-        )}
-        keyExtractor={(item: Collection) => item.id}
-        numColumns={2}
-        estimatedItemSize={200}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={refetch}
-            tintColor={accentColors.gold}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="🔍"
-            title="No collections found"
-            description={`No collections match "${searchQuery}"`}
-          />
-        }
-      />
+      <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+        <FlashList
+          data={filteredCollections}
+          renderItem={({ item }) => (
+            <View style={styles.itemWrapper}>
+              <CollectionCard collection={item} />
+            </View>
+          )}
+          keyExtractor={(item: Collection) => item.id}
+          numColumns={2}
+          estimatedItemSize={200}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="🔍"
+              title="No collections found"
+              description={`No collections match "${searchQuery}"`}
+            />
+          }
+        />
+      </SkullRefreshControl>
     </View>
   );
 }

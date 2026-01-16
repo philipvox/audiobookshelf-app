@@ -14,6 +14,9 @@ import {
   Pressable,
   Animated,
   TouchableOpacity,
+  ViewStyle,
+  TextStyle,
+  ImageStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Circle } from 'react-native-svg';
@@ -29,7 +32,18 @@ import {
   Pause,
 } from 'lucide-react-native';
 import { useCoverUrl } from '@/core/cache';
-import type { LibraryItem } from '@/core/types';
+import type { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
@@ -49,8 +63,7 @@ import {
   iconSizes,
   accentColors,
 } from '@/shared/theme';
-import { useColors, ThemeColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { useTheme, ThemeColors } from '@/shared/theme';
 
 // Helper to get semantic colors from ThemeColors
 function getSemanticColors(c: ThemeColors) {
@@ -80,12 +93,12 @@ const inlineProgressStyles = StyleSheet.create({
     backgroundColor: colors.progressTrack,
     borderRadius: scale(2),
     overflow: 'hidden',
-  },
+  } as ViewStyle,
   fill: {
     height: '100%',
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accent.primary,
     borderRadius: scale(2),
-  },
+  } as ViewStyle,
 });
 
 // Progress Ring for downloading
@@ -95,7 +108,7 @@ const ProgressRing = ({ progress, size = 28, isPaused = false, warningColor }: {
   const circumference = ringRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
   const progressPct = Math.round(progress);
-  const pausedColor = warningColor || '#FF9800'; // Fallback for backward compatibility
+  const pausedColor = warningColor || colors.warning; // Use theme warning color
   const progressColor = isPaused ? pausedColor : colors.textPrimary;
 
   return (
@@ -188,10 +201,9 @@ export function BookCard({
   layout = 'default',
   showPlayOverlay = false,
 }: BookCardProps) {
-  // Theme colors - use both legacy (for existing code) and new (for semantic colors)
-  const themeColors = useThemeColors();
-  const fullThemeColors = useColors();
-  const semanticColors = getSemanticColors(fullThemeColors);
+  // Theme colors
+  const { colors } = useTheme();
+  const semanticColors = getSemanticColors(colors);
 
   // State from hooks
   const { isDownloaded, isDownloading, isPaused, isPending, progress } = useDownloadStatus(book.id);
@@ -220,11 +232,11 @@ export function BookCard({
 
   // Get metadata
   const coverUrl = useCoverUrl(book.id);
-  const metadata = book.media?.metadata as any;
+  const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Untitled';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
-  const narrator = metadata?.narratorName || metadata?.narrators?.[0]?.name || '';
-  const duration = (book.media as any)?.duration || 0;
+  const narrator = metadata?.narratorName || metadata?.narrators?.[0] || '';
+  const duration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
   const durationText = duration > 0 ? formatDuration.short(duration) : null;
 
   // Context-aware secondary info (NNGroup Heuristic #8 - Minimalist Design)
@@ -244,7 +256,7 @@ export function BookCard({
   const secondaryPerson = getSecondaryPerson();
 
   // Get listening progress
-  const userProgress = (book as any).userMediaProgress;
+  const userProgress = book.userMediaProgress;
   const progressPercent = userProgress?.progress ? Math.round(userProgress.progress * 100) : 0;
   const progressValue = userProgress?.progress || 0;
 
@@ -392,9 +404,9 @@ export function BookCard({
             >
               <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
                 {isInQueue ? (
-                  <Check size={iconSizes.xs} color={themeColors.background} strokeWidth={3} />
+                  <Check size={iconSizes.xs} color={colors.background.primary} strokeWidth={3} />
                 ) : (
-                  <Plus size={iconSizes.xs} color={themeColors.text} strokeWidth={3} />
+                  <Plus size={iconSizes.xs} color={colors.text.primary} strokeWidth={3} />
                 )}
               </Animated.View>
             </TouchableOpacity>
@@ -406,14 +418,14 @@ export function BookCard({
               styles.statusBadge,
               isDownloaded ? styles.downloadedBadge :
               isUnavailableOffline ? styles.offlineBadge :
-              styles.streamBadge
+              [styles.streamBadge, { backgroundColor: colors.feature.streaming }]
             ]}>
               {isDownloaded ? (
-                <Check size={10} color="#000" strokeWidth={3} />
+                <Check size={10} color={colors.text.inverse} strokeWidth={3} />
               ) : isUnavailableOffline ? (
-                <CloudOff size={10} color="#fff" />
+                <CloudOff size={10} color={colors.text.primary} />
               ) : (
-                <Cloud size={10} color="#fff" />
+                <Cloud size={10} color={colors.text.primary} />
               )}
             </View>
           )}
@@ -428,8 +440,8 @@ export function BookCard({
               <Animated.View style={{ transform: [{ scale: wishlistScaleAnim }] }}>
                 <Bookmark
                   size={iconSizes.xs}
-                  color={isOnWishlist ? themeColors.background : themeColors.text}
-                  fill={isOnWishlist ? themeColors.background : 'none'}
+                  color={isOnWishlist ? colors.background.primary : colors.text.primary}
+                  fill={isOnWishlist ? colors.background.primary : 'none'}
                 />
               </Animated.View>
             </TouchableOpacity>
@@ -441,26 +453,26 @@ export function BookCard({
           {layout === 'search' ? (
             <>
               {/* Search layout: Author first (gray), then title (bold) */}
-              <Text style={[styles.searchAuthor, { color: themeColors.textSecondary }]} numberOfLines={1}>
+              <Text style={[styles.searchAuthor, { color: colors.text.secondary }]} numberOfLines={1}>
                 {secondaryPerson}
               </Text>
-              <Text style={[styles.searchTitle, { color: themeColors.text }]} numberOfLines={2}>
+              <Text style={[styles.searchTitle, { color: colors.text.primary }]} numberOfLines={2}>
                 {title}
               </Text>
             </>
           ) : (
             <>
               {/* Default layout: Title first, then author */}
-              <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
+              <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>
                 {title}
               </Text>
-              <Text style={[styles.subtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>
+              <Text style={[styles.subtitle, { color: colors.text.secondary }]} numberOfLines={1}>
                 {secondaryPerson}{durationText ? ` · ${durationText}` : ''}
               </Text>
               {showListeningProgress && progressPercent > 0 && (
                 <View style={styles.progressRow}>
                   <InlineProgressBar progress={progressValue} />
-                  <Text style={[styles.listeningProgress, { color: themeColors.textTertiary }]}>
+                  <Text style={[styles.listeningProgress, { color: colors.text.tertiary }]}>
                     {timeRemaining > 0 ? `${formatDuration.short(timeRemaining)} left` : 'Complete'}
                   </Text>
                 </View>
@@ -481,9 +493,9 @@ export function BookCard({
           {isDownloading || isPaused || isPending ? (
             <ProgressRing progress={progress * 100} size={scale(28)} isPaused={isPaused} warningColor={semanticColors.warning} />
           ) : isUnavailableOffline ? (
-            <CloudOff size={iconSizes.md} color={themeColors.textTertiary} />
+            <CloudOff size={iconSizes.md} color={colors.text.tertiary} />
           ) : (
-            <Download size={iconSizes.md} color={themeColors.textSecondary} />
+            <Download size={iconSizes.md} color={colors.text.secondary} />
           )}
         </TouchableOpacity>
       )}
@@ -494,7 +506,7 @@ export function BookCard({
           style={styles.playButton}
           onPress={handlePlayPress}
         >
-          <Play size={iconSizes.sm} color={themeColors.background} fill={themeColors.background} />
+          <Play size={iconSizes.sm} color={colors.background.primary} fill={colors.background.primary} />
         </TouchableOpacity>
       )}
     </View>
@@ -512,27 +524,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: scale(10),
     paddingHorizontal: scale(16),
-  },
+  } as ViewStyle,
   cardPressable: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-  },
+  } as ViewStyle,
   coverContainer: {
     position: 'relative',
-  },
+  } as ViewStyle,
   cover: {
     width: scale(64),
     height: scale(64),
     borderRadius: radius.sm,
     backgroundColor: colors.backgroundElevated,
-  },
+  } as ImageStyle,
   coverNotDownloaded: {
     // Full opacity - don't dim covers
-  },
+  } as ImageStyle,
   coverUnavailable: {
     // Full opacity - don't dim covers
-  },
+  } as ImageStyle,
   queueButton: {
     position: 'absolute',
     bottom: spacing.xxs,
@@ -544,12 +556,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
-  },
+    borderColor: colors.border.default,
+  } as ViewStyle,
   queueButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
+    backgroundColor: colors.accent.primary,
+    borderColor: colors.accent.primary,
+  } as ViewStyle,
   statusBadge: {
     position: 'absolute',
     bottom: spacing.xxs,
@@ -559,16 +571,16 @@ const styles = StyleSheet.create({
     borderRadius: scale(9),
     justifyContent: 'center',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   downloadedBadge: {
-    backgroundColor: colors.accent,
-  },
+    backgroundColor: colors.accent.primary,
+  } as ViewStyle,
   streamBadge: {
-    backgroundColor: 'rgba(100, 150, 255, 0.9)',
-  },
+    // backgroundColor set dynamically via colors.feature.streaming
+  } as ViewStyle,
   offlineBadge: {
     backgroundColor: colors.error,
-  },
+  } as ViewStyle,
   wishlistButton: {
     position: 'absolute',
     top: spacing.xxs,
@@ -580,39 +592,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
-  },
+    borderColor: colors.border.default,
+  } as ViewStyle,
   wishlistButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
+    backgroundColor: colors.accent.primary,
+    borderColor: colors.accent.primary,
+  } as ViewStyle,
   info: {
     flex: 1,
     marginLeft: scale(14),
     justifyContent: 'center',
-  },
+  } as ViewStyle,
   title: {
     ...typography.headlineSmall,
     // color set via themeColors in JSX
     marginBottom: spacing.xxs,
-  },
+  } as TextStyle,
   subtitle: {
     ...typography.bodySmall,
     // color set via themeColors in JSX
     marginBottom: spacing.xxs,
-  },
+  } as TextStyle,
   // Search layout styles
   searchAuthor: {
     ...typography.bodySmall,
     // color set via themeColors in JSX
     marginBottom: spacing.xxs,
-  },
+  } as TextStyle,
   searchTitle: {
     ...typography.headlineSmall,
     // color set via themeColors in JSX
     fontWeight: '600',
     lineHeight: scale(18),
-  },
+  } as TextStyle,
   playOverlay: {
     position: 'absolute',
     top: '50%',
@@ -622,45 +634,45 @@ const styles = StyleSheet.create({
     width: scale(28),
     height: scale(28),
     borderRadius: scale(14),
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.overlay.medium,
     justifyContent: 'center',
     alignItems: 'center',
     paddingLeft: scale(2), // Offset for visual centering of play icon
-  },
+  } as ViewStyle,
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.xxs,
-  },
+  } as ViewStyle,
   listeningProgress: {
     ...typography.labelSmall,
     // color set via themeColors in JSX
     flexShrink: 0,
-  },
+  } as TextStyle,
   actionButton: {
     width: layout.minTouchTarget,
     height: layout.minTouchTarget,
     justifyContent: 'center',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   actionButtonDisabled: {
     opacity: 0.5,
-  },
+  } as ViewStyle,
   playButton: {
     width: scale(36),
     height: scale(36),
     borderRadius: scale(18),
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accent.primary,
     justifyContent: 'center',
     alignItems: 'center',
     paddingLeft: scale(2), // Offset for visual centering of play icon
-  },
+  } as ViewStyle,
   progressText: {
     ...typography.caption,
     fontWeight: '600',
     color: colors.textPrimary,
-  },
+  } as TextStyle,
 });
 
 export default BookCard;

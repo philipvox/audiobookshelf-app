@@ -28,8 +28,7 @@ import {
 } from '../stores/moodSessionStore';
 import { MOODS, MoodConfig } from '../types';
 import { Icon } from '@/shared/components/Icon';
-import { spacing, radius, scale, layout } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { spacing, radius, scale, layout, useTheme } from '@/shared/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -40,7 +39,7 @@ interface MoodDiscoveryCardProps {
 
 export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const hasSession = useHasActiveSession();
   const session = useActiveSession();
 
@@ -82,19 +81,19 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
         onPressOut={handlePressOut}
         style={[styles.compactContainer, animatedStyle]}
       >
-        <View style={styles.compactCard}>
+        <View style={[styles.compactCard, { backgroundColor: colors.background.tertiary }]}>
           <View style={styles.compactText}>
-            <Text style={styles.compactTitle}>
+            <Text style={[styles.compactTitle, { color: colors.text.primary }]}>
               {hasSession ? 'Your Mood' : 'What sounds good?'}
             </Text>
             {hasSession && (
-              <Text style={styles.compactSubtitle}>
+              <Text style={[styles.compactSubtitle, { color: colors.text.secondary }]}>
                 {formatTimeRemaining(timeRemaining)}
               </Text>
             )}
           </View>
-          <View style={styles.arrowButton}>
-            <ArrowRight size={16} color="#FFFFFF" strokeWidth={2} />
+          <View style={[styles.arrowButton, { borderColor: colors.border.default }]}>
+            <ArrowRight size={16} color={colors.text.primary} strokeWidth={2} />
           </View>
         </View>
       </AnimatedPressable>
@@ -109,13 +108,13 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
         onPressOut={handlePressOut}
         style={animatedStyle}
       >
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.background.tertiary }]}>
           {/* Left content */}
           <View style={styles.content}>
-            <Text style={styles.title}>
+            <Text style={[styles.title, { color: colors.text.primary }]}>
               {hasSession ? 'Your current mood' : 'What sounds good?'}
             </Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, { color: colors.text.secondary }]}>
               {hasSession
                 ? `${formatTimeRemaining(timeRemaining)} · Tap to see matches`
                 : 'Find your next listen'}
@@ -123,8 +122,8 @@ export function MoodDiscoveryCard({ compact = false }: MoodDiscoveryCardProps) {
           </View>
 
           {/* Right arrow button - outlined */}
-          <View style={styles.arrowButton}>
-            <ArrowRight size={20} color="#FFFFFF" strokeWidth={2} />
+          <View style={[styles.arrowButton, { borderColor: colors.border.default }]}>
+            <ArrowRight size={20} color={colors.text.primary} strokeWidth={2} />
           </View>
         </View>
       </AnimatedPressable>
@@ -144,7 +143,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg,
     paddingRight: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)', // 25% opacity white
+    // backgroundColor set dynamically via colors.background.tertiary
   },
   content: {
     flex: 1,
@@ -153,11 +152,11 @@ const styles = StyleSheet.create({
     fontSize: scale(16),
     fontWeight: '700',
     marginBottom: scale(2),
-    color: '#FFFFFF',
+    // color set dynamically via colors.text.primary
   },
   subtitle: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.7)',
+    // color set dynamically via colors.text.secondary
   },
   arrowButton: {
     width: scale(40),
@@ -168,7 +167,7 @@ const styles = StyleSheet.create({
     marginLeft: spacing.md,
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
+    // borderColor set dynamically via colors.border.default
   },
 
   // Compact styles
@@ -181,7 +180,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)', // 25% opacity white
+    // backgroundColor set dynamically via colors.background.tertiary
   },
   compactText: {
     flex: 1,
@@ -189,11 +188,11 @@ const styles = StyleSheet.create({
   compactTitle: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#FFFFFF',
+    // color set dynamically via colors.text.primary
   },
   compactSubtitle: {
     fontSize: scale(11),
     marginTop: scale(1),
-    color: 'rgba(255,255,255,0.7)',
+    // color set dynamically via colors.text.secondary
   },
 });

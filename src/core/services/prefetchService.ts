@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { sqliteCache } from './sqliteCache';
+import { useSpineCacheStore } from '@/features/home/stores/spineCache';
 import { logger } from '@/shared/utils/logger';
 
 class PrefetchService {
@@ -26,6 +27,9 @@ class PrefetchService {
   /**
    * Hydrate React Query cache from SQLite (instant on startup)
    * Call this before prefetchLibrary for immediate UI display
+   *
+   * CRITICAL: Also hydrates spine cache to prevent flash when library renders.
+   * Spine data must be ready BEFORE first render to avoid dimension recalculation.
    */
   async hydrateFromCache(libraryId: string): Promise<LibraryItem[]> {
     if (!libraryId) return [];
@@ -35,6 +39,13 @@ class PrefetchService {
       await sqliteCache.init();
 
       const startTime = Date.now();
+
+      // CRITICAL: Hydrate spine cache FIRST (prevents library flash)
+      // This loads pre-calculated spine dimensions before any UI renders
+      const spineCount = await useSpineCacheStore.getState().hydrateFromSQLite(libraryId);
+      if (spineCount > 0) {
+        logger.debug(`[Prefetch] Pre-loaded ${spineCount} spine dimensions`);
+      }
 
       // Load cached items from SQLite
       const cachedItems = await sqliteCache.getLibraryItems(libraryId);

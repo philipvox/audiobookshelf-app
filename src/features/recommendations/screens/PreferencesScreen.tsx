@@ -16,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { Icon } from '@/shared/components/Icon';
-import { spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
+import { spacing, radius, useTheme, ACCENT } from '@/shared/theme';    
 
 export function PreferencesScreen() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const preferences = usePreferencesStore();
@@ -46,84 +46,84 @@ export function PreferencesScreen() {
       : 'Prefers standalones';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="ArrowLeft" size={24} color={themeColors.text} />
+          <Icon name="ArrowLeft" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: themeColors.text }]}>Reading Preferences</Text>
+        <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Reading Preferences</Text>
         <View style={styles.backButton} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {!preferences.hasCompletedOnboarding ? (
           <View style={styles.emptyState}>
-            <Icon name="Sparkles" size={48} color={accentColors.gold} />
-            <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Set up your preferences</Text>
-            <Text style={[styles.emptySubtitle, { color: themeColors.textSecondary }]}>
+            <Icon name="Sparkles" size={48} color={colors.accent.primary} />
+            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>Set up your preferences</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.text.secondary }]}>
               Answer a few questions to get personalized recommendations
             </Text>
             <TouchableOpacity style={styles.setupButton} onPress={handleEditPreferences}>
-              <Text style={styles.setupButtonText}>Get Started</Text>
+              <Text style={[styles.setupButtonText, { color: colors.text.inverse }]}>Get Started</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             {/* Moods */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Reading Moods</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.tertiary }]}>Reading Moods</Text>
               <View style={styles.tagsRow}>
                 {preferences.moods.length > 0 ? (
                   preferences.moods.map(mood => (
                     <View key={mood} style={[styles.tag, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]}>
-                      <Text style={[styles.tagText, { color: accentColors.gold }]}>{mood}</Text>
+                      <Text style={[styles.tagText, { color: colors.accent.primary }]}>{mood}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>None selected</Text>
+                  <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>None selected</Text>
                 )}
               </View>
             </View>
 
             {/* Genres */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Favorite Genres</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.tertiary }]}>Favorite Genres</Text>
               <View style={styles.tagsRow}>
                 {preferences.favoriteGenres.length > 0 ? (
                   preferences.favoriteGenres.map(genre => (
                     <View key={genre} style={[styles.tag, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]}>
-                      <Text style={[styles.tagText, { color: accentColors.gold }]}>{genre}</Text>
+                      <Text style={[styles.tagText, { color: colors.accent.primary }]}>{genre}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={[styles.emptyText, { color: themeColors.textTertiary }]}>None selected</Text>
+                  <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>None selected</Text>
                 )}
               </View>
             </View>
 
             {/* Length */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Preferred Length</Text>
-              <Text style={[styles.valueText, { color: themeColors.text }]}>{lengthLabels[preferences.preferredLength]}</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.tertiary }]}>Preferred Length</Text>
+              <Text style={[styles.valueText, { color: colors.text.primary }]}>{lengthLabels[preferences.preferredLength]}</Text>
             </View>
 
             {/* Series */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: themeColors.textTertiary }]}>Series Preference</Text>
-              <Text style={[styles.valueText, { color: themeColors.text }]}>{seriesLabel}</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.tertiary }]}>Series Preference</Text>
+              <Text style={[styles.valueText, { color: colors.text.primary }]}>{seriesLabel}</Text>
             </View>
 
             {/* Actions */}
             <View style={styles.actions}>
               <TouchableOpacity style={[styles.editButton, { backgroundColor: 'rgba(243, 182, 12, 0.15)' }]} onPress={handleEditPreferences}>
-                <Icon name="Plus" size={20} color={accentColors.gold} />
-                <Text style={[styles.editButtonText, { color: accentColors.gold }]}>Edit Preferences</Text>
+                <Icon name="Plus" size={20} color={colors.accent.primary} />
+                <Text style={[styles.editButtonText, { color: colors.accent.primary }]}>Edit Preferences</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.resetButton} onPress={handleResetPreferences}>
-                <Icon name="RefreshCw" size={20} color={themeColors.textTertiary} />
-                <Text style={[styles.resetButtonText, { color: themeColors.textTertiary }]}>Reset All</Text>
+                <Icon name="RefreshCw" size={20} color={colors.text.tertiary} />
+                <Text style={[styles.resetButtonText, { color: colors.text.tertiary }]}>Reset All</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   setupButton: {
-    backgroundColor: accentColors.gold,
+    backgroundColor: ACCENT,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   setupButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    // color set via colors.text.inverse in JSX
   },
   section: {
     marginBottom: spacing.lg,

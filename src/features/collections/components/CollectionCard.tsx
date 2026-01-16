@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LayoutGrid, BookOpen } from 'lucide-react-native';
 import { Collection } from '@/core/types';
 import { apiClient } from '@/core/api';
-import { scale, spacing, radius, elevation, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, radius, elevation, useTheme } from '@/shared/theme';
 
 interface CollectionCardProps {
   collection: Collection;
@@ -20,7 +20,7 @@ interface CollectionCardProps {
 
 export const CollectionCard = memo(function CollectionCard({ collection }: CollectionCardProps) {
   const navigation = useNavigation();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   const handlePress = () => {
     (navigation as any).navigate('CollectionDetail', { collectionId: collection.id });
@@ -36,27 +36,27 @@ export const CollectionCard = memo(function CollectionCard({ collection }: Colle
 
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress} activeOpacity={0.7}>
-      <View style={[styles.coverContainer, { backgroundColor: themeColors.surfaceElevated }]}>
+      <View style={[styles.coverContainer, { backgroundColor: colors.background.elevated }]}>
         {coverUrl ? (
           <Image source={coverUrl} style={styles.cover} contentFit="cover" transition={200} />
         ) : (
-          <View style={[styles.cover, styles.placeholderCover, { backgroundColor: themeColors.surfaceElevated }]}>
-            <LayoutGrid size={scale(32)} color={themeColors.textTertiary} strokeWidth={1.5} />
+          <View style={[styles.cover, styles.placeholderCover, { backgroundColor: colors.background.elevated }]}>
+            <LayoutGrid size={scale(32)} color={colors.text.tertiary} strokeWidth={1.5} />
           </View>
         )}
 
-        <View style={[styles.countBadge, { backgroundColor: accentColors.gold }]}>
-          <BookOpen size={scale(10)} color="#000" strokeWidth={2.5} />
-          <Text style={[styles.countText, { color: themeColors.background }]}>{bookCount}</Text>
+        <View style={[styles.countBadge, { backgroundColor: colors.accent.primary }]}>
+          <BookOpen size={scale(10)} color={colors.text.inverse} strokeWidth={2.5} />
+          <Text style={[styles.countText, { color: colors.text.inverse }]}>{bookCount}</Text>
         </View>
       </View>
 
       <View style={styles.info}>
-        <Text style={[styles.name, { color: themeColors.text }]} numberOfLines={2}>
+        <Text style={[styles.name, { color: colors.text.primary }]} numberOfLines={2}>
           {collection.name}
         </Text>
         {collection.description && (
-          <Text style={[styles.description, { color: themeColors.textTertiary }]} numberOfLines={1}>
+          <Text style={[styles.description, { color: colors.text.tertiary }]} numberOfLines={1}>
             {collection.description}
           </Text>
         )}

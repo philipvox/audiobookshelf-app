@@ -20,14 +20,23 @@ import { Image } from 'expo-image';
 import { Check, CheckCircle, Volume2, Play, Pause, ArrowDown } from 'lucide-react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { useCoverUrl } from '@/core/cache';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { usePlayerStore } from '@/features/player';
-import { scale, spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
-
-const ACCENT = accentColors.red;
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 
 interface SeriesBookRowProps {
   book: LibraryItem;
@@ -59,12 +68,12 @@ function formatDurationTimestamp(seconds: number): string {
 }
 
 // Progress Ring for downloading
-function ProgressRing({ progress, size = 24, isPaused = false }: { progress: number; size?: number; isPaused?: boolean }) {
+function ProgressRing({ progress, size = 24, isPaused = false, accentColor, trackColor }: { progress: number; size?: number; isPaused?: boolean; accentColor: string; trackColor: string }) {
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - progress * circumference;
-  const progressColor = isPaused ? '#FF9800' : ACCENT;
+  const progressColor = isPaused ? '#FF9800' : accentColor;
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
@@ -73,7 +82,7 @@ function ProgressRing({ progress, size = 24, isPaused = false }: { progress: num
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="rgba(255,255,255,0.2)"
+          stroke={trackColor}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -107,19 +116,20 @@ export const SeriesBookRow = memo(function SeriesBookRow({
   onPress,
 }: SeriesBookRowProps) {
   // Theme-aware colors
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
+  const accentColor = colors.accent.primary;
 
   const coverUrl = useCoverUrl(book.id);
   const { isDownloaded, isDownloading, isPaused, isPending, progress: downloadProgress } = useDownloadStatus(book.id);
   const { queueDownload } = useDownloads();
   const { loadBook, play, pause, isPlaying } = usePlayerStore();
 
-  const metadata = book.media?.metadata as any;
+  const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Unknown';
-  const duration = (book.media as any)?.duration || 0;
+  const duration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
 
   // Get listening progress
-  const userProgress = (book as any).userMediaProgress?.progress || 0;
+  const userProgress = book.userMediaProgress?.progress || 0;
   const isCompleted = userProgress >= 0.95;
   const isInProgress = userProgress > 0 && userProgress < 0.95;
   const progressPercent = Math.round(userProgress * 100);
@@ -170,8 +180,8 @@ export const SeriesBookRow = memo(function SeriesBookRow({
     <TouchableOpacity
       style={[
         styles.container,
-        isNowPlaying && styles.containerNowPlaying,
-        isUpNext && !isNowPlaying && [styles.containerUpNext, { backgroundColor: themeColors.surfaceElevated, borderColor: themeColors.border }],
+        isNowPlaying && [styles.containerNowPlaying, { backgroundColor: colors.accent.primarySubtle, borderColor: colors.accent.primary }],
+        isUpNext && !isNowPlaying && [styles.containerUpNext, { backgroundColor: colors.background.tertiary, borderColor: colors.border.default }],
         isCompleted && !isNowPlaying && styles.containerCompleted,
       ]}
       onPress={onPress}
@@ -183,25 +193,25 @@ export const SeriesBookRow = memo(function SeriesBookRow({
           source={coverUrl}
           style={[
             styles.cover,
-            { backgroundColor: themeColors.surfaceElevated },
+            { backgroundColor: colors.surface.card },
           ]}
           contentFit="cover"
         />
 
         {/* Status indicator on cover */}
         {isCompleted && !isNowPlaying && (
-          <View style={[styles.statusBadge, styles.statusBadgeCompleted]}>
-            <Check size={scale(10)} color="#000" strokeWidth={3} />
+          <View style={[styles.statusBadge, { backgroundColor: accentColor }]}>
+            <Check size={scale(10)} color={colors.text.inverse} strokeWidth={3} />
           </View>
         )}
         {isDownloaded && !isCompleted && !isNowPlaying && (
-          <View style={styles.statusBadge}>
-            <Check size={scale(10)} color="#000" strokeWidth={3} />
+          <View style={[styles.statusBadge, { backgroundColor: accentColor }]}>
+            <Check size={scale(10)} color={colors.text.inverse} strokeWidth={3} />
           </View>
         )}
         {isNowPlaying && (
-          <View style={[styles.statusBadge, styles.statusBadgePlaying]}>
-            <Volume2 size={scale(10)} color="#000" strokeWidth={2} />
+          <View style={[styles.statusBadge, { backgroundColor: colors.background.primary }]}>
+            <Volume2 size={scale(10)} color={colors.text.primary} strokeWidth={2} />
           </View>
         )}
       </View>
@@ -212,22 +222,22 @@ export const SeriesBookRow = memo(function SeriesBookRow({
           <Text
             style={[
               styles.title,
-              { color: themeColors.text },
+              { color: colors.text.primary },
               isNowPlaying && styles.titleNowPlaying,
-              isCompleted && !isNowPlaying && [styles.titleCompleted, { color: themeColors.textSecondary }],
+              isCompleted && !isNowPlaying && { color: colors.text.secondary },
             ]}
             numberOfLines={1}
           >
             {sequenceNumber !== null ? `${sequenceNumber}. ` : ''}{title}
           </Text>
           {isNowPlaying && (
-            <View style={styles.nowPlayingBadge}>
-              <Text style={styles.nowPlayingText}>NOW PLAYING</Text>
+            <View style={[styles.nowPlayingBadge, { backgroundColor: accentColor }]}>
+              <Text style={[styles.nowPlayingText, { color: colors.text.inverse }]}>NOW PLAYING</Text>
             </View>
           )}
           {isUpNext && !isNowPlaying && (
-            <View style={styles.upNextBadge}>
-              <Text style={styles.upNextText}>UP NEXT</Text>
+            <View style={[styles.upNextBadge, { backgroundColor: colors.background.tertiary }]}>
+              <Text style={[styles.upNextText, { color: colors.text.secondary }]}>UP NEXT</Text>
             </View>
           )}
         </View>
@@ -236,24 +246,24 @@ export const SeriesBookRow = memo(function SeriesBookRow({
         {isCompleted ? (
           // Completed state
           <View style={styles.statusRow}>
-            <CheckCircle size={scale(14)} color={ACCENT} strokeWidth={2} />
-            <Text style={styles.completedText}>Done</Text>
-            <Text style={[styles.durationTextDim, { color: themeColors.textTertiary }]}>· {formatDurationReadable(duration)}</Text>
+            <CheckCircle size={scale(14)} color={accentColor} strokeWidth={2} />
+            <Text style={[styles.completedText, { color: accentColor }]}>Done</Text>
+            <Text style={[styles.durationTextDim, { color: colors.text.tertiary }]}>· {formatDurationReadable(duration)}</Text>
           </View>
         ) : isInProgress ? (
           // In progress state - show progress bar and time remaining
           <View style={styles.progressSection}>
             <View style={styles.progressContainer}>
-              <View style={[styles.progressTrack, { backgroundColor: themeColors.border }]}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+              <View style={[styles.progressTrack, { backgroundColor: colors.progress.track }]}>
+                <View style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: accentColor }]} />
               </View>
-              <Text style={styles.progressText}>{progressPercent}%</Text>
+              <Text style={[styles.progressText, { color: accentColor }]}>{progressPercent}%</Text>
             </View>
-            <Text style={[styles.timeRemainingText, { color: themeColors.textTertiary }]}>{timeRemainingText} left</Text>
+            <Text style={[styles.timeRemainingText, { color: colors.text.tertiary }]}>{timeRemainingText} left</Text>
           </View>
         ) : (
           // Not started state
-          <Text style={[styles.durationText, { color: themeColors.textSecondary }]}>{formatDurationReadable(duration)}</Text>
+          <Text style={[styles.durationText, { color: colors.text.secondary }]}>{formatDurationReadable(duration)}</Text>
         )}
       </View>
 
@@ -265,22 +275,22 @@ export const SeriesBookRow = memo(function SeriesBookRow({
             onPress={handleDownloadPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <ProgressRing progress={downloadProgress} size={scale(28)} isPaused={isPaused} />
+            <ProgressRing progress={downloadProgress} size={scale(28)} isPaused={isPaused} accentColor={accentColor} trackColor={colors.progress.track} />
           </TouchableOpacity>
         ) : isDownloaded ? (
           <TouchableOpacity
             style={[
               styles.playButton,
-              { backgroundColor: themeColors.surfaceElevated },
-              isNowPlaying && styles.playButtonActive,
+              { backgroundColor: colors.surface.card },
+              isNowPlaying && { backgroundColor: accentColor },
             ]}
             onPress={handlePlayPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             {isNowPlaying && isPlaying ? (
-              <Pause size={scale(18)} color="#000" fill="#000" strokeWidth={0} />
+              <Pause size={scale(18)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
             ) : (
-              <Play size={scale(18)} color={isNowPlaying ? '#000' : themeColors.textSecondary} fill={isNowPlaying ? '#000' : themeColors.textSecondary} strokeWidth={0} />
+              <Play size={scale(18)} color={isNowPlaying ? colors.text.inverse : colors.text.secondary} fill={isNowPlaying ? colors.text.inverse : colors.text.secondary} strokeWidth={0} />
             )}
           </TouchableOpacity>
         ) : (
@@ -289,7 +299,7 @@ export const SeriesBookRow = memo(function SeriesBookRow({
             onPress={handleDownloadPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <ArrowDown size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
+            <ArrowDown size={scale(18)} color={colors.text.tertiary} strokeWidth={2} />
           </TouchableOpacity>
         )}
       </View>
@@ -307,14 +317,12 @@ const styles = StyleSheet.create({
     borderRadius: scale(10),
   },
   containerNowPlaying: {
-    backgroundColor: 'rgba(244,182,12,0.15)',
+    // backgroundColor and borderColor set dynamically via accent
     borderWidth: 1,
-    borderColor: 'rgba(244,182,12,0.4)',
   },
   containerUpNext: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    // backgroundColor and borderColor set dynamically via theme
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     borderStyle: 'dashed',
   },
   containerCompleted: {
@@ -341,15 +349,9 @@ const styles = StyleSheet.create({
     width: scale(18),
     height: scale(18),
     borderRadius: scale(9),
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor or theme
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  statusBadgePlaying: {
-    backgroundColor: '#fff',
-  },
-  statusBadgeCompleted: {
-    backgroundColor: 'rgba(244,182,12,0.8)',
   },
   info: {
     flex: 1,
@@ -365,18 +367,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: scale(14),
     fontWeight: '500',
-    color: '#fff',
+    // color set dynamically via colors.text.primary
     flex: 1,
   },
   titleNowPlaying: {
     fontWeight: '600',
-    color: '#fff',
-  },
-  titleCompleted: {
-    color: 'rgba(255,255,255,0.7)',
   },
   nowPlayingBadge: {
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     paddingHorizontal: scale(6),
     paddingVertical: scale(2),
     borderRadius: scale(4),
@@ -384,11 +382,11 @@ const styles = StyleSheet.create({
   nowPlayingText: {
     fontSize: scale(8),
     fontWeight: '700',
-    color: '#000',
+    // color set dynamically via colors.text.inverse
     letterSpacing: 0.5,
   },
   upNextBadge: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set dynamically via colors.background.tertiary
     paddingHorizontal: scale(6),
     paddingVertical: scale(2),
     borderRadius: scale(4),
@@ -396,7 +394,7 @@ const styles = StyleSheet.create({
   upNextText: {
     fontSize: scale(8),
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.7)',
+    // color set dynamically via colors.text.secondary
     letterSpacing: 0.5,
   },
   statusRow: {
@@ -406,7 +404,7 @@ const styles = StyleSheet.create({
   },
   completedText: {
     fontSize: scale(12),
-    color: ACCENT,
+    // color set dynamically via accentColor
     fontWeight: '500',
   },
   progressSection: {
@@ -420,33 +418,33 @@ const styles = StyleSheet.create({
   progressTrack: {
     flex: 1,
     height: scale(4),
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set dynamically via colors.progress.track
     borderRadius: scale(2),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     borderRadius: scale(2),
   },
   progressText: {
     fontSize: scale(11),
     fontWeight: '600',
-    color: ACCENT,
+    // color set dynamically via accentColor
     width: scale(32),
     textAlign: 'right',
   },
   timeRemainingText: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
   },
   durationText: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.secondary
   },
   durationTextDim: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.4)',
+    // color set dynamically via colors.text.tertiary
   },
   actionContainer: {
     marginLeft: scale(8),
@@ -455,11 +453,9 @@ const styles = StyleSheet.create({
     width: scale(38),
     height: scale(38),
     borderRadius: scale(19),
+    // backgroundColor set dynamically via colors.surface.card or accentColor
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  playButtonActive: {
-    backgroundColor: ACCENT,
   },
   downloadButton: {
     width: scale(38),

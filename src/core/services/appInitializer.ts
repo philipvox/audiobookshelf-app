@@ -13,10 +13,8 @@ import { createLogger } from '@/shared/utils/logger';
 
 const log = createLogger('AppInit');
 
-// Prevent native splash auto-hide - we control when it hides
-SplashScreen.preventAutoHideAsync().catch(() => {
-  // Already called or not available
-});
+// Note: Native splash is hidden immediately in App.tsx when JS loads
+// AnimatedSplash component handles the loading UI from that point
 
 export interface InitResult {
   user: User | null;
@@ -59,6 +57,16 @@ class AppInitializer {
 
       // Run user_books migration (merges legacy tables, runs once)
       this.migrateUserBooks(),
+
+      // Load progress store (unified progress source of truth)
+      this.loadProgressStore(),
+
+      // FAST: Sync recent progress (just top 5 recently played books)
+      // This ensures player can resume immediately without loading delay
+      this.syncRecentProgress(),
+
+      // Pre-initialize audio system so playback starts instantly
+      this.preInitAudio(),
     ]);
 
     const result: InitResult = {
@@ -96,9 +104,62 @@ class AppInitializer {
 
   private async loadFonts(): Promise<boolean> {
     try {
+      // Core fonts (always required)
       await Font.loadAsync({
+        // Existing pixel font
         PixelOperator: require('@/assets/fonts/PixelOperator.ttf'),
+
+        // Base typography fonts
+        'BebasNeue-Regular': require('@/assets/fonts/BebasNeue-Regular.ttf'),
+        'Oswald-Regular': require('@/assets/fonts/Oswald-Regular.ttf'),
+        'Oswald-Bold': require('@/assets/fonts/Oswald-Bold.ttf'),
+        'Lora-Regular': require('@/assets/fonts/Lora-Regular.ttf'),
+        'Lora-Bold': require('@/assets/fonts/Lora-Bold.ttf'),
+        'PlayfairDisplay-Regular': require('@/assets/fonts/PlayfairDisplay-Regular.ttf'),
+        'PlayfairDisplay-Bold': require('@/assets/fonts/PlayfairDisplay-Bold.ttf'),
       });
+
+      // Genre-specific fonts (optional - load if available)
+      try {
+        await Font.loadAsync({
+          // Fantasy (Tolkien, Earthsea)
+          'MacondoSwashCaps-Regular': require('@/assets/fonts/MacondoSwashCaps-Regular.ttf'),
+          'UncialAntiqua-Regular': require('@/assets/fonts/UncialAntiqua-Regular.ttf'),
+          // European Classics (Grenze Gotisch)
+          'GrenzeGotisch-Regular': require('@/assets/fonts/GrenzeGotisch-Regular.ttf'),
+          // Romance (Pride and Prejudice)
+          'FleurDeLeah-Regular': require('@/assets/fonts/FleurDeLeah-Regular.ttf'),
+          // Elegant script (romance/poetry replacement)
+          'Charm-Regular': require('@/assets/fonts/Charm-Regular.ttf'),
+          // Sci-Fi
+          'Orbitron-Regular': require('@/assets/fonts/Orbitron-Regular.ttf'),
+          // Tech/Computer
+          'Silkscreen-Regular': require('@/assets/fonts/Silkscreen-Regular.ttf'),
+          // Western/Crime/Deco
+          'Notable-Regular': require('@/assets/fonts/Notable-Regular.ttf'),
+          'Federo-Regular': require('@/assets/fonts/Federo-Regular.ttf'),
+          // NEW FONTS (2026-01-14) - Additional variety
+          'GravitasOne-Regular': require('@/assets/fonts/GravitasOne-Regular.ttf'),
+          'NotoSerif-Regular': require('@/assets/fonts/NotoSerif-Regular.ttf'),
+          'NotoSerif-Bold': require('@/assets/fonts/NotoSerif-Bold.ttf'),
+          'LibreBaskerville-Regular': require('@/assets/fonts/LibreBaskerville-Regular.ttf'),
+          'LibreBaskerville-Bold': require('@/assets/fonts/LibreBaskerville-Bold.ttf'),
+          'AlfaSlabOne-Regular': require('@/assets/fonts/AlfaSlabOne-Regular.ttf'),
+          'AlmendraSC-Regular': require('@/assets/fonts/AlmendraSC-Regular.ttf'),
+          'ZenDots-Regular': require('@/assets/fonts/ZenDots-Regular.ttf'),
+          'Eater-Regular': require('@/assets/fonts/Eater-Regular.ttf'),
+          'RubikBeastly-Regular': require('@/assets/fonts/RubikBeastly-Regular.ttf'),
+          'Barriecito-Regular': require('@/assets/fonts/Barriecito-Regular.ttf'),
+          // Decorative drop cap font (woodcut initials)
+          // Note: Font name must match internal TTF name exactly for Android
+          'TypographerWoodcutInitialsOne': require('@/assets/fonts/TypographerWoodcut01.ttf'),
+        });
+        log.info('All genre-specific fonts loaded');
+      } catch {
+        log.debug('Genre-specific fonts not available (optional)');
+      }
+
+      log.info('Custom fonts loaded');
       return true;
     } catch (err) {
       log.warn('Font loading failed:', err);
@@ -129,6 +190,60 @@ class AppInitializer {
       log.debug('Completion store hydrated');
     } catch (err) {
       log.warn('Completion store hydration failed:', err);
+    }
+  }
+
+  /**
+   * Load progress store from SQLite and set up subscribers.
+   * This is the unified source of truth for all progress data.
+   */
+  private async loadProgressStore(): Promise<void> {
+    try {
+      const { useProgressStore, setupProgressSubscribers } = await import('@/core/stores/progressStore');
+
+      // Load all progress from SQLite into memory
+      await useProgressStore.getState().loadFromDatabase();
+
+      // Set up subscribers (spineCache, etc.) after initial load
+      setupProgressSubscribers();
+
+      log.debug('Progress store loaded and subscribers set up');
+    } catch (err) {
+      log.warn('Progress store initialization failed:', err);
+    }
+  }
+
+  /**
+   * Sync recent progress from server (fast - just 5 books).
+   * Runs during initialization so player can resume immediately.
+   */
+  private async syncRecentProgress(): Promise<void> {
+    try {
+      const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
+      const synced = await finishedBooksSync.importRecentProgress();
+      if (synced > 0) {
+        log.info(`Quick sync: ${synced} recent books synced`);
+      }
+    } catch (err) {
+      log.warn('Recent progress sync failed:', err);
+    }
+  }
+
+  /**
+   * Pre-initialize audio system during app startup.
+   * This eliminates the audio setup delay when user hits play.
+   */
+  private async preInitAudio(): Promise<void> {
+    try {
+      const { audioService } = await import('@/features/player/services/audioService');
+      const { playbackCache } = await import('@/core/services/playbackCache');
+
+      await audioService.ensureSetup();
+      playbackCache.setAudioInitialized(true);
+
+      log.info('Audio system pre-initialized');
+    } catch (err) {
+      log.warn('Audio pre-init failed:', err);
     }
   }
 
@@ -234,13 +349,24 @@ class AppInitializer {
   }
 
   /**
-   * Sync finished books with server.
-   * Imports from server first, then syncs local changes.
-   * Runs in background - doesn't block startup.
+   * Sync finished books with server and pre-fetch sessions.
+   * Note: Recent progress sync happens during initialization (syncRecentProgress).
+   * This runs full sync in background after app is ready.
    */
   async syncFinishedBooks(): Promise<void> {
     try {
       const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
+
+      // Preload most recent book into player store (shows correct progress on UI)
+      await finishedBooksSync.preloadMostRecentBook();
+
+      // Pre-fetch sessions for top 5 recently played books (instant playback)
+      const prefetched = await finishedBooksSync.prefetchSessions();
+      if (prefetched > 0) {
+        log.info(`Pre-fetched ${prefetched} sessions for instant playback`);
+      }
+
+      // Full sync in background (all library items - slower)
       const result = await finishedBooksSync.fullSync();
       if (result.imported > 0 || result.synced > 0) {
         log.info(`Finished books sync: ${result.imported} imported, ${result.synced} synced`);

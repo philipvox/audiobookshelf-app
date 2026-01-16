@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, useTheme, colors } from '@/shared/theme';
 
 type DotStatus = 'completed' | 'in_progress' | 'not_started';
 
@@ -37,9 +37,9 @@ function Dot({ status, size, inactiveColor }: { status: DotStatus; size: number;
   const getColor = () => {
     switch (status) {
       case 'completed':
-        return accentColors.gold;
+        return colors.accent.primary;
       case 'in_progress':
-        return `${accentColors.gold}80`;
+        return `${colors.accent.primary}80`;
       default:
         return inactiveColor;
     }
@@ -71,14 +71,14 @@ export function ProgressDots({
   dotSize = 6,
   showCount = true,
 }: ProgressDotsProps) {
-  const themeColors = useThemeColors();
-  const inactiveColor = themeColors.textTertiary;
+  const { colors } = useTheme();
+  const inactiveColor = colors.text.tertiary;
 
   // For large series (>maxDots), just show count
   if (total > maxDots) {
     return (
       <View style={styles.container}>
-        <Text style={[styles.countText, { color: accentColors.gold }]}>
+        <Text style={[styles.countText, { color: colors.accent.primary }]}>
           {completed}/{total}
         </Text>
       </View>
@@ -100,7 +100,7 @@ export function ProgressDots({
   return (
     <View style={styles.container}>
       {showCount && (
-        <Text style={[styles.countText, { color: accentColors.gold }]}>
+        <Text style={[styles.countText, { color: colors.accent.primary }]}>
           {completed}/{total}
         </Text>
       )}

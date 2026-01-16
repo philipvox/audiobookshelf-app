@@ -108,12 +108,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.progressTrack,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border.light,
     minHeight: 44,
     paddingHorizontal: spacing.sm,
   },
   containerFocused: {
-    borderColor: colors.accent,
+    borderColor: colors.accent.primary,
   },
   searchIcon: {
     marginRight: spacing.xs,

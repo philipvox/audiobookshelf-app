@@ -19,27 +19,7 @@ import { X, ChevronRight } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { FilterState, DurationFilter, SyncStatusFilter } from '../stores/galleryStore';
-import { wp, hp, moderateScale } from '@/shared/theme';
-
-// =============================================================================
-// COLORS (matching ReadingHistoryScreen)
-// =============================================================================
-
-const COLORS = {
-  accent: '#F3B60C',
-  accentDim: 'rgba(243, 182, 12, 0.15)',
-
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255, 255, 255, 0.7)',
-  textTertiary: 'rgba(255, 255, 255, 0.5)',
-
-  surface: 'rgba(255, 255, 255, 0.05)',
-  surfaceBorder: 'rgba(255, 255, 255, 0.08)',
-  surfaceElevated: 'rgba(255, 255, 255, 0.10)',
-
-  background: '#0A0A0A',
-  scrim: 'rgba(0, 0, 0, 0.6)',
-};
+import { wp, hp, moderateScale, useTheme, colors } from '@/shared/theme';
 
 // =============================================================================
 // TYPES
@@ -80,19 +60,28 @@ interface FilterChipProps {
   count?: number;
   isSelected: boolean;
   onPress: () => void;
+  themeColors: ReturnType<typeof useTheme>['colors'];
 }
 
-function FilterChip({ label, count, isSelected, onPress }: FilterChipProps) {
+function FilterChip({ label, count, isSelected, onPress, themeColors }: FilterChipProps) {
   return (
     <TouchableOpacity
-      style={[styles.chip, isSelected && styles.chipSelected]}
+      style={[
+        styles.chip,
+        { backgroundColor: themeColors.surface.card, borderColor: themeColors.border.default },
+        isSelected && { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary },
+      ]}
       onPress={() => {
         Haptics.selectionAsync();
         onPress();
       }}
       activeOpacity={0.7}
     >
-      <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+      <Text style={[
+        styles.chipText,
+        { color: themeColors.text.secondary },
+        isSelected && { color: themeColors.text.inverse, fontWeight: '600' },
+      ]}>
         {label}
         {count !== undefined && ` (${count})`}
       </Text>
@@ -109,17 +98,18 @@ interface SectionProps {
   children: React.ReactNode;
   onSeeAll?: () => void;
   showSeeAll?: boolean;
+  themeColors: ReturnType<typeof useTheme>['colors'];
 }
 
-function Section({ title, children, onSeeAll, showSeeAll }: SectionProps) {
+function Section({ title, children, onSeeAll, showSeeAll, themeColors }: SectionProps) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>{title}</Text>
         {showSeeAll && onSeeAll && (
           <TouchableOpacity style={styles.seeAllButton} onPress={onSeeAll}>
-            <Text style={styles.seeAllText}>See All</Text>
-            <ChevronRight size={wp(4)} color={COLORS.accent} strokeWidth={2} />
+            <Text style={[styles.seeAllText, { color: colors.accent.primary }]}>See All</Text>
+            <ChevronRight size={wp(4)} color={colors.accent.primary} strokeWidth={2} />
           </TouchableOpacity>
         )}
       </View>
@@ -141,6 +131,7 @@ export function FilterSheet({
   resultCount,
 }: FilterSheetProps) {
   const insets = useSafeAreaInsets();
+  const { colors: themeColors } = useTheme();
 
   // Local state for editing filters
   const [localFilters, setLocalFilters] = useState<FilterState>(filters);
@@ -244,28 +235,34 @@ export function FilterSheet({
       onRequestClose={onClose}
     >
       <Animated.View
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: themeColors.overlay.medium }]}
         entering={FadeIn.duration(200)}
         exiting={FadeOut.duration(150)}
       >
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
 
         <Animated.View
-          style={[styles.sheet, { paddingBottom: insets.bottom + hp(2) }]}
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: themeColors.background.primary,
+              paddingBottom: insets.bottom + hp(2),
+            },
+          ]}
           entering={SlideInDown.springify().damping(20)}
           exiting={SlideOutDown.duration(200)}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: themeColors.text.tertiary }]} />
           </View>
 
           {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Filters</Text>
+          <View style={[styles.header, { borderBottomColor: themeColors.border.default }]}>
+            <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>Filters</Text>
             {hasFilters && (
               <TouchableOpacity onPress={handleReset}>
-                <Text style={styles.resetText}>Reset</Text>
+                <Text style={[styles.resetText, { color: colors.accent.primary }]}>Reset</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -277,22 +274,24 @@ export function FilterSheet({
             showsVerticalScrollIndicator={false}
           >
             {/* Sync Status */}
-            <Section title="Sync Status">
+            <Section title="Sync Status" themeColors={themeColors}>
               <FilterChip
                 label="Synced"
                 isSelected={localFilters.syncStatus.includes('synced')}
                 onPress={() => toggleSyncStatus('synced')}
+                themeColors={themeColors}
               />
               <FilterChip
                 label="Not Synced"
                 isSelected={localFilters.syncStatus.includes('not_synced')}
                 onPress={() => toggleSyncStatus('not_synced')}
+                themeColors={themeColors}
               />
             </Section>
 
             {/* Genres */}
             {availableFilters.genres.length > 0 && (
-              <Section title="Genre">
+              <Section title="Genre" themeColors={themeColors}>
                 {availableFilters.genres.map((genre) => (
                   <FilterChip
                     key={genre.id}
@@ -300,6 +299,7 @@ export function FilterSheet({
                     count={genre.count}
                     isSelected={localFilters.genres.includes(genre.id)}
                     onPress={() => toggleGenre(genre.id)}
+                    themeColors={themeColors}
                   />
                 ))}
               </Section>
@@ -307,7 +307,7 @@ export function FilterSheet({
 
             {/* Authors */}
             {availableFilters.authors.length > 0 && (
-              <Section title="Author" showSeeAll={showSeeAllAuthors}>
+              <Section title="Author" showSeeAll={showSeeAllAuthors} themeColors={themeColors}>
                 {displayedAuthors.map((author) => (
                   <FilterChip
                     key={author.id}
@@ -315,6 +315,7 @@ export function FilterSheet({
                     count={author.count}
                     isSelected={localFilters.authors.includes(author.id)}
                     onPress={() => toggleAuthor(author.id)}
+                    themeColors={themeColors}
                   />
                 ))}
               </Section>
@@ -322,7 +323,7 @@ export function FilterSheet({
 
             {/* Series */}
             {availableFilters.series.length > 0 && (
-              <Section title="Series" showSeeAll={showSeeAllSeries}>
+              <Section title="Series" showSeeAll={showSeeAllSeries} themeColors={themeColors}>
                 {displayedSeries.map((series) => (
                   <FilterChip
                     key={series.id}
@@ -330,28 +331,33 @@ export function FilterSheet({
                     count={series.count}
                     isSelected={localFilters.series.includes(series.id)}
                     onPress={() => toggleSeries(series.id)}
+                    themeColors={themeColors}
                   />
                 ))}
               </Section>
             )}
 
             {/* Duration */}
-            <Section title="Duration">
+            <Section title="Duration" themeColors={themeColors}>
               {DURATION_OPTIONS.map((option) => (
                 <FilterChip
                   key={option.id || 'none'}
                   label={option.label}
                   isSelected={localFilters.duration === option.id}
                   onPress={() => toggleDuration(option.id)}
+                  themeColors={themeColors}
                 />
               ))}
             </Section>
           </ScrollView>
 
           {/* Apply Button */}
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.applyButton} onPress={handleApply}>
-              <Text style={styles.applyButtonText}>
+          <View style={[styles.footer, { borderTopColor: themeColors.border.default }]}>
+            <TouchableOpacity
+              style={[styles.applyButton, { backgroundColor: colors.accent.primary }]}
+              onPress={handleApply}
+            >
+              <Text style={[styles.applyButtonText, { color: themeColors.text.inverse }]}>
                 Show {resultCount} Result{resultCount !== 1 ? 's' : ''}
               </Text>
             </TouchableOpacity>
@@ -369,14 +375,14 @@ export function FilterSheet({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: COLORS.scrim,
+    // backgroundColor set via theme in JSX
     justifyContent: 'flex-end',
   },
   backdrop: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: COLORS.background,
+    // backgroundColor set via theme in JSX
     borderTopLeftRadius: wp(5),
     borderTopRightRadius: wp(5),
     maxHeight: hp(80),
@@ -388,7 +394,7 @@ const styles = StyleSheet.create({
   handle: {
     width: wp(9),
     height: hp(0.5),
-    backgroundColor: COLORS.textTertiary,
+    // backgroundColor set via theme in JSX
     borderRadius: hp(0.25),
   },
   header: {
@@ -398,17 +404,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(5.5),
     paddingBottom: hp(2),
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceBorder,
+    // borderBottomColor set via theme in JSX
   },
   headerTitle: {
     fontSize: moderateScale(18),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via theme in JSX
   },
   resetText: {
     fontSize: moderateScale(14),
     fontWeight: '500',
-    color: COLORS.accent,
+    // color set via theme in JSX
   },
   content: {
     flex: 1,
@@ -430,7 +436,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: moderateScale(14),
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    // color set via theme in JSX
   },
   seeAllButton: {
     flexDirection: 'row',
@@ -439,7 +445,7 @@ const styles = StyleSheet.create({
   seeAllText: {
     fontSize: moderateScale(13),
     fontWeight: '500',
-    color: COLORS.accent,
+    // color set via theme in JSX
   },
   chipContainer: {
     flexDirection: 'row',
@@ -449,32 +455,24 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: wp(3),
     paddingVertical: hp(1),
-    backgroundColor: COLORS.surface,
+    // backgroundColor set via theme in JSX
     borderRadius: hp(2),
     borderWidth: 1,
-    borderColor: COLORS.surfaceBorder,
-  },
-  chipSelected: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    // borderColor set via theme in JSX
   },
   chipText: {
     fontSize: moderateScale(13),
     fontWeight: '500',
-    color: COLORS.textSecondary,
-  },
-  chipTextSelected: {
-    color: '#000000',
-    fontWeight: '600',
+    // color set via theme in JSX
   },
   footer: {
     paddingHorizontal: wp(5.5),
     paddingTop: hp(2),
     borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceBorder,
+    // borderTopColor set via theme in JSX
   },
   applyButton: {
-    backgroundColor: COLORS.accent,
+    // backgroundColor set via theme in JSX
     paddingVertical: hp(1.8),
     borderRadius: wp(2),
     alignItems: 'center',
@@ -482,7 +480,7 @@ const styles = StyleSheet.create({
   applyButtonText: {
     fontSize: moderateScale(15),
     fontWeight: '600',
-    color: '#000000',
+    // color set via theme in JSX
   },
 });
 

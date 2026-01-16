@@ -9,7 +9,7 @@
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
-      "backgroundColor": "#1a1a1a",
+      "backgroundColor": "#000000",
       "resizeMode": "contain"
     },
     "updates": {
@@ -19,7 +19,8 @@
     },
     "runtimeVersion": "1.0.0",
     "assetBundlePatterns": [
-      "assets/**/*"
+      "assets/**/*",
+      "src/assets/**/*"
     ],
     "ios": {
       "supportsTablet": true,

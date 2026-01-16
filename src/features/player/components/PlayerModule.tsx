@@ -8,13 +8,24 @@
 import React, { useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Pressable, Text } from 'react-native';
 import { useCoverUrl } from '@/core/cache';
-import type { LibraryItem } from '@/core/types';
+import type { LibraryItem, BookMedia, BookMetadata, BookChapter } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem): BookMetadata | null {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'chapters' in media;
+}
 import { CoverArtwork } from '@/features/home/components/CoverArtwork';
 import { InfoTiles } from '@/features/home/components/InfoTiles';
 import { PlaybackControls } from '@/features/home/components/PlaybackControls';
 import { ProgressBar } from './ProgressBar';
 import { HeartButton, CircularDownloadButton } from '@/shared/components';
-import { scale, layout, useThemeColors } from '@/shared/theme';
+import { scale, layout, useTheme } from '@/shared/theme';
 
 
 export interface PlayerModuleProgress {
@@ -23,6 +34,7 @@ export interface PlayerModuleProgress {
   progress: number;
   isFinished: boolean;
   lastUpdate: number;
+  currentChapter?: number;
 }
 
 export interface PlayerModuleProps {
@@ -100,9 +112,9 @@ export function PlayerModule({
   onClosePanel,
   variant = 'home',
 }: PlayerModuleProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const coverUrl = useCoverUrl(book.id);
-  const metadata = book.media?.metadata as any;
+  const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Untitled';
 
   // Extract series sequence number from seriesName (e.g., "Dresden Files #17")
@@ -113,11 +125,11 @@ export function PlayerModule({
   }, [metadata?.seriesName]);
 
   // Get current chapter info
-  const chapters = (book.media as any)?.chapters || [];
+  const chapters: BookChapter[] = isBookMedia(book.media) ? book.media.chapters || [] : [];
   const chapterNumber = useMemo(() => {
     if (chapters.length && progress) {
       const currentTime = progress.currentTime;
-      const currentChapter = chapters.find((ch: any, i: number) => {
+      const currentChapter = chapters.find((ch: BookChapter, i: number) => {
         const nextChapter = chapters[i + 1];
         const chapterEnd = nextChapter?.start || progress.duration;
         return currentTime >= ch.start && currentTime < chapterEnd;
@@ -127,9 +139,8 @@ export function PlayerModule({
       }
     }
     // Check extended progress properties
-    const extendedProgress = progress as any;
-    if (extendedProgress?.currentChapter !== undefined) {
-      return extendedProgress.currentChapter + 1;
+    if (progress?.currentChapter !== undefined) {
+      return progress.currentChapter + 1;
     }
     return 1;
   }, [chapters, progress]);
@@ -184,7 +195,7 @@ export function PlayerModule({
             accessibilityLabel="Close panel"
             accessibilityRole="button"
           >
-            <Text style={[styles.panelCloseText, { color: themeColors.textSecondary }]}>✕</Text>
+            <Text style={[styles.panelCloseText, { color: colors.text.secondary }]}>✕</Text>
           </TouchableOpacity>
           {panelContent}
         </View>
@@ -210,9 +221,9 @@ export function PlayerModule({
           {/* Progress Bar - always visible for system status visibility (NN/g #1) */}
           <View style={styles.progressBarContainer}>
             <ProgressBar
-              textColor={themeColors.textSecondary}
-              trackColor={themeColors.border}
-              fillColor={themeColors.text}
+              textColor={colors.text.secondary}
+              trackColor={colors.border.default}
+              fillColor={colors.text.primary}
             />
           </View>
 

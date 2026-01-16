@@ -24,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { usePlayerStore, useCurrentChapter } from '../stores/playerStore';
 import { haptics } from '@/core/native/haptics';
-import { spacing, layout, radius, useThemeColors, accentColors } from '@/shared/theme';
+import { spacing, layout, radius, useTheme } from '@/shared/theme';
 
 // ============================================================================
 // CONFIGURATION
@@ -102,12 +102,12 @@ export function ProgressBar({
   mode = 'bar',
   showChapterMarkers = true,
 }: ProgressBarProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // Use provided colors or theme defaults
-  const effectiveTextColor = textColor ?? themeColors.textTertiary;
-  const effectiveTrackColor = trackColor ?? themeColors.border;
-  const effectiveFillColor = fillColor ?? themeColors.text;
+  const effectiveTextColor = textColor ?? colors.text.tertiary;
+  const effectiveTrackColor = trackColor ?? colors.border.default;
+  const effectiveFillColor = fillColor ?? colors.text.primary;
   const { position, duration, seekTo, progressMode, isSeeking, seekPosition, chapters } = usePlayerStore();
   const currentChapter = useCurrentChapter();
 
@@ -306,7 +306,7 @@ export function ProgressBar({
       {/* Fine-scrub mode indicator */}
       {isDragging && verticalOffset > 20 && (
         <View style={styles.fineModeContainer}>
-          <Text style={[styles.fineModeText, { color: accentColors.gold }]}>Fine {sensitivityInfo.label}</Text>
+          <Text style={[styles.fineModeText, { color: colors.accent.primary }]}>Fine {sensitivityInfo.label}</Text>
         </View>
       )}
 
@@ -316,10 +316,10 @@ export function ProgressBar({
           style={[
             styles.tooltip,
             tooltipAnimatedStyle,
-            { left: `${progress * 100}%`, backgroundColor: themeColors.surfaceElevated },
+            { left: `${progress * 100}%`, backgroundColor: colors.background.elevated },
           ]}
         >
-          <Text style={[styles.tooltipText, { color: themeColors.text }]}>{formatTime(dragPosition)}</Text>
+          <Text style={[styles.tooltipText, { color: colors.text.primary }]}>{formatTime(dragPosition)}</Text>
         </Animated.View>
       )}
 
@@ -339,7 +339,7 @@ export function ProgressBar({
                     key={chapter.id}
                     style={[
                       styles.chapterMarker,
-                      { left: `${markerPos}%`, backgroundColor: `${themeColors.text}66` },
+                      { left: `${markerPos}%`, backgroundColor: `${colors.text.primary}66` },
                     ]}
                   />
                 );

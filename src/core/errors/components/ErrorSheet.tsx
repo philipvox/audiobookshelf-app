@@ -18,7 +18,7 @@ import {
 import { AlertCircle, RefreshCw, CloudOff, LogIn, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError, ErrorSeverity, RecoveryStrategy } from '../types';
-import { useThemeColors, accentColors, scale, spacing } from '@/shared/theme';
+import { useTheme, scale, spacing, type ThemeColors } from '@/shared/theme';
 
 
 interface ErrorSheetProps {
@@ -31,12 +31,18 @@ interface ErrorSheetProps {
   showDetails?: boolean;
 }
 
-const SEVERITY_COLORS: Record<ErrorSeverity, string> = {
-  low: '#4a9eff',
-  medium: '#ff9800',
-  high: '#ff4444',
-  critical: '#d32f2f',
-};
+/**
+ * Get severity-based colors from theme semantic tokens
+ */
+function getSeverityColors(severity: ErrorSeverity, colors: ThemeColors) {
+  const severityMap = {
+    low: { color: colors.semantic.info, bg: colors.semantic.infoLight },
+    medium: { color: colors.semantic.warning, bg: colors.semantic.warningLight },
+    high: { color: colors.semantic.error, bg: colors.semantic.errorLight },
+    critical: { color: colors.semantic.error, bg: colors.semantic.error },
+  };
+  return severityMap[severity];
+}
 
 const RECOVERY_BUTTONS: Record<RecoveryStrategy, { text: string; Icon: LucideIcon } | null> = {
   retry: { text: 'Try Again', Icon: RefreshCw },
@@ -56,8 +62,8 @@ export function ErrorSheet({
   showDetails = __DEV__,
 }: ErrorSheetProps) {
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
-  const color = SEVERITY_COLORS[error.severity];
+  const { colors } = useTheme();
+  const severityColors = getSeverityColors(error.severity, colors);
   const recoveryButton = RECOVERY_BUTTONS[error.recovery];
 
   return (
@@ -67,49 +73,49 @@ export function ErrorSheet({
       animationType="slide"
       onRequestClose={onDismiss}
     >
-      <Pressable style={styles.overlay} onPress={onDismiss}>
+      <Pressable style={[styles.overlay, { backgroundColor: colors.overlay.medium }]} onPress={onDismiss}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: themeColors.surfaceElevated }]}
+          style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: colors.background.elevated }]}
           onPress={() => {}}
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
-            <View style={[styles.handle, { backgroundColor: themeColors.border }]} />
+            <View style={[styles.handle, { backgroundColor: colors.border.default }]} />
           </View>
 
           {/* Header */}
           <View style={styles.header}>
-            <View style={[styles.iconCircle, { backgroundColor: `${color}20` }]}>
-              <AlertCircle size={32} color={color} strokeWidth={2} />
+            <View style={[styles.iconCircle, { backgroundColor: severityColors.bg }]}>
+              <AlertCircle size={32} color={severityColors.color} strokeWidth={2} />
             </View>
-            <Text style={[styles.title, { color: themeColors.text }]}>Something went wrong</Text>
-            <Text style={[styles.subtitle, { color: themeColors.textTertiary }]}>{getCategoryLabel(error.category)}</Text>
+            <Text style={[styles.title, { color: colors.text.primary }]}>Something went wrong</Text>
+            <Text style={[styles.subtitle, { color: colors.text.tertiary }]}>{getCategoryLabel(error.category)}</Text>
           </View>
 
           {/* Message */}
-          <View style={[styles.messageContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
-            <Text style={[styles.message, { color: themeColors.textSecondary }]}>{error.userMessage}</Text>
+          <View style={[styles.messageContainer, { backgroundColor: colors.background.secondary }]}>
+            <Text style={[styles.message, { color: colors.text.secondary }]}>{error.userMessage}</Text>
           </View>
 
           {/* Debug Details (DEV only) */}
           {showDetails && (
-            <View style={[styles.detailsContainer, { backgroundColor: themeColors.backgroundSecondary }]}>
-              <Text style={[styles.detailsTitle, { color: themeColors.textTertiary }]}>Debug Info</Text>
+            <View style={[styles.detailsContainer, { backgroundColor: colors.background.secondary }]}>
+              <Text style={[styles.detailsTitle, { color: colors.text.tertiary }]}>Debug Info</Text>
               <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Code:</Text>
-                <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.code}</Text>
+                <Text style={[styles.detailLabel, { color: colors.text.tertiary }]}>Code:</Text>
+                <Text style={[styles.detailValue, { color: colors.text.secondary }]}>{error.code}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Category:</Text>
-                <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.category}</Text>
+                <Text style={[styles.detailLabel, { color: colors.text.tertiary }]}>Category:</Text>
+                <Text style={[styles.detailValue, { color: colors.text.secondary }]}>{error.category}</Text>
               </View>
               {error.context && (
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: themeColors.textTertiary }]}>Context:</Text>
-                  <Text style={[styles.detailValue, { color: themeColors.textSecondary }]}>{error.context}</Text>
+                  <Text style={[styles.detailLabel, { color: colors.text.tertiary }]}>Context:</Text>
+                  <Text style={[styles.detailValue, { color: colors.text.secondary }]}>{error.context}</Text>
                 </View>
               )}
-              <Text style={[styles.technicalMessage, { color: themeColors.textTertiary }]} numberOfLines={3}>
+              <Text style={[styles.technicalMessage, { color: colors.text.tertiary }]} numberOfLines={3}>
                 {error.message}
               </Text>
             </View>
@@ -119,16 +125,16 @@ export function ErrorSheet({
           <View style={styles.actions}>
             {recoveryButton && onRetry && (
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: color }]}
+                style={[styles.primaryButton, { backgroundColor: severityColors.color }]}
                 onPress={onRetry}
               >
                 <recoveryButton.Icon
                   size={20}
-                  color={themeColors.text}
+                  color={colors.text.inverse}
                   strokeWidth={2}
                   style={styles.buttonIcon}
                 />
-                <Text style={[styles.primaryButtonText, { color: themeColors.text }]}>{recoveryButton.text}</Text>
+                <Text style={[styles.primaryButtonText, { color: colors.text.inverse }]}>{recoveryButton.text}</Text>
               </TouchableOpacity>
             )}
 
@@ -137,12 +143,12 @@ export function ErrorSheet({
                 style={styles.secondaryButton}
                 onPress={onSecondaryAction}
               >
-                <Text style={[styles.secondaryButtonText, { color: accentColors.gold }]}>{secondaryActionText}</Text>
+                <Text style={[styles.secondaryButtonText, { color: colors.accent.primary }]}>{secondaryActionText}</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={styles.dismissButton} onPress={onDismiss}>
-              <Text style={[styles.dismissButtonText, { color: themeColors.textTertiary }]}>Dismiss</Text>
+              <Text style={[styles.dismissButtonText, { color: colors.text.tertiary }]}>Dismiss</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -168,7 +174,7 @@ function getCategoryLabel(category: string): string {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    // backgroundColor set via colors.overlay.medium
     justifyContent: 'flex-end',
   },
   sheet: {

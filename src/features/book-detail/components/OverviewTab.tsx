@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { User, Mic, Calendar, Building, Globe } from 'lucide-react-native';
+import { User, Mic, Calendar, Building, Globe, Tag } from 'lucide-react-native';
 import { LibraryItem } from '@/core/types';
 import { useColors, scale, spacing, radius } from '@/shared/theme';
 
@@ -52,6 +52,8 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
     narrators.push(...rawNarrator.replace(/^Narrated by\s*/i, '').split(',').map((n: string) => n.trim()).filter(Boolean));
   }
 
+  // Parse genres
+  const genres: string[] = metadata.genres || [];
 
   const needsExpansion = description.length > 200;
   const displayDescription = needsExpansion && !isExpanded
@@ -66,6 +68,9 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
     navigation.navigate('NarratorDetail', { narratorName });
   };
 
+  const handleGenrePress = (genreName: string) => {
+    navigation.navigate('GenreDetail', { genreName });
+  };
 
   return (
     <View style={styles.container}>
@@ -135,6 +140,27 @@ export function OverviewTab({ book, showFullDetails = false }: OverviewTabProps)
           </View>
         )}
 
+        {/* Genres */}
+        {genres.length > 0 && (
+          <View style={styles.metadataRow}>
+            <Tag size={scale(14)} color={colors.text.tertiary} strokeWidth={2} />
+            <View style={styles.chipContainer}>
+              {genres.map((genre, idx) => (
+                <TouchableOpacity
+                  key={`genre-${idx}`}
+                  style={[styles.chip, { backgroundColor: colors.surface.default }]}
+                  onPress={() => handleGenrePress(genre)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={`Genre: ${genre}`}
+                  accessibilityRole="button"
+                  accessibilityHint="Double tap to view genre details"
+                >
+                  <Text style={[styles.chipText, { color: colors.text.primary }]}>{genre}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Additional details if showFullDetails */}
         {showFullDetails && (

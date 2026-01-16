@@ -1,45 +1,48 @@
 /**
- * Loading spinner with consistent styling
+ * src/shared/components/LoadingSpinner.tsx
+ *
+ * Legacy loading spinner component.
+ * Now wraps the unified Loading component for backward compatibility.
+ *
+ * @deprecated Use Loading component instead:
+ *   import { Loading } from '@/shared/components';
  */
 
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { colors, spacing } from '../theme';
+import { Loading } from './Loading';
 
 interface LoadingSpinnerProps {
   text?: string;
   size?: 'small' | 'large';
   color?: string;
+  /** @deprecated variant prop is ignored - all loading uses unified style */
+  variant?: 'default' | 'skull';
 }
 
 /**
- * Display a loading spinner with optional text message
+ * @deprecated Use Loading component instead
+ *
+ * @example
+ * // Old way (deprecated)
+ * <LoadingSpinner text="Loading..." />
+ *
+ * // New way
+ * import { Loading } from '@/shared/components';
+ * <Loading text="Loading..." />
  */
 export function LoadingSpinner({
   text,
   size = 'large',
-  color = colors.accent,
+  color,
 }: LoadingSpinnerProps) {
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size={size} color={color} />
-      {text && <Text style={styles.text}>{text}</Text>}
-    </View>
+    <Loading
+      mode="fullScreen"
+      text={text}
+      size={size === 'large' ? 80 : 48}
+      color={color}
+    />
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundPrimary,
-    padding: spacing.xl,
-  },
-  text: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-});
+export default LoadingSpinner;

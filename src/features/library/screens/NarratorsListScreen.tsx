@@ -17,7 +17,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
   TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -25,9 +24,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLibraryCache, getAllNarrators } from '@/core/cache';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { Icon } from '@/shared/components/Icon';
-import { AlphabetScrubber } from '@/shared/components/AlphabetScrubber';
+import { AlphabetScrubber, SkullRefreshControl, TopNav, TopNavBackIcon, MicIcon } from '@/shared/components';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { useThemeColors, useColors } from '@/shared/theme/themeStore';
+import { useTheme } from '@/shared/theme';
 
 type SortType = 'name' | 'bookCount' | 'recent';
 
@@ -56,8 +55,7 @@ function getInitials(name: string): string {
 export function NarratorsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const accent = colors.accent.primary;
   const sectionListRef = useRef<SectionList>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,10 +215,10 @@ export function NarratorsListScreen() {
 
       {/* Info */}
       <View style={styles.narratorInfo}>
-        <Text style={[styles.narratorName, { color: themeColors.text }]} numberOfLines={1}>{item.name}</Text>
-        <Text style={[styles.bookCount, { color: themeColors.textSecondary }]}>{item.bookCount} books in library</Text>
+        <Text style={[styles.narratorName, { color: colors.text.primary }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={[styles.bookCount, { color: colors.text.secondary }]}>{item.bookCount} books in library</Text>
         {item.topGenres.length > 0 && (
-          <Text style={[styles.genres, { color: themeColors.textTertiary }]} numberOfLines={1}>
+          <Text style={[styles.genres, { color: colors.text.tertiary }]} numberOfLines={1}>
             {item.topGenres.join(', ')}
           </Text>
         )}
@@ -239,62 +237,68 @@ export function NarratorsListScreen() {
       <View style={[styles.yourNarratorAvatar, { backgroundColor: getAvatarColor(narrator.name) }]}>
         <Text style={styles.yourNarratorAvatarText}>{getInitials(narrator.name)}</Text>
       </View>
-      <Text style={[styles.yourNarratorName, { color: themeColors.text }]} numberOfLines={2}>{narrator.name}</Text>
-      <Text style={[styles.yourNarratorBooks, { color: themeColors.textSecondary }]}>{narrator.bookCount} books</Text>
+      <Text style={[styles.yourNarratorName, { color: colors.text.primary }]} numberOfLines={2}>{narrator.name}</Text>
+      <Text style={[styles.yourNarratorBooks, { color: colors.text.secondary }]}>{narrator.bookCount} books</Text>
     </TouchableOpacity>
   );
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
-        <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Loading...</Text>
         </View>
       </View>
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.background} />
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
-          <Icon name="ChevronLeft" size={24} color={themeColors.text} />
-        </TouchableOpacity>
-        <View style={[styles.searchContainer, { backgroundColor: themeColors.border }]}>
-          <Icon name="Search" size={18} color={themeColors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
-            placeholder="Search narrators..."
-            placeholderTextColor={themeColors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="XCircle" size={18} color={themeColors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background.primary} />
+
+      {/* TopNav with skull logo and integrated search bar */}
+      <TopNav
+        variant={isDark ? 'dark' : 'light'}
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        style={{ backgroundColor: colors.background.primary }}
+        pills={[
+          {
+            key: 'narrators',
+            label: 'Narrators',
+            icon: <MicIcon size={10} color={colors.text.primary} />,
+          },
+        ]}
+        circleButtons={[
+          {
+            key: 'back',
+            icon: <TopNavBackIcon color={colors.text.primary} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+        searchBar={{
+          value: searchQuery,
+          onChangeText: setSearchQuery,
+          placeholder: 'Search narrators...',
+        }}
+      />
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        <Text style={[styles.resultCount, { color: themeColors.textSecondary }]}>{filteredNarrators.length} narrators</Text>
+        <Text style={[styles.resultCount, { color: colors.text.secondary }]}>{filteredNarrators.length} narrators</Text>
         <View style={styles.sortButtons}>
           {(['name', 'bookCount', 'recent'] as SortType[]).map(type => (
             <TouchableOpacity
               key={type}
-              style={[styles.sortButton, { backgroundColor: themeColors.border }, sortBy === type && { backgroundColor: accent }]}
+              style={[styles.sortButton, { backgroundColor: colors.border.default }, sortBy === type && { backgroundColor: accent }]}
               onPress={() => setSortBy(type)}
             >
-              <Text style={[styles.sortButtonText, { color: themeColors.textSecondary }, sortBy === type && styles.sortButtonTextActive]}>
+              <Text style={[styles.sortButtonText, { color: colors.text.secondary }, sortBy === type && [styles.sortButtonTextActive, { color: colors.text.inverse }]]}>
                 {type === 'name' ? 'A-Z' : type === 'bookCount' ? 'Books' : 'Recent'}
               </Text>
             </TouchableOpacity>
@@ -304,24 +308,18 @@ export function NarratorsListScreen() {
 
       {/* Main Content */}
       <View style={styles.content}>
-        <SectionList
-          ref={sectionListRef}
-          sections={sections}
-          keyExtractor={(item) => item.name}
-          stickySectionHeadersEnabled={sortBy === 'name'}
-          contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: sortBy === 'name' ? 28 : 0 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={accent}
-            />
-          }
+        <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+          <SectionList
+            ref={sectionListRef}
+            sections={sections}
+            keyExtractor={(item) => item.name}
+            stickySectionHeadersEnabled={sortBy === 'name'}
+            contentContainerStyle={{ paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom, paddingRight: sortBy === 'name' ? 28 : 0 }}
+            showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             !isSearching && yourNarrators.length > 0 ? (
               <View style={styles.yourNarratorsSection}>
-                <Text style={[styles.sectionTitle, { color: themeColors.textSecondary }]}>Your Narrators</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>Your Narrators</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -334,7 +332,7 @@ export function NarratorsListScreen() {
           }
           renderSectionHeader={({ section }) =>
             section.title ? (
-              <View style={[styles.letterHeader, { backgroundColor: themeColors.background }]}>
+              <View style={[styles.letterHeader, { backgroundColor: colors.background.primary }]}>
                 <Text style={[styles.letterText, { color: accent }]}>{section.title}</Text>
               </View>
             ) : null
@@ -346,7 +344,8 @@ export function NarratorsListScreen() {
             offset: 72 * index,
             index,
           })}
-        />
+          />
+        </SkullRefreshControl>
 
         {/* A-Z Scrubber */}
         <AlphabetScrubber
@@ -365,18 +364,9 @@ const styles = StyleSheet.create({
     flex: 1,
     // backgroundColor set via themeColors.background in JSX
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+  searchRow: {
+    paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 8,
-  },
-  headerButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     flex: 1,
@@ -436,7 +426,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   sortButtonTextActive: {
-    color: '#000', // Intentional: black text on gold accent
+    // color applied inline via colors.text.inverse
   },
   content: {
     flex: 1,

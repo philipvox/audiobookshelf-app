@@ -1,10 +1,11 @@
 /**
  * src/features/profile/screens/PlaybackSettingsScreen.tsx
  *
- * Dedicated screen for playback settings: speed, skip intervals, sleep timer.
+ * Secret Library Playback Settings
+ * Speed, skip intervals, sleep timer, smart rewind, completion settings.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,29 +34,18 @@ import {
 } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale, typography, fontWeight, spacing } from '@/shared/theme';
-import { useColors, ThemeColors } from '@/shared/theme';
+import { scale } from '@/shared/theme';
+import {
+  secretLibraryColors as colors,
+  secretLibraryFonts as fonts,
+} from '@/shared/theme/secretLibrary';
+import { SettingsHeader } from '../components/SettingsHeader';
 
-// Helper to create theme-aware colors from nested ThemeColors
-function createColors(c: ThemeColors) {
-  return {
-    accent: c.accent.primary,
-    accentSubtle: c.accent.primarySubtle,
-    textOnAccent: c.accent.textOnAccent,
-    background: c.background.secondary,
-    text: c.text.primary,
-    textSecondary: c.text.secondary,
-    textTertiary: c.text.tertiary,
-    card: c.border.default,
-    border: c.border.default,
-    iconBg: c.border.default,
-  };
-}
+// =============================================================================
+// CONSTANTS
+// =============================================================================
 
-// Playback speed options
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
-
-// Skip interval options (in seconds)
 const SKIP_FORWARD_OPTIONS = [10, 15, 30, 45, 60];
 const SKIP_BACK_OPTIONS = [5, 10, 15, 30, 45];
 const SMART_REWIND_MAX_OPTIONS = [15, 30, 45, 60, 90];
@@ -64,7 +54,10 @@ function formatSpeed(speed: number): string {
   return speed === 1.0 ? '1.0× (Normal)' : `${speed}×`;
 }
 
-// Settings Row Component
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
 interface SettingsRowProps {
   Icon: LucideIcon;
   label: string;
@@ -73,45 +66,37 @@ interface SettingsRowProps {
   switchValue?: boolean;
   onSwitchChange?: (value: boolean) => void;
   note?: string;
-  disabled?: boolean;
-  disabledReason?: string;
-  colors: ReturnType<typeof createColors>;
 }
 
-function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note, disabled, disabledReason, colors }: SettingsRowProps) {
-  // Show disabled reason instead of note when disabled
-  const displayNote = disabled && disabledReason ? disabledReason : note;
-
+function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note }: SettingsRowProps) {
   const content = (
-    <View style={[styles.settingsRow, { borderBottomColor: colors.border }, disabled && styles.settingsRowDisabled]}>
+    <View style={styles.settingsRow}>
       <View style={styles.rowLeft}>
-        <View style={[styles.iconContainer, { backgroundColor: colors.iconBg }]}>
-          <Icon size={scale(18)} color={disabled ? colors.textTertiary : colors.textSecondary} strokeWidth={2} />
+        <View style={styles.iconContainer}>
+          <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
         </View>
         <View style={styles.rowContent}>
-          <Text style={[styles.rowLabel, { color: colors.text }, disabled && { color: colors.textTertiary }]}>{label}</Text>
-          {displayNote ? <Text style={[styles.rowNote, { color: colors.textTertiary }, disabled && styles.rowNoteDisabled]}>{displayNote}</Text> : null}
+          <Text style={styles.rowLabel}>{label}</Text>
+          {note && <Text style={styles.rowNote}>{note}</Text>}
         </View>
       </View>
       <View style={styles.rowRight}>
-        {value ? <Text style={[styles.rowValue, { color: colors.accent }, disabled && { color: colors.textTertiary }]}>{value}</Text> : null}
-        {onSwitchChange !== undefined ? (
+        {value && <Text style={styles.rowValue}>{value}</Text>}
+        {onSwitchChange !== undefined && (
           <Switch
             value={switchValue}
             onValueChange={onSwitchChange}
-            trackColor={{ false: colors.border, true: colors.accent }}
-            thumbColor="#fff"
-            disabled={disabled}
+            trackColor={{ false: 'rgba(0,0,0,0.1)', true: colors.black }}
+            thumbColor={colors.white}
+            ios_backgroundColor="rgba(0,0,0,0.1)"
           />
-        ) : null}
-        {onPress ? (
-          <ChevronRight size={scale(18)} color={disabled ? colors.textTertiary : colors.textSecondary} strokeWidth={2} />
-        ) : null}
+        )}
+        {onPress && <ChevronRight size={scale(16)} color={colors.gray} strokeWidth={1.5} />}
       </View>
     </View>
   );
 
-  if (onPress && !disabled) {
+  if (onPress) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
         {content}
@@ -122,12 +107,10 @@ function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange,
   return content;
 }
 
-// Section Header Component
-function SectionHeader({ title, colors }: { title: string; colors: ReturnType<typeof createColors> }) {
-  return <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>{title}</Text>;
+function SectionHeader({ title }: { title: string }) {
+  return <Text style={styles.sectionHeader}>{title}</Text>;
 }
 
-// Option Picker Modal
 interface OptionPickerProps<T> {
   visible: boolean;
   title: string;
@@ -137,7 +120,6 @@ interface OptionPickerProps<T> {
   formatOption: (option: T) => string;
   onSelect: (option: T) => void;
   onClose: () => void;
-  colors: ReturnType<typeof createColors>;
 }
 
 function OptionPicker<T>({
@@ -149,30 +131,20 @@ function OptionPicker<T>({
   formatOption,
   onSelect,
   onClose,
-  colors,
 }: OptionPickerProps<T>) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={styles.modalOverlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View style={[styles.pickerContainer, { backgroundColor: colors.card }]}>
-          <Text style={[styles.pickerTitle, { color: colors.text }]}>{title}</Text>
-          {subtitle ? <Text style={[styles.pickerSubtitle, { color: colors.textTertiary }]}>{subtitle}</Text> : null}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.pickerContainer}>
+          <Text style={styles.pickerTitle}>{title}</Text>
+          {subtitle && <Text style={styles.pickerSubtitle}>{subtitle}</Text>}
           <View style={styles.pickerOptions}>
             {options.map((option, index) => (
               <TouchableOpacity
                 key={index}
                 style={[
                   styles.pickerOption,
-                  selectedValue === option && { backgroundColor: colors.accentSubtle },
+                  selectedValue === option && styles.pickerOptionSelected,
                 ]}
                 onPress={() => {
                   onSelect(option);
@@ -182,15 +154,14 @@ function OptionPicker<T>({
                 <Text
                   style={[
                     styles.pickerOptionText,
-                    { color: colors.text },
-                    selectedValue === option && { color: colors.accent, fontWeight: '600' },
+                    selectedValue === option && styles.pickerOptionTextSelected,
                   ]}
                 >
                   {formatOption(option)}
                 </Text>
-                {selectedValue === option ? (
-                  <Check size={scale(18)} color={colors.accent} strokeWidth={2.5} />
-                ) : null}
+                {selectedValue === option && (
+                  <Check size={scale(18)} color={colors.black} strokeWidth={2} />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -200,11 +171,13 @@ function OptionPicker<T>({
   );
 }
 
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
 export function PlaybackSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const themeColors = useColors();
-  const colors = createColors(themeColors);
 
   // Player settings from store
   const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
@@ -242,101 +215,83 @@ export function PlaybackSettingsScreen() {
   }, [setSkipBackInterval]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
-      <StatusBar barStyle={themeColors.statusBar} backgroundColor={colors.background} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ChevronLeft size={scale(24)} color={colors.text} strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Playback</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.grayLight} />
+      <SettingsHeader title="Playback" />
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Speed Section */}
         <View style={styles.section}>
-          <SectionHeader title="Speed" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Speed" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={Gauge}
               label="Default Speed"
               value={formatSpeed(globalDefaultRate)}
               onPress={() => setShowSpeedPicker(true)}
               note="Used for books without a saved preference"
-              colors={colors}
             />
           </View>
         </View>
 
         {/* Skip Intervals Section */}
         <View style={styles.section}>
-          <SectionHeader title="Skip Intervals" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Skip Intervals" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={SkipForward}
               label="Skip Forward"
               value={`${skipForwardInterval}s`}
               onPress={() => setShowForwardPicker(true)}
-              colors={colors}
             />
             <SettingsRow
               Icon={SkipBack}
               label="Skip Back"
               value={`${skipBackInterval}s`}
               onPress={() => setShowBackPicker(true)}
-              colors={colors}
             />
           </View>
         </View>
 
         {/* Sleep Timer Section */}
         <View style={styles.section}>
-          <SectionHeader title="Sleep Timer" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Sleep Timer" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={Smartphone}
               label="Shake to Extend"
               switchValue={shakeToExtendEnabled}
               onSwitchChange={setShakeToExtendEnabled}
               note="Shake to add 15 minutes when timer is low"
-              colors={colors}
             />
           </View>
         </View>
 
         {/* Smart Rewind Section */}
         <View style={styles.section}>
-          <SectionHeader title="Smart Rewind" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Smart Rewind" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={RefreshCw}
               label="Smart Rewind"
               switchValue={smartRewindEnabled}
               onSwitchChange={setSmartRewindEnabled}
               note="Automatically rewind after pausing"
-              colors={colors}
             />
             {smartRewindEnabled && (
-              <View style={[styles.maxRewindContainer, { borderTopColor: colors.border }]}>
-                <Text style={[styles.maxRewindLabel, { color: colors.textSecondary }]}>Maximum Rewind</Text>
+              <View style={styles.maxRewindContainer}>
+                <Text style={styles.maxRewindLabel}>Maximum Rewind</Text>
                 <View style={styles.maxRewindOptions}>
                   {SMART_REWIND_MAX_OPTIONS.map((seconds) => (
                     <TouchableOpacity
                       key={seconds}
                       style={[
                         styles.maxRewindOption,
-                        { backgroundColor: colors.iconBg },
-                        smartRewindMaxSeconds === seconds && { backgroundColor: colors.accent },
+                        smartRewindMaxSeconds === seconds && styles.maxRewindOptionSelected,
                       ]}
                       onPress={() => setSmartRewindMaxSeconds(seconds)}
                       activeOpacity={0.7}
@@ -344,8 +299,7 @@ export function PlaybackSettingsScreen() {
                       <Text
                         style={[
                           styles.maxRewindOptionText,
-                          { color: colors.textSecondary },
-                          smartRewindMaxSeconds === seconds && { color: colors.textOnAccent },
+                          smartRewindMaxSeconds === seconds && styles.maxRewindOptionTextSelected,
                         ]}
                       >
                         {seconds}s
@@ -353,7 +307,7 @@ export function PlaybackSettingsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-                <Text style={[styles.maxRewindNote, { color: colors.textTertiary }]}>
+                <Text style={styles.maxRewindNote}>
                   Rewind amount increases with pause duration
                 </Text>
               </View>
@@ -363,15 +317,14 @@ export function PlaybackSettingsScreen() {
 
         {/* Completion Section */}
         <View style={styles.section}>
-          <SectionHeader title="Book Completion" colors={colors} />
-          <View style={[styles.sectionCard, { backgroundColor: colors.card }]}>
+          <SectionHeader title="Book Completion" />
+          <View style={styles.sectionCard}>
             <SettingsRow
               Icon={CheckCircle}
               label="Completion Prompt"
               switchValue={showCompletionPrompt}
               onSwitchChange={setShowCompletionPrompt}
               note="Ask what to do when a book ends"
-              colors={colors}
             />
             {!showCompletionPrompt && (
               <SettingsRow
@@ -380,7 +333,6 @@ export function PlaybackSettingsScreen() {
                 switchValue={autoMarkFinished}
                 onSwitchChange={setAutoMarkFinished}
                 note="Automatically mark books as finished"
-                colors={colors}
               />
             )}
           </View>
@@ -388,8 +340,8 @@ export function PlaybackSettingsScreen() {
 
         {/* Info Note */}
         <View style={styles.infoSection}>
-          <Info size={scale(16)} color={colors.textTertiary} strokeWidth={2} />
-          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
+          <Info size={scale(16)} color={colors.gray} strokeWidth={1.5} />
+          <Text style={styles.infoText}>
             Playback speed is remembered per book. The default speed is only used when playing a book for the first time.
           </Text>
         </View>
@@ -405,7 +357,6 @@ export function PlaybackSettingsScreen() {
         formatOption={formatSpeed}
         onSelect={handleSpeedSelect}
         onClose={() => setShowSpeedPicker(false)}
-        colors={colors}
       />
 
       {/* Skip Forward Picker Modal */}
@@ -417,7 +368,6 @@ export function PlaybackSettingsScreen() {
         formatOption={(s) => `${s} seconds`}
         onSelect={handleForwardSelect}
         onClose={() => setShowForwardPicker(false)}
-        colors={colors}
       />
 
       {/* Skip Back Picker Modal */}
@@ -429,69 +379,49 @@ export function PlaybackSettingsScreen() {
         formatOption={(s) => `${s} seconds`}
         onSelect={handleBackSelect}
         onClose={() => setShowBackPicker(false)}
-        colors={colors}
       />
     </View>
   );
 }
 
+// =============================================================================
+// STYLES
+// =============================================================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via colors.background in JSX
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: scale(40),
-    height: scale(40),
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    ...typography.headlineLarge,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.text in JSX
-  },
-  headerSpacer: {
-    width: scale(40),
+    backgroundColor: colors.grayLight,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    paddingBottom: SCREEN_BOTTOM_PADDING,
+    paddingHorizontal: 16,
   },
   section: {
-    marginBottom: spacing.xxl,
+    marginBottom: 28,
   },
   sectionHeader: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.textTertiary in JSX
-    letterSpacing: 0.5,
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.sm,
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    paddingLeft: 4,
   },
   sectionCard: {
-    marginHorizontal: spacing.lg,
-    // backgroundColor set via colors.card in JSX
-    borderRadius: scale(12),
-    overflow: 'hidden',
+    backgroundColor: colors.white,
   },
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: scale(14),
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    // borderBottomColor set via colors.border in JSX
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   rowLeft: {
     flexDirection: 'row',
@@ -502,142 +432,141 @@ const styles = StyleSheet.create({
     width: scale(32),
     height: scale(32),
     borderRadius: scale(8),
-    // backgroundColor set via colors.iconBg in JSX
+    backgroundColor: colors.grayLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   rowContent: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginLeft: 12,
   },
   rowLabel: {
-    ...typography.headlineMedium,
-    fontWeight: fontWeight.medium,
-    // color set via colors.text in JSX
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(15),
+    color: colors.black,
   },
   rowNote: {
-    ...typography.bodySmall,
-    // color set via colors.textTertiary in JSX
-    marginTop: scale(2),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    marginTop: 2,
   },
   rowRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(8),
+    gap: 8,
   },
   rowValue: {
-    ...typography.bodyLarge,
-    fontWeight: fontWeight.medium,
-    // color set via colors.accent in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    color: colors.black,
   },
-  // Disabled states
-  settingsRowDisabled: {
-    opacity: 0.5,
-  },
-  rowNoteDisabled: {
-    fontStyle: 'italic',
-  },
-  infoSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: scale(8),
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.sm,
-  },
-  infoText: {
-    ...typography.bodySmall,
-    flex: 1,
-    // color set via colors.textTertiary in JSX
-    lineHeight: scale(18),
-  },
-  // Smart Rewind max selector styles
+  // Smart Rewind max selector
   maxRewindContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: scale(8),
-    paddingBottom: scale(16),
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
     borderTopWidth: 1,
-    // borderTopColor set via colors.border in JSX
+    borderTopColor: 'rgba(0,0,0,0.06)',
   },
   maxRewindLabel: {
-    ...typography.bodyMedium,
-    fontWeight: fontWeight.medium,
-    // color set via colors.textSecondary in JSX
-    marginBottom: scale(12),
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
   },
   maxRewindOptions: {
     flexDirection: 'row',
-    gap: scale(8),
+    gap: 8,
   },
   maxRewindOption: {
     flex: 1,
-    paddingVertical: scale(10),
-    paddingHorizontal: scale(8),
-    // backgroundColor set via colors.iconBg in JSX
-    borderRadius: scale(8),
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: colors.grayLight,
     alignItems: 'center',
   },
   maxRewindOptionSelected: {
-    // backgroundColor set dynamically in JSX
+    backgroundColor: colors.black,
   },
   maxRewindOptionText: {
-    ...typography.bodyLarge,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.textSecondary in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    color: colors.gray,
   },
-  // maxRewindOptionTextSelected removed - now using dynamic colors.textOnAccent
+  maxRewindOptionTextSelected: {
+    color: colors.white,
+  },
   maxRewindNote: {
-    ...typography.labelMedium,
-    // color set via colors.textTertiary in JSX
-    marginTop: scale(12),
-    textAlign: 'center',
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    marginTop: 12,
   },
-  // Modal styles
+  // Info section
+  infoSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+  },
+  infoText: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.gray,
+    flex: 1,
+    lineHeight: scale(16),
+  },
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Dark overlay - intentional
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
   pickerContainer: {
-    // backgroundColor set via colors.card in JSX
-    borderRadius: scale(16),
-    padding: scale(20),
-    width: '80%',
-    maxWidth: 320,
+    backgroundColor: colors.white,
+    borderRadius: 0,
+    width: '100%',
+    maxWidth: 340,
+    padding: 24,
   },
   pickerTitle: {
-    ...typography.headlineLarge,
-    fontWeight: fontWeight.semibold,
-    // color set via colors.text in JSX
-    marginBottom: scale(4),
-    textAlign: 'center',
+    fontFamily: fonts.playfair.regular,
+    fontSize: scale(20),
+    color: colors.black,
+    marginBottom: 4,
   },
   pickerSubtitle: {
-    ...typography.bodyMedium,
-    // color set via colors.textTertiary in JSX
-    marginBottom: scale(16),
-    textAlign: 'center',
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.gray,
+    marginBottom: 16,
   },
   pickerOptions: {
-    gap: scale(4),
+    marginTop: 8,
   },
   pickerOption: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: scale(12),
-    borderRadius: scale(8),
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   pickerOptionSelected: {
-    // backgroundColor set dynamically in JSX
+    backgroundColor: colors.grayLight,
   },
   pickerOptionText: {
-    ...typography.headlineMedium,
-    // color set via colors.text in JSX
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(12),
+    color: colors.black,
   },
   pickerOptionTextSelected: {
-    // color set dynamically in JSX
-    fontWeight: '600',
+    fontFamily: fonts.jetbrainsMono.bold,
   },
 });

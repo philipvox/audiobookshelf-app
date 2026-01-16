@@ -10,8 +10,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { Play, CheckCircle } from 'lucide-react-native';
 import { apiClient } from '@/core/api';
-import { scale, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, spacing, useTheme } from '@/shared/theme';
 import { EnrichedBook, formatDuration, formatTimeAgo } from '../types';
 
 interface BookRowProps {
@@ -27,7 +26,7 @@ export const BookRow = React.memo(function BookRow({
   onPlay,
   isMarkedFinished = false,
 }: BookRowProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const coverUrl = apiClient.getItemCoverUrl(book.id);
   const isCompleted = book.progress >= 0.95 || isMarkedFinished;
   const isInProgress = book.progress > 0 && book.progress < 0.95;
@@ -52,34 +51,34 @@ export const BookRow = React.memo(function BookRow({
         <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
         {isCompleted && (
           <View style={styles.completedBadge}>
-            <CheckCircle size={14} color={themeColors.text} strokeWidth={2} />
+            <CheckCircle size={14} color={colors.text.primary} strokeWidth={2} />
           </View>
         )}
       </View>
 
       <View style={styles.bookInfo}>
-        <Text style={[styles.bookTitle, { color: themeColors.text }]} numberOfLines={1}>
+        <Text style={[styles.bookTitle, { color: colors.text.primary }]} numberOfLines={1}>
           {book.title}
         </Text>
-        <Text style={[styles.bookAuthor, { color: themeColors.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.bookAuthor, { color: colors.text.secondary }]} numberOfLines={1}>
           {book.author}
         </Text>
         <View style={styles.bookMetaRow}>
-          <Text style={[styles.bookMeta, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.bookMeta, { color: colors.text.secondary }]}>
             {formatDuration(book.duration)}
           </Text>
           {isInProgress && (
             <>
-              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>·</Text>
-              <Text style={[styles.bookProgress, { color: themeColors.text }]}>
+              <Text style={[styles.bookMeta, { color: colors.text.tertiary }]}>·</Text>
+              <Text style={[styles.bookProgress, { color: colors.text.primary }]}>
                 {Math.round(book.progress * 100)}%
               </Text>
             </>
           )}
           {lastPlayedText && (
             <>
-              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>·</Text>
-              <Text style={[styles.bookMeta, { color: themeColors.textTertiary }]}>
+              <Text style={[styles.bookMeta, { color: colors.text.tertiary }]}>·</Text>
+              <Text style={[styles.bookMeta, { color: colors.text.tertiary }]}>
                 {lastPlayedText}
               </Text>
             </>
@@ -87,11 +86,11 @@ export const BookRow = React.memo(function BookRow({
         </View>
         {/* Progress bar for in-progress books */}
         {isInProgress && (
-          <View style={[styles.bookProgressBar, { backgroundColor: themeColors.border }]}>
+          <View style={[styles.bookProgressBar, { backgroundColor: colors.border.default }]}>
             <View
               style={[
                 styles.bookProgressFill,
-                { width: `${book.progress * 100}%`, backgroundColor: themeColors.text }
+                { width: `${book.progress * 100}%`, backgroundColor: colors.text.primary }
               ]}
             />
           </View>
@@ -99,13 +98,13 @@ export const BookRow = React.memo(function BookRow({
       </View>
 
       <TouchableOpacity
-        style={[styles.playButton, { backgroundColor: themeColors.text }]}
+        style={[styles.playButton, { backgroundColor: colors.text.primary }]}
         onPress={onPlay}
         activeOpacity={0.7}
         accessibilityLabel={`Play ${book.title}`}
         accessibilityRole="button"
       >
-        <Play size={14} color={themeColors.background} fill={themeColors.background} strokeWidth={0} />
+        <Play size={14} color={colors.background.primary} fill={colors.background.primary} strokeWidth={0} />
       </TouchableOpacity>
     </TouchableOpacity>
   );

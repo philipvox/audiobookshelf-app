@@ -3,22 +3,21 @@ import {
   View,
   Text,
   StyleSheet,
-  RefreshControl,
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { FlashList } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
-import { Library } from 'lucide-react-native';
+import { LibraryIcon } from '@/shared/components';
 import { useSeries } from '@/features/series';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
-import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
+import { Loading, EmptyState, ErrorView, SkullRefreshControl } from '@/shared/components';
 import { SeriesInfo } from '@/features/series';
 import { apiClient } from '@/core/api';
-import { spacing, radius } from '@/shared/theme';
-import { useThemeColors, useIsDarkMode, useColors } from '@/shared/theme/themeStore';
+import { spacing, radius, useTheme } from '@/shared/theme';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Fanned card dimensions matching GenreCardLarge
@@ -39,9 +38,8 @@ interface SeriesFannedCardProps {
 
 const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFannedCardProps) {
   const navigation = useNavigation<any>();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const isDarkMode = useIsDarkMode();
-  const colors = useColors();
   const accent = colors.accent.primary;
 
   const handlePress = () => {
@@ -93,16 +91,16 @@ const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFanned
           </View>
         ) : (
           <View style={[styles.fanPlaceholder, { backgroundColor: accent + '30' }]}>
-            <Library size={40} color={accent} strokeWidth={1.5} />
+            <LibraryIcon size={40} color={accent} />
           </View>
         )}
       </View>
 
       {/* Series Info */}
-      <Text style={[styles.seriesName, { color: themeColors.text }]} numberOfLines={2}>
+      <Text style={[styles.seriesName, { color: colors.text.primary }]} numberOfLines={2}>
         {series.name}
       </Text>
-      <Text style={[styles.seriesCount, { color: themeColors.textTertiary }]}>
+      <Text style={[styles.seriesCount, { color: colors.text.tertiary }]}>
         {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
       </Text>
     </TouchableOpacity>
@@ -115,8 +113,7 @@ const SeriesFannedCard = memo(function SeriesFannedCard({ series }: SeriesFanned
 
 export function SeriesListContent() {
   const [searchQuery, setSearchQuery] = useState('');
-  const themeColors = useThemeColors();
-  const colors = useColors();
+  const { colors } = useTheme();
   const accent = colors.accent.primary;
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { series, seriesCount, isLoading, error, refetch } = useSeries(
@@ -125,7 +122,7 @@ export function SeriesListContent() {
   );
 
   if (isLoadingLibrary || isLoading) {
-    return <LoadingSpinner text="Loading series..." />;
+    return <Loading text="Loading series..." />;
   }
 
   if (error) {
@@ -143,7 +140,7 @@ export function SeriesListContent() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -155,38 +152,33 @@ export function SeriesListContent() {
 
       {/* Series count */}
       <View style={styles.countContainer}>
-        <Text style={[styles.countText, { color: themeColors.textSecondary }]}>
+        <Text style={[styles.countText, { color: colors.text.secondary }]}>
           {seriesCount} {seriesCount === 1 ? 'series' : 'series'}
         </Text>
       </View>
 
-      <FlashList
-        data={series}
-        renderItem={({ item }) => (
-          <View style={styles.itemWrapper}>
-            <SeriesFannedCard series={item} />
-          </View>
-        )}
-        keyExtractor={(item: SeriesInfo) => item.id}
-        numColumns={2}
-        estimatedItemSize={200}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={refetch}
-            tintColor={accent}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="🔍"
-            title="No series found"
-            description={`No series match "${searchQuery}"`}
-          />
-        }
-      />
+      <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+        <FlashList
+          data={series}
+          renderItem={({ item }) => (
+            <View style={styles.itemWrapper}>
+              <SeriesFannedCard series={item} />
+            </View>
+          )}
+          keyExtractor={(item: SeriesInfo) => item.id}
+          numColumns={2}
+          estimatedItemSize={200}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="🔍"
+              title="No series found"
+              description={`No series match "${searchQuery}"`}
+            />
+          }
+        />
+      </SkullRefreshControl>
     </View>
   );
 }

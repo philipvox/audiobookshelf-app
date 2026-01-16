@@ -25,7 +25,7 @@ import Animated, {
   withTiming,
   useFrameCallback,
 } from 'react-native-reanimated';
-import { wp, layout, useThemeColors } from '@/shared/theme';
+import { wp, layout, useTheme } from '@/shared/theme';
 import { DURATION, SCALE, CD_ROTATION, EASING } from '@/shared/animation';
 
 // Home disc is 70% of screen width (from layout.homeDiscRatio)
@@ -56,8 +56,8 @@ const CDDisc: React.FC<{
   size: number;
   isPlaying: boolean;
   playbackRate: number;
-  themeColors: ReturnType<typeof useThemeColors>;
-}> = ({ coverUrl, size, isPlaying, playbackRate, themeColors }) => {
+  colors: ReturnType<typeof useTheme>['colors'];
+}> = ({ coverUrl, size, isPlaying, playbackRate, colors }) => {
   const rotation = useSharedValue(0);
   const baseDegreesPerMs = useSharedValue(0);
   const lastFrameTime = useSharedValue(Date.now());
@@ -109,7 +109,7 @@ const CDDisc: React.FC<{
           contentPosition="top"
         />
       ) : (
-        <View style={[styles.discCover, { backgroundColor: themeColors.backgroundSecondary, borderRadius: size / 2 }]} />
+        <View style={[styles.discCover, { backgroundColor: colors.background.secondary, borderRadius: size / 2 }]} />
       )}
     </Animated.View>
   );
@@ -123,7 +123,7 @@ export function HomeDiscSection({
   bookTitle,
   authorName,
 }: HomeDiscSectionProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const scaleAnim = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -134,8 +134,8 @@ export function HomeDiscSection({
   if (!coverUrl) {
     return (
       <View style={styles.emptyContainer}>
-        <View style={[styles.emptyDisc, { width: HOME_DISC_SIZE, height: HOME_DISC_SIZE, backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
-          <View style={[styles.emptyCenter, { backgroundColor: themeColors.card }]} />
+        <View style={[styles.emptyDisc, { width: HOME_DISC_SIZE, height: HOME_DISC_SIZE, backgroundColor: colors.background.elevated, borderColor: colors.border.default }]}>
+          <View style={[styles.emptyCenter, { backgroundColor: colors.background.elevated }]} />
         </View>
       </View>
     );
@@ -170,7 +170,7 @@ export function HomeDiscSection({
             size={HOME_DISC_SIZE}
             isPlaying={isPlaying}
             playbackRate={playbackRate}
-            themeColors={themeColors}
+            colors={colors}
           />
 
           {/* Chrome spindle center - static (doesn't rotate) */}
@@ -192,7 +192,7 @@ export function HomeDiscSection({
                 {/* Highlight reflection */}
                 <View style={styles.spindleHighlight} />
                 {/* Center hole */}
-                <View style={[styles.spindleCenter, { backgroundColor: themeColors.backgroundSecondary }]} />
+                <View style={[styles.spindleCenter, { backgroundColor: colors.background.secondary }]} />
               </View>
             </View>
           </View>

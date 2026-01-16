@@ -18,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { useLibraryCache, getGenresByPopularity } from '@/core/cache';
 import { Icon } from '@/shared/components/Icon';
-import { spacing, radius, accentColors, useThemeColors } from '@/shared/theme';
+import { spacing, radius, useTheme, ACCENT } from '@/shared/theme';
 
 interface Question {
   id: string;
@@ -53,7 +53,7 @@ const SERIES_OPTIONS = [
 ];
 
 export function PreferencesOnboardingScreen() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
@@ -195,25 +195,25 @@ export function PreferencesOnboardingScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Icon name="ArrowLeft" size={24} color={themeColors.text} />
+          <Icon name="ArrowLeft" size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSkip}>
-          <Text style={[styles.skipText, { color: themeColors.textSecondary }]}>Skip</Text>
+          <Text style={[styles.skipText, { color: colors.text.secondary }]}>Skip</Text>
         </TouchableOpacity>
       </View>
 
       {/* Progress bar */}
       <View style={styles.progressContainer}>
-        <View style={[styles.progressTrack, { backgroundColor: themeColors.border }]}>
+        <View style={[styles.progressTrack, { backgroundColor: colors.border.default }]}>
           <Animated.View
             style={[
               styles.progressFill,
               {
-                backgroundColor: accentColors.gold,
+                backgroundColor: colors.accent.primary,
                 width: progressAnim.interpolate({
                   inputRange: [0, 1],
                   outputRange: ['0%', '100%'],
@@ -222,7 +222,7 @@ export function PreferencesOnboardingScreen() {
             ]}
           />
         </View>
-        <Text style={[styles.stepText, { color: themeColors.textTertiary }]}>{currentStep + 1} of {questions.length}</Text>
+        <Text style={[styles.stepText, { color: colors.text.tertiary }]}>{currentStep + 1} of {questions.length}</Text>
       </View>
 
       <ScrollView
@@ -232,9 +232,9 @@ export function PreferencesOnboardingScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Question */}
-        <Text style={[styles.question, { color: themeColors.text }]}>{currentQuestion.question}</Text>
+        <Text style={[styles.question, { color: colors.text.primary }]}>{currentQuestion.question}</Text>
         {currentQuestion.subtitle && (
-          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{currentQuestion.subtitle}</Text>
+          <Text style={[styles.subtitle, { color: colors.text.secondary }]}>{currentQuestion.subtitle}</Text>
         )}
 
         {/* Options */}
@@ -246,16 +246,16 @@ export function PreferencesOnboardingScreen() {
                 key={option.value}
                 style={[
                   styles.option,
-                  { backgroundColor: themeColors.backgroundSecondary },
-                  selected && [styles.optionSelected, { borderColor: accentColors.gold, backgroundColor: 'rgba(243, 182, 12, 0.1)' }]
+                  { backgroundColor: colors.background.secondary },
+                  selected && [styles.optionSelected, { borderColor: colors.accent.primary, backgroundColor: 'rgba(243, 182, 12, 0.1)' }]
                 ]}
                 onPress={() => handleOptionPress(option.value)}
                 activeOpacity={0.7}
               >
                 <Text style={[
                   styles.optionLabel,
-                  { color: themeColors.text },
-                  selected && { color: accentColors.gold }
+                  { color: colors.text.primary },
+                  selected && { color: colors.accent.primary }
                 ]}>
                   {option.label}
                 </Text>
@@ -263,7 +263,7 @@ export function PreferencesOnboardingScreen() {
                   <Icon
                     name="CircleCheck"
                     size={20}
-                    color={accentColors.gold}
+                    color={colors.accent.primary}
                   />
                 )}
               </TouchableOpacity>
@@ -273,19 +273,19 @@ export function PreferencesOnboardingScreen() {
       </ScrollView>
 
       {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16, borderTopColor: themeColors.border }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16, borderTopColor: colors.border.default }]}>
         <TouchableOpacity
           style={[styles.nextButton, !canProceed() && styles.nextButtonDisabled]}
           onPress={handleNext}
           disabled={!canProceed()}
         >
-          <Text style={styles.nextButtonText}>
+          <Text style={[styles.nextButtonText, { color: colors.text.inverse }]}>
             {isLastStep ? 'Get Recommendations' : 'Continue'}
           </Text>
           <Icon
             name={isLastStep ? "Sparkles" : "ArrowRight"}
             size={20}
-            color="#000"
+            color={colors.text.inverse}
           />
         </TouchableOpacity>
       </View>
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: accentColors.gold,
+    backgroundColor: ACCENT,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     gap: spacing.xs,
@@ -400,6 +400,6 @@ const styles = StyleSheet.create({
   nextButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    // color set via colors.text.inverse in JSX
   },
 });

@@ -48,7 +48,7 @@ import { SortSheet, SortOption } from '../components/SortSheet';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { getCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { useTheme, accentColors, wp, hp, moderateScale, spacing } from '@/shared/theme';
+import { useTheme, accentColors, wp, hp, moderateScale, spacing, colors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
 import { useToast } from '@/shared/hooks/useToast';
 
@@ -63,6 +63,7 @@ interface ThemeColorsConfig {
   textSecondary: string;
   textTertiary: string;
   textHint: string;
+  textInverse: string;
   surface: string;
   surfaceBorder: string;
   success: string;
@@ -247,7 +248,7 @@ function Toolbar({
         >
           <SlidersHorizontal
             size={wp(4)}
-            color={filterCount > 0 ? '#000000' : COLORS.textTertiary}
+            color={filterCount > 0 ? COLORS.textInverse : COLORS.textTertiary}
             strokeWidth={2}
           />
           <Text style={[styles.toolbarButtonText, filterCount > 0 && styles.toolbarButtonTextActive]}>
@@ -631,12 +632,13 @@ export function ReadingHistoryScreen() {
   // Theme-aware colors
   const { colors: themeColors } = useTheme();
   const COLORS: ThemeColorsConfig = useMemo(() => ({
-    accent: accentColors.gold,
-    accentDim: 'rgba(243, 182, 12, 0.15)',
+    accent: colors.accent.primary,
+    accentDim: themeColors.accent.primarySubtle,
     textPrimary: themeColors.text.primary,
     textSecondary: themeColors.text.secondary,
     textTertiary: themeColors.text.tertiary,
-    textHint: 'rgba(255, 255, 255, 0.35)',
+    textHint: themeColors.text.disabled,
+    textInverse: themeColors.text.inverse,
     surface: themeColors.surface.default,
     surfaceBorder: themeColors.border.default,
     success: themeColors.semantic.success,
@@ -1284,7 +1286,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
     color: COLORS.textSecondary,
   },
   toolbarButtonTextActive: {
-    color: '#000000',
+    color: COLORS.textInverse,
     fontWeight: '600',
   },
   searchButton: {
@@ -1575,7 +1577,7 @@ const createStyles = (COLORS: ThemeColorsConfig) => StyleSheet.create({
   removeButtonText: {
     fontSize: moderateScale(14),
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
 
   // Empty State

@@ -14,7 +14,7 @@ import { Menu, Trash2, ArrowUp, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
-import { scale, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, useTheme } from '@/shared/theme';
 
 const ACTION_WIDTH = 80;
 
@@ -35,7 +35,7 @@ export function SwipeableQueueItem({
   onPress,
   showPlayNext = true,
 }: SwipeableQueueItemProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const swipeableRef = useRef<Swipeable>(null);
   const coverUrl = useCoverUrl(book.id);
   const metadata = book.media?.metadata as any;
@@ -83,8 +83,8 @@ export function SwipeableQueueItem({
           style={[styles.rightAction, { transform: [{ translateX }], opacity }]}
         >
           <Pressable style={styles.removeAction} onPress={handleRemove}>
-            <Trash2 size={scale(22)} color="#fff" strokeWidth={2} />
-            <Text style={styles.actionText}>Remove</Text>
+            <Trash2 size={scale(22)} color={colors.text.inverse} strokeWidth={2} />
+            <Text style={[styles.actionText, { color: colors.text.inverse }]}>Remove</Text>
           </Pressable>
         </RNAnimated.View>
       );
@@ -103,21 +103,21 @@ export function SwipeableQueueItem({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }}
     >
-      <Pressable style={[styles.container, { backgroundColor: `${themeColors.text}10` }]} onPress={onPress}>
+      <Pressable style={[styles.container, { backgroundColor: `${colors.text.primary}10` }]} onPress={onPress}>
         {/* Drag handle */}
         <View style={styles.dragHandle}>
-          <Menu size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
+          <Menu size={scale(18)} color={colors.text.tertiary} strokeWidth={2} />
         </View>
 
         {/* Cover */}
-        <Image source={coverUrl} style={[styles.cover, { backgroundColor: themeColors.backgroundSecondary }]} contentFit="cover" />
+        <Image source={coverUrl} style={[styles.cover, { backgroundColor: colors.background.secondary }]} contentFit="cover" />
 
         {/* Info */}
         <View style={styles.info}>
-          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
+          <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>
+          <Text style={[styles.subtitle, { color: colors.text.secondary }]} numberOfLines={1}>
             {subtitle}
           </Text>
         </View>
@@ -126,11 +126,11 @@ export function SwipeableQueueItem({
         <View style={styles.actions}>
           {showPlayNext && onPlayNext ? (
             <TouchableOpacity
-              style={[styles.playNextButton, { backgroundColor: `${accentColors.gold}25` }]}
+              style={[styles.playNextButton, { backgroundColor: `${colors.accent.primary}25` }]}
               onPress={handlePlayNext}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <ArrowUp size={scale(16)} color={accentColors.gold} strokeWidth={2} />
+              <ArrowUp size={scale(16)} color={colors.accent.primary} strokeWidth={2} />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -138,7 +138,7 @@ export function SwipeableQueueItem({
             onPress={handleRemove}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <X size={scale(18)} color={themeColors.textTertiary} strokeWidth={2} />
+            <X size={scale(18)} color={colors.text.tertiary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </Pressable>
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
   },
   removeAction: {
     flex: 1,
-    backgroundColor: '#ff4b4b',
+    backgroundColor: '#ff4b4b', // Destructive action red
     justifyContent: 'center',
     alignItems: 'center',
     borderTopRightRadius: scale(12),
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: scale(11),
     fontWeight: '500',
-    color: '#fff',
+    // color set via inline style with colors.text.inverse
     marginTop: 4,
   },
 });

@@ -17,8 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '@/shared/components/Icon';
 import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators, getAllGenres } from '@/core/cache';
-import { scale, layout, radius, spacing } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, layout, radius, spacing, useTheme } from '@/shared/theme';
 
 interface BrowseCategory {
   id: string;
@@ -70,7 +69,7 @@ const BrowsePill = React.memo(function BrowsePill({
 export function BrowsePills() {
   const navigation = useNavigation<any>();
   const { isLoaded } = useLibraryCache();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   // Build categories with counts from cache
   const categories = useMemo((): BrowseCategory[] => {
@@ -112,10 +111,10 @@ export function BrowsePills() {
           key={category.id}
           category={category}
           onPress={() => handleCategoryPress(category)}
-          textColor={themeColors.text}
-          textSecondaryColor={themeColors.textSecondary}
-          bgColor={themeColors.backgroundSecondary}
-          borderColor={themeColors.border}
+          textColor={colors.text.primary}
+          textSecondaryColor={colors.text.secondary}
+          bgColor={colors.background.secondary}
+          borderColor={colors.border.default}
         />
       ))}
     </ScrollView>

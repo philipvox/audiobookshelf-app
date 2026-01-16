@@ -20,8 +20,7 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { scale } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { scale, useTheme } from '@/shared/theme';
 
 /** Standard icon size names */
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
@@ -64,7 +63,7 @@ export function Icon({
   color,
   strokeWidth = 2,
 }: IconProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const IconComponent = LucideIcons[name as keyof typeof LucideIcons] as LucideIcon;
 
   if (!IconComponent) {
@@ -74,7 +73,7 @@ export function Icon({
 
   const resolvedSize = resolveSize(size);
   // Use provided color or fall back to theme-aware text color
-  const resolvedColor = color ?? themeColors.text;
+  const resolvedColor = color ?? colors.text.primary;
 
   return <IconComponent size={resolvedSize} color={resolvedColor} strokeWidth={strokeWidth} />;
 }

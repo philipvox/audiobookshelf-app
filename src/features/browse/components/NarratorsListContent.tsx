@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, RefreshControl } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { NarratorCard } from '@/features/narrator';
 import { useNarrators, NarratorInfo } from '@/features/narrator';
 import { useDefaultLibrary } from '@/features/library/hooks/useDefaultLibrary';
 import { SearchBar } from '@/features/search/components/SearchBar';
-import { LoadingSpinner, EmptyState, ErrorView } from '@/shared/components';
-import { spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { Loading, EmptyState, ErrorView, SkullRefreshControl } from '@/shared/components';
+import { spacing, useTheme } from '@/shared/theme';
 
 export function NarratorsListContent() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const { library, isLoading: isLoadingLibrary } = useDefaultLibrary();
   const { narrators, narratorCount, isLoading, error, refetch } = useNarrators(
@@ -18,7 +18,7 @@ export function NarratorsListContent() {
   );
 
   if (isLoadingLibrary || isLoading) {
-    return <LoadingSpinner text="Loading narrators..." />;
+    return <Loading text="Loading narrators..." />;
   }
 
   if (error) {
@@ -36,7 +36,7 @@ export function NarratorsListContent() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <View style={styles.searchContainer}>
         <SearchBar
           value={searchQuery}
@@ -46,33 +46,28 @@ export function NarratorsListContent() {
         />
       </View>
 
-      <FlashList
-        data={narrators}
-        renderItem={({ item }) => (
-          <View style={styles.itemWrapper}>
-            <NarratorCard narrator={item} />
-          </View>
-        )}
-        keyExtractor={(item: NarratorInfo) => item.id}
-        numColumns={2}
-        estimatedItemSize={200}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={refetch}
-            tintColor={accentColors.gold}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="🔍"
-            title="No narrators found"
-            description={`No narrators match "${searchQuery}"`}
-          />
-        }
-      />
+      <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+        <FlashList
+          data={narrators}
+          renderItem={({ item }) => (
+            <View style={styles.itemWrapper}>
+              <NarratorCard narrator={item} />
+            </View>
+          )}
+          keyExtractor={(item: NarratorInfo) => item.id}
+          numColumns={2}
+          estimatedItemSize={200}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="🔍"
+              title="No narrators found"
+              description={`No narrators match "${searchQuery}"`}
+            />
+          }
+        />
+      </SkullRefreshControl>
     </View>
   );
 }

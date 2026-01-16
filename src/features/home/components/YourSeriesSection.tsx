@@ -22,12 +22,25 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Check, ChevronRight } from 'lucide-react-native';
+import { CheckIcon, ChevronRightIcon } from '@/shared/components';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '@/core/api';
-import { wp, hp, moderateScale, layout, cardTokens, useThemeColors } from '@/shared/theme';
+import { wp, hp, moderateScale, layout, cardTokens, useTheme } from '@/shared/theme';
 import { StackedCovers, ProgressDots } from '@/shared/components';
 import { SeriesWithBooks } from '../types';
+import { BookMedia, BookMetadata, LibraryItem } from '@/core/types';
+
+// Helper to get book metadata safely
+function getBookMetadata(item: LibraryItem | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'duration' in media;
+}
 
 // Layout constants (same as RecentlyAddedSection)
 const MARGIN_H = wp(3.25);       // 3.25%w horizontal margin
@@ -58,11 +71,11 @@ function getSeriesCoverUrls(series: SeriesWithBooks): string[] {
  */
 function getSeriesAuthor(series: SeriesWithBooks): string {
   if (series.books.length === 0) return '';
-  const metadata = series.books[0].media?.metadata as any;
+  const metadata = getBookMetadata(series.books[0]);
   if (!metadata) return '';
   if (metadata.authorName) return metadata.authorName;
   if (metadata.authors?.length > 0) {
-    return metadata.authors.map((a: any) => a.name).join(', ');
+    return metadata.authors.map((a) => a.name).join(', ');
   }
   return '';
 }
@@ -72,8 +85,8 @@ function getSeriesAuthor(series: SeriesWithBooks): string {
  */
 function getTimeRemaining(series: SeriesWithBooks): number {
   return series.books.reduce((total, book) => {
-    const progress = (book as any).userMediaProgress?.progress || 0;
-    const duration = (book.media as any)?.duration || 0;
+    const progress = book.userMediaProgress?.progress || 0;
+    const duration = isBookMedia(book.media) ? book.media.duration || 0 : 0;
     if (progress > 0 && progress < 0.95) {
       return total + duration * (1 - progress);
     } else if (progress === 0) {
@@ -109,12 +122,12 @@ const SeriesRow = ({
   series,
   onPress,
   isFirst,
-  themeColors,
+  colors,
 }: {
   series: SeriesWithBooks;
   onPress: () => void;
   isFirst: boolean;
-  themeColors: ReturnType<typeof useThemeColors>;
+  colors: ReturnType<typeof useTheme>['colors'];
 }) => {
   const coverUrls = getSeriesCoverUrls(series);
   const author = getSeriesAuthor(series);
@@ -149,16 +162,16 @@ const SeriesRow = ({
       {/* Info */}
       <View style={styles.info}>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: themeColors.text }]} numberOfLines={1}>
+          <Text style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>
             {series.name}
           </Text>
           {isComplete && (
-            <View style={styles.completeBadge}>
-              <Check size={12} color="#000" strokeWidth={3} />
+            <View style={[styles.completeBadge, { backgroundColor: colors.semantic.success }]}>
+              <CheckIcon size={12} color={colors.text.inverse} />
             </View>
           )}
         </View>
-        <Text style={[styles.author, { color: themeColors.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.author, { color: colors.text.secondary }]} numberOfLines={1}>
           {author}
         </Text>
         {/* Progress indicator - Research: Zeigarnik Effect & Goal Gradient */}
@@ -170,10 +183,10 @@ const SeriesRow = ({
               total={series.totalBooks}
               showCount={true}
             />
-            {timeText && <Text style={[styles.timeRemaining, { color: themeColors.textTertiary }]}>{timeText}</Text>}
+            {timeText && <Text style={[styles.timeRemaining, { color: colors.text.tertiary }]}>{timeText}</Text>}
           </View>
         ) : (
-          <Text style={[styles.bookCount, { color: themeColors.textTertiary }]}>
+          <Text style={[styles.bookCount, { color: colors.text.tertiary }]}>
             {series.totalBooks} {series.totalBooks === 1 ? 'book' : 'books'}
           </Text>
         )}
@@ -181,7 +194,7 @@ const SeriesRow = ({
 
       {/* Chevron for navigation - Research: Series are containers, not playable */}
       <View style={styles.chevron}>
-        <ChevronRight size={wp(5)} color={themeColors.textTertiary} strokeWidth={2} />
+        <ChevronRightIcon size={wp(5)} color={colors.text.tertiary} />
       </View>
     </TouchableOpacity>
   );
@@ -192,7 +205,7 @@ export function YourSeriesSection({
   onSeriesPress,
   maxItems = 5,
 }: YourSeriesSectionProps) {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
 
   if (series.length === 0) return null;
 
@@ -200,9 +213,9 @@ export function YourSeriesSection({
 
   return (
     <View style={styles.container}>
-      <View style={[styles.card, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+      <View style={[styles.card, { backgroundColor: colors.background.elevated, borderColor: colors.border.default }]}>
         {/* Header */}
-        <Text style={[styles.header, { color: themeColors.text }]}>Your Series</Text>
+        <Text style={[styles.header, { color: colors.text.primary }]}>Your Series</Text>
 
         {/* Series rows - NO Play button per NNGroup research */}
         {displaySeries.map((item, index) => (
@@ -211,7 +224,7 @@ export function YourSeriesSection({
             series={item}
             onPress={() => onSeriesPress(item)}
             isFirst={index === 0}
-            themeColors={themeColors}
+            colors={colors}
           />
         ))}
       </View>
@@ -269,7 +282,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#4ADE80', // Intentional: Success green
+    // backgroundColor set via themeColors.semantic.success in JSX
     justifyContent: 'center',
     alignItems: 'center',
   },

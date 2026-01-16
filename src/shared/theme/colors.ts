@@ -64,6 +64,17 @@ export const accentThemes = {
 } as const;
 
 // =============================================================================
+// STATIC ACCENT COLOR (for StyleSheet usage at module level)
+// =============================================================================
+
+/**
+ * Default accent color for use in static StyleSheets.
+ * Use this when you need an accent color outside of a component (module-level).
+ * Inside components, prefer `colors.accent.primary` from useTheme() for theme awareness.
+ */
+export const ACCENT = '#E53935';
+
+// =============================================================================
 // ACCENT COLORS (Same in both themes - kept for backwards compatibility)
 // =============================================================================
 
@@ -232,6 +243,14 @@ const createLightColors = (accent: typeof accentThemes[AccentTheme]) => ({
     errorLight: '#FFEBEE',
     info: '#2196F3',
     infoLight: '#E3F2FD',
+  },
+
+  // Status colors (for status indicators, badges, etc.)
+  status: {
+    success: '#4CAF50',
+    error: '#E53935',
+    warning: '#FF9800',
+    info: '#2196F3',
   },
 
   // Feature-specific
@@ -436,6 +455,14 @@ const createDarkColors = (accent: typeof accentThemes[AccentTheme]) => ({
     infoLight: 'rgba(66,165,245,0.15)',
   },
 
+  // Status colors (for status indicators, badges, etc.)
+  status: {
+    success: '#66BB6A',
+    error: '#EF5350',
+    warning: '#FFA726',
+    info: '#42A5F5',
+  },
+
   // Feature-specific
   feature: {
     heartFill: '#4ADE80',
@@ -570,52 +597,95 @@ export const themePresets = {
 
 /**
  * @deprecated Use `useTheme().colors` instead
- * Legacy colors export - dark mode only, flat structure
+ * Legacy colors export - dark mode only, provides fallback for module-level usage
+ *
+ * This object mirrors the structure of useTheme().colors so that code using
+ * colors.accent.primary, colors.text.primary, etc. at module level won't crash.
  */
 export const colors = {
-  // Accent - Single source of truth (red, used sparingly)
-  accent: '#E53935',
+  // Flat legacy properties (kept for backwards compatibility)
   accentDark: '#C62828',
   accentSubtle: 'rgba(229, 57, 53, 0.15)',
-
-  // Red accent - For player controls, timeline markers, active states
   accentRed: '#E53935',
-
-  // Backgrounds - Dark mode
   backgroundPrimary: '#000000',
   backgroundSecondary: '#0D0D0D',
   backgroundTertiary: '#1A1A1A',
   backgroundElevated: '#262626',
   cardBackground: 'rgba(255, 255, 255, 0.05)',
   cardBackgroundHover: 'rgba(255, 255, 255, 0.08)',
-
-  // Text - Standardized opacities (0.70, 0.50, 0.30)
   textPrimary: '#FFFFFF',
   textSecondary: 'rgba(255, 255, 255, 0.70)',
   textTertiary: 'rgba(255, 255, 255, 0.50)',
   textMuted: 'rgba(255, 255, 255, 0.30)',
   textAccent: '#E53935',
-
-  // Borders
-  border: 'rgba(255, 255, 255, 0.10)',
+  // NOTE: flat border properties removed - use border.default, border.light, border.focused instead
+  borderLegacy: 'rgba(255, 255, 255, 0.10)',
   borderLight: 'rgba(255, 255, 255, 0.05)',
   borderFocused: '#FFFFFF',
-
-  // Semantic
   success: '#34C759',
   error: '#FF3B30',
   warning: '#FF9500',
   info: '#007AFF',
-
-  // Feature-specific
   heartFill: '#4ADE80',
   sleepTimer: '#FF6B6B',
   downloaded: '#34C759',
   downloading: '#FFFFFF',
-
-  // Progress
   progressTrack: 'rgba(255, 255, 255, 0.10)',
   progressFill: '#E53935',
+
+  // Nested structures (mirror useTheme().colors structure for module-level fallback)
+  accent: {
+    primary: ACCENT,
+    primaryDark: '#C62828',
+    primaryLight: '#EF5350',
+    primarySubtle: 'rgba(229, 57, 53, 0.15)',
+    onDark: '#EF5350',
+    onDarkSubtle: 'rgba(239, 83, 80, 0.20)',
+    textOnAccent: '#FFFFFF',
+  },
+  text: {
+    primary: '#FFFFFF',
+    secondary: 'rgba(255, 255, 255, 0.70)',
+    tertiary: 'rgba(255, 255, 255, 0.50)',
+    disabled: 'rgba(255, 255, 255, 0.30)',
+    inverse: '#000000',
+    accent: '#E53935',
+  },
+  background: {
+    primary: '#000000',
+    secondary: '#000000',
+    tertiary: '#262626',
+    elevated: '#2C2C2C',
+  },
+  surface: {
+    default: '#1A1A1A',
+    raised: '#262626',
+    sunken: '#0D0D0D',
+    card: 'rgba(255, 255, 255, 0.05)',
+    cardHover: 'rgba(255, 255, 255, 0.08)',
+  },
+  semantic: {
+    success: '#66BB6A',
+    successLight: 'rgba(102, 187, 106, 0.15)',
+    warning: '#FFA726',
+    warningLight: 'rgba(255, 167, 38, 0.15)',
+    error: '#EF5350',
+    errorLight: 'rgba(239, 83, 80, 0.15)',
+    info: '#42A5F5',
+    infoLight: 'rgba(66, 165, 245, 0.15)',
+  },
+  status: {
+    success: '#66BB6A',
+    error: '#EF5350',
+    warning: '#FFA726',
+    info: '#42A5F5',
+  },
+  border: {
+    default: 'rgba(255, 255, 255, 0.10)',
+    strong: 'rgba(255, 255, 255, 0.20)',
+    light: 'rgba(255, 255, 255, 0.05)',
+    focused: '#FFFFFF',
+  },
 
   // Overlays
   overlay: {

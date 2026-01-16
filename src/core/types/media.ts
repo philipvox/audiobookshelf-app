@@ -40,6 +40,15 @@ export interface BookMetadata {
   asin?: string;
   language?: string;
   explicit: boolean;
+  // Computed field from server - "Series Name #1" format
+  seriesName?: string;
+  // Computed field from server - first author name for display
+  authorName?: string;
+  // Computed field from server - first narrator name for display
+  narratorName?: string;
+  // Optional rating fields (if ratings are enabled on server)
+  rating?: number;
+  ratingCount?: number;
 }
 
 /**

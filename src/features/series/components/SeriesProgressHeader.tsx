@@ -18,12 +18,36 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Trophy, RefreshCw, Play, CheckCircle } from 'lucide-react-native';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMedia, BookMetadata, BookChapter } from '@/core/types';
 import { useCoverUrl } from '@/core/cache';
-import { scale, spacing, radius, accentColors } from '@/shared/theme';
+import { scale, spacing, radius, useTheme } from '@/shared/theme';
 
-const ACCENT = accentColors.gold;
-const ACCENT_DIM = 'rgba(243,182,12,0.5)';
+// Type guard for FULL book media with audioFiles (needed for chapters)
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'audioFiles' in media && Array.isArray(media.audioFiles);
+}
+
+// Helper to get book metadata safely
+// Note: Does NOT require audioFiles - works with cache items that only have metadata
+function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | null {
+  if (!item?.media?.metadata) return null;
+  // This app only handles books, so metadata is always BookMetadata
+  if (item.mediaType !== 'book') return null;
+  return item.media.metadata as BookMetadata;
+}
+
+// Helper to get book duration safely
+// Note: Does NOT require audioFiles - works with cache items that only have duration
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  return item?.media?.duration || 0;
+}
+
+// Helper to get book chapters
+// Note: Chapters require full book data (not available in cache items)
+function getBookChapters(item: LibraryItem | null | undefined): BookChapter[] {
+  if (!item?.media || !isBookMedia(item.media)) return [];
+  return item.media.chapters || [];
+}
 
 interface SeriesProgressHeaderProps {
   books: LibraryItem[];
@@ -53,22 +77,30 @@ function formatTimeRemaining(seconds: number): string {
   return `~${minutes}m remaining`;
 }
 
-// Progress dot component
+// Progress dot component - uses theme colors passed as props
+interface ProgressDotProps {
+  status: 'completed' | 'in_progress' | 'not_started';
+  size?: number;
+  accentColor: string;
+  accentSubtle: string;
+  inactiveColor: string;
+}
+
 function ProgressDot({
   status,
   size = 10,
-}: {
-  status: 'completed' | 'in_progress' | 'not_started';
-  size?: number;
-}) {
+  accentColor,
+  accentSubtle,
+  inactiveColor,
+}: ProgressDotProps) {
   const getColor = () => {
     switch (status) {
       case 'completed':
-        return ACCENT;
+        return accentColor;
       case 'in_progress':
-        return ACCENT_DIM;
+        return accentSubtle;
       default:
-        return 'rgba(255,255,255,0.2)';
+        return inactiveColor;
     }
   };
 
@@ -89,10 +121,11 @@ function ProgressDot({
 
 // Get raw sequence number for book - returns null if unknown
 function getRawSequence(item: LibraryItem): number | null {
-  const metadata = (item.media?.metadata as any) || {};
+  const metadata = getBookMetadata(item);
+  if (!metadata) return null;
 
   // First check series array (preferred - has explicit sequence)
-  if (metadata.series?.length > 0) {
+  if (metadata.series && metadata.series.length > 0) {
     const primarySeries = metadata.series[0];
     if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
       const parsed = parseFloat(primarySeries.sequence);
@@ -125,16 +158,16 @@ function getSequenceForDisplay(item: LibraryItem, allBooks: LibraryItem[]): numb
 
 // Get book progress
 function getBookProgress(book: LibraryItem): number {
-  return (book as any).userMediaProgress?.progress || 0;
+  return book.userMediaProgress?.progress || 0;
 }
 
 // Get current chapter info
 function getCurrentChapter(book: LibraryItem): { current: number; total: number } | null {
-  const progress = (book as any).userMediaProgress;
+  const progress = book.userMediaProgress;
   if (!progress) return null;
 
-  const chapters = (book.media as any)?.chapters;
-  if (!chapters || chapters.length === 0) return null;
+  const chapters = getBookChapters(book);
+  if (chapters.length === 0) return null;
 
   const currentTime = progress.currentTime || 0;
   let currentChapter = 1;
@@ -177,9 +210,15 @@ export function SeriesProgressHeader({
   onNextBookPress,
   onPlayPress,
 }: SeriesProgressHeaderProps) {
+  const { colors } = useTheme();
   const totalBooks = books.length;
   const nextBookCoverUrl = useCoverUrl(nextBook?.id || '');
   const currentBookCoverUrl = useCoverUrl(currentBook?.id || '');
+
+  // Theme-aware accent colors
+  const accentColor = colors.accent.primary;
+  const accentSubtle = colors.accent.primarySubtle;
+  const inactiveColor = colors.progress.track;
 
   // Determine series state
   const seriesState = useMemo(() =>
@@ -193,7 +232,7 @@ export function SeriesProgressHeader({
     let listened = 0;
 
     books.forEach(book => {
-      const duration = (book.media as any)?.duration || 0;
+      const duration = getBookDuration(book);
       const progress = getBookProgress(book);
       total += duration;
       listened += duration * progress;
@@ -220,7 +259,7 @@ export function SeriesProgressHeader({
   // Book progress for in-progress book
   const inProgressBookProgress = inProgressBook ? getBookProgress(inProgressBook) : 0;
   const inProgressBookRemaining = inProgressBook
-    ? ((inProgressBook.media as any)?.duration || 0) * (1 - inProgressBookProgress)
+    ? getBookDuration(inProgressBook) * (1 - inProgressBookProgress)
     : 0;
 
   // STATE A: Not Started - don't show progress header, just the action buttons
@@ -231,31 +270,31 @@ export function SeriesProgressHeader({
   // STATE D: Series Completed
   if (seriesState === 'completed') {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.surface.card }]}>
         <View style={styles.completedState}>
-          <View style={styles.trophyIcon}>
-            <Trophy size={scale(36)} color={ACCENT} strokeWidth={2} />
+          <View style={[styles.trophyIcon, { backgroundColor: colors.accent.primarySubtle }]}>
+            <Trophy size={scale(36)} color={accentColor} strokeWidth={2} />
           </View>
-          <Text style={styles.completedTitle}>Series Complete!</Text>
-          <Text style={styles.completedSubtext}>
+          <Text style={[styles.completedTitle, { color: colors.text.primary }]}>Series Complete!</Text>
+          <Text style={[styles.completedSubtext, { color: colors.text.tertiary }]}>
             You finished {totalBooks} books · {formatDuration(totalDuration)} listened
           </Text>
 
           {/* All completed dots */}
           <View style={styles.dotsRowCompleted}>
             {books.map((book) => (
-              <ProgressDot key={book.id} status="completed" size={scale(8)} />
+              <ProgressDot key={book.id} status="completed" size={scale(8)} accentColor={accentColor} accentSubtle={accentSubtle} inactiveColor={inactiveColor} />
             ))}
           </View>
 
           <View style={styles.completedActions}>
             <TouchableOpacity
-              style={styles.listenAgainButton}
+              style={[styles.listenAgainButton, { borderColor: accentColor }]}
               onPress={() => nextBook && onPlayPress?.(books[0])}
               activeOpacity={0.7}
             >
-              <RefreshCw size={scale(14)} color={ACCENT} strokeWidth={2} />
-              <Text style={styles.listenAgainText}>Listen Again</Text>
+              <RefreshCw size={scale(14)} color={accentColor} strokeWidth={2} />
+              <Text style={[styles.listenAgainText, { color: accentColor }]}>Listen Again</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -265,8 +304,8 @@ export function SeriesProgressHeader({
 
   // STATE B & C: In Progress or Between Books
   return (
-    <View style={styles.container}>
-      <Text style={styles.sectionLabel}>Your Progress</Text>
+    <View style={[styles.container, { backgroundColor: colors.surface.card }]}>
+      <Text style={[styles.sectionLabel, { color: colors.text.tertiary }]}>Your Progress</Text>
 
       {/* Progress Dots */}
       <View style={styles.dotsRow}>
@@ -280,25 +319,25 @@ export function SeriesProgressHeader({
           } else {
             status = 'not_started';
           }
-          return <ProgressDot key={book.id} status={status} />;
+          return <ProgressDot key={book.id} status={status} accentColor={accentColor} accentSubtle={accentSubtle} inactiveColor={inactiveColor} />;
         })}
       </View>
 
       {/* Progress Summary */}
-      <Text style={styles.progressSummary}>
+      <Text style={[styles.progressSummary, { color: colors.text.primary }]}>
         {completedCount} of {totalBooks} books completed
       </Text>
 
       {/* Linear Progress Bar */}
       <View style={styles.progressBarContainer}>
-        <View style={styles.progressBarTrack}>
-          <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+        <View style={[styles.progressBarTrack, { backgroundColor: colors.progress.track }]}>
+          <View style={[styles.progressBarFill, { width: `${progressPercent}%`, backgroundColor: accentColor }]} />
         </View>
-        <Text style={styles.progressPercent}>{progressPercent}%</Text>
+        <Text style={[styles.progressPercent, { color: accentColor }]}>{progressPercent}%</Text>
       </View>
 
       {/* Time Remaining */}
-      <Text style={styles.timeRemaining}>
+      <Text style={[styles.timeRemaining, { color: colors.text.tertiary }]}>
         {formatTimeRemaining(remainingDuration)}
       </Text>
 
@@ -306,81 +345,81 @@ export function SeriesProgressHeader({
       {seriesState === 'mid_book' && inProgressBook ? (
         // STATE B: Mid-Book - Show current book with chapter progress
         <TouchableOpacity
-          style={styles.contextCard}
+          style={[styles.contextCard, { backgroundColor: colors.background.tertiary }]}
           onPress={() => onNextBookPress(inProgressBook)}
           activeOpacity={0.7}
         >
           <Image
             source={currentBookCoverUrl || nextBookCoverUrl}
-            style={styles.contextCover}
+            style={[styles.contextCover, { backgroundColor: colors.surface.card }]}
             contentFit="cover"
           />
           <View style={styles.contextInfo}>
-            <Text style={styles.contextLabel}>{getSequenceForDisplay(inProgressBook, books) !== null ? `Continue Book ${getSequenceForDisplay(inProgressBook, books)}` : 'Continue'}</Text>
-            <Text style={styles.contextTitle} numberOfLines={1}>
-              {(inProgressBook.media?.metadata as any)?.title || 'Unknown'}
+            <Text style={[styles.contextLabel, { color: accentColor }]}>{getSequenceForDisplay(inProgressBook, books) !== null ? `Continue Book ${getSequenceForDisplay(inProgressBook, books)}` : 'Continue'}</Text>
+            <Text style={[styles.contextTitle, { color: colors.text.primary }]} numberOfLines={1}>
+              {getBookMetadata(inProgressBook)?.title || 'Unknown'}
             </Text>
             {chapterInfo && (
-              <Text style={styles.contextChapter}>
+              <Text style={[styles.contextChapter, { color: colors.text.tertiary }]}>
                 Chapter {chapterInfo.current} of {chapterInfo.total}
               </Text>
             )}
             <View style={styles.contextProgressContainer}>
-              <View style={styles.contextProgressTrack}>
+              <View style={[styles.contextProgressTrack, { backgroundColor: colors.progress.track }]}>
                 <View
                   style={[
                     styles.contextProgressFill,
-                    { width: `${Math.round(inProgressBookProgress * 100)}%` }
+                    { width: `${Math.round(inProgressBookProgress * 100)}%`, backgroundColor: accentColor }
                   ]}
                 />
               </View>
-              <Text style={styles.contextProgressText}>
+              <Text style={[styles.contextProgressText, { color: colors.text.tertiary }]}>
                 {Math.round(inProgressBookProgress * 100)}% · {formatDuration(inProgressBookRemaining)} left
               </Text>
             </View>
           </View>
           <TouchableOpacity
-            style={styles.contextPlayButton}
+            style={[styles.contextPlayButton, { backgroundColor: accentColor }]}
             onPress={() => onPlayPress?.(inProgressBook)}
             activeOpacity={0.7}
           >
-            <Play size={scale(20)} color="#000" fill="#000" strokeWidth={0} />
+            <Play size={scale(20)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
           </TouchableOpacity>
         </TouchableOpacity>
       ) : nextBook ? (
         // STATE C: Between Books - Show up next
         <View style={styles.betweenBooksCard}>
           <View style={styles.congratsRow}>
-            <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
-            <Text style={styles.congratsText}>
+            <CheckCircle size={scale(18)} color={accentColor} strokeWidth={2} />
+            <Text style={[styles.congratsText, { color: accentColor }]}>
               Congrats on finishing Book {completedCount}!
             </Text>
           </View>
           <TouchableOpacity
-            style={styles.contextCard}
+            style={[styles.contextCard, { backgroundColor: colors.background.tertiary }]}
             onPress={() => onNextBookPress(nextBook)}
             activeOpacity={0.7}
           >
             <Image
               source={nextBookCoverUrl}
-              style={styles.contextCover}
+              style={[styles.contextCover, { backgroundColor: colors.surface.card }]}
               contentFit="cover"
             />
             <View style={styles.contextInfo}>
-              <Text style={styles.contextLabelNext}>{getSequenceForDisplay(nextBook, books) !== null ? `Up Next: Book ${getSequenceForDisplay(nextBook, books)}` : 'Up Next'}</Text>
-              <Text style={styles.contextTitle} numberOfLines={1}>
-                {(nextBook.media?.metadata as any)?.title || 'Unknown'}
+              <Text style={[styles.contextLabelNext, { color: colors.text.secondary }]}>{getSequenceForDisplay(nextBook, books) !== null ? `Up Next: Book ${getSequenceForDisplay(nextBook, books)}` : 'Up Next'}</Text>
+              <Text style={[styles.contextTitle, { color: colors.text.primary }]} numberOfLines={1}>
+                {getBookMetadata(nextBook)?.title || 'Unknown'}
               </Text>
-              <Text style={styles.contextDuration}>
-                {formatDuration((nextBook.media as any)?.duration || 0)}
+              <Text style={[styles.contextDuration, { color: colors.text.tertiary }]}>
+                {formatDuration(getBookDuration(nextBook))}
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.contextPlayButton}
+              style={[styles.contextPlayButton, { backgroundColor: accentColor }]}
               onPress={() => onPlayPress?.(nextBook)}
               activeOpacity={0.7}
             >
-              <Play size={scale(20)} color="#000" fill="#000" strokeWidth={0} />
+              <Play size={scale(20)} color={colors.text.inverse} fill={colors.text.inverse} strokeWidth={0} />
             </TouchableOpacity>
           </TouchableOpacity>
         </View>
@@ -394,13 +433,13 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(16),
     marginBottom: scale(16),
     padding: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // backgroundColor set dynamically via colors.surface.card
     borderRadius: scale(12),
   },
   sectionLabel: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
     letterSpacing: 0.5,
     marginBottom: scale(12),
   },
@@ -427,7 +466,7 @@ const styles = StyleSheet.create({
   progressSummary: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#fff',
+    // color set dynamically via colors.text.primary
     marginBottom: scale(10),
   },
 
@@ -441,19 +480,19 @@ const styles = StyleSheet.create({
   progressBarTrack: {
     flex: 1,
     height: scale(6),
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set dynamically via colors.progress.track
     borderRadius: scale(3),
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     borderRadius: scale(3),
   },
   progressPercent: {
     fontSize: scale(12),
     fontWeight: '600',
-    color: ACCENT,
+    // color set dynamically via accentColor
     width: scale(36),
     textAlign: 'right',
   },
@@ -461,7 +500,7 @@ const styles = StyleSheet.create({
   // Time Remaining
   timeRemaining: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
     marginBottom: scale(16),
   },
 
@@ -469,7 +508,7 @@ const styles = StyleSheet.create({
   contextCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    // backgroundColor set dynamically via colors.background.tertiary
     padding: scale(10),
     borderRadius: scale(10),
   },
@@ -477,7 +516,7 @@ const styles = StyleSheet.create({
     width: scale(52),
     height: scale(52),
     borderRadius: scale(6),
-    backgroundColor: '#262626',
+    // backgroundColor set dynamically via colors.surface.card
   },
   contextInfo: {
     flex: 1,
@@ -486,7 +525,7 @@ const styles = StyleSheet.create({
   contextLabel: {
     fontSize: scale(10),
     fontWeight: '700',
-    color: ACCENT,
+    // color set dynamically via accentColor
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: scale(2),
@@ -494,7 +533,7 @@ const styles = StyleSheet.create({
   contextLabelNext: {
     fontSize: scale(10),
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.6)',
+    // color set dynamically via colors.text.secondary
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: scale(2),
@@ -502,41 +541,41 @@ const styles = StyleSheet.create({
   contextTitle: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#fff',
+    // color set dynamically via colors.text.primary
     marginBottom: scale(2),
   },
   contextChapter: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
     marginBottom: scale(6),
   },
   contextDuration: {
     fontSize: scale(12),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
   },
   contextProgressContainer: {
     marginTop: scale(4),
   },
   contextProgressTrack: {
     height: scale(3),
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set dynamically via colors.progress.track
     borderRadius: scale(2),
     overflow: 'hidden',
     marginBottom: scale(4),
   },
   contextProgressFill: {
     height: '100%',
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
   },
   contextProgressText: {
     fontSize: scale(10),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
   },
   contextPlayButton: {
     width: scale(40),
     height: scale(40),
     borderRadius: scale(20),
-    backgroundColor: ACCENT,
+    // backgroundColor set dynamically via accentColor
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: scale(8),
@@ -554,7 +593,7 @@ const styles = StyleSheet.create({
   },
   congratsText: {
     fontSize: scale(13),
-    color: ACCENT,
+    // color set dynamically via accentColor
     fontWeight: '500',
   },
 
@@ -567,7 +606,7 @@ const styles = StyleSheet.create({
     width: scale(72),
     height: scale(72),
     borderRadius: scale(36),
-    backgroundColor: 'rgba(244,182,12,0.15)',
+    // backgroundColor set dynamically via colors.accent.primarySubtle
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(12),
@@ -575,12 +614,12 @@ const styles = StyleSheet.create({
   completedTitle: {
     fontSize: scale(18),
     fontWeight: '700',
-    color: '#fff',
+    // color set dynamically via colors.text.primary
     marginBottom: scale(4),
   },
   completedSubtext: {
     fontSize: scale(13),
-    color: 'rgba(255,255,255,0.5)',
+    // color set dynamically via colors.text.tertiary
   },
   completedActions: {
     flexDirection: 'row',
@@ -595,11 +634,11 @@ const styles = StyleSheet.create({
     paddingVertical: scale(10),
     borderRadius: scale(8),
     borderWidth: 1,
-    borderColor: ACCENT,
+    // borderColor set dynamically via accentColor
   },
   listenAgainText: {
     fontSize: scale(13),
     fontWeight: '600',
-    color: ACCENT,
+    // color set dynamically via accentColor
   },
 });

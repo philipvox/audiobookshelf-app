@@ -8,12 +8,12 @@ import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
-import { accentColors } from '@/shared/theme';
-import { useThemeColors } from '@/shared/theme/themeStore';
+import { secretLibraryColors } from '@/shared/theme/secretLibrary';
+import { useSecretLibraryColors } from '@/shared/theme';
 
 const HeartIcon = ({
   size = 24,
-  color = accentColors.red,
+  color = secretLibraryColors.gold, // Default accent color
   filled = false,
 }: {
   size?: number;
@@ -55,14 +55,14 @@ export function SeriesHeartButton({
   animated = true,
   showCircle = false,
 }: SeriesHeartButtonProps) {
-  const themeColors = useThemeColors();
+  const colors = useSecretLibraryColors();
   const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
   const isFavorite = isSeriesFavorite(seriesName);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   // Use props or theme-aware defaults
-  const effectiveActiveColor = activeColor || accentColors.red;
-  const effectiveInactiveColor = inactiveColor || themeColors.textTertiary;
+  const effectiveActiveColor = activeColor || colors.gold;
+  const effectiveInactiveColor = inactiveColor || colors.gray;
 
   const handlePress = useCallback(() => {
     if (disabled) return;
@@ -102,9 +102,9 @@ export function SeriesHeartButton({
   const circleSize = size + 10;
 
   // For circle mode: inverse text on active bg when active, border when inactive
-  const circleHeartColor = isFavorite ? themeColors.background : effectiveInactiveColor;
+  const circleHeartColor = isFavorite ? colors.white : effectiveInactiveColor;
   const circleBgColor = isFavorite ? effectiveActiveColor : 'transparent';
-  const circleBorderColor = isFavorite ? 'transparent' : themeColors.border;
+  const circleBorderColor = isFavorite ? 'transparent' : colors.grayLine;
 
   const heartContent = animated ? (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>

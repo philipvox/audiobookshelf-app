@@ -13,7 +13,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { CloudOff, CloudDownload } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import { scale, spacing, useThemeColors, accentColors } from '@/shared/theme';
+import { scale, spacing, useTheme } from '@/shared/theme';
 
 interface NetworkStatusBarProps {
   /**
@@ -25,7 +25,7 @@ interface NetworkStatusBarProps {
 
 export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
   const insets = useSafeAreaInsets();
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
   const [isOffline, setIsOffline] = useState(false);
   const [showBar, setShowBar] = useState(false);
   const slideAnim = useState(() => new Animated.Value(-50))[0];
@@ -71,11 +71,11 @@ export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
 
   if (!showBar) return null;
 
-  const backgroundColor = isOffline ? themeColors.error : accentColors.gold;
+  const backgroundColor = isOffline ? colors.status.error : colors.accent.primary;
   const message = isOffline ? 'No internet connection' : 'Loading...';
   const StatusIcon = isOffline ? CloudOff : CloudDownload;
   // Use contrasting text color
-  const textColor = isOffline ? themeColors.text : themeColors.background;
+  const textColor = isOffline ? colors.text.primary : colors.background.primary;
 
   return (
     <Animated.View

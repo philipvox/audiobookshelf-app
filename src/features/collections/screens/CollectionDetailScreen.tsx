@@ -13,7 +13,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  RefreshControl,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,13 +22,14 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCollectionDetails } from '../hooks/useCollectionDetails';
 import { BookCard } from '@/shared/components/BookCard';
+import { Loading } from '@/shared/components/Loading';
+import { SkullRefreshControl } from '@/shared/components';
 import { apiClient } from '@/core/api';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale, wp, accentColors, useThemeColors } from '@/shared/theme';
+import { scale, wp, useTheme } from '@/shared/theme';
 
 const SCREEN_WIDTH = wp(100);
 
-const ACCENT = accentColors.gold;
 
 type CollectionDetailRouteParams = {
   CollectionDetail: {
@@ -50,7 +50,7 @@ function formatDuration(seconds: number): string {
 }
 
 // Stacked covers component for hero section
-function StackedCovers({ coverUrls }: { coverUrls: string[] }) {
+function StackedCovers({ coverUrls, placeholderColor }: { coverUrls: string[]; placeholderColor?: string }) {
   const coverWidth = scale(100);
   const coverHeight = coverWidth * 1.4;
 
@@ -58,7 +58,7 @@ function StackedCovers({ coverUrls }: { coverUrls: string[] }) {
     return (
       <View style={[styles.stackedCovers, { height: coverHeight + scale(20) }]}>
         <View style={[styles.placeholderStack, { width: coverWidth, height: coverHeight }]}>
-          <LayoutGrid size={scale(40)} color="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+          <LayoutGrid size={scale(40)} color={placeholderColor || 'rgba(255,255,255,0.3)'} strokeWidth={1.5} />
         </View>
       </View>
     );
@@ -91,13 +91,14 @@ function StackedCovers({ coverUrls }: { coverUrls: string[] }) {
 }
 
 export function CollectionDetailScreen() {
-  const themeColors = useThemeColors();
+  const { colors } = useTheme();
+  const ACCENT = colors.accent.primary;
   const route = useRoute<CollectionDetailRouteProp>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { collectionId } = route.params;
   const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
-  const BG_COLOR = themeColors.backgroundTertiary;
+  const BG_COLOR = colors.background.tertiary;
 
   const books = collection?.books || [];
 
@@ -143,10 +144,7 @@ export function CollectionDetailScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG_COLOR }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={styles.loadingContainer}>
-          <LayoutGrid size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-          <Text style={styles.loadingText}>Loading collection...</Text>
-        </View>
+        <Loading text="Loading collection..." color={colors.text.primary} />
       </View>
     );
   }
@@ -158,15 +156,15 @@ export function CollectionDetailScreen() {
         <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <ChevronLeft size={scale(24)} color="#fff" strokeWidth={2} />
+            <ChevronLeft size={scale(24)} color={colors.text.primary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
         <View style={styles.errorContainer}>
-          <AlertCircle size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-          <Text style={styles.errorTitle}>Collection not found</Text>
-          <Text style={styles.errorSubtitle}>This collection may have been removed</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+          <AlertCircle size={scale(48)} color={colors.text.tertiary} strokeWidth={1.5} />
+          <Text style={[styles.errorTitle, { color: colors.text.primary }]}>Collection not found</Text>
+          <Text style={[styles.errorSubtitle, { color: colors.text.tertiary }]}>This collection may have been removed</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: ACCENT }]} onPress={refetch}>
+            <Text style={[styles.retryButtonText, { color: colors.text.inverse }]}>Try Again</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -195,49 +193,49 @@ export function CollectionDetailScreen() {
         <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <BlurView intensity={40} style={styles.blurButton}>
-              <ChevronLeft size={scale(22)} color="#fff" strokeWidth={2} />
+              <ChevronLeft size={scale(22)} color={colors.text.primary} strokeWidth={2} />
             </BlurView>
           </TouchableOpacity>
         </View>
 
         {/* Stacked covers */}
-        <StackedCovers coverUrls={coverUrls} />
+        <StackedCovers coverUrls={coverUrls} placeholderColor={colors.text.tertiary} />
 
         {/* Collection info */}
         <View style={styles.heroInfo}>
-          <Text style={styles.collectionName}>{collection.name}</Text>
+          <Text style={[styles.collectionName, { color: colors.text.primary }]}>{collection.name}</Text>
           {collection.description && (
-            <Text style={styles.description} numberOfLines={2}>
+            <Text style={[styles.description, { color: colors.text.secondary }]} numberOfLines={2}>
               {collection.description}
             </Text>
           )}
         </View>
 
         {/* Stats row */}
-        <View style={styles.statsRow}>
+        <View style={[styles.statsRow, { backgroundColor: colors.surface.card }]}>
           <View style={styles.statItem}>
             <BookOpen size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
-              <Text style={styles.statValue}>{books.length}</Text>
-              <Text style={styles.statLabel}>Books</Text>
+              <Text style={[styles.statValue, { color: colors.text.primary }]}>{books.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Books</Text>
             </View>
           </View>
-          <View style={styles.statDivider} />
+          <View style={[styles.statDivider, { backgroundColor: colors.border.default }]} />
           <View style={styles.statItem}>
             <Clock size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
-              <Text style={styles.statValue}>{formatDuration(totalDuration)}</Text>
-              <Text style={styles.statLabel}>Total</Text>
+              <Text style={[styles.statValue, { color: colors.text.primary }]}>{formatDuration(totalDuration)}</Text>
+              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Total</Text>
             </View>
           </View>
-          <View style={styles.statDivider} />
+          <View style={[styles.statDivider, { backgroundColor: colors.border.default }]} />
           <View style={styles.statItem}>
             <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
             <View>
-              <Text style={styles.statValue}>
+              <Text style={[styles.statValue, { color: colors.text.primary }]}>
                 {completedBooks}/{books.length}
               </Text>
-              <Text style={styles.statLabel}>Completed</Text>
+              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Completed</Text>
             </View>
           </View>
         </View>
@@ -251,7 +249,7 @@ export function CollectionDetailScreen() {
 
       {/* Books section header */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Books in Collection</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>Books in Collection</Text>
       </View>
     </View>
   );
@@ -261,34 +259,33 @@ export function CollectionDetailScreen() {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {books.length > 0 ? (
-        <FlatList
-          data={books}
-          renderItem={({ item }) => (
-            <BookCard
-              book={item}
-              onPress={() => handleBookPress(item.id)}
-              showListeningProgress={true}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderHeader}
-          contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
-          showsVerticalScrollIndicator={false}
-          removeClippedSubviews={true}
-          windowSize={5}
-          maxToRenderPerBatch={5}
-          initialNumToRender={10}
-          refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={ACCENT} />
-          }
-        />
+        <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
+          <FlatList
+            data={books}
+            renderItem={({ item }) => (
+              <BookCard
+                book={item}
+                onPress={() => handleBookPress(item.id)}
+                showListeningProgress={true}
+              />
+            )}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={renderHeader}
+            contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews={true}
+            windowSize={5}
+            maxToRenderPerBatch={5}
+            initialNumToRender={10}
+          />
+        </SkullRefreshControl>
       ) : (
         <>
           {renderHeader()}
           <View style={styles.emptyState}>
-            <BookOpen size={scale(48)} color="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-            <Text style={styles.emptyTitle}>No books yet</Text>
-            <Text style={styles.emptySubtitle}>
+            <BookOpen size={scale(48)} color={colors.text.tertiary} strokeWidth={1.5} />
+            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>No books yet</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.text.tertiary }]}>
               Add books to this collection in AudiobookShelf
             </Text>
           </View>
@@ -312,7 +309,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: scale(15),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
   },
   errorContainer: {
     flex: 1,
@@ -323,13 +320,13 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors in JSX
     marginTop: scale(16),
     marginBottom: scale(8),
   },
   errorSubtitle: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginBottom: scale(20),
   },
@@ -337,12 +334,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(24),
     paddingVertical: scale(12),
     borderRadius: scale(20),
-    backgroundColor: ACCENT,
+    // backgroundColor set via JSX
   },
   retryButtonText: {
     fontSize: scale(14),
     fontWeight: '600',
-    color: '#000',
+    // color set via themeColors in JSX (text.inverse for contrast on accent backgrounds)
   },
   // Hero section
   heroContainer: {
@@ -373,6 +370,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
+    // Semi-transparent glass effect - intentionally using rgba for blur overlay
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   // Stacked covers
@@ -385,7 +383,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: scale(8),
     overflow: 'hidden',
+    // Fallback background for missing covers - dark neutral
     backgroundColor: '#262626',
+    // shadowColor must be #000 for proper shadow rendering
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
@@ -398,6 +398,7 @@ const styles = StyleSheet.create({
   },
   placeholderStack: {
     borderRadius: scale(8),
+    // Fallback background for missing covers - dark neutral
     backgroundColor: '#262626',
     justifyContent: 'center',
     alignItems: 'center',
@@ -410,13 +411,13 @@ const styles = StyleSheet.create({
   collectionName: {
     fontSize: scale(24),
     fontWeight: '700',
-    color: '#fff',
+    // color set via themeColors in JSX
     textAlign: 'center',
     marginBottom: scale(8),
   },
   description: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.6)',
+    // color set via themeColors in JSX
     textAlign: 'center',
     lineHeight: scale(20),
   },
@@ -428,7 +429,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(20),
     paddingVertical: scale(16),
     marginHorizontal: scale(16),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    // backgroundColor set via themeColors in JSX (surface.card)
     borderRadius: scale(12),
     zIndex: 5,
   },
@@ -441,16 +442,16 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: scale(16),
     fontWeight: '700',
-    color: '#fff',
+    // color set via themeColors in JSX
   },
   statLabel: {
     fontSize: scale(11),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
   },
   statDivider: {
     width: 1,
     height: scale(32),
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    // backgroundColor set via themeColors in JSX
   },
   heroGradient: {
     position: 'absolute',
@@ -468,7 +469,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors in JSX
   },
   // List
   listContent: {
@@ -484,13 +485,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: scale(18),
     fontWeight: '600',
-    color: '#fff',
+    // color set via themeColors in JSX
     marginTop: scale(16),
     marginBottom: scale(8),
   },
   emptySubtitle: {
     fontSize: scale(14),
-    color: 'rgba(255,255,255,0.5)',
+    // color set via themeColors in JSX
     textAlign: 'center',
     lineHeight: scale(20),
   },
