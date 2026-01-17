@@ -296,36 +296,11 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
               log.debug(`Using SQLite cached data (${Math.round(age / 1000 / 60)} min old, ${cachedItems.length} items)`);
               const indexes = buildIndexes(cachedItems);
 
-              // Fetch authors from API in background to get accurate book counts
-              apiClient.getLibraryAuthors(libraryId).then((response) => {
-                const apiAuthors = response as ApiAuthor[];
-                if (apiAuthors && apiAuthors.length > 0) {
-                  log.debug(`Merging ${apiAuthors.length} authors from API (background)`);
-                  for (const apiAuthor of apiAuthors) {
-                    const key = apiAuthor.name.toLowerCase();
-                    const existing = indexes.authors.get(key);
-                    if (existing) {
-                      existing.id = apiAuthor.id;
-                      existing.bookCount = apiAuthor.numBooks || existing.bookCount;
-                      existing.imagePath = apiAuthor.imagePath;
-                      existing.description = apiAuthor.description;
-                    } else {
-                      indexes.authors.set(key, {
-                        id: apiAuthor.id,
-                        name: apiAuthor.name,
-                        bookCount: apiAuthor.numBooks || 0,
-                        books: [],
-                        imagePath: apiAuthor.imagePath,
-                        description: apiAuthor.description,
-                      });
-                    }
-                  }
-                  // Update state with merged authors
-                  set({ authors: indexes.authors });
-                }
-              }).catch(() => {
-                // Silently fail - will use local counts
-              });
+              // NOTE: Skipping background author fetch during initial cache load
+              // The App.tsx boot sequence will trigger a full refresh immediately after,
+              // which fetches authors synchronously. This prevents a flash/re-render
+              // when the background fetch would complete and update state separately.
+              // Author data will be fetched during the full refresh instead.
 
               // Queue search index for lazy build (P2 Fix - defer until first search)
               searchIndex.queueBuild(cachedItems);

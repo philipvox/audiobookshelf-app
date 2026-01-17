@@ -5,7 +5,7 @@
  * Extracts all useMemo logic from MyLibraryScreen for cleaner separation.
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
@@ -51,6 +51,7 @@ interface UseLibraryDataResult {
 
   // Flags
   isLoaded: boolean;
+  isLoading: boolean;
   hasDownloading: boolean;
   hasPaused: boolean;
   hasAnyContent: boolean;
@@ -67,7 +68,7 @@ interface UseLibraryDataResult {
 
 export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataProps): UseLibraryDataResult {
   const { items: cachedItems, isLoaded, getSeries, getItem, loadCache, currentLibraryId } = useLibraryCache();
-  const { downloads, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
+  const { downloads, isLoading: isDownloadsLoading, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
 
   // Favorites from stores
   const libraryIds = useMyLibraryStore((state) => state.libraryIds);
@@ -83,10 +84,11 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
   }, [finishedBookIds, isCompleteInStore]);
 
   // Continue listening data from server
-  const { items: continueListeningItems, refetch: refetchContinueListening } = useContinueListening();
+  const { items: continueListeningItems, isLoading: isContinueLoading, isServerLoading, refetch: refetchContinueListening } = useContinueListening();
 
   // SQLite progress data for accurate in-progress state
-  const { data: sqliteInProgressBooks = [] } = useInProgressBooks();
+  // Use isFetching to catch all fetches (not just initial load without cache)
+  const { data: sqliteInProgressBooks = [], isLoading: isProgressLoading, isFetching: isProgressFetching } = useInProgressBooks();
   const sqliteProgressMap = useMemo(() => {
     const map = new Map<string, { progress: number; lastPlayedAt?: string }>();
     for (const book of sqliteInProgressBooks) {
@@ -100,6 +102,36 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
 
   // Kid Mode filter
   const kidModeEnabled = useKidModeStore((state) => state.enabled);
+
+  // Combined loading state - wait for ALL data sources before showing sorted results
+  // This prevents the "flash" where books reorder as each async source completes
+  // Include isFetching and isServerLoading to wait for background queries (not just initial load)
+  const isDataReady = isLoaded && !isDownloadsLoading && !isProgressLoading && !isProgressFetching && !isContinueLoading && !isServerLoading;
+
+  // STABILIZATION: Wait for data to settle before showing content
+  // This adds a minimum 500ms delay on initial load to let all syncs complete
+  const [hasSettled, setHasSettled] = useState(false);
+  const settleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const wasDataReadyRef = useRef(false);
+
+  useEffect(() => {
+    if (isDataReady && !wasDataReadyRef.current) {
+      // Data just became ready - start settle timer
+      wasDataReadyRef.current = true;
+      settleTimerRef.current = setTimeout(() => {
+        setHasSettled(true);
+      }, 500); // 500ms settle time
+    }
+
+    return () => {
+      if (settleTimerRef.current) {
+        clearTimeout(settleTimerRef.current);
+      }
+    };
+  }, [isDataReady]);
+
+  // Final loading state: data must be ready AND settled
+  const isFullyReady = isDataReady && hasSettled;
 
   // Separate active downloads from completed
   const activeDownloads = useMemo(
@@ -311,28 +343,43 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     }
   }, [activeTab, enrichedBooks, serverInProgressBooks, favoritedBooks, allLibraryBooks, isMarkedFinished, markedFinishedBooks]);
 
-  // Apply sort
+  // Apply sort - only when all data sources are ready AND settled
   const sortedBooks = useMemo(() => {
+    // Return empty while loading/settling - skeleton will show instead
+    if (!isFullyReady) {
+      return [];
+    }
+
     const sorted = [...currentTabBooks];
+    let result: EnrichedBook[];
     switch (sort) {
       case 'recently-played':
-        return sorted.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+        result = sorted.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+        break;
       case 'recently-added':
-        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        result = sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        break;
       case 'title-asc':
-        return sorted.sort((a, b) => a.title.localeCompare(b.title));
+        result = sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
       case 'title-desc':
-        return sorted.sort((a, b) => b.title.localeCompare(a.title));
+        result = sorted.sort((a, b) => b.title.localeCompare(a.title));
+        break;
       case 'author-asc':
-        return sorted.sort((a, b) => a.author.localeCompare(b.author));
+        result = sorted.sort((a, b) => a.author.localeCompare(b.author));
+        break;
       case 'duration-asc':
-        return sorted.sort((a, b) => a.duration - b.duration);
+        result = sorted.sort((a, b) => a.duration - b.duration);
+        break;
       case 'duration-desc':
-        return sorted.sort((a, b) => b.duration - a.duration);
+        result = sorted.sort((a, b) => b.duration - a.duration);
+        break;
       default:
-        return sorted;
+        result = sorted;
     }
-  }, [currentTabBooks, sort]);
+
+    return result;
+  }, [currentTabBooks, sort, isFullyReady]);
 
   // Apply search filter
   const filteredBooks = useMemo(() => {
@@ -419,6 +466,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     continueListeningItems,
     totalStorageUsed,
     isLoaded,
+    isLoading: !isDataReady,
     hasDownloading,
     hasPaused,
     hasAnyContent,

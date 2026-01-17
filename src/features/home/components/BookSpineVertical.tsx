@@ -95,6 +95,12 @@ interface BookSpineVerticalProps {
   onPressOut?: () => void;
   /** Show drop shadow (default: false - disabled for clean stroke design) */
   showShadow?: boolean;
+  /**
+   * Indicates the spine is being displayed horizontally (rotated 90°).
+   * When true, skips two-row title and stacked author overrides since
+   * the container is rotated and dimensions don't reflect actual display.
+   */
+  isHorizontalDisplay?: boolean;
 }
 
 // =============================================================================
@@ -866,6 +872,7 @@ export function BookSpineVertical({
   onPressIn,
   onPressOut,
   showShadow = false,
+  isHorizontalDisplay = false,
 }: BookSpineVerticalProps) {
   // Theme-aware colors
   const colors = useSecretLibraryColors();
@@ -989,6 +996,7 @@ export function BookSpineVertical({
   // TEMPLATE OVERRIDES: Apply stacked authors and two-row titles
   // - Authors: stacked-words for all books under 30 hours with multi-word names
   // - Titles: vertical-two-row for titles with 4+ words (50% split)
+  // NOTE: Only applies when spine is displayed vertically (not rotated horizontal)
   // ═══════════════════════════════════════════════════════════════════════════
   const templateConfig = useMemo(() => {
     if (!baseTemplateConfig) return null;
@@ -997,14 +1005,19 @@ export function BookSpineVertical({
     const isLongBook = duration >= LONG_BOOK_THRESHOLD_SECONDS;
     const authorHasMultipleNames = book.author.split(' ').length >= 2;
     const titleWordCount = book.title.split(' ').length;
-    const titleNeedsTwoRows = titleWordCount >= 4; // 4+ words → split into 2 rows
+
+    // Only apply overrides when spine is displayed vertically (standing up)
+    // isHorizontalDisplay prop is set when the spine container is rotated 90°
+    // (e.g., in stack/horizontal view mode)
+    const isVerticalSpine = !isHorizontalDisplay;
+    const titleNeedsTwoRows = titleWordCount >= 4 && isVerticalSpine; // 4+ words AND vertical
 
     let modifiedConfig = baseTemplateConfig;
     let authorOverride = false;
     let titleOverride = false;
 
-    // Apply stacked-words override for authors (all books under 30 hours)
-    if (!isLongBook && authorHasMultipleNames) {
+    // Apply stacked-words override for authors (all books under 30 hours, vertical spines only)
+    if (!isLongBook && authorHasMultipleNames && isVerticalSpine) {
       authorOverride = true;
       modifiedConfig = {
         ...modifiedConfig,
@@ -1015,11 +1028,11 @@ export function BookSpineVertical({
       };
     }
 
-    // Apply two-row override for long titles (4+ words, 50% split)
-    // Reduce font size to ~60% to fit two lines in the same vertical space
+    // Apply two-row override for long titles (4+ words, 50% split, vertical spines only)
+    // Reduce font size to ~45% to fit two lines in the narrow spine width
     if (titleNeedsTwoRows) {
       titleOverride = true;
-      const twoRowFontSize = Math.round(modifiedConfig.title.fontSize * 0.6);
+      const twoRowFontSize = Math.round(modifiedConfig.title.fontSize * 0.45);
       modifiedConfig = {
         ...modifiedConfig,
         title: {
@@ -1037,12 +1050,12 @@ export function BookSpineVertical({
       console.log(
         `[Template Override] "${book.title?.substring(0, 20)}" → ` +
         `author=${authorOverride ? 'stacked' : 'no'}, ` +
-        `title=${titleOverride ? 'two-row' : 'no'} (${titleWordCount} words)`
+        `title=${titleOverride ? 'two-row' : 'no'} (${titleWordCount} words, ${isVerticalSpine ? 'vertical' : 'horizontal'})`
       );
     }
 
     return modifiedConfig;
-  }, [baseTemplateConfig, duration, book.author, book.title]);
+  }, [baseTemplateConfig, duration, book.author, book.title, isHorizontalDisplay]);
 
   // Log template usage for debugging
   useEffect(() => {
@@ -1069,10 +1082,16 @@ export function BookSpineVertical({
 
     // Template system provides the base composition
     if (templateConfig) {
+      // CRITICAL: When displaying horizontally (rotated in stack view), force vertical-up orientation
+      // Stacked-words and two-row orientations don't work well when the spine is lying flat
+      const titleOrientation = isHorizontalDisplay
+        ? 'vertical-up'
+        : templateConfig.title.orientation;
+
       return {
         title: {
           text: book.title,
-          orientation: templateConfig.title.orientation as any,
+          orientation: titleOrientation as any,
           case: templateConfig.title.case,
           weight: templateConfig.title.weight,
           scale: 'normal', // Templates control size via fontSize directly
@@ -1117,7 +1136,7 @@ export function BookSpineVertical({
     }
 
     return generatedComp;
-  }, [book.id, book.title, book.author, genres, book.seriesName, book.seriesSequence, templateConfig, width, typography.authorOrientationBias]);
+  }, [book.id, book.title, book.author, genres, book.seriesName, book.seriesSequence, templateConfig, width, typography.authorOrientationBias, isHorizontalDisplay]);
 
   // HitSlop for touch target compliance (44px minimum)
   const hitSlop = useMemo(() => ({
@@ -1396,12 +1415,16 @@ export function BookSpineVertical({
   const titleWords = titleContent.trim().split(/\s+/);
   const longestWord = titleWords.reduce((max, w) => Math.max(max, w.length), 0);
 
+  // CRITICAL: Skip stacked orientations when displaying horizontally (rotated in stack view)
+  // Stacked letters/words don't work well when the spine is lying flat
   const useStackedLetters = composition?.title.orientation === 'stacked-letters'
-    && titleLettersOnly.length <= 8;  // MAX 8 letters for stacking (like "WHY" or "DUNE")
+    && titleLettersOnly.length <= 8  // MAX 8 letters for stacking (like "WHY" or "DUNE")
+    && !isHorizontalDisplay;  // Never stack when horizontal
   const useStackedWords = composition?.title.orientation === 'stacked-words'
     && titleWords.length >= 2
     && titleWords.length <= 4
-    && longestWord <= 12;  // Each word must fit horizontally
+    && longestWord <= 12  // Each word must fit horizontally
+    && !isHorizontalDisplay;  // Never stack when horizontal
   const compositionTitleOrientation = composition?.title.orientation;
   const compositionAuthorOrientation = composition?.author.orientation;
   const compositionLineStyle = composition?.decoration.lineStyle || 'none';
@@ -1514,6 +1537,8 @@ export function BookSpineVertical({
     // Map composition orientations to layout solver's 'vertical' or 'horizontal'
     if (compositionOrientation === 'vertical-up' || compositionOrientation === 'vertical-down') {
       return 'vertical';
+    } else if (compositionOrientation === 'vertical-two-row') {
+      return 'vertical-two-row';
     } else if (compositionOrientation === 'stacked-letters' || compositionOrientation === 'stacked-words') {
       return 'stacked';
     } else {
@@ -1930,6 +1955,67 @@ export function BookSpineVertical({
                 });
               })()}
             </View>
+          ) : (finalTitleOrientation === 'vertical-two-row' ||
+               // FALLBACK: Force two-row for 4+ word titles on vertical spines
+               (book.title.split(' ').length >= 4 && !isHorizontalDisplay)) ? (
+            // ═══════════════════════════════════════════════════════════════
+            // VERTICAL TWO-ROW: Split title across two lines, rotated
+            // For long titles (4+ words) that need more room
+            // ═══════════════════════════════════════════════════════════════
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: titleHeight * 0.95,
+                  transform: [{ rotate: '-90deg' }],
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {(() => {
+                  // Split title into two rows (50% of words each)
+                  const words = titleContent.split(' ');
+                  const splitPoint = Math.ceil(words.length / 2);
+                  const line1 = words.slice(0, splitPoint).join(' ');
+                  const line2 = words.slice(splitPoint).join(' ');
+                  const lines = line2 ? [line1, line2] : [line1];
+
+                  // Calculate font size to fit both lines
+                  const baseFontSize = templateConfig?.title.fontSize || 24;
+                  const twoRowFontSize = lines.length > 1 ? baseFontSize * 0.6 : baseFontSize;
+
+                  return lines.map((lineText, i) => (
+                    <Text
+                      key={i}
+                      style={{
+                        fontFamily: resolvedFontFamily,
+                        fontSize: twoRowFontSize,
+                        fontWeight: titleFontWeight as any,
+                        fontStyle: typography.fontStyle || 'normal',
+                        color: spineTextColor,
+                        textAlign: 'center',
+                        lineHeight: twoRowFontSize * 1.1,
+                        includeFontPadding: false,
+                      }}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.3}
+                    >
+                      {lineText}
+                    </Text>
+                  ));
+                })()}
+              </View>
+            </View>
           ) : finalTitleOrientation === 'vertical' ? (
             // ═══════════════════════════════════════════════════════════════
             // VERTICAL TITLE: Traditional spine style, reads bottom-to-top
@@ -1947,7 +2033,9 @@ export function BookSpineVertical({
             >
               <View
                 style={{
-                  width: titleHeight * 0.95,
+                  // For horizontal display, use more space for title (full height minus padding)
+                  // For vertical display, use the title section height
+                  width: isHorizontalDisplay ? (height - 40) : (titleHeight * 0.95),
                   transform: [{ rotate: finalTitleRotation }],
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -2124,7 +2212,6 @@ export function BookSpineVertical({
                 flex: 1,
                 justifyContent: 'center',
                 alignItems: 'center',
-                paddingVertical: 1,
               }}
             >
               {authorContent.split(' ').map((namePart, i, arr) => {
@@ -2132,6 +2219,8 @@ export function BookSpineVertical({
                   availableWidth * 0.85 / (namePart.length * 0.55),
                   (authorHeight - 8) / arr.length * 0.85  // More room for ascenders
                 );
+                // Use very tight line height (0.95x font size) for stacked names
+                const stackedLineHeight = Math.max(9, nameFontSize * 0.95);
 
                 return (
                   <Text
@@ -2143,7 +2232,9 @@ export function BookSpineVertical({
                       color: spineTextColor,
                       textAlign: 'center',
                       letterSpacing: 0.5,
-                      lineHeight: Math.max(9, nameFontSize * tightLineHeightMultiplier),  // Font-specific tight stacking
+                      lineHeight: stackedLineHeight,
+                      // Negative margin to pull names closer together
+                      marginTop: i > 0 ? -2 : 0,
                     }}
                     numberOfLines={1}
                     adjustsFontSizeToFit

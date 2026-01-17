@@ -9,6 +9,133 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.7.101] - 2026-01-16
+
+### Fix: Library Loading Flash (Secret Library)
+
+Fixed the library screen flash where books visibly reorder after appearing.
+
+**Root Cause:**
+Multiple async operations completed at different times after the splash dismissed:
+1. Cache loaded from SQLite → books shown
+2. Background author merge triggered state update → books reordered
+3. Initial refresh completed → books reordered again
+
+**The Fix:**
+1. Added `appReadyStore` - global flag tracking when app boot is fully complete
+2. LibraryScreen waits for `isBootComplete` before showing sorted books
+3. Initial library refresh moved to App.tsx boot sequence (during splash)
+4. Removed background author merge that caused separate state update
+5. Splash shows "syncing library..." status during refresh phase
+
+**Technical Changes:**
+- Created `src/core/stores/appReadyStore.ts` - Boot completion tracking
+- `App.tsx` - Triggers initial refresh during boot, sets boot complete flag
+- `LibraryScreen.tsx` - Waits for `isBootComplete` before rendering books
+- `libraryCache.ts` - Removed background author fetch (done in full refresh)
+
+**Files Modified:**
+- `App.tsx` - Boot sequence with initial refresh
+- `src/core/stores/appReadyStore.ts` (NEW) - Boot completion store
+- `src/core/cache/libraryCache.ts` - Remove background author merge
+- `src/features/home/screens/LibraryScreen.tsx` - Wait for boot complete
+- `src/constants/version.ts`
+
+---
+
+## [0.7.100] - 2026-01-16
+
+### Fix: Library Loading Flash (Improved)
+
+Improved the loading state detection to also wait for background server sync.
+
+**Issue:**
+Even with initial `isDataReady` guard, books still reordered because:
+- React Query `isLoading` is false when cached data exists (even if stale)
+- Background server sync updates `lastPlayedAt` values, changing sort order
+
+**The Fix:**
+- Added `isFetching` from React Query (catches all fetches, not just initial)
+- Added `isServerLoading` from `useContinueListening` (server query status)
+- `isDataReady` now waits for: libraryCache + downloads + progress + fetching + server sync
+
+**Files Modified:**
+- `src/features/library/hooks/useLibraryData.ts` - Include isFetching and isServerLoading in isDataReady
+- `src/constants/version.ts`
+
+---
+
+## [0.7.99] - 2026-01-16
+
+### Fix: Library Loading Flash / Book Reordering
+
+Fixed the issue where books visibly reorder/flash when the library screen loads.
+
+**Root Cause:**
+Three independent data sources load at different times, each triggering a sort re-run:
+1. `progressStore` loads from SQLite → first sort
+2. `downloadMap` finishes → sort runs again (books shift)
+3. `sqliteProgressMap` completes → sort runs again (more shifting)
+
+**The Fix:**
+- Added `isDataReady` guard that waits for ALL data sources before applying sort
+- Show skeleton while any data source is loading
+- Only render sorted books after all sources complete
+- Prevents intermediate states where books appear in wrong order
+
+**Files Modified:**
+- `src/features/library/hooks/useLibraryData.ts` - Added combined loading state, guarded sort with isDataReady
+- `src/features/library/screens/MyLibraryScreen.tsx` - Use new isLoading flag from hook
+- `src/constants/version.ts`
+
+---
+
+## [0.7.98] - 2026-01-16
+
+### Fix: Complete Spine Title Display (Both Views)
+
+Fixed titles being truncated in both shelf and stack views.
+
+**Horizontal/Stack View Fix:**
+- Added `isHorizontalDisplay` prop to `BookSpineVertical`
+- Force `vertical-up` orientation for horizontal display (skips stacked-words)
+- Increased title container width to `height - 40` for more room
+- Skip stacked-letters/stacked-words when displaying horizontally
+
+**Vertical/Shelf View Fix (Two-Row Titles):**
+- Added `vertical-two-row` handling to `finalTitleOrientation` mapping
+- Added fallback: any 4+ word title on vertical spine uses two-row
+- Reduced two-row font size from 60% to 45% to fit both lines in narrow spine width
+- `TemplateSpineRenderer` now properly renders two-row titles
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Two-row rendering, horizontal display handling
+- `src/features/home/components/BookshelfView.tsx` - Pass `isHorizontalDisplay={true}` to StaticStackItem
+- `src/constants/version.ts`
+
+---
+
+## [0.7.96] - 2026-01-16
+
+### Fix: Horizontal Stack View Orientation + Author Line Height
+
+Fixed spine display issues in horizontal/stack mode:
+
+**Issue 1: Title Orientation**
+- Problem: Titles used stacked-words orientation which doesn't work when rotated
+- Fix: Added `isHorizontalDisplay` prop; forces `vertical-up` orientation for horizontal display
+
+**Issue 2: Stacked Author Names Line Height**
+- Problem: Stacked author names (MATT/DINNIMAN) had too much vertical spacing
+- Fix: Tightened line height to 0.95x and added negative margin between names
+
+**Files Modified:**
+- `src/features/home/components/BookSpineVertical.tsx` - Added isHorizontalDisplay prop, fixed author line height
+- `src/features/home/components/BookshelfView.tsx` - Pass isHorizontalDisplay={true} from StaticStackItem
+- `src/constants/version.ts`
+
+---
+
 ## [0.7.94] - 2026-01-16
 
 ### Fix: Drop Cap Font Not Loading on Android

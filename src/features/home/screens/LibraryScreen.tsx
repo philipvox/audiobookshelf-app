@@ -8,7 +8,7 @@
  * JetBrains Mono metadata, and a cream/black color scheme.
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ import { haptics } from '@/core/native/haptics';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache } from '@/core/cache';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { TopNav, TopNavSearchIcon, SkullRefreshControl } from '@/shared/components';
+import { TopNav, TopNavSearchIcon, SkullRefreshControl, SkeletonBox } from '@/shared/components';
 import {
   secretLibraryColors as staticColors,
   secretLibraryTypography as typography,
@@ -67,6 +67,7 @@ import { useInProgressBooks } from '@/core/hooks/useUserBooks';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { usePlayerStore } from '@/features/player/stores/playerStore';
 import { GLOBAL_MINI_PLAYER_HEIGHT } from '@/navigation/components/GlobalMiniPlayer';
+import { useAppReadyStore } from '@/core/stores/appReadyStore';
 
 // =============================================================================
 // BOTTOM PADDING CONSTANTS - Edit these to adjust shelf/stack/list positioning
@@ -339,23 +340,8 @@ export function LibraryScreen() {
   // Get recommendations for "Find More Books" card
   const { recommendations: recommendedItems } = useRecommendations(allCacheItems, 3);
 
-  // Auto-refresh cache on mount to load latest book data
-  // This ensures spines render with fresh data without manual refresh
-  const hasAutoRefreshed = useRef(false);
-  useEffect(() => {
-    if (!hasAutoRefreshed.current && isCacheLoaded) {
-      hasAutoRefreshed.current = true;
-      // Trigger refresh asynchronously (non-blocking)
-      // Note: This may cause a brief visual update as data refreshes
-      setTimeout(async () => {
-        if (__DEV__) {
-          console.log('[LibraryScreen] Auto-refreshing cache on mount...');
-        }
-        await refreshCache();
-        await refresh();
-      }, 100);
-    }
-  }, [isCacheLoaded, refreshCache, refresh]);
+  // Note: Auto-refresh now happens during app boot (App.tsx) to prevent library flash
+  // Manual refresh is still available via pull-to-refresh
 
   // Transform recommendations to the format needed by DiscoverMoreCard
   // Include genres, tags, and duration so BookSpineVertical can render properly
@@ -427,7 +413,7 @@ export function LibraryScreen() {
   }, [recentlyListened, localInProgressBooks, allCacheItems]);
 
   // Get downloaded books
-  const { downloads } = useDownloads();
+  const { downloads, isLoading: isDownloadsLoading } = useDownloads();
   const downloadedIds = useMemo(() => {
     const ids = new Set<string>();
     downloads
@@ -435,6 +421,18 @@ export function LibraryScreen() {
       .forEach((d) => ids.add(d.itemId));
     return ids;
   }, [downloads]);
+
+  // Check if app boot is complete (initial refresh finished)
+  const isBootComplete = useAppReadyStore((s) => s.isBootComplete);
+
+  // Data readiness flag - wait for all async sources AND boot completion before showing sorted books
+  // This prevents the flash where data changes during the boot refresh
+  const isDataReady = isProgressLoaded && isCacheLoaded && !isDownloadsLoading && isBootComplete;
+
+  // DEBUG: Log loading states (can be removed once stable)
+  if (__DEV__) {
+    console.log(`[LibraryScreen] isDataReady=${isDataReady} (progress=${isProgressLoaded}, cache=${isCacheLoaded}, downloads=${!isDownloadsLoading}, boot=${isBootComplete})`);
+  }
 
   // Get all completed downloads as LibraryItems
   const downloadedLibraryItems = useMemo(() => {
@@ -486,7 +484,13 @@ export function LibraryScreen() {
   const filteredBooks = allBooksUnsorted;
 
   // Sort books based on sort mode
+  // Guard with isDataReady to prevent flash/reordering as data sources load
   const allBooks = useMemo(() => {
+    // Return empty array while data is loading - skeleton will show
+    if (!isDataReady) {
+      return [];
+    }
+
     const sorted = [...filteredBooks];
     switch (sortMode) {
       case 'title':
@@ -508,7 +512,7 @@ export function LibraryScreen() {
         break;
     }
     return sorted;
-  }, [filteredBooks, sortMode]);
+  }, [filteredBooks, sortMode, isDataReady]);
 
   // Handlers
   const handleBookPress = useCallback((book: LibraryBook | BookSpineVerticalData) => {
@@ -666,8 +670,34 @@ export function LibraryScreen() {
     );
   };
 
+  // Render loading skeleton for shelf/stack mode
+  const renderLoadingSkeleton = () => {
+    // Simple skeleton matching spine dimensions
+    const spineWidths = [45, 50, 40, 55, 48, 52, 44, 46];
+    return (
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingSpines}>
+          {spineWidths.map((width, i) => (
+            <SkeletonBox
+              key={i}
+              width={width}
+              height={220}
+              borderRadius={4}
+              style={{ marginRight: 6 }}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   // Render content based on view mode
   const renderContent = () => {
+    // Show loading skeleton while data sources are loading
+    if (!isDataReady) {
+      return renderLoadingSkeleton();
+    }
+
     // Show empty state when no books
     if (allBooks.length === 0) {
       return renderEmptyState();
@@ -989,6 +1019,18 @@ const styles = StyleSheet.create({
   // Content
   content: {
     flex: 1,
+  },
+
+  // Loading skeleton
+  loadingContainer: {
+    flex: 1,
+    paddingTop: 40,
+    paddingHorizontal: spacing.screenPaddingH,
+  },
+  loadingSpines: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
 
   // List View Styles
