@@ -163,6 +163,7 @@ const StaticStackItem = React.memo(function StaticStackItem({
           isActive={false}
           showShadow={false}
           onPress={handlePress}
+          isHorizontalDisplay={true}
         />
       </View>
     </View>

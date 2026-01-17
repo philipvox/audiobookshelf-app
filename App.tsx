@@ -19,6 +19,10 @@ import { useAppHealthMonitor } from './src/utils/perfDebug';
 import { startAllMonitoring, stopAllMonitoring, fpsMonitor, memoryMonitor } from './src/utils/runtimeMonitor';
 import { useLibraryCache } from './src/core/cache';
 import { useSpineCacheStore, selectIsPopulated } from './src/features/home/stores/spineCache';
+import { useAppReadyStore, setAppBootComplete } from './src/core/stores/appReadyStore';
+
+// Reset boot flag immediately on bundle load (before any components render)
+setAppBootComplete(false);
 import * as SplashScreen from 'expo-splash-screen';
 
 // IMMEDIATELY hide native splash when JS bundle loads
@@ -80,23 +84,60 @@ export default function App() {
   // Check if library and spine caches are ready
   const isLibraryCacheLoaded = useLibraryCache((s) => s.isLoaded);
   const isLibraryCacheLoading = useLibraryCache((s) => s.isLoading);
+  const lastRefreshed = useLibraryCache((s) => s.lastRefreshed);
+  const refreshCache = useLibraryCache((s) => s.refreshCache);
   const isSpineCachePopulated = useSpineCacheStore(selectIsPopulated);
+
+  // Track if initial refresh has completed (prevents library flash on first load)
+  const [isInitialRefreshComplete, setIsInitialRefreshComplete] = useState(false);
+  const hasTriggeredRefresh = React.useRef(false);
+  const setBootComplete = useAppReadyStore((s) => s.setBootComplete);
+
+  // Trigger initial refresh after cache is loaded (prevents library flash)
+  // This ensures fresh data is fetched before splash dismisses
+  useEffect(() => {
+    // Wait for initResult to be set before making any decisions
+    if (!initResult) return;
+
+    if (isLibraryCacheLoaded && !hasTriggeredRefresh.current && initResult.user) {
+      hasTriggeredRefresh.current = true;
+      console.log('[App] Triggering initial library refresh...');
+      refreshCache().then(() => {
+        console.log('[App] Initial library refresh complete, setting boot=true');
+        setIsInitialRefreshComplete(true);
+        setBootComplete(true); // Signal to components that boot is complete
+      }).catch(() => {
+        // Even on error, mark as complete so app doesn't hang
+        console.log('[App] Refresh error, setting boot=true');
+        setIsInitialRefreshComplete(true);
+        setBootComplete(true);
+      });
+    } else if (!initResult.user) {
+      // Not logged in - no refresh needed
+      console.log('[App] No user, setting boot=true');
+      setIsInitialRefreshComplete(true);
+      setBootComplete(true);
+    }
+  }, [isLibraryCacheLoaded, initResult, refreshCache, setBootComplete]);
 
   // All conditions for splash to dismiss:
   // 1. Fonts loaded (for spine rendering)
   // 2. Library cache loaded (book data)
   // 3. Spine cache populated (dimensions, colors, typography)
-  const isCacheReady = fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated;
+  // 4. Initial refresh complete (prevents library flash)
+  const isCacheReady = fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated && isInitialRefreshComplete;
 
   // Calculate loading progress (0 to 1) and status text
   // 0.0 - 0.2: Initializing (fonts, auth, etc.)
-  // 0.2 - 0.5: Loading library cache
-  // 0.5 - 1.0: Populating spine cache
+  // 0.2 - 0.4: Loading library cache
+  // 0.4 - 0.6: Populating spine cache
+  // 0.6 - 1.0: Initial refresh
   const loadingProgress = !isInitialized ? 0 :
     !fontsLoaded ? 0.1 :
     !isLibraryCacheLoaded && !isLibraryCacheLoading ? 0.2 :
-    !isLibraryCacheLoaded && isLibraryCacheLoading ? 0.4 :
-    isLibraryCacheLoaded && !isSpineCachePopulated ? 0.7 :
+    !isLibraryCacheLoaded && isLibraryCacheLoading ? 0.35 :
+    isLibraryCacheLoaded && !isSpineCachePopulated ? 0.5 :
+    isSpineCachePopulated && !isInitialRefreshComplete ? 0.75 :
     isCacheReady ? 1 : 0.5;
 
   // Status text based on loading phase
@@ -105,6 +146,7 @@ export default function App() {
     !isLibraryCacheLoaded && !isLibraryCacheLoading ? 'restoring session...' :
     !isLibraryCacheLoaded && isLibraryCacheLoading ? 'loading library...' :
     isLibraryCacheLoaded && !isSpineCachePopulated ? 'preparing bookshelf...' :
+    isSpineCachePopulated && !isInitialRefreshComplete ? 'syncing library...' :
     isCacheReady ? 'ready' : 'loading...';
 
   useEffect(() => {

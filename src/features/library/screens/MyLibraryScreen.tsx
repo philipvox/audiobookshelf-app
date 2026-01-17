@@ -80,6 +80,7 @@ export function MyLibraryScreen() {
     continueListeningItems,
     totalStorageUsed,
     isLoaded,
+    isLoading,
     hasDownloading,
     hasPaused,
     hasAnyContent,
@@ -91,6 +92,11 @@ export function MyLibraryScreen() {
     deleteDownload,
     currentLibraryId,
   } = useLibraryData({ activeTab, sort, searchQuery });
+
+  // DEBUG: Log filtered books on every render
+  console.log(`[MyLibrary] isLoading=${isLoading}, books=${filteredBooks.length}, first3:`,
+    filteredBooks.slice(0, 3).map(b => b.title)
+  );
 
   // Handlers
   const handleRefresh = useCallback(async () => {
@@ -325,7 +331,7 @@ export function MyLibraryScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {!isLoaded ? (
+          {isLoading ? (
             <View style={styles.skeletonContainer}>
               <SectionSkeleton />
               <View style={styles.skeletonRow}>
