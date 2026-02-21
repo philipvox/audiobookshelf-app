@@ -2,146 +2,113 @@
  * src/features/player/stores/index.ts
  *
  * Player stores facade - centralized exports for all player-related stores.
- * Created as part of Phase 9 refactor to provide clean import paths.
  *
- * Architecture:
- * - playerStore: Core playback state (position, chapters, play/pause)
- * - playerSettingsStore: UI/behavior settings (skip intervals, control mode)
- * - bookmarksStore: Bookmark CRUD operations
- * - sleepTimerStore: Sleep timer with shake-to-extend
- * - speedStore: Playback speed management (per-book memory)
- * - completionStore: Book completion handling
- * - seekingStore: Seeking state and operations (CRITICAL for UI jitter fix)
- * - playerSelectors: Derived state selectors
+ * ARCHITECTURE (Phase 10 refactor - Single Source of Truth):
+ * - Each child store owns its state (seeking, speed, sleepTimer, etc.)
+ * - playerHooks.ts provides unified hook exports from SOURCE stores
+ * - playerSelectors.ts provides DERIVED selectors that combine multiple stores
+ * - Components should import from this index or playerHooks.ts
+ *
+ * This eliminates bidirectional sync and race conditions.
  */
 
 // =============================================================================
-// CORE STORE
+// TYPES (from source stores)
+// =============================================================================
+
+export type { Chapter } from './playerStore';
+export type { Bookmark } from './bookmarksStore';
+export type { SeekDirection } from './seekingStore';
+export type { ControlMode, ProgressMode } from './playerSettingsStore';
+
+// =============================================================================
+// STORE ACCESS (for actions/imperative code)
+// =============================================================================
+
+export { usePlayerStore } from './playerStore';
+export { usePlayerSettingsStore } from './playerSettingsStore';
+export { useBookmarksStore } from './bookmarksStore';
+export { useSleepTimerStore } from './sleepTimerStore';
+export { useSpeedStore } from './speedStore';
+export { useCompletionSheetStore } from './completionSheetStore';
+export { useSeekingStore } from './seekingStore';
+export { useJoystickSeekStore } from './joystickSeekStore';
+
+// =============================================================================
+// ALL HOOKS (from playerHooks.ts - unified export point)
 // =============================================================================
 
 export {
-  usePlayerStore,
-  type Chapter,
-  type Bookmark,
-  type SeekDirection,
-} from './playerStore';
+  // Core player
+  usePlayerStore as usePlayerStoreHook,
 
-// =============================================================================
-// SETTINGS STORE
-// =============================================================================
+  // Seeking (source: seekingStore)
+  useSeekingStore as useSeekingStoreHook,
+  useIsSeeking,
+  useSeekPosition,
+  useSeekStartPosition,
+  useSeekDirection,
+  useSeekDelta,
+  useSeekingState,
 
-export {
-  usePlayerSettingsStore,
-  type ControlMode,
-  type ProgressMode,
-  // Selectors
+  // Speed (source: speedStore)
+  useSpeedStore as useSpeedStoreHook,
+  usePlaybackRate,
+  useGlobalDefaultRate,
+  useBookSpeed,
+  useHasCustomSpeed,
+  useSpeedPresets,
+
+  // Sleep timer (source: sleepTimerStore)
+  useSleepTimerStore as useSleepTimerStoreHook,
+  useSleepTimer,
+  useIsSleepTimerActive,
+  useShakeToExtendEnabled,
+  useIsShakeDetectionActive,
+  useSleepTimerState,
+
+  // Bookmarks (source: bookmarksStore)
+  useBookmarksStore as useBookmarksStoreHook,
+  useBookmarks,
+  useBookmarkCount,
+  useBookmarkById,
+  useBookmarksSortedByTime,
+
+  // Settings (source: playerSettingsStore)
+  usePlayerSettingsStore as usePlayerSettingsStoreHook,
   useControlMode,
   useProgressMode,
   useSkipIntervals,
   usePlayerAppearance,
   useSmartRewindSettings,
-} from './playerSettingsStore';
 
-// =============================================================================
-// BOOKMARKS STORE
-// =============================================================================
-
-export {
-  useBookmarksStore,
-  type Bookmark as BookmarkRecord,
-  // Selectors
-  useBookmarks,
-  useBookmarkCount,
-  useBookmarkById,
-  useBookmarksSortedByTime,
-} from './bookmarksStore';
-
-// =============================================================================
-// SLEEP TIMER STORE
-// =============================================================================
-
-export {
-  useSleepTimerStore,
-  // Selectors
-  useSleepTimer,
-  useIsSleepTimerActive,
-  useShakeToExtendEnabled,
-  useIsShakeDetectionActive as useSleepTimerShakeDetectionActive,
-  useSleepTimerState as useSleepTimerFullState,
-} from './sleepTimerStore';
-
-// =============================================================================
-// SPEED STORE
-// =============================================================================
-
-export {
-  useSpeedStore,
-  // Selectors
-  usePlaybackRate,
-  useGlobalDefaultRate,
-  useBookSpeed,
-  useHasCustomSpeed,
-} from './speedStore';
-
-// =============================================================================
-// COMPLETION STORE
-// =============================================================================
-
-export {
-  useCompletionStore,
-  // Selectors
+  // Completion (source: completionSheetStore)
+  useCompletionSheetStore as useCompletionSheetStoreHook,
   useShowCompletionPrompt,
   useAutoMarkFinished,
   useIsCompletionSheetVisible,
   useCompletionSheetBook,
   useCompletionState,
-} from './completionStore';
 
-// =============================================================================
-// SEEKING STORE
-// =============================================================================
+  // Joystick seek (source: joystickSeekStore)
+  useJoystickSeekStore as useJoystickSeekStoreHook,
+  useJoystickSeekSettings,
 
-export {
-  useSeekingStore,
-  type SeekDirection as SeekDirectionType,
-  // Selectors
-  useIsSeeking as useSeekingIsSeeking,
-  useSeekPosition,
-  useSeekStartPosition,
-  useSeekDirection as useSeekingDirection,
-  useSeekDelta as useSeekingDelta,
-  useSeekingState,
-} from './seekingStore';
-
-// =============================================================================
-// SELECTORS (from playerSelectors.ts)
-// =============================================================================
-
-export {
-  // Position
+  // Derived selectors (source: playerSelectors - combine multiple stores)
   useDisplayPosition,
   useEffectivePosition,
-  // Seek (from playerStore state)
-  useSeekDelta,
-  useIsSeeking,
-  useSeekDirection,
-  // Chapter
-  useCurrentChapterIndex,
-  useCurrentChapter,
-  useChapterProgress,
-  // Progress
+  usePositionState,
   useBookProgress,
   usePercentComplete,
   useTimeRemaining,
-  // Book
+  useChapterProgress,
+  useCurrentChapterIndex,
+  useCurrentChapter,
+  useChapters,
   useIsViewingDifferentBook,
   useViewingBook,
   usePlayingBook,
-  // Sleep timer (from playerStore state)
-  useIsShakeDetectionActive,
-  useSleepTimerState,
-  // Playback
   usePlaybackState,
   usePlayerVisibility,
   useCurrentBookId,
-} from './playerSelectors';
+} from './playerHooks';

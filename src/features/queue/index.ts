@@ -8,10 +8,13 @@
 export {
   useQueueStore,
   useQueue,
+  getUpNextQueue,
+  getPlayedQueue,
   useQueueCount,
   useIsInQueue,
   useAutoplayEnabled,
   useAutoSeriesBookId,
+  useShouldShowClearDialog,
 } from './stores/queueStore';
 export type { QueueBook } from './stores/queueStore';
 

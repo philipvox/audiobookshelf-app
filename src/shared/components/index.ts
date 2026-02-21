@@ -39,6 +39,9 @@ export { ScreenLoadingOverlay } from './ScreenLoadingOverlay';
 // Global loading overlay (triggered from buttons before navigation)
 export { GlobalLoadingOverlay } from './GlobalLoadingOverlay';
 
+// Global cache progress bar (shows when image caching runs in background)
+export { GlobalCacheProgressBar } from './GlobalCacheProgressBar';
+
 // =============================================================================
 // FEEDBACK & STATES
 // =============================================================================
@@ -136,8 +139,8 @@ export { HeartButton, HeartIcon } from './HeartButton';
 export type { HeartButtonProps } from './HeartButton';
 export { SeriesHeartButton } from './SeriesHeartButton';
 export type { SeriesHeartButtonProps } from './SeriesHeartButton';
-export { AddToLibraryButton, LibraryIcon as AddToLibraryIcon } from './AddToLibraryButton';
-export type { AddToLibraryButtonProps } from './AddToLibraryButton';
+export { SectionHeader } from './SectionHeader';
+export type { SectionHeaderProps } from './SectionHeader';
 
 // =============================================================================
 // BOOK CARDS
@@ -238,3 +241,8 @@ export { SyncStatusBanner } from './SyncStatusBanner';
 // =============================================================================
 export { CollapsibleSection } from './CollapsibleSection';
 export type { CollapsibleSectionProps } from './CollapsibleSection';
+
+// =============================================================================
+// NOTICE MODALS
+// =============================================================================
+export { LocalStorageNoticeModal } from './LocalStorageNoticeModal';

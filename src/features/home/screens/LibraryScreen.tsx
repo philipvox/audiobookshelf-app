@@ -24,6 +24,9 @@ import { Image } from 'expo-image';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
 import { apiClient } from '@/core/api';
+import { librarySyncService } from '@/core/services/librarySyncService';
+import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { useDownloads } from '@/core/hooks/useDownloads';
@@ -66,16 +69,17 @@ import { useRecommendations } from '@/features/recommendations/hooks/useRecommen
 import { useInProgressBooks, useFinishedBooks } from '@/core/hooks/useUserBooks';
 import { useShallow } from 'zustand/react/shallow';
 import { useProgressStore } from '@/core/stores/progressStore';
-import { usePlayerStore } from '@/features/player/stores/playerStore';
+import { usePlayerStore } from '@/features/player/stores';
 import { GLOBAL_MINI_PLAYER_HEIGHT } from '@/navigation/components/GlobalMiniPlayer';
 import { useAppReadyStore } from '@/core/stores/appReadyStore';
+import { usePlaylists, usePlaylistSettingsStore } from '@/features/playlists';
 
 // =============================================================================
 // BOTTOM PADDING CONSTANTS - Edit these to adjust shelf/stack/list positioning
 // =============================================================================
 
 // SHELF MODE (upright spines, horizontal scroll)
-const SHELF_PADDING_WITH_MINI_PLAYER = GLOBAL_MINI_PLAYER_HEIGHT - 50;
+const SHELF_PADDING_WITH_MINI_PLAYER = GLOBAL_MINI_PLAYER_HEIGHT - 30;
 const SHELF_PADDING_NO_MINI_PLAYER = 0;
 
 // LIST MODE (vertical list with covers)
@@ -91,8 +95,8 @@ const GRID_PADDING_NO_MINI_PLAYER = 40;
 // =============================================================================
 
 type ViewMode = 'shelf' | 'list' | 'grid';  // Shelf (upright spines), List (vertical), or Grid (2-column cards)
-type SortMode = 'recent' | 'title' | 'author' | 'progress' | 'duration';
-type ContentMode = 'library' | 'lastPlayed' | 'finished';  // What content to show
+type SortMode = 'recent' | 'title' | 'author' | 'progress' | 'series' | 'duration';
+type ContentMode = 'library' | 'lastPlayed' | 'finished' | string;  // What content to show (includes playlist:${id})
 type DownloadFilter = 'all' | 'downloaded' | 'not-downloaded';  // Download status filter
 
 const SORT_OPTIONS: { key: SortMode; label: string }[] = [
@@ -100,11 +104,14 @@ const SORT_OPTIONS: { key: SortMode; label: string }[] = [
   { key: 'title', label: 'Title' },
   { key: 'author', label: 'Author' },
   { key: 'progress', label: 'Progress' },
+  { key: 'series', label: 'Series' },
   { key: 'duration', label: 'Duration' },
 ];
 
-const CONTENT_OPTIONS: { key: ContentMode; label: string }[] = [
+// Base content options (playlists are added dynamically)
+const BASE_CONTENT_OPTIONS: { key: ContentMode; label: string }[] = [
   { key: 'library', label: 'My Library' },
+  { key: 'mySeries', label: 'My Series' },
   { key: 'lastPlayed', label: 'Last Played' },
   { key: 'finished', label: 'Finished' },
 ];
@@ -125,6 +132,8 @@ interface LibraryBook {
   coverUrl?: string;
   lastPlayedAt?: number; // Unix timestamp in milliseconds
   isDownloaded: boolean;
+  seriesName?: string;
+  seriesSequence?: number;
 }
 
 // =============================================================================
@@ -201,10 +210,15 @@ function formatDurationCompact(seconds: number): string {
 function transformToLibraryBook(item: LibraryItem, downloadedIds: Set<string>): LibraryBook {
   const metadata = getBookMetadata(item) || {};
   const mediaProgress = item.mediaProgress || item.userMediaProgress;
-  const progress = mediaProgress?.progress || 0;
   const duration = getBookDuration(item);
-  // Get lastUpdate timestamp
-  const lastPlayedAt = mediaProgress?.lastUpdate || 0;
+
+  // Use LOCAL progress from progressStore (updated immediately on playback)
+  // This prevents sort flickering when server data arrives with different timestamps
+  const localProgress = useProgressStore.getState().getProgress(item.id);
+  const progress = localProgress?.progress ?? mediaProgress?.progress ?? 0;
+  const lastPlayedAt = localProgress?.lastPlayedAt ?? mediaProgress?.lastUpdate ?? 0;
+
+  const seriesInfo = extractSeriesInfo(metadata);
 
   return {
     id: item.id,
@@ -216,6 +230,8 @@ function transformToLibraryBook(item: LibraryItem, downloadedIds: Set<string>): 
     coverUrl: apiClient.getItemCoverUrl(item.id, { width: 400, height: 400 }),
     lastPlayedAt,
     isDownloaded: downloadedIds.has(item.id),
+    seriesName: seriesInfo.name,
+    seriesSequence: seriesInfo.sequence,
   };
 }
 
@@ -299,12 +315,27 @@ export function LibraryScreen() {
   const isDarkMode = colors.isDark;
 
   const [viewMode, setViewMode] = useState<ViewMode>('shelf');
-  const [sortMode, setSortMode] = useState<SortMode>('recent');
-  const [contentMode, setContentMode] = useState<ContentMode>('library'); // Library vs Last Played
+  const [sortMode, setSortMode] = useState<SortMode>(
+    usePlaylistSettingsStore.getState().defaultView === 'mySeries' ? 'series' : 'recent'
+  );
   const [downloadFilter, setDownloadFilter] = useState<DownloadFilter>('all'); // Download status filter
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showContentDropdown, setShowContentDropdown] = useState(false);
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+
+  // Playlist settings from store
+  const defaultView = usePlaylistSettingsStore((s) => s.defaultView);
+  const visiblePlaylistIds = usePlaylistSettingsStore((s) => s.visiblePlaylistIds);
+  const playlistOrder = usePlaylistSettingsStore((s) => s.playlistOrder);
+
+  // Initialize content mode from default view setting
+  const [contentMode, setContentMode] = useState<ContentMode>(defaultView || 'library');
+
+  // Favorite series names (for My Series view reactivity)
+  const favoriteSeriesNames = useMyLibraryStore((s) => s.favoriteSeriesNames);
+
+  // Fetch playlists
+  const { data: playlists = [] } = usePlaylists();
 
   // Get data from home hook (for refresh and in-progress data)
   const {
@@ -344,14 +375,21 @@ export function LibraryScreen() {
 
   // Get library cache for items and refresh functionality
   // PERF FIX: Use selector to only subscribe to needed fields, preventing re-renders from other store changes
-  const { items: allCacheItems, refreshCache, isLoading: isCacheLoading, isLoaded: isCacheLoaded } = useLibraryCache(
+  // PERF FIX: Use itemsById (pre-built index) instead of creating Map from items array
+  const { items: allCacheItems, itemsById: cacheItemsById, refreshCache, isLoading: isCacheLoading, isLoaded: isCacheLoaded } = useLibraryCache(
     useShallow((state) => ({
       items: state.items,
+      itemsById: state.itemsById,
       refreshCache: state.refreshCache,
       isLoading: state.isLoading,
       isLoaded: state.isLoaded,
     }))
   );
+
+  // Load spine manifest on mount to ensure spines render correctly
+  useEffect(() => {
+    useLibraryCache.getState().loadSpineManifest();
+  }, []);
 
   // Get recommendations for "Find More Books" card (5 for empty state stack)
   const { recommendations: recommendedItems } = useRecommendations(allCacheItems, 5);
@@ -389,16 +427,16 @@ export function LibraryScreen() {
 
   // Build local "recently listened" from SQLite when server data is empty
   // This ensures "Last Played" shows books even when server returns 0 items
+  // PERF FIX: Use pre-built cacheItemsById Map instead of creating new Map
   const localRecentlyListened = useMemo(() => {
     if (recentlyListened.length > 0) return recentlyListened;
     if (localInProgressBooks.length === 0) return [];
 
     // Convert local progress data to LibraryItems by looking up in cache
-    const cacheMap = new Map(allCacheItems.map(item => [item.id, item]));
     const localItems: LibraryItem[] = [];
 
     for (const userBook of localInProgressBooks) {
-      const cacheItem = cacheMap.get(userBook.bookId);
+      const cacheItem = cacheItemsById.get(userBook.bookId);
       if (cacheItem) {
         // Enrich cache item with local progress data
         const lastUpdateTime = userBook.lastPlayedAt ? new Date(userBook.lastPlayedAt).getTime() : Date.now();
@@ -420,18 +458,18 @@ export function LibraryScreen() {
     }
 
     return localItems.slice(0, 20);
-  }, [recentlyListened, localInProgressBooks, allCacheItems]);
+  }, [recentlyListened, localInProgressBooks, cacheItemsById]);
 
   // Build finished books list from SQLite data
+  // PERF FIX: Use pre-built cacheItemsById Map instead of creating new Map
   const finishedLibraryItems = useMemo(() => {
     if (finishedBooks.length === 0) return [];
 
     // Convert finished books to LibraryItems by looking up in cache
-    const cacheMap = new Map(allCacheItems.map(item => [item.id, item]));
     const items: LibraryItem[] = [];
 
     for (const userBook of finishedBooks) {
-      const cacheItem = cacheMap.get(userBook.bookId);
+      const cacheItem = cacheItemsById.get(userBook.bookId);
       if (cacheItem) {
         // Enrich cache item with finished data
         const finishedTime = userBook.finishedAt ? new Date(userBook.finishedAt).getTime() : Date.now();
@@ -453,7 +491,31 @@ export function LibraryScreen() {
     }
 
     return items;
-  }, [finishedBooks, allCacheItems]);
+  }, [finishedBooks, cacheItemsById]);
+
+  // Build dynamic content options including playlists
+  const contentOptions = useMemo(() => {
+    const options = [...BASE_CONTENT_OPTIONS];
+
+    // Add visible playlists in order
+    const orderedPlaylistIds = playlistOrder.filter(id => visiblePlaylistIds.includes(id));
+    // Add any visible playlists not in order (newly added)
+    const remainingVisibleIds = visiblePlaylistIds.filter(id => !playlistOrder.includes(id));
+    const allOrderedIds = [...orderedPlaylistIds, ...remainingVisibleIds];
+
+    for (const playlistId of allOrderedIds) {
+      const playlist = playlists.find(p => p.id === playlistId);
+      // Skip internal __sl_ playlists (handled as built-in views)
+      if (playlist && !playlist.name.startsWith('__sl_')) {
+        options.push({
+          key: `playlist:${playlist.id}`,
+          label: playlist.name,
+        });
+      }
+    }
+
+    return options;
+  }, [playlists, visiblePlaylistIds, playlistOrder]);
 
   // Get downloaded books
   const { downloads, isLoading: isDownloadsLoading } = useDownloads();
@@ -468,8 +530,10 @@ export function LibraryScreen() {
   // Check if app boot is complete (initial refresh finished)
   const isBootComplete = useAppReadyStore((s) => s.isBootComplete);
 
-  // Data readiness flag - wait for all async sources AND boot completion before showing sorted books
-  // This prevents the flash where data changes during the boot refresh
+  // Data readiness flag - wait for essential data sources before showing books
+  // Note: We don't wait for isRefreshComplete - books show immediately as dark placeholders
+  // (via isWaitingForServerSpine in BookSpineVertical) and may re-sort when fresh data arrives.
+  // Dark boxes re-sorting is less jarring than colorful covers moving.
   const isDataReady = isProgressLoaded && isCacheLoaded && !isDownloadsLoading && isBootComplete;
 
   // DEBUG: Log loading states (can be removed once stable)
@@ -494,12 +558,52 @@ export function LibraryScreen() {
     return allCacheItems.filter(item => librarySet.has(item.id));
   }, [allCacheItems, progressVersion, isCacheLoaded, isProgressLoaded]);
 
-  // Select items based on content mode (Library vs Last Played vs Finished)
+  // Select items based on content mode (Library vs Last Played vs Finished vs Playlist)
+  // PERF FIX: Use pre-built cacheItemsById Map instead of creating new Map
   const baseLibraryItems = useMemo(() => {
+    // Handle playlist content mode
+    if (contentMode.startsWith('playlist:')) {
+      const playlistId = contentMode.replace('playlist:', '');
+      const playlist = playlists.find(p => p.id === playlistId);
+      if (!playlist) return [];
+
+      // Get library items from playlist, looking up in cache
+      const items: LibraryItem[] = [];
+
+      for (const playlistItem of playlist.items) {
+        // First try the embedded libraryItem, then fall back to cache lookup
+        const item = playlistItem.libraryItem || cacheItemsById.get(playlistItem.libraryItemId);
+        if (item) {
+          items.push(item);
+        }
+      }
+
+      return items;
+    }
+
     switch (contentMode) {
       case 'library':
         // "My Library" - show books user has added to their library
         return libraryBooksFromCache;
+      case 'mySeries': {
+        // "My Series" - show ALL books from favorited series via library cache
+        const favSeriesNames = useMyLibraryStore.getState().favoriteSeriesNames;
+        if (favSeriesNames.length === 0) return [];
+        const seen = new Set<string>();
+        const seriesItems: LibraryItem[] = [];
+        for (const seriesName of favSeriesNames) {
+          const seriesInfo = useLibraryCache.getState().getSeries(seriesName);
+          if (seriesInfo) {
+            for (const book of seriesInfo.books) {
+              if (!seen.has(book.id)) {
+                seen.add(book.id);
+                seriesItems.push(book);
+              }
+            }
+          }
+        }
+        return seriesItems;
+      }
       case 'lastPlayed':
         // "Last Played" - use local SQLite data as fallback when server returns empty
         return localRecentlyListened;
@@ -509,7 +613,7 @@ export function LibraryScreen() {
       default:
         return libraryBooksFromCache;
     }
-  }, [contentMode, libraryBooksFromCache, localRecentlyListened, finishedLibraryItems]);
+  }, [contentMode, libraryBooksFromCache, localRecentlyListened, finishedLibraryItems, playlists, cacheItemsById, favoriteSeriesNames]);
 
   // Apply download filter on top of content mode
   const effectiveLibraryItems = useMemo(() => {
@@ -525,10 +629,11 @@ export function LibraryScreen() {
   }, [baseLibraryItems, downloadFilter, downloadedIds]);
 
   // Transform to LibraryBook format for list/grid views
-  // Uses effectiveLibraryItems so "Downloaded" filter shows ALL downloaded books
+  // Uses LOCAL progressStore timestamps (not server) to avoid sort flicker on refresh
+  // Depends on progressVersion so it re-sorts when local progress updates
   const allBooksUnsorted = useMemo(() => {
     return effectiveLibraryItems.map((item) => transformToLibraryBook(item, downloadedIds));
-  }, [effectiveLibraryItems, downloadedIds]);
+  }, [effectiveLibraryItems, downloadedIds, progressVersion]);
 
   // Books are already filtered by effectiveLibraryItems, no additional filtering needed
   const filteredBooks = allBooksUnsorted;
@@ -551,6 +656,16 @@ export function LibraryScreen() {
         break;
       case 'progress':
         sorted.sort((a, b) => b.progress - a.progress); // High to low
+        break;
+      case 'series':
+        sorted.sort((a, b) => {
+          if (!a.seriesName && !b.seriesName) return a.title.localeCompare(b.title);
+          if (!a.seriesName) return 1;
+          if (!b.seriesName) return -1;
+          const seriesCompare = a.seriesName.localeCompare(b.seriesName);
+          if (seriesCompare !== 0) return seriesCompare;
+          return (a.seriesSequence || 999) - (b.seriesSequence || 999);
+        });
         break;
       case 'duration':
         sorted.sort((a, b) => b.durationSeconds - a.durationSeconds); // Long to short
@@ -580,6 +695,21 @@ export function LibraryScreen() {
     await refreshCache();
     await refresh();
   }, [refreshCache, refresh]);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isCollectionLinked = useLibrarySyncStore(s => !!s.libraryPlaylistId);
+
+  const handleSyncPress = useCallback(async () => {
+    if (isSyncing) return;
+    haptics.selection();
+    setIsSyncing(true);
+    try {
+      await librarySyncService.fullSync();
+      await refreshCache();
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, refreshCache]);
 
   const handleLogoLongPress = useCallback(() => {
     haptics.selection();
@@ -611,6 +741,10 @@ export function LibraryScreen() {
     haptics.selection();
     setContentMode(mode);
     setShowContentDropdown(false);
+    // Default to series sort when switching to My Series
+    if (mode === 'mySeries') {
+      setSortMode('series');
+    }
   }, []);
 
   const handleDownloadPress = useCallback(() => {
@@ -624,13 +758,10 @@ export function LibraryScreen() {
     setShowDownloadDropdown(false);
   }, []);
 
-  // Create a map for quick lookup of library items by ID
-  // Uses effectiveLibraryItems so spine data works for downloaded books
-  const libraryItemsMap = useMemo(() => {
-    const map = new Map<string, LibraryItem>();
-    effectiveLibraryItems.forEach(item => map.set(item.id, item));
-    return map;
-  }, [effectiveLibraryItems]);
+  // Use pre-built cacheItemsById for quick lookup of library items by ID
+  // PERF FIX: Removed creation of new Map - use cacheItemsById directly
+  // All items in effectiveLibraryItems are also in cacheItemsById
+  const libraryItemsMap = cacheItemsById;
 
   // Dynamic styles based on mode - using white/black background
   const screenBg = colors.white;
@@ -640,7 +771,7 @@ export function LibraryScreen() {
 
   // Get current labels for dropdowns
   const currentSortLabel = SORT_OPTIONS.find(opt => opt.key === sortMode)?.label || 'Recent';
-  const currentContentLabel = CONTENT_OPTIONS.find(opt => opt.key === contentMode)?.label || 'Library';
+  const currentContentLabel = contentOptions.find(opt => opt.key === contentMode)?.label || 'Library';
   const currentDownloadLabel = DOWNLOAD_OPTIONS.find(opt => opt.key === downloadFilter)?.label || 'All';
 
   // Render list view (vertical list with covers)
@@ -840,6 +971,36 @@ export function LibraryScreen() {
     );
   };
 
+  // Group books by series for series-sorted shelf view
+  const seriesGroups = useMemo(() => {
+    if (sortMode !== 'series') return [];
+
+    const groups: { name: string; inLibrary: number; total: number; books: BookSpineVerticalData[] }[] = [];
+    let currentGroup: typeof groups[0] | null = null;
+
+    for (const book of allBooks) {
+      const seriesName = book.seriesName || 'No Series';
+      if (!currentGroup || currentGroup.name !== seriesName) {
+        // Look up total book count from library cache
+        const seriesInfo = useLibraryCache.getState().getSeries(seriesName);
+        currentGroup = {
+          name: seriesName,
+          inLibrary: 0,
+          total: seriesInfo?.bookCount || 0,
+          books: [],
+        };
+        groups.push(currentGroup);
+      }
+      const item = libraryItemsMap.get(book.id);
+      if (item) {
+        currentGroup.books.push(transformToSpineData(book, item, false));
+        currentGroup.inLibrary++;
+      }
+    }
+
+    return groups;
+  }, [allBooks, sortMode, libraryItemsMap]);
+
   // Render content based on view mode
   const renderContent = () => {
     // Show loading skeleton while data sources are loading
@@ -860,6 +1021,47 @@ export function LibraryScreen() {
     // Grid view uses 2-column cards
     if (viewMode === 'grid') {
       return renderGridView();
+    }
+
+    // Series sort in shelf mode: render grouped sections
+    if (sortMode === 'series' && viewMode === 'shelf') {
+      return (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: getBottomPadding('shelf') }}
+          showsVerticalScrollIndicator={false}
+        >
+          {seriesGroups.map((group) => (
+            <View key={group.name}>
+              {/* Series header — tappable to navigate to series detail */}
+              <TouchableOpacity
+                style={styles.seriesSectionHeader}
+                onPress={() => {
+                  if (group.name !== 'No Series') {
+                    navigation.navigate('SeriesDetail', { seriesName: group.name });
+                  }
+                }}
+                activeOpacity={group.name === 'No Series' ? 1 : 0.6}
+              >
+                <Text style={[styles.seriesSectionName, { color: colors.gray }]} numberOfLines={1}>
+                  {group.name.toUpperCase()}
+                </Text>
+                <Text style={[styles.seriesSectionCount, { color: colors.gray }]}>
+                  {group.inLibrary}:{group.total}
+                </Text>
+              </TouchableOpacity>
+              {/* Horizontal shelf for this series */}
+              <BookshelfView
+                books={group.books}
+                onBookPress={(book) => handleBookPress(book)}
+                layoutMode="shelf"
+                heightScale={0.5}
+                bottomPadding={0}
+              />
+            </View>
+          ))}
+        </ScrollView>
+      );
     }
 
     // Only show last played time when sorted by recent
@@ -897,12 +1099,15 @@ export function LibraryScreen() {
         showLogo={true}
         onLogoLongPress={handleLogoLongPress}
         style={{ backgroundColor: 'transparent' }}
-        circleButtons={[
+        pills={isCollectionLinked ? [
           {
-            key: 'refresh',
-            icon: <RefreshIcon color={isCacheLoading || isRefreshing ? colors.gray : colors.black} />,
-            onPress: isCacheLoading || isRefreshing ? undefined : handleRefreshPress,
+            key: 'sync',
+            label: isSyncing ? 'Syncing…' : 'Sync',
+            onPress: handleSyncPress,
+            outline: true,
           },
+        ] : []}
+        circleButtons={[
           {
             key: 'shelf',
             icon: <ShelfIcon color={viewMode === 'shelf' ? colors.white : buttonInactiveTextColor} />,
@@ -951,6 +1156,7 @@ export function LibraryScreen() {
             ⇅ {currentSortLabel}
           </Text>
         </TouchableOpacity>
+
       </View>
 
       {/* Sort Dropdown Modal */}
@@ -1007,34 +1213,37 @@ export function LibraryScreen() {
           style={styles.dropdownOverlay}
           onPress={() => setShowContentDropdown(false)}
         >
-          <View style={[styles.dropdownMenu, { backgroundColor: isDarkMode ? colors.shelfBg : colors.white }]}>
+          <View style={[styles.dropdownMenuWide, { backgroundColor: isDarkMode ? colors.shelfBg : colors.white }]}>
             <Text style={[styles.dropdownTitle, { color: colors.black }]}>
               View
             </Text>
-            {CONTENT_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.dropdownItem,
-                  contentMode === option.key && styles.dropdownItemSelected,
-                  { borderBottomColor: isDarkMode ? colors.gray : colors.grayLine },
-                ]}
-                onPress={() => handleContentSelect(option.key)}
-              >
-                <Text
+            <ScrollView style={styles.dropdownScrollView} showsVerticalScrollIndicator={false}>
+              {contentOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
                   style={[
-                    styles.dropdownItemText,
-                    { color: colors.black },
-                    contentMode === option.key && styles.dropdownItemTextSelected,
+                    styles.dropdownItemTall,
+                    contentMode === option.key && styles.dropdownItemSelected,
+                    { borderBottomColor: isDarkMode ? colors.gray : colors.grayLine },
                   ]}
+                  onPress={() => handleContentSelect(option.key)}
                 >
-                  {option.label}
-                </Text>
-                {contentMode === option.key && (
-                  <Text style={[styles.dropdownCheck, { color: colors.black }]}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      { color: colors.black },
+                      contentMode === option.key && styles.dropdownItemTextSelected,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {option.label}
+                  </Text>
+                  {contentMode === option.key && (
+                    <Text style={[styles.dropdownCheck, { color: colors.black }]}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -1099,6 +1308,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // Series section header (for series-sorted shelf view)
+  seriesSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  seriesSectionName: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    flex: 1,
+    marginRight: 8,
+  },
+  seriesSectionCount: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    letterSpacing: 0.5,
+  },
+
   // Filter Row (aligned to right with search)
   filterRow: {
     flexDirection: 'row',
@@ -1138,6 +1370,21 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  // Wider dropdown for content mode (includes playlist names)
+  dropdownMenuWide: {
+    width: 240,
+    maxHeight: 400,
+    borderRadius: 8,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dropdownScrollView: {
+    maxHeight: 340,
+  },
   dropdownTitle: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: 10,
@@ -1153,6 +1400,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  // Taller dropdown items for better touch targets (Apple HIG minimum 44pt)
+  dropdownItemTall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    minHeight: 56,
     borderBottomWidth: 1,
   },
   dropdownItemSelected: {

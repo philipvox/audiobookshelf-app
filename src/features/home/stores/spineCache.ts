@@ -14,11 +14,17 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { createLogger } from '@/shared/utils/logger';
 
 const log = createLogger('SpineCache');
+
+// Dimension cache TTL: 24 hours
+// Ensures stale dimensions are refreshed if server spine images change
+const DIMENSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 // MIGRATED: Now using new spine system via adapter
 import { calculateBookDimensions, hashString, getSpineColorForGenres, generateSpineComposition, SpineComposition, getTypographyForGenres } from '../utils/spine/adapter';
 // Template system - spines use this when available, so cache must too
@@ -98,6 +104,13 @@ export interface CachedSpineData {
   };
 }
 
+/** Server spine dimension entry with timestamp for TTL-based expiry */
+export interface SpineDimensionEntry {
+  width: number;
+  height: number;
+  cachedAt: number;  // Date.now() when cached
+}
+
 export interface SpineCacheState {
   /** Map of bookId -> cached spine data */
   cache: Map<string, CachedSpineData>;
@@ -107,6 +120,17 @@ export interface SpineCacheState {
   lastPopulatedAt: number | null;
   /** Whether to use genre-based colored spines (default: true) */
   useColoredSpines: boolean;
+  /** Whether to use server-provided spine images (default: false until images are generated) */
+  useServerSpines: boolean;
+  /** Record of bookId -> server spine image dimensions with TTL - persisted */
+  serverSpineDimensions: Record<string, SpineDimensionEntry>;
+  /** Whether persisted state has been hydrated from AsyncStorage */
+  isHydrated: boolean;
+  /** Whether expo-image disk cache has been cleared (prevents stale image flash) */
+  imageCacheCleared: boolean;
+  /** Version counter for serverSpineDimensions - increments on any change.
+   *  Subscribe to this instead of the full object to avoid mass re-renders. */
+  serverSpineDimensionsVersion: number;
 }
 
 export interface SpineCacheActions {
@@ -124,8 +148,16 @@ export interface SpineCacheActions {
   clearCache: () => void;
   /** Toggle colored spines on/off */
   setUseColoredSpines: (enabled: boolean) => void;
+  /** Toggle server-provided spine images on/off */
+  setUseServerSpines: (enabled: boolean) => void;
   /** Save current cache to SQLite for persistence */
   saveToSQLite: (libraryId: string) => Promise<void>;
+  /** Get cached server spine image dimensions for a book */
+  getServerSpineDimensions: (bookId: string) => { width: number; height: number } | undefined;
+  /** Set server spine image dimensions after image loads */
+  setServerSpineDimensions: (bookId: string, width: number, height: number) => void;
+  /** Clear all cached server spine dimensions (call when refreshing spines) */
+  clearServerSpineDimensions: () => void;
 }
 
 // =============================================================================
@@ -258,6 +290,11 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       isPopulated: false,
       lastPopulatedAt: null,
       useColoredSpines: true, // Default to colored spines enabled
+      useServerSpines: true, // Default to server spines when available
+      serverSpineDimensions: {}, // Cache for server spine image dimensions (persisted)
+      isHydrated: false, // Set to true once AsyncStorage hydration completes
+      imageCacheCleared: false, // Set to true once expo-image disk cache is cleared
+      serverSpineDimensionsVersion: 0,
 
       // Actions
 
@@ -268,6 +305,13 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
        */
       hydrateFromSQLite: async (libraryId: string): Promise<number> => {
         if (!libraryId) return 0;
+
+        // Skip spine generation caching if server spines are enabled
+        // (procedural spine calculations not needed when using server images)
+        if (get().useServerSpines) {
+          log.debug('Server spines enabled, skipping procedural spine hydration');
+          return 0;
+        }
 
         // Skip if already populated (avoid duplicate work)
         if (get().isPopulated && get().cache.size > 0) {
@@ -299,6 +343,14 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       },
 
       populateFromLibrary: async (items: LibraryItem[], libraryId?: string) => {
+        // Skip procedural spine caching entirely if server spines are enabled
+        // (server images don't need pre-computed dimensions)
+        if (get().useServerSpines) {
+          log.debug('Server spines enabled, skipping procedural spine population');
+          set({ isPopulated: true, lastPopulatedAt: Date.now() });
+          return;
+        }
+
         const startTime = Date.now();
         const newCache = new Map<string, CachedSpineData>();
         const itemIds = new Set(items.map(i => i.id));
@@ -380,7 +432,8 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       const cache = get().cache;
       const existing = cache.get(bookId);
 
-      if (existing) {
+      // Skip if progress unchanged - prevents unnecessary re-renders
+      if (existing && existing.progress !== progress) {
         const newCache = new Map(cache);
         newCache.set(bookId, { ...existing, progress });
         set({ cache: newCache });
@@ -399,7 +452,52 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       set({ useColoredSpines: enabled });
     },
 
+    setUseServerSpines: (enabled: boolean) => {
+      set({ useServerSpines: enabled });
+    },
+
+    getServerSpineDimensions: (bookId: string) => {
+      const entry = get().serverSpineDimensions[bookId];
+      if (!entry) return undefined;
+
+      // Check if entry has expired (24h TTL)
+      const age = Date.now() - entry.cachedAt;
+      if (age > DIMENSION_CACHE_TTL_MS) {
+        // Expired - return undefined to trigger refresh
+        return undefined;
+      }
+
+      return { width: entry.width, height: entry.height };
+    },
+
+    setServerSpineDimensions: (bookId: string, width: number, height: number) => {
+      const { serverSpineDimensions, serverSpineDimensionsVersion } = get();
+      const existing = serverSpineDimensions[bookId];
+      // Update if new or dimensions changed (allows refresh after expiry)
+      if (!existing || existing.width !== width || existing.height !== height) {
+        set({
+          serverSpineDimensions: {
+            ...serverSpineDimensions,
+            [bookId]: { width, height, cachedAt: Date.now() },
+          },
+          serverSpineDimensionsVersion: serverSpineDimensionsVersion + 1,
+        });
+      }
+    },
+
+    clearServerSpineDimensions: () => {
+      set({ serverSpineDimensions: {}, serverSpineDimensionsVersion: get().serverSpineDimensionsVersion + 1 });
+      console.log('[SpineCache] Cleared all server spine dimensions');
+    },
+
     saveToSQLite: async (libraryId: string) => {
+      // Skip saving procedural spine data if server spines are enabled
+      // (no need to persist calculations we won't use)
+      if (get().useServerSpines) {
+        log.debug('Server spines enabled, skipping procedural spine save');
+        return;
+      }
+
       const { cache } = get();
       if (cache.size === 0) return;
 
@@ -414,22 +512,75 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
   }),
     {
       name: 'spine-settings',
-      version: 2, // Increment to trigger migration
+      version: 5, // Increment to trigger migration for TTL-based cache
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist the settings, not the cache
+      // Persist settings AND serverSpineDimensions with TTL
+      // Dimensions have 24h TTL to handle server-side image changes
       partialize: (state) => ({
         useColoredSpines: state.useColoredSpines,
+        useServerSpines: state.useServerSpines,
+        serverSpineDimensions: state.serverSpineDimensions,
       }),
       // Migration: v1 -> v2: Enable colored spines for light mode theme
+      // Migration: v2 -> v3: Add server spines setting (default off)
+      // Migration: v3 -> v4: Persist serverSpineDimensions to eliminate flash
+      // Migration: v4 -> v5: Add cachedAt timestamp for 24h TTL expiry
       migrate: (persistedState: any, version: number) => {
         if (version < 2) {
           // Enable colored spines for new light mode theme
           return {
             ...persistedState,
             useColoredSpines: true,
+            useServerSpines: false,
+            serverSpineDimensions: {},
+          };
+        }
+        if (version < 3) {
+          // Add server spines setting (default off until images are generated)
+          return {
+            ...persistedState,
+            useServerSpines: false,
+            serverSpineDimensions: {},
+          };
+        }
+        if (version < 4) {
+          // Add persisted serverSpineDimensions (previously was Map, now Record)
+          return {
+            ...persistedState,
+            serverSpineDimensions: {},
+          };
+        }
+        if (version < 5) {
+          // Add cachedAt timestamp to existing dimension entries
+          const oldDimensions = persistedState.serverSpineDimensions || {};
+          const newDimensions: Record<string, { width: number; height: number; cachedAt: number }> = {};
+          const now = Date.now();
+          for (const [bookId, dims] of Object.entries(oldDimensions)) {
+            const d = dims as { width: number; height: number; cachedAt?: number };
+            newDimensions[bookId] = {
+              width: d.width,
+              height: d.height,
+              cachedAt: d.cachedAt || now, // Add timestamp if missing
+            };
+          }
+          return {
+            ...persistedState,
+            serverSpineDimensions: newDimensions,
           };
         }
         return persistedState;
+      },
+      onRehydrateStorage: () => (state) => {
+        // Called when hydration from AsyncStorage completes
+        if (state) {
+          const dimCount = Object.keys(state.serverSpineDimensions || {}).length;
+          console.log(`[SpineCache] Hydrated from AsyncStorage: ${dimCount} server spine dimensions`);
+          // Mark as hydrated so components know persisted data is available
+          useSpineCacheStore.setState({ isHydrated: true, imageCacheCleared: true });
+          // NOTE: We no longer clear expo-image caches on app start.
+          // URL timestamps now handle cache busting, and we want to preserve
+          // the full library image cache for instant loading.
+        }
       },
     }
   )
@@ -453,3 +604,8 @@ export const selectCacheSize = (state: SpineCacheState) => state.cache.size;
  * Select colored spines setting
  */
 export const selectUseColoredSpines = (state: SpineCacheState) => state.useColoredSpines;
+
+/**
+ * Select server spines setting
+ */
+export const selectUseServerSpines = (state: SpineCacheState) => state.useServerSpines;

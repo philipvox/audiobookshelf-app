@@ -8,8 +8,7 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
+import { BookSpineVertical, BookSpineVerticalData, useBookRowLayout } from '@/shared/spine';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { scale } from '@/shared/theme';
 

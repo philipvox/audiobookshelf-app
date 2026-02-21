@@ -25,14 +25,15 @@ import { LibraryScreen } from '@/features/home';
 import { MyLibraryScreen } from '@/features/library';
 import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
 import { SpineTemplatePreviewScreen } from '@/features/home/screens/SpineTemplatePreviewScreen';
+import { SpinePlaygroundScreen } from '@/features/home/screens/SpinePlaygroundScreen';
 import { SearchScreen } from '@/features/search';
-import { SecretLibraryBrowseScreen, DurationFilterScreen } from '@/features/browse';
+import { SecretLibraryBrowseScreen, DurationFilterScreen, CollectionsListScreen } from '@/features/browse';
 import { SecretLibrarySeriesDetailScreen } from '@/features/series';
 import { SecretLibraryAuthorDetailScreen } from '@/features/author';
 import { SecretLibraryNarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { SecretLibraryBookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen, AppearanceSettingsScreen } from '@/features/profile';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, DataStorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen, AppearanceSettingsScreen, LibrarySyncSettingsScreen, PlaylistSettingsScreen, DeveloperSettingsScreen } from '@/features/profile';
 import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
 import { MoodDiscoveryScreen, MoodResultsScreen } from '@/features/mood-discovery';
 import { SecretLibraryPlayerScreen, BookCompletionSheet } from '@/features/player';
@@ -42,14 +43,17 @@ import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { StatsScreen } from '@/features/stats';
 import { WishlistScreen, ManualAddScreen } from '@/features/wishlist';
 import { DebugStressTestScreen } from '@/features/debug';
+import { CachePromptScreen } from '@/features/onboarding';
 import { downloadManager } from '@/core/services/downloadManager';
 import { networkMonitor } from '@/core/services/networkMonitor';
+import { imageCacheService } from '@/core/services/imageCacheService';
 import { navigationMonitor } from '@/utils/runtimeMonitor';
 import { NavigationBar } from './components/NavigationBar';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
-import { NetworkStatusBar, ToastContainer } from '@/shared/components';
+import { NetworkStatusBar, ToastContainer, LocalStorageNoticeModal, GlobalCacheProgressBar } from '@/shared/components';
 import { ErrorBoundary } from '@/core/errors/ErrorBoundary';
 import { logger } from '@/shared/utils/logger';
+import { useLocalStorageNoticeStore } from '@/core/stores/localStorageNoticeStore';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -164,6 +168,75 @@ function AuthenticatedApp() {
   const navigationRef = useRef<NavigationContainerRef<Record<string, object | undefined>>>(null);
   const routeNameRef = useRef<string | undefined>(undefined);
 
+  // Local storage notice modal state
+  const shouldShowNotice = useLocalStorageNoticeStore((s) => s.shouldShowNotice);
+  const [showLocalStorageNotice, setShowLocalStorageNotice] = React.useState(false);
+  const hasCheckedNotice = useRef(false);
+
+  // Image cache prompt state
+  const [showCachePrompt, setShowCachePrompt] = React.useState(false);
+  const checkedCachePromptForLibrary = useRef<string | null>(null);
+
+  // Check if we should show the notice after initial load
+  useEffect(() => {
+    if (library?.id && !hasCheckedNotice.current) {
+      hasCheckedNotice.current = true;
+      // Small delay to let the main UI render first
+      const timer = setTimeout(() => {
+        if (shouldShowNotice()) {
+          setShowLocalStorageNotice(true);
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [library?.id, shouldShowNotice]);
+
+  // Check if we should show the image cache prompt after first login
+  useEffect(() => {
+    // Only check once per library (resets when user signs out and back in)
+    if (library?.id && checkedCachePromptForLibrary.current !== library.id) {
+      checkedCachePromptForLibrary.current = library.id;
+
+      // Check if user has seen the cache prompt before
+      const checkCachePrompt = async () => {
+        try {
+          const hasSeen = await imageCacheService.hasSeenCachePrompt();
+          logger.debug('[AppNavigator] Cache prompt check - hasSeen:', hasSeen);
+
+          if (!hasSeen) {
+            // Poll for library items to be loaded (max 10 seconds)
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            const checkForItems = () => {
+              // Use useLibraryCache - the actual zustand store that gets populated
+              const items = useLibraryCache.getState().items;
+              logger.debug(`[AppNavigator] Cache prompt - checking for items: ${items.length} (attempt ${attempts + 1})`);
+
+              if (items.length > 0) {
+                logger.debug('[AppNavigator] Cache prompt - showing prompt');
+                setShowCachePrompt(true);
+              } else if (attempts < maxAttempts) {
+                attempts++;
+                setTimeout(checkForItems, 500);
+              } else {
+                // After 10 seconds, give up - library might be empty
+                logger.debug('[AppNavigator] Cache prompt - no items after timeout, skipping');
+              }
+            };
+
+            // Start checking after initial delay
+            setTimeout(checkForItems, 2000);
+          }
+        } catch (err) {
+          logger.warn('[AppNavigator] Cache prompt check failed:', err);
+        }
+      };
+
+      checkCachePrompt();
+    }
+  }, [library?.id]);
+
   // Navigation state tracking for runtime monitoring
   const onNavigationStateChange = () => {
     if (__DEV__) {
@@ -241,12 +314,15 @@ function AuthenticatedApp() {
 
   // Render immediately - LibraryScreen handles empty state gracefully
   return (
-    <NavigationContainer
-      ref={navigationRef}
-      onStateChange={onNavigationStateChange}
-      theme={AppTheme}
-    >
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <View style={{ flex: 1 }}>
+      {/* Global cache progress bar at top - pushes content down when visible */}
+      <GlobalCacheProgressBar absolute={false} />
+      <NavigationContainer
+        ref={navigationRef}
+        onStateChange={onNavigationStateChange}
+        theme={AppTheme}
+      >
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Search" component={SearchScreenWithBoundary} />
         <Stack.Screen name="SeriesList" component={SeriesListScreen} />
@@ -262,6 +338,7 @@ function AuthenticatedApp() {
         <Stack.Screen name="AuthorDetail" component={AuthorDetailScreenWithBoundary} />
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreenWithBoundary} />
         <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
+        <Stack.Screen name="CollectionsList" component={CollectionsListScreen} />
         <Stack.Screen
           name="BookDetail"
           component={BookDetailScreenWithBoundary}
@@ -278,16 +355,23 @@ function AuthenticatedApp() {
         <Stack.Screen name="ManualAdd" component={ManualAddScreen} />
         <Stack.Screen name="PlaybackSettings" component={PlaybackSettingsScreen} />
         <Stack.Screen name="StorageSettings" component={StorageSettingsScreen} />
+        <Stack.Screen name="DataStorageSettings" component={DataStorageSettingsScreen} />
         <Stack.Screen name="JoystickSeekSettings" component={JoystickSeekSettingsScreen} />
         <Stack.Screen name="HapticSettings" component={HapticSettingsScreen} />
         <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
         <Stack.Screen name="HiddenItems" component={HiddenItemsScreen} />
         <Stack.Screen name="KidModeSettings" component={KidModeSettingsScreen} />
         <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
+        <Stack.Screen name="LibrarySyncSettings" component={LibrarySyncSettingsScreen} />
+        <Stack.Screen name="PlaylistSettings" component={PlaylistSettingsScreen} />
         <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
         <Stack.Screen name="SpineTemplatePreview" component={SpineTemplatePreviewScreen} />
+        <Stack.Screen name="SpinePlayground" component={SpinePlaygroundScreen} />
         {__DEV__ && (
-          <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
+          <>
+            <Stack.Screen name="DeveloperSettings" component={DeveloperSettingsScreen} />
+            <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
+          </>
         )}
         <Stack.Screen
           name="PreferencesOnboarding"
@@ -324,8 +408,21 @@ function AuthenticatedApp() {
         <NetworkStatusBar />
         <BookCompletionSheet />
         <ToastContainer />
+        <LocalStorageNoticeModal
+          visible={showLocalStorageNotice}
+          onDismiss={() => setShowLocalStorageNotice(false)}
+        />
+        {showCachePrompt && (
+          <View style={StyleSheet.absoluteFill}>
+            <CachePromptScreen
+              onComplete={() => setShowCachePrompt(false)}
+              libraryItems={useLibraryCache.getState().items}
+            />
+          </View>
+        )}
       </View>
     </NavigationContainer>
+    </View>
   );
 }
 

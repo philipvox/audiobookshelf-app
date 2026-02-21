@@ -5,7 +5,7 @@
  * Downloads, cache, WiFi-only, auto-download.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,13 +27,16 @@ import {
   RefreshCw,
   Trash2,
   Info,
+  Image as ImageIcon,
   type LucideIcon,
 } from 'lucide-react-native';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { sqliteCache } from '@/core/services/sqliteCache';
+import { imageCacheService, CacheProgress, estimateCacheSize } from '@/core/services/imageCacheService';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale } from '@/shared/theme';
 import {
@@ -151,6 +154,37 @@ export function StorageSettingsScreen() {
     networkMonitor.isAutoDownloadSeriesEnabled()
   );
 
+  // Image cache state
+  const [imageCacheStatus, setImageCacheStatus] = useState<string>('Loading...');
+  const [isCachingImages, setIsCachingImages] = useState(false);
+  const [cacheProgress, setCacheProgress] = useState<CacheProgress | null>(null);
+  const [isClearingImageCache, setIsClearingImageCache] = useState(false);
+  const [autoCacheEnabled, setAutoCacheEnabled] = useState(false);
+
+  // Get library items from the correct source (useLibraryCache zustand store)
+  const libraryItems = useLibraryCache.getState().items;
+  const libraryItemCount = libraryItems.length;
+
+  // Load image cache status
+  useEffect(() => {
+    loadImageCacheStatus();
+    loadAutoCacheSetting();
+  }, []);
+
+  const loadImageCacheStatus = useCallback(async () => {
+    try {
+      const status = await imageCacheService.getFormattedCacheStatus(libraryItemCount);
+      setImageCacheStatus(status);
+    } catch (err) {
+      setImageCacheStatus('Unknown');
+    }
+  }, [libraryItemCount]);
+
+  const loadAutoCacheSetting = useCallback(async () => {
+    const enabled = await imageCacheService.isAutoCacheEnabled();
+    setAutoCacheEnabled(enabled);
+  }, []);
+
   const handleWifiOnlyToggle = useCallback(async (enabled: boolean) => {
     setWifiOnlyEnabled(enabled);
     await networkMonitor.setWifiOnlyEnabled(enabled);
@@ -159,6 +193,63 @@ export function StorageSettingsScreen() {
   const handleAutoDownloadSeriesToggle = useCallback(async (enabled: boolean) => {
     setAutoDownloadSeriesEnabled(enabled);
     await networkMonitor.setAutoDownloadSeriesEnabled(enabled);
+  }, []);
+
+  const handleCacheAllImages = useCallback(async () => {
+    if (isCachingImages || libraryItemCount === 0) return;
+
+    setIsCachingImages(true);
+    setCacheProgress(null);
+
+    try {
+      await imageCacheService.cacheAllImages(libraryItems, (progress) => {
+        setCacheProgress(progress);
+        setImageCacheStatus(`Caching: ${progress.percentComplete}%`);
+      });
+
+      await loadImageCacheStatus();
+      Alert.alert('Success', 'All library images have been cached for instant loading.');
+    } catch (err) {
+      logger.error('[StorageSettings] Image caching failed:', err);
+      Alert.alert('Error', 'Failed to cache images. Please try again.');
+    } finally {
+      setIsCachingImages(false);
+      setCacheProgress(null);
+    }
+  }, [isCachingImages, libraryItems, libraryItemCount, loadImageCacheStatus]);
+
+  const handleClearImageCache = useCallback(() => {
+    if (isClearingImageCache) return;
+
+    Alert.alert(
+      'Clear Image Cache',
+      'This will remove all cached cover and spine images. They will be re-downloaded as needed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear Cache',
+          style: 'destructive',
+          onPress: async () => {
+            setIsClearingImageCache(true);
+            try {
+              await imageCacheService.clearImageCache();
+              await loadImageCacheStatus();
+              Alert.alert('Success', 'Image cache cleared successfully.');
+            } catch (err) {
+              logger.error('[StorageSettings] Failed to clear image cache:', err);
+              Alert.alert('Error', 'Failed to clear image cache.');
+            } finally {
+              setIsClearingImageCache(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [isClearingImageCache, loadImageCacheStatus]);
+
+  const handleAutoCacheToggle = useCallback(async (enabled: boolean) => {
+    setAutoCacheEnabled(enabled);
+    await imageCacheService.setAutoCacheEnabled(enabled);
   }, []);
 
   const handleRefreshCache = useCallback(async () => {
@@ -241,6 +332,31 @@ export function StorageSettingsScreen() {
     );
   }, [downloadCount, totalStorage, isClearingDownloads]);
 
+  const libraryCount = useMyLibraryStore((s) => s.libraryIds.length);
+  const clearAllLibrary = useMyLibraryStore((s) => s.clearAll);
+
+  const handleClearLibrary = useCallback(() => {
+    if (libraryCount === 0) {
+      Alert.alert('Empty', 'Your library is already empty.');
+      return;
+    }
+    Alert.alert(
+      'Clear My Library',
+      `This will remove all ${libraryCount} books from your library. Your downloads and listening progress will not be affected.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => {
+            clearAllLibrary();
+            Alert.alert('Done', 'Your library has been cleared.');
+          },
+        },
+      ]
+    );
+  }, [libraryCount, clearAllLibrary]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.grayLight} />
@@ -291,9 +407,65 @@ export function StorageSettingsScreen() {
           </View>
         </View>
 
+        {/* Image Cache Section */}
+        <View style={styles.section}>
+          <SectionHeader title="Image Cache" />
+          <View style={styles.sectionCard}>
+            {/* Cache status display */}
+            <View style={styles.settingsRow}>
+              <View style={styles.rowLeft}>
+                <View style={styles.iconContainer}>
+                  <ImageIcon
+                    size={scale(18)}
+                    color={colors.gray}
+                    strokeWidth={1.5}
+                  />
+                </View>
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Cache Status</Text>
+                  <Text style={styles.rowNote}>
+                    {isCachingImages && cacheProgress
+                      ? `${cacheProgress.phase === 'covers' ? 'Covers' : 'Spines'}: ${cacheProgress.current} / ${cacheProgress.total}`
+                      : imageCacheStatus}
+                  </Text>
+                </View>
+              </View>
+              {isCachingImages && (
+                <View style={styles.rowRight}>
+                  <Text style={[styles.rowValue, { color: colors.gold }]}>
+                    {cacheProgress?.percentComplete || 0}%
+                  </Text>
+                </View>
+              )}
+            </View>
+            <SettingsRow
+              Icon={Download}
+              label="Cache All Images"
+              value={isCachingImages ? 'Caching...' : libraryItemCount > 0 ? estimateCacheSize(libraryItemCount).formatted : undefined}
+              onPress={isCachingImages ? undefined : handleCacheAllImages}
+              note="Download all covers and spines for instant loading"
+            />
+            <SettingsRow
+              Icon={RefreshCw}
+              label="Auto-Cache New Books"
+              switchValue={autoCacheEnabled}
+              onSwitchChange={handleAutoCacheToggle}
+              note="Automatically cache images when library syncs"
+            />
+            <SettingsRow
+              Icon={Trash2}
+              label="Clear Image Cache"
+              value={isClearingImageCache ? 'Clearing...' : undefined}
+              onPress={isClearingImageCache ? undefined : handleClearImageCache}
+              note="Remove cached cover and spine images"
+              danger
+            />
+          </View>
+        </View>
+
         {/* Cache Section */}
         <View style={styles.section}>
-          <SectionHeader title="Cache" />
+          <SectionHeader title="Library Cache" />
           <View style={styles.sectionCard}>
             <SettingsRow
               Icon={RefreshCw}
@@ -317,6 +489,13 @@ export function StorageSettingsScreen() {
         <View style={styles.section}>
           <SectionHeader title="Danger Zone" />
           <View style={styles.sectionCard}>
+            <SettingsRow
+              Icon={Trash2}
+              label="Clear My Library"
+              onPress={handleClearLibrary}
+              note={`Remove all ${libraryCount} books from your library`}
+              danger
+            />
             <SettingsRow
               Icon={Trash2}
               label="Clear All Downloads"

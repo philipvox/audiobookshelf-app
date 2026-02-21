@@ -15,8 +15,7 @@ import {
   Animated,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
-import { useSleepTimer } from '../stores/sleepTimerStore';
+import { usePlayerStore, useCurrentChapterIndex, useSleepTimer } from '../stores';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
 import {
@@ -42,20 +41,20 @@ const QUICK_OPTIONS = [
 // ICONS
 // =============================================================================
 
-const BookIcon = ({ color = colors.black, size = 18 }: { color?: string; size?: number }) => (
+const BookIcon = ({ color = colors.white, size = 18 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
     <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
   </Svg>
 );
 
-const BooksIcon = ({ color = colors.black, size = 18 }: { color?: string; size?: number }) => (
+const BooksIcon = ({ color = colors.white, size = 18 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
   </Svg>
 );
 
-const CloseIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: number }) => (
+const CloseIcon = ({ color = colors.white, size = 14 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M18 6L6 18M6 6l12 12" />
   </Svg>
@@ -274,7 +273,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
           activeOpacity={0.7}
         >
           <BookIcon
-            color={timerMode === 'end-of-chapter' ? colors.white : colors.black}
+            color={timerMode === 'end-of-chapter' ? colors.black : colors.white}
             size={18}
           />
           <View style={styles.specialOptionText}>
@@ -302,7 +301,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
           activeOpacity={0.7}
         >
           <BooksIcon
-            color={timerMode === 'end-of-book' ? colors.white : colors.black}
+            color={timerMode === 'end-of-book' ? colors.black : colors.white}
             size={18}
           />
           <View style={styles.specialOptionText}>
@@ -389,16 +388,21 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
 // STYLES
 // =============================================================================
 
+// Dark mode colors
+const darkBg = '#1a1a1a';
+const darkCard = '#2a2a2a';
+const darkBorder = '#3a3a3a';
+
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.creamGray,
+    backgroundColor: darkBg,
     paddingHorizontal: scale(28),
     paddingBottom: scale(40),
   },
   handle: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: colors.grayLine,
+    backgroundColor: darkBorder,
     borderRadius: scale(2),
     alignSelf: 'center',
     marginTop: scale(12),
@@ -411,13 +415,13 @@ const styles = StyleSheet.create({
     marginBottom: scale(16),
     paddingBottom: scale(12),
     borderBottomWidth: 1,
-    borderBottomColor: colors.black,
+    borderBottomColor: darkBorder,
   },
   title: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(28),
     fontWeight: '400',
-    color: colors.black,
+    color: colors.white,
   },
   status: {
     flexDirection: 'row',
@@ -445,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: scale(20),
     paddingVertical: scale(16),
-    backgroundColor: colors.grayLight,
+    backgroundColor: darkCard,
   },
   timerDisplayLabel: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -459,7 +463,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(44),
     fontStyle: 'italic',
-    color: colors.black,
+    color: colors.white,
     lineHeight: scale(44),
   },
   timerDisplayValueOff: {
@@ -487,23 +491,23 @@ const styles = StyleSheet.create({
     width: '23.5%',
     height: scale(48),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: darkBorder,
+    backgroundColor: darkCard,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
   optionButtonSelected: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: colors.white,
+    borderColor: colors.white,
   },
   optionText: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(13),
-    color: colors.black,
+    color: colors.white,
   },
   optionTextSelected: {
-    color: colors.white,
+    color: colors.black,
   },
   optionUnit: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -512,7 +516,7 @@ const styles = StyleSheet.create({
     marginLeft: scale(2),
   },
   optionUnitSelected: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(0,0,0,0.6)',
   },
 
   // Special Options
@@ -523,16 +527,16 @@ const styles = StyleSheet.create({
   specialOption: {
     height: scale(52),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: darkBorder,
+    backgroundColor: darkCard,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: scale(16),
     gap: scale(12),
   },
   specialOptionSelected: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: colors.white,
+    borderColor: colors.white,
   },
   specialOptionText: {
     flex: 1,
@@ -540,10 +544,10 @@ const styles = StyleSheet.create({
   specialOptionTitle: {
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(14),
-    color: colors.black,
+    color: colors.white,
   },
   specialOptionTitleSelected: {
-    color: colors.white,
+    color: colors.black,
   },
   specialOptionSubtitle: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -551,7 +555,7 @@ const styles = StyleSheet.create({
     color: colors.gray,
   },
   specialOptionSubtitleSelected: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(0,0,0,0.6)',
   },
 
   // Custom Time
@@ -562,7 +566,7 @@ const styles = StyleSheet.create({
     marginBottom: scale(16),
     paddingTop: scale(12),
     borderTopWidth: 1,
-    borderTopColor: colors.grayLine,
+    borderTopColor: darkBorder,
   },
   customTimeLabel: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -579,12 +583,12 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(40),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: darkBorder,
+    backgroundColor: darkCard,
     textAlign: 'center',
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(16),
-    color: colors.black,
+    color: colors.white,
   },
   customTimeSeparator: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -600,7 +604,7 @@ const styles = StyleSheet.create({
   customTimeSet: {
     height: scale(40),
     paddingHorizontal: scale(16),
-    backgroundColor: colors.black,
+    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -608,7 +612,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(12),
     fontWeight: '500',
-    color: colors.white,
+    color: colors.black,
   },
 
   // Action Buttons
@@ -620,8 +624,8 @@ const styles = StyleSheet.create({
     flex: 1,
     height: scale(48),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: darkBorder,
+    backgroundColor: darkCard,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -629,14 +633,14 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
     fontWeight: '500',
-    color: colors.black,
+    color: colors.white,
   },
   actionButtonCancel: {
     flex: 1,
     height: scale(48),
     borderWidth: 1,
     borderColor: colors.orange,
-    backgroundColor: colors.grayLight,
+    backgroundColor: darkCard,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -651,7 +655,7 @@ const styles = StyleSheet.create({
   actionButtonPrimary: {
     flex: 1,
     height: scale(48),
-    backgroundColor: colors.black,
+    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -659,7 +663,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
     fontWeight: '500',
-    color: colors.white,
+    color: colors.black,
   },
 });
 

@@ -22,14 +22,16 @@ import { useAppHealthMonitor } from './src/utils/perfDebug';
 import { startAllMonitoring, stopAllMonitoring, fpsMonitor, memoryMonitor } from './src/utils/runtimeMonitor';
 import { useLibraryCache } from './src/core/cache';
 import { useSpineCacheStore, selectIsPopulated } from './src/features/home/stores/spineCache';
-import { useAppReadyStore, setAppBootComplete } from './src/core/stores/appReadyStore';
+import { useAppReadyStore, setAppBootComplete, setAppRefreshComplete } from './src/core/stores/appReadyStore';
 import {
   INIT_SLOW_THRESHOLD_MS,
   INIT_VERY_SLOW_THRESHOLD_MS,
+  CACHE_READY_TIMEOUT_MS,
 } from './src/constants/loading';
 
-// Reset boot flag immediately on bundle load (before any components render)
+// Reset boot flags immediately on bundle load (before any components render)
 setAppBootComplete(false);
+setAppRefreshComplete(false);
 import * as SplashScreen from 'expo-splash-screen';
 
 // IMMEDIATELY hide native splash when JS bundle loads
@@ -119,33 +121,35 @@ export default function App() {
     // Wait for initResult to be set before making any decisions
     if (!initResult) return;
 
-    // Case 1: Cache is loaded and we have a user - trigger refresh
+    // Case 1: Cache is loaded and we have a user - boot immediately, refresh in background
     if (isLibraryCacheLoaded && !hasTriggeredRefresh.current && initResult.user) {
       hasTriggeredRefresh.current = true;
-      console.log('[App] Triggering initial library refresh...');
+      // Boot immediately with cached data - don't wait for network refresh
+      console.log('[App] Cache loaded, setting boot=true (refresh in background)');
+      setIsInitialRefreshComplete(true);
+      setBootComplete(true);
+      // Refresh in background - UI updates reactively when new data arrives
       refreshCache().then(() => {
-        console.log('[App] Initial library refresh complete, setting boot=true');
-        setIsInitialRefreshComplete(true);
-        setBootComplete(true);
+        console.log('[App] Background library refresh complete');
+        setAppRefreshComplete(true);
       }).catch(() => {
-        console.log('[App] Refresh error, setting boot=true');
-        setIsInitialRefreshComplete(true);
-        setBootComplete(true);
+        console.log('[App] Background refresh error (non-blocking)');
+        setAppRefreshComplete(true); // Still mark complete so UI doesn't hang
       });
     }
     // Case 2: Cache is loaded via AppNavigator (currentLibraryId set) but initResult.user was false
     // This happens when AuthProvider restores session after init returned no user
     else if (isLibraryCacheLoaded && !hasTriggeredRefresh.current && currentLibraryId && !initResult.user) {
       hasTriggeredRefresh.current = true;
-      console.log('[App] Library loaded after auth recovery, triggering refresh...');
+      console.log('[App] Library loaded after auth recovery, setting boot=true (refresh in background)');
+      setIsInitialRefreshComplete(true);
+      setBootComplete(true);
       refreshCache().then(() => {
-        console.log('[App] Post-recovery refresh complete, setting boot=true');
-        setIsInitialRefreshComplete(true);
-        setBootComplete(true);
+        console.log('[App] Post-recovery background refresh complete');
+        setAppRefreshComplete(true);
       }).catch(() => {
-        console.log('[App] Post-recovery refresh error, setting boot=true');
-        setIsInitialRefreshComplete(true);
-        setBootComplete(true);
+        console.log('[App] Post-recovery background refresh error (non-blocking)');
+        setAppRefreshComplete(true);
       });
     }
     // Case 3: No user and no library being loaded - truly not logged in
@@ -153,15 +157,42 @@ export default function App() {
       console.log('[App] No user and no library loading, setting boot=true');
       setIsInitialRefreshComplete(true);
       setBootComplete(true);
+      setAppRefreshComplete(true); // No refresh needed for logged-out state
     }
   }, [isLibraryCacheLoaded, isLibraryCacheLoading, currentLibraryId, initResult, refreshCache, setBootComplete]);
+
+  // Reset cache pipeline when a fresh login triggers cache loading
+  // (hasTriggeredRefresh was set true during Case 3 on initial boot with no user)
+  useEffect(() => {
+    if (currentLibraryId && !isLibraryCacheLoaded && hasTriggeredRefresh.current) {
+      console.log('[App] Fresh login detected — resetting cache pipeline');
+      hasTriggeredRefresh.current = false;
+      setIsInitialRefreshComplete(false);
+    }
+  }, [currentLibraryId, isLibraryCacheLoaded]);
 
   // All conditions for splash to dismiss:
   // 1. Fonts loaded (for spine rendering)
   // 2. Library cache loaded (book data)
   // 3. Spine cache populated (dimensions, colors, typography)
   // 4. Initial refresh complete (prevents library flash)
-  const isCacheReady = fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated && isInitialRefreshComplete;
+  const [cacheTimedOut, setCacheTimedOut] = useState(false);
+  const isCacheReady = cacheTimedOut || (fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated && isInitialRefreshComplete);
+
+  // Absolute timeout: force-proceed if cache conditions stall
+  useEffect(() => {
+    if (isCacheReady || !initResult?.user) return;
+
+    const timeout = setTimeout(() => {
+      console.warn('[App] Cache ready timeout — force-proceeding with available data');
+      setCacheTimedOut(true);
+      setIsInitialRefreshComplete(true);
+      setBootComplete(true);
+      setAppRefreshComplete(true); // Force refresh complete on timeout
+    }, CACHE_READY_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [isCacheReady, initResult?.user, setBootComplete]);
 
   // Slow loading detection - shows helpful messages if startup takes too long
   useEffect(() => {
@@ -276,9 +307,18 @@ export default function App() {
   }, []);
 
   // Determine if data is ready for splash to dismiss
-  // - Not logged in: ready immediately (no caches to load)
-  // - Logged in: wait for fonts + library + spine caches
-  const isDataReady = !initResult?.user || isCacheReady;
+  // - Not logged in AND no library loading: ready immediately
+  // - Logged in (or cache loading after fresh login): wait for caches
+  // Note: After a fresh login, initResult.user is still null (set at init time),
+  // but currentLibraryId/isLibraryCacheLoading become true as caches start loading.
+  const isDataReady = (!initResult?.user && !currentLibraryId && !isLibraryCacheLoading) || isCacheReady;
+
+  // Re-show splash when a fresh login triggers cache loading
+  useEffect(() => {
+    if (!isDataReady && !showSplash) {
+      setShowSplash(true);
+    }
+  }, [isDataReady, showSplash]);
 
   // Single consistent component tree - AnimatedSplash is ALWAYS rendered on top
   // This prevents the logo from disappearing during transitions

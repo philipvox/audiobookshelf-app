@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
 import { useCoverUrl } from '@/core/cache';
-import { usePlayerStore } from '../stores/playerStore';
+import { usePlayerStore } from '../stores';
 import {
   secretLibraryColors as colors,
 } from '@/shared/theme/secretLibrary';

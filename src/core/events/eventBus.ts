@@ -71,6 +71,7 @@ class TypedEventBus {
 
   /**
    * Emit an event to all listeners.
+   * Handles both sync and async listeners with proper error catching.
    */
   emit<K extends keyof EventMap>(event: K, payload: EventPayload<K>): void {
     if (this.options.debug) {
@@ -85,7 +86,13 @@ class TypedEventBus {
 
     for (const listener of listenersCopy) {
       try {
-        listener(payload);
+        const result = listener(payload);
+        // Fix: Handle async listeners - catch promise rejections
+        if (result instanceof Promise) {
+          result.catch((error) => {
+            logger.error(`[EventBus] Error in async listener for "${String(event)}":`, error);
+          });
+        }
       } catch (error) {
         logger.error(`[EventBus] Error in listener for "${String(event)}":`, error);
         // Don't re-throw - one bad listener shouldn't break others

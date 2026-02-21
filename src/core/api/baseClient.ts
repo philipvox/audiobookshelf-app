@@ -107,9 +107,9 @@ export class BaseApiClient {
   configure(config: ApiClientConfig): void {
     this.baseURL = config.baseURL;
     this.authToken = config.token || '';
-    
+
     this.axiosInstance.defaults.baseURL = this.baseURL;
-    
+
     if (config.timeout) {
       this.axiosInstance.defaults.timeout = config.timeout;
     }
@@ -135,7 +135,8 @@ export class BaseApiClient {
   getBaseURL(): string {
     return this.baseURL;
   }
-    /**
+
+  /**
    * Get current auth token
    */
   getAuthToken(): string {

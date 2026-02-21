@@ -123,7 +123,8 @@ function SeriesCardComponent({
         <SeriesHeartButton
           seriesName={series.name}
           size={10}
-          showCircle
+          activeColor="#fff"
+          inactiveColor="rgba(255,255,255,0.4)"
           style={styles.heartButton}
         />
       )}

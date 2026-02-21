@@ -30,6 +30,7 @@ export interface QueueBook {
   book: LibraryItem;
   position: number;
   addedAt: number;
+  played: boolean;
 }
 
 interface QueueState {
@@ -38,6 +39,7 @@ interface QueueState {
   isInitialized: boolean;
   autoplayEnabled: boolean;
   autoSeriesBookId: string | null;  // ID of auto-added series book (if any)
+  shouldShowClearDialog: boolean;
 }
 
 interface QueueActions {
@@ -59,6 +61,10 @@ interface QueueActions {
   playNext: () => Promise<LibraryItem | null>;
   getNextBook: () => LibraryItem | null;
 
+  // History
+  clearPlayed: () => Promise<void>;
+  dismissClearDialog: () => void;
+
   // Queries
   isInQueue: (bookId: string) => boolean;
 }
@@ -72,6 +78,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
   isInitialized: false,
   autoplayEnabled: true,  // Default to enabled
   autoSeriesBookId: null,
+  shouldShowClearDialog: false,
 
   // Initialize store from SQLite
   init: async () => {
@@ -90,6 +97,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         book: JSON.parse(item.bookData) as LibraryItem,
         position: item.position,
         addedAt: item.addedAt,
+        played: false,  // Fresh start on app load
       }));
 
       set({ queue, isInitialized: true, isLoading: false, autoplayEnabled });
@@ -129,6 +137,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         book,
         position: currentQueue.length,
         addedAt: Date.now(),
+        played: false,
       };
 
       set({ queue: [...currentQueue, newItem] });
@@ -172,6 +181,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
           book,
           position,
           addedAt: Date.now(),
+          played: false,
         });
         position++;
       }
@@ -294,6 +304,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         book: nextBook,
         position: 0,
         addedAt: Date.now(),
+        played: false,
       };
 
       set({ queue: [newItem], autoSeriesBookId: nextBook.id });
@@ -304,22 +315,56 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     }
   },
 
-  // Get and remove the next book from queue (called when book finishes)
+  // Get the next unplayed book and mark it as played (called when book finishes)
   playNext: async () => {
     const { queue } = get();
-    if (queue.length === 0) return null;
+    const nextItem = queue.find((item) => !item.played);
+    if (!nextItem) {
+      // All items played or queue empty — trigger clear dialog
+      if (queue.length > 0) {
+        set({ shouldShowClearDialog: true });
+      }
+      return null;
+    }
 
-    const nextItem = queue[0];
-    await get().removeFromQueue(nextItem.bookId);
+    // Mark as played (keep in queue for history)
+    const updatedQueue = queue.map((item) =>
+      item.bookId === nextItem.bookId ? { ...item, played: true } : item
+    );
+    set({ queue: updatedQueue });
 
     log.debug(`Playing next: ${nextItem.book.id}`);
     return nextItem.book;
   },
 
-  // Get the next book without removing it
+  // Get the next unplayed book without marking it
   getNextBook: () => {
     const { queue } = get();
-    return queue.length > 0 ? queue[0].book : null;
+    const next = queue.find((item) => !item.played);
+    return next ? next.book : null;
+  },
+
+  // Clear only played items from queue
+  clearPlayed: async () => {
+    const { queue } = get();
+    const playedBookIds = queue.filter((item) => item.played).map((item) => item.bookId);
+
+    try {
+      for (const bookId of playedBookIds) {
+        await sqliteCache.removeFromQueue(bookId);
+      }
+      const remaining = queue
+        .filter((item) => !item.played)
+        .map((item, index) => ({ ...item, position: index }));
+      set({ queue: remaining, shouldShowClearDialog: false });
+      log.debug(`Cleared ${playedBookIds.length} played items`);
+    } catch (err) {
+      log.error('clearPlayed error:', err);
+    }
+  },
+
+  dismissClearDialog: () => {
+    set({ shouldShowClearDialog: false });
   },
 
   // Check if a book is in the queue
@@ -330,8 +375,12 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
 // Selectors for optimized re-renders
 export const useQueue = () => useQueueStore((state) => state.queue);
+// Derived selectors — use in components with useMemo wrapping the queue
+export const getUpNextQueue = (queue: QueueBook[]) => queue.filter((item) => !item.played);
+export const getPlayedQueue = (queue: QueueBook[]) => queue.filter((item) => item.played);
 export const useQueueCount = () => useQueueStore((state) => state.queue.length);
 export const useIsInQueue = (bookId: string) =>
   useQueueStore((state) => state.queue.some((item) => item.bookId === bookId));
 export const useAutoplayEnabled = () => useQueueStore((state) => state.autoplayEnabled);
 export const useAutoSeriesBookId = () => useQueueStore((state) => state.autoSeriesBookId);
+export const useShouldShowClearDialog = () => useQueueStore((state) => state.shouldShowClearDialog);

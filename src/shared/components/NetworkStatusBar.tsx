@@ -31,15 +31,19 @@ export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
   const slideAnim = useState(() => new Animated.Value(-50))[0];
 
   // Monitor network state
+  // FIX: Only use isConnected, not isInternetReachable which can give false negatives
+  // isInternetReachable pings a specific endpoint which may be blocked on some networks
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-      const offline = !(state.isConnected && state.isInternetReachable !== false);
+      // Trust isConnected - if device says it's connected, assume internet is available
+      // isInternetReachable can be false or null even with working internet
+      const offline = state.isConnected !== true;
       setIsOffline(offline);
     });
 
     // Check initial state
     NetInfo.fetch().then((state) => {
-      const offline = !(state.isConnected && state.isInternetReachable !== false);
+      const offline = state.isConnected !== true;
       setIsOffline(offline);
     });
 
@@ -100,18 +104,22 @@ export function NetworkStatusBar({ isLoading = false }: NetworkStatusBarProps) {
 /**
  * Hook to get network status
  * Use this in screens that need to show offline-specific UI
+ *
+ * FIX: Only use isConnected, not isInternetReachable which can give false negatives
+ * isInternetReachable pings a specific endpoint which may be blocked on some networks
  */
 export function useNetworkStatus() {
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-      setIsOnline(state.isConnected === true && state.isInternetReachable !== false);
+      // Trust isConnected - don't rely on isInternetReachable
+      setIsOnline(state.isConnected === true);
     });
 
     // Check initial state
     NetInfo.fetch().then((state) => {
-      setIsOnline(state.isConnected === true && state.isInternetReachable !== false);
+      setIsOnline(state.isConnected === true);
     });
 
     return () => unsubscribe();

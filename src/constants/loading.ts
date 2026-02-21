@@ -59,6 +59,14 @@ export const SPLASH_MIN_DISPLAY_MS = 400;
 export const SPLASH_FADE_DURATION_MS = 200;
 
 /**
+ * Maximum time to wait for cache ready flags (fonts + library + spine + refresh)
+ * before force-proceeding with whatever data is available (ms).
+ * Prevents infinite splash screen if one condition stalls.
+ * 30 seconds matches the init global timeout.
+ */
+export const CACHE_READY_TIMEOUT_MS = 30000;
+
+/**
  * Time before showing "taking longer than expected" message (ms).
  * Shows after 8 seconds to reassure user that app is still loading.
  */

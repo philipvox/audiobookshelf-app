@@ -324,3 +324,37 @@ export function getConfigForSize<T extends { sizes?: Record<string, Partial<T>> 
 ): T {
   return applySpineSizeOverrides(config as any, spineWidth);
 }
+
+// =============================================================================
+// UNIFIED STYLE SYSTEM (New - simplified alternative to 41 profiles)
+// =============================================================================
+
+// Re-export unified style system for direct access
+export {
+  resolveGenreStyle,
+  hasGenreStyle,
+  getAllSupportedGenres,
+  getGenresByStyle,
+  getGenresByComposition,
+  BASE_STYLES,
+  COMPOSITION_PRESETS,
+  GENRE_TO_STYLE,
+} from './styles';
+
+export type {
+  ResolvedGenreStyle,
+  BaseTypographyStyle,
+  BaseStyleName,
+  CompositionPreset,
+  CompositionPresetName,
+  GenreStyleMapping,
+} from './styles';
+
+/**
+ * Get simplified style info using the unified style system.
+ * This is a lightweight alternative to the full profile system.
+ *
+ * @param genres - Book genres for style matching
+ * @returns Style info with typography and composition details
+ */
+export { resolveGenreStyle as getUnifiedStyle } from './styles';

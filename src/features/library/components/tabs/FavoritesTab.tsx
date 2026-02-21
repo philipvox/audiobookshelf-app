@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { SectionHeader } from '@/features/home/components/SectionHeader';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { LibraryEmptyState } from '../LibraryEmptyState';
 import { BookRow } from '../BookRow';
 import { FannedSeriesCard } from '../FannedSeriesCard';

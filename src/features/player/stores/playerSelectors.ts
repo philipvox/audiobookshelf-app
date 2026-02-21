@@ -2,17 +2,22 @@
  * src/features/player/stores/playerSelectors.ts
  *
  * Player store selectors for derived state.
- * Extracted from playerStore.ts for modularity (Phase 8 refactor).
+ * Refactored to read from source stores (single source of truth).
  *
- * These selectors compute derived values from player state, such as:
- * - Display position (uses seekPosition during seeking)
- * - Chapter progress
- * - Book progress
- * - Seek state
+ * ARCHITECTURE:
+ * - Seeking state → seekingStore (source of truth)
+ * - Sleep timer state → sleepTimerStore (source of truth)
+ * - Speed state → speedStore (source of truth)
+ * - Bookmarks → bookmarksStore (source of truth)
+ * - Settings → playerSettingsStore (source of truth)
+ * - Core playback state → playerStore (position, duration, isPlaying, etc.)
+ *
+ * This eliminates bidirectional sync and race conditions.
  */
 
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from './playerStore';
+import { useSeekingStore } from './seekingStore';
 import { findChapterIndex } from '../utils/bookLoadingHelpers';
 
 // =============================================================================
@@ -21,40 +26,32 @@ import { findChapterIndex } from '../utils/bookLoadingHelpers';
 
 /**
  * Returns the position to display in UI.
- * Uses seekPosition during seeking, otherwise uses position.
+ * Uses seekPosition during seeking (from seekingStore), otherwise uses position (from playerStore).
  */
-export const useDisplayPosition = () =>
-  usePlayerStore((s) => s.isSeeking ? s.seekPosition : s.position);
+export const useDisplayPosition = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  return isSeeking ? seekPosition : position;
+};
 
 /**
  * Returns the effective position for calculations.
  * Same as useDisplayPosition but named for clarity in computation contexts.
  */
-export const useEffectivePosition = () =>
-  usePlayerStore((s) => s.isSeeking ? s.seekPosition : s.position);
+export const useEffectivePosition = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  return isSeeking ? seekPosition : position;
+};
 
 // =============================================================================
-// SEEK SELECTORS
+// SEEK SELECTORS (from seekingStore - source of truth)
 // =============================================================================
 
-/**
- * Returns the seek delta (difference from start position during seek).
- * Returns 0 when not seeking.
- */
-export const useSeekDelta = () =>
-  usePlayerStore((s) => s.isSeeking ? s.seekPosition - s.seekStartPosition : 0);
-
-/**
- * Returns whether the user is currently seeking (for UI state).
- */
-export const useIsSeeking = () =>
-  usePlayerStore((s) => s.isSeeking);
-
-/**
- * Returns the seek direction if seeking, null otherwise.
- */
-export const useSeekDirection = () =>
-  usePlayerStore((s) => s.seekDirection);
+// Simple seeking hooks (useIsSeeking, useSeekDelta, etc.) are in seekingStore.ts
+// Import from '@/features/player/stores' which routes through playerHooks.ts
 
 // =============================================================================
 // CHAPTER SELECTORS
@@ -63,38 +60,50 @@ export const useSeekDirection = () =>
 /**
  * Returns the current chapter index based on display position.
  */
-export const useCurrentChapterIndex = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return findChapterIndex(s.chapters, position);
-  });
+export const useCurrentChapterIndex = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const chapters = usePlayerStore((s) => s.chapters);
+
+  const effectivePosition = isSeeking ? seekPosition : position;
+  return findChapterIndex(chapters, effectivePosition);
+};
 
 /**
  * Returns the current chapter based on display position.
  */
-export const useCurrentChapter = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    const index = findChapterIndex(s.chapters, position);
-    return s.chapters[index] || null;
-  });
+export const useCurrentChapter = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const chapters = usePlayerStore((s) => s.chapters);
+
+  const effectivePosition = isSeeking ? seekPosition : position;
+  const index = findChapterIndex(chapters, effectivePosition);
+  return chapters[index] || null;
+};
 
 /**
  * Returns the progress within the current chapter (0-1).
  */
-export const useChapterProgress = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    const index = findChapterIndex(s.chapters, position);
-    const chapter = s.chapters[index];
+export const useChapterProgress = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const chapters = usePlayerStore((s) => s.chapters);
 
-    if (!chapter) return 0;
+  const effectivePosition = isSeeking ? seekPosition : position;
+  const index = findChapterIndex(chapters, effectivePosition);
+  const chapter = chapters[index];
 
-    const chapterDuration = chapter.end - chapter.start;
-    if (chapterDuration <= 0) return 0;
+  if (!chapter) return 0;
 
-    return Math.max(0, Math.min(1, (position - chapter.start) / chapterDuration));
-  });
+  const chapterDuration = chapter.end - chapter.start;
+  if (chapterDuration <= 0) return 0;
+
+  return Math.max(0, Math.min(1, (effectivePosition - chapter.start) / chapterDuration));
+};
 
 // =============================================================================
 // PROGRESS SELECTORS
@@ -103,29 +112,41 @@ export const useChapterProgress = () =>
 /**
  * Returns the overall book progress (0-1).
  */
-export const useBookProgress = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return s.duration > 0 ? position / s.duration : 0;
-  });
+export const useBookProgress = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+
+  const effectivePosition = isSeeking ? seekPosition : position;
+  return duration > 0 ? effectivePosition / duration : 0;
+};
 
 /**
  * Returns the percent complete (0-100).
  */
-export const usePercentComplete = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return s.duration > 0 ? (position / s.duration) * 100 : 0;
-  });
+export const usePercentComplete = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+
+  const effectivePosition = isSeeking ? seekPosition : position;
+  return duration > 0 ? (effectivePosition / duration) * 100 : 0;
+};
 
 /**
  * Returns the time remaining in seconds.
  */
-export const useTimeRemaining = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return Math.max(0, s.duration - position);
-  });
+export const useTimeRemaining = () => {
+  const isSeeking = useSeekingStore((s) => s.isSeeking);
+  const seekPosition = useSeekingStore((s) => s.seekPosition);
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+
+  const effectivePosition = isSeeking ? seekPosition : position;
+  return Math.max(0, duration - effectivePosition);
+};
 
 // =============================================================================
 // BOOK SELECTORS
@@ -152,28 +173,9 @@ export const useViewingBook = () =>
 export const usePlayingBook = () =>
   usePlayerStore((s) => s.currentBook);
 
-// =============================================================================
-// SLEEP TIMER SELECTORS
-// =============================================================================
-
-/**
- * Returns whether shake detection is currently active.
- */
-export const useIsShakeDetectionActive = () =>
-  usePlayerStore((s) => s.isShakeDetectionActive);
-
-/**
- * Returns the sleep timer state with shake detection info.
- * Uses useShallow to prevent unnecessary re-renders from object reference changes.
- */
-export const useSleepTimerState = () =>
-  usePlayerStore(
-    useShallow((s) => ({
-      sleepTimer: s.sleepTimer,
-      isShakeDetectionActive: s.isShakeDetectionActive,
-      shakeToExtendEnabled: s.shakeToExtendEnabled,
-    }))
-  );
+// Simple sleep timer hooks are in sleepTimerStore.ts
+// Simple speed hooks are in speedStore.ts
+// Import from '@/features/player/stores' which routes through playerHooks.ts
 
 // =============================================================================
 // PLAYBACK STATE SELECTORS
@@ -203,3 +205,20 @@ export const usePlayerVisibility = () =>
  */
 export const useCurrentBookId = () =>
   usePlayerStore((s) => s.currentBook?.id ?? null);
+
+/**
+ * Returns position and duration for progress display.
+ */
+export const usePositionState = () =>
+  usePlayerStore(
+    useShallow((s) => ({
+      position: s.position,
+      duration: s.duration,
+    }))
+  );
+
+/**
+ * Returns chapters for the current book.
+ */
+export const useChapters = () =>
+  usePlayerStore((s) => s.chapters);

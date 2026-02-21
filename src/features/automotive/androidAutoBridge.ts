@@ -1,57 +1,18 @@
 /**
  * src/features/automotive/androidAutoBridge.ts
  *
- * Bridge for syncing browse data to native Android Auto MediaBrowserService.
+ * Bridge for Android Auto MediaSession integration.
  *
- * Uses native AndroidAutoModule to write browse data to a location
- * accessible by both React Native and the native MediaBrowserService.
+ * SIMPLIFIED: Only playback controls and metadata - no browsing.
+ * Provides play/pause, seek, skip, and now-playing info.
  */
 
 import { Platform, NativeModules } from 'react-native';
-import { BrowseSection } from './types';
 import { audioLog } from '@/shared/utils/audioDebug';
 
 const log = (...args: any[]) => audioLog.audio('[AndroidAutoBridge]', ...args);
 
-// Get the native module
 const { AndroidAutoModule } = NativeModules;
-
-/**
- * Write browse sections via native module for Android Auto to read
- */
-export async function updateAndroidAutoBrowseData(sections: BrowseSection[]): Promise<void> {
-  if (Platform.OS !== 'android') return;
-
-  try {
-    const data = JSON.stringify(sections);
-
-    if (AndroidAutoModule?.writeBrowseData) {
-      // Use native module to write to correct location
-      await AndroidAutoModule.writeBrowseData(data);
-      log('Browse data written via native module');
-    } else {
-      // Fallback for when native module isn't available yet
-      log('AndroidAutoModule not available, browse data not written');
-    }
-
-    log('Sections:', sections.map(s => `${s.title} (${s.items.length} items)`).join(', '));
-  } catch (error) {
-    log('Failed to write browse data:', error);
-  }
-}
-
-/**
- * Notify native service that browse data has been updated
- */
-export function notifyBrowseDataUpdated(): void {
-  if (Platform.OS !== 'android') return;
-
-  try {
-    AndroidAutoModule?.notifyBrowseDataUpdated?.();
-  } catch (error) {
-    log('Failed to notify browse data update:', error);
-  }
-}
 
 /**
  * Update playback state in native MediaSession
@@ -71,7 +32,7 @@ export function updatePlaybackState(
 }
 
 /**
- * Update metadata in native MediaSession
+ * Update metadata in native MediaSession (title, author, cover art)
  */
 export function updateMetadata(
   title: string,
@@ -89,7 +50,25 @@ export function updateMetadata(
 }
 
 /**
- * Check if Android Auto is connected
+ * Write browse data JSON to file for native MediaBrowserService to read.
+ * The native module writes the file and notifies the service to reload.
+ */
+export async function writeBrowseData(jsonData: string): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+
+  try {
+    if (AndroidAutoModule?.writeBrowseData) {
+      return await AndroidAutoModule.writeBrowseData(jsonData);
+    }
+    return false;
+  } catch (error) {
+    log('Failed to write browse data:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if Android Auto service is active
  */
 export async function isAndroidAutoConnected(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
@@ -102,20 +81,5 @@ export async function isAndroidAutoConnected(): Promise<boolean> {
   } catch (error) {
     log('Failed to check Android Auto connection:', error);
     return false;
-  }
-}
-
-/**
- * Clear browse data (for cleanup)
- */
-export async function clearAndroidAutoBrowseData(): Promise<void> {
-  if (Platform.OS !== 'android') return;
-
-  try {
-    // Write empty array to clear
-    await updateAndroidAutoBrowseData([]);
-    log('Browse data cleared');
-  } catch (error) {
-    log('Failed to clear browse data:', error);
   }
 }

@@ -123,10 +123,16 @@ class BackgroundSyncService {
     // This makes spine progress bars, continue listening, etc. update immediately
     try {
       const { useProgressStore } = await import('@/core/stores/progressStore');
-      // Don't write to SQLite again - we just did that above
-      await useProgressStore.getState().updateProgress(itemId, position, duration, false);
-    } catch {
-      // Progress store not loaded yet, skip
+      const progressStore = useProgressStore.getState();
+      // Check if store is ready before updating
+      if (progressStore.isLoaded) {
+        // Don't write to SQLite again - we just did that above
+        await progressStore.updateProgress(itemId, position, duration, false);
+      }
+    } catch (error) {
+      // FIX: Log error instead of silently ignoring - helps debug progress sync issues
+      // This can happen during app startup before progressStore is initialized
+      audioLog.debug(`saveProgressLocal: progressStore update skipped - ${getErrorMessage(error)}`);
     }
   }
 
@@ -160,10 +166,16 @@ class BackgroundSyncService {
     // UNIFIED PROGRESS: Update progressStore for instant UI updates
     try {
       const { useProgressStore } = await import('@/core/stores/progressStore');
-      // Don't write to SQLite again - we just did that above
-      await useProgressStore.getState().updateProgress(itemId, position, duration, false);
-    } catch {
-      // Progress store not loaded yet, skip
+      const progressStore = useProgressStore.getState();
+      // Check if store is ready before updating
+      if (progressStore.isLoaded) {
+        // Don't write to SQLite again - we just did that above
+        await progressStore.updateProgress(itemId, position, duration, false);
+      }
+    } catch (error) {
+      // FIX: Log error instead of silently ignoring - helps debug progress sync issues
+      // This can happen during app startup before progressStore is initialized
+      audioLog.debug(`saveProgress: progressStore update skipped - ${getErrorMessage(error)}`);
     }
 
     // STEP 2: Queue for server sync
@@ -572,13 +584,26 @@ class BackgroundSyncService {
 
   /**
    * Clean up resources
+   * FIX: Clear all timers to prevent memory leaks and orphaned callbacks
    */
   destroy(): void {
     this.stop();
+
+    // FIX: Clear pending schedule timeout
+    if (this.processScheduleTimeout) {
+      clearTimeout(this.processScheduleTimeout);
+      this.processScheduleTimeout = null;
+    }
+
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = null;
     }
+
+    // Reset state
+    this.backgroundSyncInProgress = false;
+    this.firstUnprocessedTime = 0;
+
     log('Destroyed');
   }
 

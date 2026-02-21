@@ -32,9 +32,7 @@ import { apiClient } from '@/core/api';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { BookSpineVertical, BookSpineVerticalData, useBookRowLayout, useSpineCacheStore } from '@/shared/spine';
 
 // Extended metadata with additional fields
 interface ExtendedBookMetadata extends BookMetadata {
@@ -228,7 +226,16 @@ export function GenreDetailScreen() {
         }
       }
     });
-    return Array.from(seriesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(seriesMap.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(group => ({
+        ...group,
+        books: [...group.books].sort((a, b) => {
+          const seqA = getSeriesSequence(getMetadata(a)) ?? 999;
+          const seqB = getSeriesSequence(getMetadata(b)) ?? 999;
+          return seqA - seqB;
+        }),
+      }));
   }, [allBooks, activeTab]);
 
   // Get unique narrators - LAZY: only compute when Narrator tab is active

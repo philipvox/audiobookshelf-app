@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLibrarySyncStore } from './librarySyncStore';
 
 interface MyLibraryState {
   // Library items (book IDs)
@@ -42,6 +43,7 @@ interface MyLibraryState {
   toggleSelection: (bookId: string) => void;
   selectAll: (bookIds: string[]) => void;
   clearSelection: () => void;
+  clearAll: () => void;
 }
 
 export const useMyLibraryStore = create<MyLibraryState>()(
@@ -51,12 +53,17 @@ export const useMyLibraryStore = create<MyLibraryState>()(
       favoriteSeriesNames: [],
       isSelecting: false,
       selectedIds: [],
-      hideSingleBookSeries: false,
+      hideSingleBookSeries: true, // Default to hiding single-book series
 
       addToLibrary: (bookId: string) => {
         const { libraryIds } = get();
         if (!libraryIds.includes(bookId)) {
           set({ libraryIds: [...libraryIds, bookId] });
+          // Sync: clear tombstone and push to server
+          useLibrarySyncStore.getState().clearBookTombstone(bookId);
+          import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+            librarySyncService.pushBookChange(bookId, 'add');
+          });
         }
       },
 
@@ -66,6 +73,11 @@ export const useMyLibraryStore = create<MyLibraryState>()(
           libraryIds: libraryIds.filter(id => id !== bookId),
           selectedIds: selectedIds.filter(id => id !== bookId),
         });
+        // Sync: record tombstone and push to server
+        useLibrarySyncStore.getState().addBookTombstone(bookId);
+        import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+          librarySyncService.pushBookChange(bookId, 'remove');
+        });
       },
 
       removeMultiple: (bookIds: string[]) => {
@@ -74,6 +86,16 @@ export const useMyLibraryStore = create<MyLibraryState>()(
           libraryIds: libraryIds.filter(id => !bookIds.includes(id)),
           selectedIds: [],
           isSelecting: false,
+        });
+        // Sync: record tombstones and push to server
+        const syncStore = useLibrarySyncStore.getState();
+        for (const bookId of bookIds) {
+          syncStore.addBookTombstone(bookId);
+        }
+        import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+          for (const bookId of bookIds) {
+            librarySyncService.pushBookChange(bookId, 'remove');
+          }
         });
       },
 
@@ -86,12 +108,22 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         const { favoriteSeriesNames } = get();
         if (!favoriteSeriesNames.includes(seriesName)) {
           set({ favoriteSeriesNames: [...favoriteSeriesNames, seriesName] });
+          // Sync: clear tombstone and push to server
+          useLibrarySyncStore.getState().clearSeriesTombstone(seriesName);
+          import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+            librarySyncService.pushSeriesChange(seriesName, 'add');
+          });
         }
       },
 
       removeSeriesFromFavorites: (seriesName: string) => {
         const { favoriteSeriesNames } = get();
         set({ favoriteSeriesNames: favoriteSeriesNames.filter(name => name !== seriesName) });
+        // Sync: record tombstone and push to server
+        useLibrarySyncStore.getState().addSeriesTombstone(seriesName);
+        import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+          librarySyncService.pushSeriesChange(seriesName, 'remove');
+        });
       },
 
       isSeriesFavorite: (seriesName: string) => {
@@ -101,6 +133,50 @@ export const useMyLibraryStore = create<MyLibraryState>()(
       // Preferences
       setHideSingleBookSeries: (hide: boolean) => {
         set({ hideSingleBookSeries: hide });
+      },
+
+      clearAll: () => {
+        const { libraryIds } = get();
+        // Clear tombstones so sync doesn't block future re-adds
+        useLibrarySyncStore.setState({ bookTombstones: [], seriesTombstones: [] });
+        // Batch remove from server playlist
+        const playlistId = useLibrarySyncStore.getState().libraryPlaylistId;
+        if (playlistId && libraryIds.length > 0) {
+          import('@/core/api/endpoints/playlists').then(({ playlistsApi }) => {
+            playlistsApi.batchRemove(playlistId, libraryIds).catch((err: any) =>
+              console.warn('Failed to clear server playlist:', err)
+            );
+          });
+        }
+        set({
+          libraryIds: [],
+          favoriteSeriesNames: [],
+          selectedIds: [],
+          isSelecting: false,
+        });
+        // Clear progressStore librarySet + SQLite
+        import('@/core/stores/progressStore').then(({ useProgressStore }) => {
+          const state = useProgressStore.getState();
+          // Update progressMap: set isInLibrary = false for all
+          const newMap = new Map(state.progressMap);
+          newMap.forEach((data, bookId) => {
+            newMap.set(bookId, { ...data, isInLibrary: false });
+          });
+          useProgressStore.setState({
+            librarySet: new Set(),
+            progressMap: newMap,
+            version: state.version + 1,
+          });
+        });
+        // Clear is_in_library in SQLite for all books
+        import('@/core/services/sqliteCache').then(({ sqliteCache }) => {
+          (sqliteCache as any).ensureReady().then((db: any) => {
+            db.runAsync(
+              `UPDATE user_books SET is_in_library = 0, local_updated_at = ?`,
+              [new Date().toISOString()]
+            ).catch((err: any) => console.warn('Failed to clear SQLite library:', err));
+          });
+        });
       },
 
       startSelecting: () => {

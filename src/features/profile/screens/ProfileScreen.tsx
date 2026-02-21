@@ -5,7 +5,7 @@
  * Clean editorial aesthetic with Playfair Display and JetBrains Mono typography.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
   Alert,
   StatusBar,
   TouchableOpacity,
-  Switch,
   Pressable,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -27,13 +26,14 @@ import {
   Type,
   LogOut,
   ChevronRight,
-  Library,
   Vibrate,
+  RefreshCw,
+  ListMusic,
+  Palette,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION, BUILD_NUMBER, VERSION_DATE } from '@/constants/version';
@@ -107,39 +107,6 @@ function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: Prof
   );
 }
 
-interface ProfileToggleProps {
-  Icon: LucideIcon;
-  label: string;
-  subtitle?: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
-}
-
-function ProfileToggle({ Icon, label, subtitle, value, onValueChange }: ProfileToggleProps) {
-  const colors = useSecretLibraryColors();
-  const isDark = colors.isDark;
-  return (
-    <View style={[styles.profileLink, { borderBottomColor: colors.borderLight }]}>
-      <View style={[styles.linkIconContainer, { backgroundColor: colors.grayLight }]}>
-        <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
-      </View>
-      <View style={styles.linkContent}>
-        <Text style={[styles.linkLabel, { color: colors.black }]}>{label}</Text>
-        {subtitle && <Text style={[styles.linkSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={(newValue) => {
-          haptics.selection();
-          onValueChange(newValue);
-        }}
-        trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: colors.black }}
-        thumbColor={colors.white}
-        ios_backgroundColor={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}
-      />
-    </View>
-  );
-}
 
 interface SectionGroupProps {
   title: string;
@@ -178,8 +145,6 @@ export function ProfileScreen() {
   const downloadCount = completedDownloads.length;
   const totalStorage = completedDownloads.reduce((sum, d) => sum + (d.totalBytes || 0), 0);
 
-  // Library preferences
-  const { hideSingleBookSeries, setHideSingleBookSeries } = useMyLibraryStore();
 
   const handleLogout = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -203,6 +168,27 @@ export function ProfileScreen() {
   const handleLogoPress = useCallback(() => {
     haptics.buttonPress();
     navigation.navigate('HomeTab');
+  }, [navigation]);
+
+  // Hidden dev access: 5 taps on version text opens Developer Settings
+  const versionTapCount = useRef(0);
+  const lastVersionTap = useRef(0);
+  const handleVersionTap = useCallback(() => {
+    if (!__DEV__) return;
+
+    const now = Date.now();
+    // Reset if more than 2 seconds since last tap
+    if (now - lastVersionTap.current > 2000) {
+      versionTapCount.current = 0;
+    }
+    lastVersionTap.current = now;
+    versionTapCount.current += 1;
+
+    if (versionTapCount.current >= 5) {
+      versionTapCount.current = 0;
+      haptics.buttonPress();
+      navigation.navigate('DeveloperSettings');
+    }
   }, [navigation]);
 
   const formatAccountType = (type?: string) => {
@@ -260,6 +246,12 @@ export function ProfileScreen() {
             subtitle={`${downloadCount} book${downloadCount !== 1 ? 's' : ''} · ${formatBytes(totalStorage)}`}
             onPress={() => navigation.navigate('Downloads')}
           />
+          <ProfileLink
+            Icon={ListMusic}
+            label="Home Screen Settings"
+            subtitle="Playlists and display options"
+            onPress={() => navigation.navigate('PlaylistSettings')}
+          />
         </SectionGroup>
 
         {/* Playback Section */}
@@ -276,15 +268,21 @@ export function ProfileScreen() {
             subtitle="Vibration feedback settings"
             onPress={() => navigation.navigate('HapticSettings')}
           />
+          <ProfileLink
+            Icon={Palette}
+            label="Spine Appearance"
+            subtitle="Server spines and series display"
+            onPress={() => navigation.navigate('AppearanceSettings')}
+          />
         </SectionGroup>
 
         {/* Library Section */}
         <SectionGroup title="Library">
           <ProfileLink
             Icon={Folder}
-            label="Storage"
-            subtitle="Downloads, cache, WiFi-only"
-            onPress={() => navigation.navigate('StorageSettings')}
+            label="Data & Storage"
+            subtitle="Downloads, sync, and storage"
+            onPress={() => navigation.navigate('DataStorageSettings')}
           />
           <ProfileLink
             Icon={Type}
@@ -292,20 +290,15 @@ export function ProfileScreen() {
             subtitle="Clean up messy chapter names"
             onPress={() => navigation.navigate('ChapterCleaningSettings')}
           />
-          <ProfileToggle
-            Icon={Library}
-            label="Hide Single-Book Series"
-            subtitle="Hide series with only 1 book"
-            value={hideSingleBookSeries}
-            onValueChange={setHideSingleBookSeries}
-          />
         </SectionGroup>
 
         {/* Footer */}
         <View style={styles.footer}>
           <SkullLogo size={64} color={colors.black} />
           <Text style={[styles.appName, { color: colors.gray }]}>Secret Library</Text>
-          <Text style={[styles.versionText, { color: colors.gray }]}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
+          <TouchableOpacity onPress={handleVersionTap} activeOpacity={0.7}>
+            <Text style={[styles.versionText, { color: colors.gray }]}>v{APP_VERSION} ({BUILD_NUMBER})</Text>
+          </TouchableOpacity>
           <Text style={[styles.buildDate, { color: colors.gray }]}>{VERSION_DATE}</Text>
         </View>
       </ScrollView>

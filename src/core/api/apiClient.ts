@@ -122,8 +122,10 @@ class ApiClient extends BaseApiClient {
   /**
    * Get cover URL with automatic cache busting.
    * Uses a global cache version that increments on library refresh.
+   * Initialize to Date.now() so fresh installs always get cache-busted URLs
+   * (prevents stale images from OS-level HTTP cache persisting across reinstalls)
    */
-  private _coverCacheVersion = 0;
+  private _coverCacheVersion = Date.now();
 
   /** Call this when library is refreshed to bust cover caches */
   bumpCoverCacheVersion(): void {
@@ -132,10 +134,11 @@ class ApiClient extends BaseApiClient {
 
   /** Reset cover cache version (call on logout to prevent stale covers) */
   resetCoverCacheVersion(): void {
-    this._coverCacheVersion = 0;
+    // Reset to new timestamp, not 0, to ensure URLs always have cache buster
+    this._coverCacheVersion = Date.now();
   }
 
-  getItemCoverUrl(itemId: string, options?: { width?: number; height?: number; format?: string }): string {
+  getItemCoverUrl(itemId: string, options?: { width?: number; height?: number; format?: string; thumb?: boolean }): string {
     const baseUrl = `${this.getBaseURL()}${endpoints.items.cover(itemId)}`;
 
     // Build query params
@@ -146,12 +149,17 @@ class ApiClient extends BaseApiClient {
       params.append('v', this._coverCacheVersion.toString());
     }
 
-    // Add size params if provided (AudiobookShelf API supports width/height)
-    if (options?.width) {
-      params.append('width', options.width.toString());
-    }
-    if (options?.height) {
-      params.append('height', options.height.toString());
+    // Thumbnail mode: request tiny placeholder image (~200 bytes) for blur-up effect
+    if (options?.thumb) {
+      params.append('thumb', '1');
+    } else {
+      // Add size params if provided (AudiobookShelf API supports width/height)
+      if (options?.width) {
+        params.append('width', options.width.toString());
+      }
+      if (options?.height) {
+        params.append('height', options.height.toString());
+      }
     }
 
     // Add format param - default to jpeg for better Android compatibility
@@ -159,6 +167,54 @@ class ApiClient extends BaseApiClient {
 
     const queryString = params.toString();
     return queryString ? `${baseUrl}?${queryString}` : baseUrl;
+  }
+
+  /**
+   * Get spine image URL for a library item.
+   * Spines are pre-generated PNG images stored in ABS metadata folder.
+   * Server serves these via Caddy proxy: /api/items/{id}/spine → metadata/items/{id}/spine.png
+   */
+  getItemSpineUrl(itemId: string, options?: { width?: number; height?: number; thumb?: boolean }): string {
+    const baseUrl = `${this.getBaseURL()}${endpoints.items.spine(itemId)}`;
+
+    const params = new URLSearchParams();
+
+    // Add cache version for cache busting
+    if (this._coverCacheVersion > 0) {
+      params.append('v', this._coverCacheVersion.toString());
+    }
+
+    // Thumbnail mode: request tiny placeholder image (~200 bytes) for blur-up effect
+    if (options?.thumb) {
+      params.append('thumb', '1');
+    }
+
+    const queryString = params.toString();
+    return queryString ? `${baseUrl}?${queryString}` : baseUrl;
+  }
+
+  // ==================== Spine Manifest ====================
+
+  /**
+   * Get the spine manifest - list of all book IDs that have server-generated spines.
+   * This allows the app to skip 404 requests for books without server spines.
+   */
+  async getSpineManifest(): Promise<{ items: string[]; version: number; count: number }> {
+    try {
+      // Add cache-busting param to bypass CDN/browser cache
+      const cacheBuster = `?_=${Date.now()}`;
+      const response = await this.get<{ items: string[]; version: number; count: number; generated: string }>(
+        endpoints.spines.manifest + cacheBuster
+      );
+      return {
+        items: response.items || [],
+        version: response.version || 1,
+        count: response.count || 0,
+      };
+    } catch (error) {
+      apiLogger.warn('Failed to fetch spine manifest:', error);
+      return { items: [], version: 0, count: 0 };
+    }
   }
 
   // ==================== Progress ====================
@@ -301,6 +357,20 @@ class ApiClient extends BaseApiClient {
 
   async deleteCollection(collectionId: string): Promise<void> {
     await this.delete(endpoints.collections.delete(collectionId));
+  }
+
+  async batchAddToCollection(collectionId: string, bookIds: string[]): Promise<Collection> {
+    return this.post<Collection>(
+      endpoints.collections.batchAdd(collectionId),
+      { books: bookIds }
+    );
+  }
+
+  async batchRemoveFromCollection(collectionId: string, bookIds: string[]): Promise<Collection> {
+    return this.post<Collection>(
+      endpoints.collections.batchRemove(collectionId),
+      { books: bookIds }
+    );
   }
 
   // ==================== Playlists ====================

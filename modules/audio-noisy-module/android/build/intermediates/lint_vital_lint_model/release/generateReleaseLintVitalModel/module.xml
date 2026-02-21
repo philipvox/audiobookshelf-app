@@ -1,6 +1,6 @@
 <lint-module
     format="1"
-    dir="/Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android"
+    dir="/Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android"
     name=":audio-noisy-module"
     type="LIBRARY"
     maven="expo.modules.audionoisymodule:audio-noisy-module:1.0.0"

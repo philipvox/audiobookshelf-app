@@ -10,7 +10,7 @@
  */
 
 import React, { ReactNode, useCallback, forwardRef } from 'react';
-import { View, Text, StyleSheet, Pressable, ViewStyle, TextInput, TextInputProps } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ViewStyle, TextInput, TextInputProps, Platform } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -38,6 +38,8 @@ export interface TopNavPill {
   icon?: ReactNode;
   /** Called when pill is pressed */
   onPress?: () => void;
+  /** Called when pill is long pressed */
+  onLongPress?: () => void;
   /** Show outline style (white border, transparent bg) when not active */
   outline?: boolean;
   /** Show close X indicator (for cancelable pills) */
@@ -93,6 +95,10 @@ export interface TopNavProps {
   showLogo?: boolean;
   /** Custom left content instead of logo */
   leftContent?: ReactNode;
+  /** Accessory element rendered next to logo */
+  logoAccessory?: ReactNode;
+  /** Custom center content (between logo and right actions) */
+  centerContent?: ReactNode;
   /** Additional style for container */
   style?: ViewStyle;
   /** Whether to include safe area padding */
@@ -182,6 +188,8 @@ export function TopNav({
   onLogoLongPress,
   showLogo = true,
   leftContent,
+  logoAccessory,
+  centerContent,
   style,
   includeSafeArea = true,
   searchBar,
@@ -234,18 +242,28 @@ export function TopNav({
           {leftContent ? (
             leftContent
           ) : showLogo ? (
-            <Pressable
-              onPress={handleLogoPress}
-              onLongPress={handleLogoLongPress}
-              delayLongPress={500}
-            >
-              <SkullLogo inverted={isDark} />
-            </Pressable>
+            <>
+              <Pressable
+                onPress={handleLogoPress}
+                onLongPress={handleLogoLongPress}
+                delayLongPress={500}
+              >
+                <SkullLogo inverted={isDark} />
+              </Pressable>
+              {logoAccessory}
+            </>
           ) : null}
           {title && !searchBar && (
             <Text style={[styles.headerTitle, { color: textColor }]}>{title}</Text>
           )}
         </View>
+
+        {/* Center: Custom content (when provided) */}
+        {centerContent && !searchBar && (
+          <View style={styles.headerCenter}>
+            {centerContent}
+          </View>
+        )}
 
         {/* Center: Inline Search Bar (when provided) - pill shape with border */}
         {searchBar && (
@@ -263,8 +281,6 @@ export function TopNav({
               style={[
                 styles.searchInput,
                 { color: textColor },
-                // Center text when empty, left-align when typing
-                !searchBar.value && styles.searchInputCentered,
               ]}
               placeholder={searchBar.placeholder || 'Search...'}
               placeholderTextColor={searchPlaceholderColor}
@@ -307,6 +323,7 @@ export function TopNav({
                   },
                 ]}
                 onPress={pill.onPress}
+                onLongPress={pill.onLongPress}
               >
                 {pill.icon && (
                   <View style={hasLabel || pill.showClose ? styles.pillIcon : undefined}>
@@ -382,6 +399,12 @@ const styles = StyleSheet.create({
     fontSize: scale(20),
     fontWeight: '400',
   },
+  headerCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -427,17 +450,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 20, // Pill shape (fully rounded)
     paddingHorizontal: 14,
-    height: 40,
+    minHeight: 40,
   },
   searchInput: {
     flex: 1,
     fontSize: 15,
     marginLeft: 8,
-    paddingVertical: 0,
+    paddingVertical: Platform.OS === 'android' ? 6 : 0,
+    textAlignVertical: 'center',
   },
   searchInputCentered: {
-    textAlign: 'center',
-    marginLeft: 0, // Remove left margin when centered
+    textAlign: 'left',
   },
 });
 

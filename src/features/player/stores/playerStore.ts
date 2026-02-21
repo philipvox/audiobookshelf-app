@@ -13,7 +13,6 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { useShallow } from 'zustand/react/shallow';
 import { Alert } from 'react-native';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { apiClient } from '@/core/api';
@@ -104,7 +103,7 @@ import {
 import { usePlayerSettingsStore } from './playerSettingsStore';
 
 // Import bookmarks store (Phase 3 refactor)
-import { useBookmarksStore } from './bookmarksStore';
+import { useBookmarksStore, type Bookmark } from './bookmarksStore';
 
 // Import sleep timer store (Phase 4 refactor)
 import { useSleepTimerStore } from './sleepTimerStore';
@@ -112,8 +111,8 @@ import { useSleepTimerStore } from './sleepTimerStore';
 // Import speed store (Phase 5 refactor)
 import { useSpeedStore } from './speedStore';
 
-// Import completion store (Phase 6 refactor)
-import { useCompletionStore } from './completionStore';
+// Import completion sheet store (Phase 6 refactor, renamed Phase 2 audit)
+import { useCompletionSheetStore } from './completionSheetStore';
 
 // Import seeking store (Phase 7 refactor)
 import { useSeekingStore, type SeekDirection as SeekDirectionImport } from './seekingStore';
@@ -144,14 +143,8 @@ function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | n
 // Re-exported here for backwards compatibility
 export { Chapter } from '../types';
 
-export interface Bookmark {
-  id: string;
-  title: string;
-  note: string | null;
-  time: number;
-  chapterTitle: string | null;
-  createdAt: number;
-}
+// Bookmark type re-exported from bookmarksStore (single source of truth)
+export type { Bookmark };
 
 export type SeekDirection = 'backward' | 'forward';
 
@@ -172,15 +165,6 @@ interface PlayerState {
   isPlaying: boolean;
   isLoading: boolean;
   isBuffering: boolean;
-  playbackRate: number;
-
-  // ---------------------------------------------------------------------------
-  // Seeking State (THE KEY IMPROVEMENT)
-  // ---------------------------------------------------------------------------
-  isSeeking: boolean;
-  seekPosition: number;       // Position during seek (UI displays this)
-  seekStartPosition: number;  // Where seek started (for delta display)
-  seekDirection: SeekDirection | null;
 
   // ---------------------------------------------------------------------------
   // UI State
@@ -195,55 +179,14 @@ interface PlayerState {
   lastPlayedBookId: string | null;
 
   // ---------------------------------------------------------------------------
-  // Features
+  // NOTE: Features moved to dedicated stores (Phase 10 refactor):
+  //   sleepTimer/shake → sleepTimerStore
+  //   bookmarks → bookmarksStore
+  //   speed/bookSpeedMap → speedStore
+  //   settings (controlMode, progressMode, skipIntervals, appearance) → playerSettingsStore
+  //   completion → completionStore
+  //   seeking → seekingStore
   // ---------------------------------------------------------------------------
-  sleepTimer: number | null;
-  sleepTimerInterval: NodeJS.Timeout | null;
-  bookmarks: Bookmark[];
-
-  // ---------------------------------------------------------------------------
-  // Player Settings (persisted)
-  // ---------------------------------------------------------------------------
-  controlMode: 'rewind' | 'chapter';  // Skip buttons mode: time skip or chapter skip
-  progressMode: 'bar' | 'chapters';   // Progress display: full book or chapter-based
-
-  // ---------------------------------------------------------------------------
-  // Per-Book Speed Memory
-  // ---------------------------------------------------------------------------
-  bookSpeedMap: Record<string, number>;  // bookId → playback speed
-  globalDefaultRate: number;              // Default speed for new books
-
-  // ---------------------------------------------------------------------------
-  // Shake to Extend Sleep Timer
-  // ---------------------------------------------------------------------------
-  shakeToExtendEnabled: boolean;          // User preference
-  isShakeDetectionActive: boolean;        // Currently listening for shakes
-
-  // ---------------------------------------------------------------------------
-  // Skip Intervals (persisted)
-  // ---------------------------------------------------------------------------
-  skipForwardInterval: number;            // Seconds to skip forward (default 30)
-  skipBackInterval: number;               // Seconds to skip back (default 15)
-
-  // ---------------------------------------------------------------------------
-  // Player Appearance (persisted)
-  // ---------------------------------------------------------------------------
-  discAnimationEnabled: boolean;          // Whether CD spins during playback (default true)
-  useStandardPlayer: boolean;             // Show static cover instead of disc UI (default true)
-
-  // ---------------------------------------------------------------------------
-  // Smart Rewind (persisted)
-  // ---------------------------------------------------------------------------
-  smartRewindEnabled: boolean;            // Auto-rewind on resume based on pause duration (default true)
-  smartRewindMaxSeconds: number;          // Maximum rewind amount in seconds (default 30)
-
-  // ---------------------------------------------------------------------------
-  // Book Completion (persisted)
-  // ---------------------------------------------------------------------------
-  showCompletionPrompt: boolean;          // Show prompt when book ends (default true)
-  autoMarkFinished: boolean;              // Auto-mark books finished when prompt disabled (default false)
-  showCompletionSheet: boolean;           // Currently showing completion sheet (transient)
-  completionSheetBook: LibraryItem | null; // Book that just finished (for completion sheet)
 }
 
 interface PlayerActions {
@@ -407,8 +350,6 @@ const SKIP_FORWARD_INTERVAL_KEY = 'playerSkipForwardInterval';
 const SKIP_BACK_INTERVAL_KEY = 'playerSkipBackInterval';
 const DISC_ANIMATION_KEY = 'playerDiscAnimation';
 const STANDARD_PLAYER_KEY = 'playerStandardMode';
-const SMART_REWIND_ENABLED_KEY = 'playerSmartRewindEnabled';
-const SMART_REWIND_MAX_SECONDS_KEY = 'playerSmartRewindMaxSeconds';
 const LAST_PLAYED_BOOK_ID_KEY = 'playerLastPlayedBookId';
 const ACTIVE_PLAYBACK_RATE_KEY = 'playerActivePlaybackRate';
 const SMART_REWIND_PAUSE_TIMESTAMP_KEY = 'smartRewindPauseTimestamp';
@@ -443,6 +384,26 @@ const TRANSITION_GUARD_MS = 500; // Prevent queue races during book transitions
 // Track books we've already checked for auto-download to prevent repeated triggers
 const autoDownloadCheckedBooks = new Set<string>();
 
+// Fix Bug #1: Track stuck detection timeouts to prevent memory leaks and stale closures
+// These are cleared on pause, cleanup, and loadBook to prevent orphaned callbacks
+let stuckDetectionTimeout: NodeJS.Timeout | null = null;
+let stuckRecoveryTimeout: NodeJS.Timeout | null = null;
+
+/**
+ * Clear stuck detection timeouts to prevent memory leaks
+ * Called on pause, cleanup, and before starting new playback
+ */
+function clearStuckDetectionTimeouts(): void {
+  if (stuckDetectionTimeout) {
+    clearTimeout(stuckDetectionTimeout);
+    stuckDetectionTimeout = null;
+  }
+  if (stuckRecoveryTimeout) {
+    clearTimeout(stuckRecoveryTimeout);
+    stuckRecoveryTimeout = null;
+  }
+}
+
 // NOTE: Smart rewind state moved to ../utils/smartRewind.ts
 // NOTE: Download listener state moved to ../utils/downloadListener.ts
 
@@ -476,13 +437,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     isPlaying: false,
     isLoading: false,
     isBuffering: false,
-    playbackRate: 1.0,
-
-    // Seeking (NEW)
-    isSeeking: false,
-    seekPosition: 0,
-    seekStartPosition: 0,
-    seekDirection: null,
 
     // UI
     isPlayerVisible: false,
@@ -492,41 +446,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // Last played tracking
     lastPlayedBookId: null,
 
-    // Features
-    sleepTimer: null,
-    sleepTimerInterval: null,
-    bookmarks: [],
-
-    // Player settings (persisted)
-    controlMode: 'rewind',
-    progressMode: 'bar',
-
-    // Per-book speed memory
-    bookSpeedMap: {},
-    globalDefaultRate: 1.0,
-
-    // Shake to extend
-    shakeToExtendEnabled: true,  // Default enabled
-    isShakeDetectionActive: false,
-
-    // Skip intervals
-    skipForwardInterval: 30,
-    skipBackInterval: 15,
-
-    // Player appearance
-    discAnimationEnabled: true,
-    useStandardPlayer: true,
-
-    // Smart rewind
-    smartRewindEnabled: true,
-    smartRewindMaxSeconds: 30,
-
-    // Book completion
-    showCompletionPrompt: true,   // Show prompt when book ends
-    autoMarkFinished: false,      // Auto-mark when prompt is disabled
-    showCompletionSheet: false,   // Currently showing completion sheet
-    completionSheetBook: null,    // Book that just finished
-
     // =========================================================================
     // LIFECYCLE
     // =========================================================================
@@ -534,6 +453,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     loadBook: async (book: LibraryItem, options?: { startPosition?: number; autoPlay?: boolean; showPlayer?: boolean }) => {
       const { startPosition, autoPlay = true, showPlayer = true } = options || {};
       const { currentBook, position: prevPosition, isLoading, isPlaying } = get();
+
+      // Fix Bug #1: Clear stuck detection timeouts from previous playback
+      clearStuckDetectionTimeouts();
 
       // DEBUG: Log entry point and call stack
       const debugTs = Date.now();
@@ -629,12 +551,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isBuffering: true,
         // Set position early to avoid jarring jump from stale/0 to resume position
         position: earlyPosition,
-        // Reset seeking state (synced from seekingStore for backward compatibility)
-        isSeeking: false,
-        seekPosition: 0,
-        seekStartPosition: 0,
-        seekDirection: null,
       });
+      // Reset seeking state in seekingStore (single source of truth)
+      useSeekingStore.getState().resetSeekingState();
       timing('State set');
 
       try {
@@ -945,7 +864,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             mode: 'streaming',
           });
 
-          if (session.duration > 0) totalDuration = session.duration;
+          // FIX: Get duration from session, or calculate from audioTracks if session.duration is 0
+          if (session.duration > 0) {
+            totalDuration = session.duration;
+          } else if (session.audioTracks?.length) {
+            // Calculate total duration from individual track durations
+            const trackDuration = session.audioTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
+            if (trackDuration > 0) {
+              totalDuration = trackDuration;
+              log('Duration calculated from audioTracks:', totalDuration.toFixed(1) + 's');
+            }
+          }
 
           // FIX 3: Use timestamp-based position resolution for cross-device sync
           // This respects intentional rewinds instead of always using Math.max()
@@ -998,9 +927,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             }
 
             audioTrackInfos = audioTracks.map((track: AudioTrack) => {
-              let trackUrl = `${baseUrl}${track.contentUrl}`;
-              if (!track.contentUrl.includes('token=')) {
-                const separator = track.contentUrl.includes('?') ? '&' : '?';
+              // Check if this is a direct file URL that needs /stream endpoint
+              // Pattern: /api/items/{item_id}/file/{file_ino}
+              let contentUrl = track.contentUrl;
+              const fileUrlPattern = /^\/api\/items\/[^/]+\/file\/\d+/;
+              if (fileUrlPattern.test(contentUrl)) {
+                // Append /stream for moov-at-end M4B support
+                const [path, query] = contentUrl.split('?');
+                contentUrl = `${path}/stream${query ? '?' + query : ''}`;
+              }
+
+              let trackUrl = `${baseUrl}${contentUrl}`;
+              if (!contentUrl.includes('token=')) {
+                const separator = contentUrl.includes('?') ? '&' : '?';
                 trackUrl = `${trackUrl}${separator}token=${token}`;
               }
               return {
@@ -1040,7 +979,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               position: get().position,
               isPlaying: get().isPlaying,
               isLoading: get().isLoading,
-              isSeeking: get().isSeeking,
               isPlayerVisible: get().isPlayerVisible,
             }),
             get().loadBook,
@@ -1164,13 +1102,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           return;
         }
 
-        // Apply per-book playback rate (falls back to global default for new books)
-        const bookSpeed = get().getBookSpeed(book.id);
-        log('Applying playback rate for book:', bookSpeed);
-        set({ playbackRate: bookSpeed });
-        if (bookSpeed !== 1.0) {
-          audioService.setPlaybackRate(bookSpeed).catch(() => {});
-        }
+        // Apply per-book playback rate (delegated to speedStore - single source of truth)
+        const bookSpeed = await useSpeedStore.getState().applyBookSpeed(book.id);
+        log('Applied playback rate for book:', bookSpeed);
 
         // Set final state
         timing('Audio loaded');
@@ -1318,6 +1252,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // Reset guards
       lastFinishedBookId = null;
+
+      // Fix Bug #1: Clear stuck detection timeouts to prevent memory leaks
+      clearStuckDetectionTimeouts();
 
       // Clear download completion listener
       cleanupDownloadCompletionListener();
@@ -1472,9 +1409,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         viewingBook,
         position,
         chapters,
-        smartRewindEnabled,
-        smartRewindMaxSeconds,
       } = get();
+      const { smartRewindEnabled, smartRewindMaxSeconds } = usePlayerSettingsStore.getState();
 
       // If audio isn't loaded, we need to load the book first
       if (!audioService.getIsLoaded()) {
@@ -1502,9 +1438,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // STUCK DETECTION: Verify audio actually starts playing
       // If after 3 seconds we think we're playing but audio isn't, try to recover
-      setTimeout(async () => {
+      // Fix Bug #1: Track timeouts to prevent memory leaks when user pauses/changes book
+      clearStuckDetectionTimeouts();
+
+      const bookIdAtPlayStart = currentBook?.id; // Capture to detect book changes
+
+      stuckDetectionTimeout = setTimeout(async () => {
+        stuckDetectionTimeout = null; // Clear ref since we're executing
         const state = get();
-        if (!state.isPlaying || !state.currentBook) return; // User paused or unloaded
+
+        // Fix Bug #1: Validate state hasn't changed (book changed, paused, or recovery already running)
+        if (!state.isPlaying || !state.currentBook || state.currentBook.id !== bookIdAtPlayStart) {
+          return;
+        }
 
         // Check if audio is actually playing
         const isAudioPlaying = audioService.getIsPlaying();
@@ -1517,22 +1463,26 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           try {
             await audioService.play();
 
-            // If still not playing after 1 second, hard reset
-            setTimeout(() => {
+            // If still not playing after 1.5 seconds, hard reset
+            // Fix Bug #1: Track this timeout too
+            stuckRecoveryTimeout = setTimeout(() => {
+              stuckRecoveryTimeout = null; // Clear ref since we're executing
               const newState = get();
-              if (newState.isPlaying && !audioService.getIsPlaying() && !newState.isBuffering) {
+              // Fix Bug #1: Re-validate state before hard reset
+              if (newState.isPlaying && newState.currentBook?.id === bookIdAtPlayStart &&
+                  !audioService.getIsPlaying() && !newState.isBuffering) {
                 log('[STUCK_DETECTION] Recovery failed - performing hard reset');
                 // Reload the book at current position
-                const { currentBook, position } = newState;
-                if (currentBook) {
-                  newState.loadBook(currentBook, {
-                    startPosition: position,
+                const { currentBook: book, position: pos } = newState;
+                if (book) {
+                  newState.loadBook(book, {
+                    startPosition: pos,
                     autoPlay: true,
                     showPlayer: true,
                   }).catch(() => {});
                 }
               }
-            }, 1000);
+            }, 1500);
           } catch (err) {
             log('[STUCK_DETECTION] Recovery attempt failed:', err);
           }
@@ -1540,10 +1490,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       }, 3000);
 
       // Emit book resumed event
+      // Fix HIGH TOCTOU: Re-read position from store to get current value after async operations
       if (currentBook) {
+        const currentPosition = get().position;
         eventBus.emit('book:resumed', {
           bookId: currentBook.id,
-          position,
+          position: currentPosition,
         });
       }
 
@@ -1554,11 +1506,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // Sync progress on play (fire and forget)
       // This updates server's lastUpdate timestamp so "items-in-progress" reflects current book
+      // Fix HIGH TOCTOU: Re-read position from store to get current value
       if (currentBook) {
         const session = sessionService.getCurrentSession();
+        const currentPosition = get().position;
         backgroundSyncService.saveProgress(
           currentBook.id,
-          position,
+          currentPosition,
           get().duration,
           session?.id
         ).catch((err) => {
@@ -1633,7 +1587,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     pause: async () => {
       // INSTANT: Use store position and don't block on async operations
       // Store position is kept in sync by polling, good enough for pause
-      const { position: storePosition, currentBook, duration, smartRewindEnabled } = get();
+      const { position: storePosition, currentBook, duration } = get();
+      const { smartRewindEnabled } = usePlayerSettingsStore.getState();
+
+      // Fix Bug #1: Clear stuck detection timeouts to prevent orphaned callbacks
+      clearStuckDetectionTimeouts();
 
       // Update UI state immediately - don't wait for audioService
       set({ isPlaying: false });
@@ -1676,62 +1634,40 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     startSeeking: (direction?: SeekDirection) => {
       const { position } = get();
-      // Delegate to seekingStore
+      // Delegate to seekingStore (single source of truth)
       useSeekingStore.getState().startSeeking(position, direction);
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekPosition: seekState.seekPosition,
-        seekStartPosition: seekState.seekStartPosition,
-        seekDirection: seekState.seekDirection,
-      });
     },
 
     updateSeekPosition: async (newPosition: number) => {
       const { duration } = get();
-      // Delegate to seekingStore
+      // Delegate to seekingStore (single source of truth)
       await useSeekingStore.getState().updateSeekPosition(newPosition, duration);
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekPosition: seekState.seekPosition,
-      });
     },
 
     commitSeek: async () => {
-      // Delegate to seekingStore
+      // Delegate to seekingStore (single source of truth)
       await useSeekingStore.getState().commitSeek();
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekDirection: seekState.seekDirection,
-      });
     },
 
     cancelSeek: async () => {
-      // Delegate to seekingStore
+      // Delegate to seekingStore (single source of truth)
       await useSeekingStore.getState().cancelSeek();
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekDirection: seekState.seekDirection,
-      });
     },
 
     seekTo: async (position: number) => {
+      // Fix 10: Validate position is a finite number
+      if (!Number.isFinite(position)) {
+        log.warn('[seekTo] Invalid position:', position);
+        return;
+      }
+
       const { duration, currentBook } = get();
       const clampedPos = clampPosition(position, duration);
 
       log(`seekTo: ${clampedPos.toFixed(1)}`);
 
-      // INSTANT: Update store position immediately for responsive UI
-      set({ position: clampedPos });
-
-      // Delegate to seekingStore (handles audio seek and local progress save)
+      // Delegate to seekingStore (single source of truth for seeking)
+      // seekTo is an atomic operation - it handles seeking internally
       await useSeekingStore.getState().seekTo(clampedPos, duration, currentBook?.id);
     },
 
@@ -1744,7 +1680,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       log(`startContinuousSeeking: direction=${direction}, position=${position.toFixed(1)}`);
 
-      // Delegate to seekingStore with pause callback
+      // Delegate to seekingStore (single source of truth) with pause callback
       await useSeekingStore.getState().startContinuousSeeking(
         direction,
         position,
@@ -1753,47 +1689,30 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           if (isPlaying) await pause();
         }
       );
-
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekPosition: seekState.seekPosition,
-        seekStartPosition: seekState.seekStartPosition,
-        seekDirection: seekState.seekDirection,
-      });
     },
 
     stopContinuousSeeking: async () => {
       log('stopContinuousSeeking');
-      // Delegate to seekingStore
+      // Delegate to seekingStore (single source of truth)
       await useSeekingStore.getState().stopContinuousSeeking();
-      // Sync to local state for backward compatibility
-      const seekState = useSeekingStore.getState();
-      set({
-        isSeeking: seekState.isSeeking,
-        seekDirection: seekState.seekDirection,
-      });
     },
 
     // =========================================================================
     // SKIP (single step)
     // =========================================================================
 
+    // Fix 4: Simplified - seekTo now handles its own isSeeking protection
     skipForward: async (seconds = 30) => {
       const { position, duration, isPlaying } = get();
+      // Guard: don't skip if duration is not yet known
+      if (!duration || duration <= 0) {
+        log.warn('[skipForward] Duration not available yet');
+        return;
+      }
       const newPosition = Math.min(position + seconds, duration);
 
-      // Set seeking flag to block position updates during seek
-      useSeekingStore.getState().startSeeking(position, 'forward');
-
-      try {
-        await get().seekTo(newPosition);
-      } finally {
-        // Always clear seeking flag
-        set({ isSeeking: false });
-        useSeekingStore.setState({ isSeeking: false, seekDirection: null });
-      }
+      // seekTo handles seeking flag internally now
+      await get().seekTo(newPosition);
 
       // Ensure playback continues if it was playing
       if (isPlaying && !audioService.getIsPlaying()) {
@@ -1803,18 +1722,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     skipBackward: async (seconds = 30) => {
       const { position, duration, isPlaying } = get();
+      // Guard: don't skip if duration is not yet known
+      if (!duration || duration <= 0) {
+        log.warn('[skipBackward] Duration not available yet');
+        return;
+      }
       const newPosition = Math.max(position - seconds, 0);
 
-      // Set seeking flag to block position updates during seek
-      useSeekingStore.getState().startSeeking(position, 'backward');
-
-      try {
-        await get().seekTo(newPosition);
-      } finally {
-        // Always clear seeking flag
-        set({ isSeeking: false });
-        useSeekingStore.setState({ isSeeking: false, seekDirection: null });
-      }
+      // seekTo handles seeking flag internally now
+      await get().seekTo(newPosition);
 
       // Ensure playback continues if it was playing
       if (isPlaying && !audioService.getIsPlaying()) {
@@ -1828,14 +1744,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     jumpToChapter: async (chapterIndex: number) => {
       const { chapters } = get();
+      // Fix Medium #1: Validate chapters array exists and has items
+      if (!chapters || chapters.length === 0) {
+        log('[jumpToChapter] No chapters available');
+        return;
+      }
       if (chapterIndex >= 0 && chapterIndex < chapters.length) {
         const chapter = chapters[chapterIndex];
-        await get().seekTo(chapter.start);
+        // Fix Medium #1: Validate chapter exists before accessing start
+        if (chapter && typeof chapter.start === 'number') {
+          await get().seekTo(chapter.start);
+        } else {
+          log(`[jumpToChapter] Invalid chapter at index ${chapterIndex}`);
+        }
       }
     },
 
     nextChapter: async () => {
       const { chapters, position } = get();
+      // Fix Medium #3: Validate chapters array before use
+      if (!chapters || chapters.length === 0) {
+        log('[nextChapter] No chapters available');
+        return;
+      }
       const currentIndex = findChapterIndex(chapters, position);
       if (currentIndex < chapters.length - 1) {
         await get().jumpToChapter(currentIndex + 1);
@@ -1844,6 +1775,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     prevChapter: async () => {
       const { chapters, position } = get();
+      // Fix Medium #2: Validate chapters array before use
+      if (!chapters || chapters.length === 0) {
+        log('[prevChapter] No chapters available, seeking to start');
+        await get().seekTo(0);
+        return;
+      }
       const currentIndex = findChapterIndex(chapters, position);
       const currentChapter = chapters[currentIndex];
 
@@ -1861,6 +1798,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     getCurrentChapter: () => {
       const { chapters, position, isSeeking, seekPosition } = get();
+      // Fix Medium #4: Validate chapters array before use
+      if (!chapters || chapters.length === 0) {
+        return null;
+      }
       const effectivePosition = isSeeking ? seekPosition : position;
       const index = findChapterIndex(chapters, effectivePosition);
       return chapters[index] || null;
@@ -1878,22 +1819,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       log(`[setPlaybackRate] rate=${rate}, viewingBook=${viewingBook?.id}, currentBook=${currentBook?.id}, target=${targetBook?.id}`);
 
-      // Delegate to speedStore with the correct book ID
+      // Delegate to speedStore (single source of truth)
       await useSpeedStore.getState().setPlaybackRate(rate, targetBook?.id);
-
-      // Sync to local state for backward compatibility
-      const speedState = useSpeedStore.getState();
-      set({
-        playbackRate: speedState.playbackRate,
-        bookSpeedMap: speedState.bookSpeedMap,
-      });
     },
 
     setGlobalDefaultRate: async (rate: number) => {
+      // Delegate to speedStore (single source of truth)
       await useSpeedStore.getState().setGlobalDefaultRate(rate);
-
-      // Sync to local state for backward compatibility
-      set({ globalDefaultRate: rate });
     },
 
     getBookSpeed: (bookId: string) => {
@@ -1905,50 +1837,26 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     setSleepTimer: (minutes: number) => {
-      // Delegate to sleepTimerStore with pause callback
+      // Delegate to sleepTimerStore (single source of truth) with pause callback
       useSleepTimerStore.getState().setSleepTimer(minutes, () => {
         log('[SleepTimer] Timer expired - pausing playback');
         get().pause();
-        // CRITICAL: Sync state to playerStore when timer expires naturally
-        // This ensures UI updates since it reads from playerStore.sleepTimer
-        set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
-      });
-
-      // Sync to local state for backward compatibility
-      const timerState = useSleepTimerStore.getState();
-      set({
-        sleepTimer: timerState.sleepTimer,
-        sleepTimerInterval: timerState.sleepTimerInterval,
-        isShakeDetectionActive: timerState.isShakeDetectionActive,
       });
     },
 
     extendSleepTimer: (minutes: number) => {
+      // Delegate to sleepTimerStore (single source of truth)
       useSleepTimerStore.getState().extendSleepTimer(minutes);
-
-      // Sync to local state for backward compatibility
-      const timerState = useSleepTimerStore.getState();
-      set({
-        sleepTimer: timerState.sleepTimer,
-        isShakeDetectionActive: timerState.isShakeDetectionActive,
-      });
     },
 
     clearSleepTimer: () => {
+      // Delegate to sleepTimerStore (single source of truth)
       useSleepTimerStore.getState().clearSleepTimer();
-
-      // Sync to local state for backward compatibility
-      set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
     },
 
     setShakeToExtendEnabled: async (enabled: boolean) => {
+      // Delegate to sleepTimerStore (single source of truth)
       await useSleepTimerStore.getState().setShakeToExtendEnabled(enabled);
-
-      // Sync to local state for backward compatibility
-      set({
-        shakeToExtendEnabled: enabled,
-        isShakeDetectionActive: useSleepTimerStore.getState().isShakeDetectionActive,
-      });
     },
 
     // =========================================================================
@@ -1956,43 +1864,43 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     setSkipForwardInterval: async (seconds: number) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setSkipForwardInterval(seconds);
-      set({ skipForwardInterval: seconds }); // Keep local state in sync
     },
 
     setSkipBackInterval: async (seconds: number) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setSkipBackInterval(seconds);
-      set({ skipBackInterval: seconds }); // Keep local state in sync
     },
 
     setControlMode: (mode: 'rewind' | 'chapter') => {
+      // Delegate to playerSettingsStore (single source of truth)
       usePlayerSettingsStore.getState().setControlMode(mode);
-      set({ controlMode: mode }); // Keep local state in sync
     },
 
     setProgressMode: (mode: 'bar' | 'chapters') => {
+      // Delegate to playerSettingsStore (single source of truth)
       usePlayerSettingsStore.getState().setProgressMode(mode);
-      set({ progressMode: mode }); // Keep local state in sync
     },
 
     setDiscAnimationEnabled: async (enabled: boolean) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setDiscAnimationEnabled(enabled);
-      set({ discAnimationEnabled: enabled }); // Keep local state in sync
     },
 
     setUseStandardPlayer: async (enabled: boolean) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setUseStandardPlayer(enabled);
-      set({ useStandardPlayer: enabled }); // Keep local state in sync
     },
 
     setSmartRewindEnabled: async (enabled: boolean) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setSmartRewindEnabled(enabled);
-      set({ smartRewindEnabled: enabled }); // Keep local state in sync
     },
 
     setSmartRewindMaxSeconds: async (seconds: number) => {
+      // Delegate to playerSettingsStore (single source of truth)
       await usePlayerSettingsStore.getState().setSmartRewindMaxSeconds(seconds);
-      set({ smartRewindMaxSeconds: seconds }); // Keep local state in sync
     },
 
     clearSmartRewind: () => {
@@ -2003,51 +1911,21 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     loadPlayerSettings: async () => {
       try {
-        // Phase 2: Load settings from dedicated settings store first
-        await usePlayerSettingsStore.getState().loadSettings();
-        const settingsState = usePlayerSettingsStore.getState();
+        // Load settings from each source store (single source of truth)
+        // Components read directly from these stores, no sync needed
+        await Promise.all([
+          usePlayerSettingsStore.getState().loadSettings(),
+          useSleepTimerStore.getState().loadShakeToExtendSetting(),
+          useSpeedStore.getState().loadSpeedSettings(),
+          useCompletionSheetStore.getState().loadCompletionSettings(),
+        ]);
 
-        // Phase 4: Load sleep timer settings
-        await useSleepTimerStore.getState().loadShakeToExtendSetting();
-        const sleepTimerState = useSleepTimerStore.getState();
-
-        // Phase 5: Load speed settings
-        await useSpeedStore.getState().loadSpeedSettings();
-        const speedState = useSpeedStore.getState();
-
-        // Phase 6: Load completion settings
-        await useCompletionStore.getState().loadCompletionSettings();
-        const completionState = useCompletionStore.getState();
-
-        // Load remaining settings not yet extracted to separate stores
+        // Load lastPlayedBookId (still managed by playerStore)
         const lastPlayedBookIdStr = await AsyncStorage.getItem(LAST_PLAYED_BOOK_ID_KEY);
-        const lastPlayedBookId = lastPlayedBookIdStr || null;
-
-        set({
-          // Settings from playerSettingsStore (keep local state in sync)
-          controlMode: settingsState.controlMode,
-          progressMode: settingsState.progressMode,
-          skipForwardInterval: settingsState.skipForwardInterval,
-          skipBackInterval: settingsState.skipBackInterval,
-          discAnimationEnabled: settingsState.discAnimationEnabled,
-          useStandardPlayer: settingsState.useStandardPlayer,
-          smartRewindEnabled: settingsState.smartRewindEnabled,
-          smartRewindMaxSeconds: settingsState.smartRewindMaxSeconds,
-          // Settings from sleepTimerStore (Phase 4)
-          shakeToExtendEnabled: sleepTimerState.shakeToExtendEnabled,
-          // Settings from speedStore (Phase 5)
-          playbackRate: speedState.playbackRate,
-          bookSpeedMap: speedState.bookSpeedMap,
-          globalDefaultRate: speedState.globalDefaultRate,
-          // Settings from completionStore (Phase 6)
-          showCompletionPrompt: completionState.showCompletionPrompt,
-          autoMarkFinished: completionState.autoMarkFinished,
-          // Settings still managed locally (to be extracted in later phases)
-          lastPlayedBookId,
-        });
+        set({ lastPlayedBookId: lastPlayedBookIdStr || null });
       } catch (error) {
         log('[loadPlayerSettings] Error loading settings:', error);
-        // Use defaults
+        // Use defaults - child stores handle their own defaults
       }
     },
 
@@ -2159,9 +2037,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // storeDuration is set during loadBook and represents the FULL book duration
       // state.duration is just the current track's duration (can be much smaller)
       const totalBookDuration = storeDuration > 0 ? storeDuration : state.duration;
-      // Only update store duration if audio service reports a LARGER value (shouldn't happen normally)
-      const shouldUpdateDuration = state.duration > storeDuration;
+      // FIX: Update store duration if:
+      // 1. audioService reports a LARGER value (rare case)
+      // 2. storeDuration is 0 and audioService has detected a valid duration
+      const shouldUpdateDuration = state.duration > storeDuration || (storeDuration === 0 && state.duration > 0);
       const displayDuration = totalBookDuration;
+
+      // Log when duration is detected for the first time (storeDuration was 0)
+      if (storeDuration === 0 && state.duration > 0) {
+        audioLog.info(`[DURATION_FIX] Duration detected from audio: ${state.duration.toFixed(1)}s`);
+      }
 
       // Log significant state changes
       const positionDiff = Math.abs(state.position - prevPosition);
@@ -2301,17 +2186,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           ).catch(() => {});
 
           // Get completion preferences from completionStore (Phase 6)
-          const completionState = useCompletionStore.getState();
+          const completionState = useCompletionSheetStore.getState();
 
           if (completionState.showCompletionPrompt) {
-            // Show completion sheet for user to decide
+            // Show completion sheet for user to decide (completionStore is single source of truth)
             log('BOOK FINISHED - showing completion sheet');
-            useCompletionStore.getState().showCompletionForBook(currentBook);
-            // Sync to local state for backward compatibility
-            set({
-              showCompletionSheet: true,
-              completionSheetBook: currentBook,
-            });
+            useCompletionSheetStore.getState().showCompletionForBook(currentBook);
             // Don't auto-play next book - let user decide via sheet
           } else if (completionState.autoMarkFinished) {
             // Auto-mark as finished when prompt is disabled
@@ -2322,13 +2202,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               try {
                 const { useQueueStore } = await import('@/features/queue/stores/queueStore');
                 const queueStore = useQueueStore.getState();
-                if (queueStore.queue.length > 0) {
-                  log('Queue has items - playing next book');
-                  const nextBook = await queueStore.playNext();
-                  if (nextBook) {
-                    log('Loading next book from queue:', nextBook.id);
-                    get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
-                  }
+                const nextBook = await queueStore.playNext();
+                if (nextBook) {
+                  log('Loading next book from queue:', nextBook.id);
+                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
                 }
               } catch (err) {
                 log('Queue check failed:', err);
@@ -2352,13 +2229,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               try {
                 const { useQueueStore } = await import('@/features/queue/stores/queueStore');
                 const queueStore = useQueueStore.getState();
-                if (queueStore.queue.length > 0) {
-                  log('Queue has items - playing next book');
-                  const nextBook = await queueStore.playNext();
-                  if (nextBook) {
-                    log('Loading next book from queue:', nextBook.id);
-                    get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
-                  }
+                const nextBook = await queueStore.playNext();
+                if (nextBook) {
+                  log('Loading next book from queue:', nextBook.id);
+                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
                 }
               } catch (err) {
                 log('Queue check failed:', err);
@@ -2382,55 +2256,39 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Ensure bookmarksStore knows the current book
       useBookmarksStore.getState().setCurrentBookId(currentBook.id);
 
-      // Delegate to bookmarksStore
+      // Delegate to bookmarksStore (single source of truth)
       await useBookmarksStore.getState().addBookmark(bookmarkData);
-
-      // Sync to local state for backward compatibility
-      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     updateBookmark: async (bookmarkId: string, updates: { title?: string; note?: string | null }) => {
-      // Delegate to bookmarksStore
+      // Delegate to bookmarksStore (single source of truth)
       await useBookmarksStore.getState().updateBookmark(bookmarkId, updates);
-
-      // Sync to local state for backward compatibility
-      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     removeBookmark: async (bookmarkId: string) => {
-      // Delegate to bookmarksStore
+      // Delegate to bookmarksStore (single source of truth)
       await useBookmarksStore.getState().removeBookmark(bookmarkId);
-
-      // Sync to local state for backward compatibility
-      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     loadBookmarks: async () => {
       const { currentBook } = get();
       if (!currentBook) return;
 
-      // Delegate to bookmarksStore
+      // Delegate to bookmarksStore (single source of truth)
       await useBookmarksStore.getState().loadBookmarks(currentBook.id);
-
-      // Sync to local state for backward compatibility
-      set({ bookmarks: useBookmarksStore.getState().bookmarks });
     },
 
     // =========================================================================
     // BOOK COMPLETION
     // =========================================================================
 
-    // Phase 6: Completion actions delegate to completionStore
+    // Phase 6: Completion actions delegate to completionStore (single source of truth)
     setShowCompletionPrompt: async (enabled: boolean) => {
-      await useCompletionStore.getState().setShowCompletionPrompt(enabled);
-      // Sync to local state for backward compatibility
-      set({ showCompletionPrompt: enabled });
+      await useCompletionSheetStore.getState().setShowCompletionPrompt(enabled);
     },
 
     setAutoMarkFinished: async (enabled: boolean) => {
-      await useCompletionStore.getState().setAutoMarkFinished(enabled);
-      // Sync to local state for backward compatibility
-      set({ autoMarkFinished: enabled });
+      await useCompletionSheetStore.getState().setAutoMarkFinished(enabled);
     },
 
     markBookFinished: async (bookId?: string) => {
@@ -2442,139 +2300,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         return;
       }
 
-      // Delegate to completionStore
-      await useCompletionStore.getState().markBookFinished(targetBookId, duration, currentBook);
-
-      // Sync completion sheet state for backward compatibility
-      const completionState = useCompletionStore.getState();
-      set({
-        showCompletionSheet: completionState.showCompletionSheet,
-        completionSheetBook: completionState.completionSheetBook,
-      });
+      // Delegate to completionStore (single source of truth)
+      await useCompletionSheetStore.getState().markBookFinished(targetBookId, duration, currentBook);
     },
 
     dismissCompletionSheet: () => {
-      useCompletionStore.getState().dismissCompletionSheet();
-      // Sync to local state for backward compatibility
-      set({ showCompletionSheet: false, completionSheetBook: null });
+      // Delegate to completionStore (single source of truth)
+      useCompletionSheetStore.getState().dismissCompletionSheet();
     },
   }))
 );
 
 // =============================================================================
-// SELECTORS (for derived state)
-// Phase 8: Selectors are also available from playerSelectors.ts
-// These are kept here for backward compatibility
-// =============================================================================
-
-/**
- * Returns the position to display in UI.
- * Uses seekPosition during seeking, otherwise uses position.
- */
-export const useDisplayPosition = () =>
-  usePlayerStore((s) => s.isSeeking ? s.seekPosition : s.position);
-
-/**
- * Returns the seek delta (difference from start position during seek).
- * Returns 0 when not seeking.
- */
-export const useSeekDelta = () =>
-  usePlayerStore((s) => s.isSeeking ? s.seekPosition - s.seekStartPosition : 0);
-
-/**
- * Returns the current chapter index based on display position.
- */
-export const useCurrentChapterIndex = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return findChapterIndex(s.chapters, position);
-  });
-
-/**
- * Returns the current chapter based on display position.
- */
-export const useCurrentChapter = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    const index = findChapterIndex(s.chapters, position);
-    return s.chapters[index] || null;
-  });
-
-/**
- * Returns the progress within the current chapter (0-1).
- */
-export const useChapterProgress = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    const index = findChapterIndex(s.chapters, position);
-    const chapter = s.chapters[index];
-
-    if (!chapter) return 0;
-
-    const chapterDuration = chapter.end - chapter.start;
-    if (chapterDuration <= 0) return 0;
-
-    return Math.max(0, Math.min(1, (position - chapter.start) / chapterDuration));
-  });
-
-/**
- * Returns the overall book progress (0-1).
- */
-export const useBookProgress = () =>
-  usePlayerStore((s) => {
-    const position = s.isSeeking ? s.seekPosition : s.position;
-    return s.duration > 0 ? position / s.duration : 0;
-  });
-
-/**
- * Returns whether the user is currently seeking (for UI state).
- */
-export const useIsSeeking = () =>
-  usePlayerStore((s) => s.isSeeking);
-
-/**
- * Returns the seek direction if seeking, null otherwise.
- */
-export const useSeekDirection = () =>
-  usePlayerStore((s) => s.seekDirection);
-
-/**
- * Returns true if viewing a different book than what's playing.
- */
-export const useIsViewingDifferentBook = () =>
-  usePlayerStore((s) => {
-    if (!s.viewingBook || !s.currentBook) return false;
-    return s.viewingBook.id !== s.currentBook.id;
-  });
-
-/**
- * Returns the viewing book (shown in PlayerScreen).
- */
-export const useViewingBook = () =>
-  usePlayerStore((s) => s.viewingBook);
-
-/**
- * Returns the playing book (audio loaded).
- */
-export const usePlayingBook = () =>
-  usePlayerStore((s) => s.currentBook);
-
-/**
- * Returns whether shake detection is currently active.
- */
-export const useIsShakeDetectionActive = () =>
-  usePlayerStore((s) => s.isShakeDetectionActive);
-
-/**
- * Returns the sleep timer state with shake detection info.
- * Uses useShallow to prevent unnecessary re-renders from object reference changes.
- */
-export function useSleepTimerState() {
-  return usePlayerStore(
-    useShallow((s) => ({
-      sleepTimer: s.sleepTimer,
-      isShakeDetectionActive: s.isShakeDetectionActive,
-      shakeToExtendEnabled: s.shakeToExtendEnabled,
-    }))
-  );
-}
+// SELECTORS moved to playerSelectors.ts (Phase 10 refactor)
+// Import from '@/features/player/stores' or './playerSelectors' instead.

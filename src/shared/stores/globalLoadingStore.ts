@@ -12,10 +12,7 @@
  */
 
 import { create } from 'zustand';
-import {
-  LOADING_MIN_DISPLAY_MS,
-  LOADING_DEBOUNCE_MS,
-} from '@/constants/loading';
+import { LOADING_MIN_DISPLAY_MS } from '@/constants/loading';
 
 interface GlobalLoadingState {
   isLoading: boolean;
@@ -26,14 +23,11 @@ interface GlobalLoadingState {
 // Internal state tracking
 let showTimestamp = 0;
 let hideTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let showCount = 0; // Track show() calls to handle rapid toggling
 
 export const useGlobalLoadingStore = create<GlobalLoadingState>((set, get) => ({
   isLoading: false,
 
   show: () => {
-    const currentShowId = ++showCount;
-
     // Cancel any pending hide timeout - prevents race conditions
     if (hideTimeoutId !== null) {
       clearTimeout(hideTimeoutId);

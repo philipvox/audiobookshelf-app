@@ -24,7 +24,8 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
         private const val EVENT_NAME = "AndroidAutoCommand"
         private const val BROWSE_DATA_FILE = "android_auto_browse.json"
         private const val MAX_RETRY_ATTEMPTS = 5
-        private const val RETRY_DELAY_MS = 500L
+        // Reduced from 500ms to 100ms for faster command response
+        private const val RETRY_DELAY_MS = 100L
 
         // Static reference for service to emit events
         // Note: This can become stale if React Native creates a new context

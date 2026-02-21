@@ -1,6 +1,7 @@
 // Screens
 export { SecretLibraryBrowseScreen } from './screens/SecretLibraryBrowseScreen';
 export { DurationFilterScreen } from './screens/DurationFilterScreen';
+export { CollectionsListScreen } from './screens/CollectionsListScreen';
 
 // List Content Components
 export { SeriesListContent } from './components/SeriesListContent';
@@ -14,6 +15,8 @@ export { BrowseHero } from './components/BrowseHero';
 export { BrowseFooter } from './components/BrowseFooter';
 export { CollectionRow } from './components/CollectionRow';
 export { CollectionThumb } from './components/CollectionThumb';
+export { CollectionsSection } from './components/CollectionsSection';
+export { CollectionSquareCard } from './components/CollectionSquareCard';
 export { TasteTextList } from './components/TasteTextList';
 export { SeriesGallery } from './components/SeriesGallery';
 export { SeriesSpineCard } from './components/SeriesSpineCard';
@@ -23,6 +26,24 @@ export { AuthorsTextList } from './components/AuthorsTextList';
 export { BrowseGrid } from './components/BrowseGrid';
 export { BrowseGridItem } from './components/BrowseGridItem';
 export { DurationRangeCard } from './components/DurationRangeCard';
+export { ContentFilterSheet } from './components/ContentFilterSheet';
+export { RecentlyAddedSection } from './components/RecentlyAddedSection';
+export { ListenAgainSection } from './components/ListenAgainSection';
+export { BecauseYouListenedSection } from './components/BecauseYouListenedSection';
+export { RecentSeriesSection } from './components/RecentSeriesSection';
+
+// Stores
+export {
+  useContentFilterStore,
+  filterByAudience,
+  isKidsContent,
+  isAdultContent,
+  isTeenContent,
+  matchesSelectedAges,
+  matchesSelectedRatings,
+  useFilteredItems,
+} from './stores/contentFilterStore';
+export type { AudienceFilter, AgeRecommendation, AgeRating, ContentFilterState } from './stores/contentFilterStore';
 
 // Hooks
 export { useLibraryStats, formatLibraryStats } from './hooks/useLibraryStats';

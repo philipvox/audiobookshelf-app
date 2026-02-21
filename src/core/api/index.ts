@@ -60,14 +60,15 @@ export type { RetryConfig, Priority } from './networkOptimizer';
 export {
   userApi,
   collectionsApi,
+  playlistsApi,
 } from './endpoints/index';
 
 // Offline-aware API functions
 export {
   updateProgressOffline,
   toggleFavoriteOffline,
-  addToCollectionOffline,
-  removeFromCollectionOffline,
+  addToPlaylistOffline,
+  removeFromPlaylistOffline,
   getProgressOffline,
   requireOnline,
   onlineOrQueue,

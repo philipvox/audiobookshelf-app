@@ -51,9 +51,9 @@ export interface CachedSession {
   cachedAt: number; // When this was cached (for expiry)
 }
 
-// Session cache expiry (15 minutes) - extended to support chapter fallback
+// Session cache expiry (30 minutes) - extended for faster playback resume
 // Sessions can become stale, but chapters rarely change
-const SESSION_CACHE_EXPIRY_MS = 15 * 60 * 1000;
+const SESSION_CACHE_EXPIRY_MS = 30 * 60 * 1000;
 
 class PlaybackCache {
   // In-memory caches

@@ -15,6 +15,9 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createLogger } from '@/shared/utils/logger';
+
+const log = createLogger('PlayerSettingsStore');
 
 // =============================================================================
 // CONSTANTS
@@ -94,54 +97,78 @@ export const usePlayerSettingsStore = create<PlayerSettingsState & PlayerSetting
 
     setControlMode: (mode: ControlMode) => {
       set({ controlMode: mode });
-      AsyncStorage.setItem(CONTROL_MODE_KEY, mode).catch(() => {});
+      AsyncStorage.setItem(CONTROL_MODE_KEY, mode).catch((err) => {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist controlMode:', err);
+      });
     },
 
     setProgressMode: (mode: ProgressMode) => {
       set({ progressMode: mode });
-      AsyncStorage.setItem(PROGRESS_MODE_KEY, mode).catch(() => {});
+      AsyncStorage.setItem(PROGRESS_MODE_KEY, mode).catch((err) => {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist progressMode:', err);
+      });
     },
 
     setSkipForwardInterval: async (seconds: number) => {
       set({ skipForwardInterval: seconds });
       try {
         await AsyncStorage.setItem(SKIP_FORWARD_INTERVAL_KEY, seconds.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist skipForwardInterval:', err);
+      }
     },
 
     setSkipBackInterval: async (seconds: number) => {
       set({ skipBackInterval: seconds });
       try {
         await AsyncStorage.setItem(SKIP_BACK_INTERVAL_KEY, seconds.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist skipBackInterval:', err);
+      }
     },
 
     setDiscAnimationEnabled: async (enabled: boolean) => {
       set({ discAnimationEnabled: enabled });
       try {
         await AsyncStorage.setItem(DISC_ANIMATION_KEY, enabled.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist discAnimationEnabled:', err);
+      }
     },
 
     setUseStandardPlayer: async (enabled: boolean) => {
       set({ useStandardPlayer: enabled });
       try {
         await AsyncStorage.setItem(STANDARD_PLAYER_KEY, enabled.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist useStandardPlayer:', err);
+      }
     },
 
     setSmartRewindEnabled: async (enabled: boolean) => {
       set({ smartRewindEnabled: enabled });
       try {
         await AsyncStorage.setItem(SMART_REWIND_ENABLED_KEY, enabled.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist smartRewindEnabled:', err);
+      }
     },
 
     setSmartRewindMaxSeconds: async (seconds: number) => {
       set({ smartRewindMaxSeconds: seconds });
       try {
         await AsyncStorage.setItem(SMART_REWIND_MAX_SECONDS_KEY, seconds.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #4: Log storage errors
+        log.debug('Failed to persist smartRewindMaxSeconds:', err);
+      }
     },
 
     loadSettings: async () => {

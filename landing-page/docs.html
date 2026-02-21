@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Documentation - Secret Library</title>
-  <meta name="description" content="Documentation for Secret Library">
+  <meta name="description" content="Complete documentation for Secret Library app and Audiobook Tagger">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -19,16 +19,15 @@
     :root {
       --black: #000000;
       --white: #ffffff;
+      --gray-100: #f5f5f5;
       --gray-400: #a3a3a3;
       --gray-600: #525252;
       --gray-800: #262626;
+      --gray-900: #171717;
       --serif: 'Playfair Display', Georgia, serif;
       --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    ::selection {
-      background: var(--white);
-      color: var(--black);
+      --mono: 'JetBrains Mono', monospace;
+      --sidebar-width: 280px;
     }
 
     html {
@@ -39,19 +38,12 @@
       font-family: var(--sans);
       background: var(--black);
       color: var(--white);
-      line-height: 1.6;
+      line-height: 1.7;
       font-weight: 300;
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Typography */
-    h1, h2, h3 {
-      font-family: var(--serif);
-      font-weight: 400;
-      letter-spacing: -0.02em;
-    }
-
-    /* Navigation - matches index.html exactly */
+    /* Navigation */
     nav {
       position: fixed;
       top: 0;
@@ -63,6 +55,7 @@
       align-items: center;
       z-index: 100;
       background: var(--black);
+      border-bottom: 1px solid var(--gray-800);
     }
 
     .nav-logo {
@@ -93,16 +86,98 @@
       opacity: 0.5;
     }
 
-    /* Content */
-    .content {
-      max-width: 700px;
-      margin: 0 auto;
-      padding: 7rem 3rem 4rem;
+    /* Layout */
+    .docs-layout {
+      display: flex;
+      padding-top: 73px;
     }
 
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 73px;
+      left: 0;
+      width: var(--sidebar-width);
+      height: calc(100vh - 73px);
+      background: var(--gray-900);
+      border-right: 1px solid var(--gray-800);
+      overflow-y: auto;
+      padding: 2rem 0;
+      z-index: 50;
+    }
+
+    .sidebar-section {
+      margin-bottom: 2rem;
+    }
+
+    .sidebar-title {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--gray-600);
+      padding: 0 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .sidebar-nav {
+      list-style: none;
+    }
+
+    .sidebar-nav a {
+      display: block;
+      padding: 0.5rem 1.5rem;
+      font-size: 0.8125rem;
+      color: var(--gray-400);
+      text-decoration: none;
+      transition: all 0.2s;
+      border-left: 2px solid transparent;
+    }
+
+    .sidebar-nav a:hover {
+      color: var(--white);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .sidebar-nav a.active {
+      color: var(--white);
+      border-left-color: var(--white);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Mobile sidebar toggle */
+    .sidebar-toggle {
+      display: none;
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 48px;
+      height: 48px;
+      background: var(--white);
+      color: var(--black);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 200;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .sidebar-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Content */
+    .content {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      padding: 3rem 4rem 6rem;
+    }
+
+    /* Page Header */
     .page-header {
       margin-bottom: 3rem;
-      text-align: center;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--gray-800);
     }
 
     .page-label {
@@ -111,46 +186,82 @@
       text-transform: uppercase;
       color: var(--gray-600);
       display: block;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
 
-    h1 {
-      font-size: clamp(2rem, 5vw, 3rem);
-      margin-bottom: 1rem;
+    .page-header h1 {
+      font-family: var(--serif);
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
     }
 
-    h1 em {
+    .page-header h1 em {
       font-style: italic;
     }
 
-    .intro {
+    .page-header p {
       color: var(--gray-400);
-      font-size: 0.9375rem;
-      line-height: 1.8;
-      max-width: 520px;
-      margin: 0 auto;
+      font-size: 1rem;
     }
 
-    /* Sections */
-    .section {
-      padding: 3rem 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    /* Section Divider */
+    .section-divider {
+      margin: 4rem 0;
+      padding: 2rem 0;
+      border-top: 1px solid var(--gray-800);
+      border-bottom: 1px solid var(--gray-800);
+      text-align: center;
     }
 
-    h2 {
-      font-size: clamp(1.5rem, 3.5vw, 2rem);
-      margin-bottom: 1.5rem;
+    .section-divider h2 {
+      font-family: var(--serif);
+      font-size: 1.75rem;
+      font-weight: 400;
+      color: var(--white);
+      margin-bottom: 0.5rem;
+      border: none;
+      padding: 0;
     }
 
-    h2 em {
+    .section-divider h2 em {
       font-style: italic;
+    }
+
+    .section-divider p {
+      color: var(--gray-600);
+      font-size: 0.875rem;
+    }
+
+    /* Headings */
+    h2 {
+      font-family: var(--serif);
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin: 3rem 0 1.25rem;
+      color: var(--white);
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--gray-800);
     }
 
     h3 {
-      font-size: 1rem;
-      margin: 2rem 0 1rem;
+      font-family: var(--sans);
+      font-size: 1.125rem;
+      font-weight: 500;
+      margin: 2rem 0 0.75rem;
+      color: var(--white);
     }
 
+    h4 {
+      font-family: var(--sans);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      margin: 1.5rem 0 0.5rem;
+      color: var(--white);
+    }
+
+    /* Text */
     p {
       color: var(--gray-400);
       margin-bottom: 1rem;
@@ -163,6 +274,7 @@
       font-weight: 500;
     }
 
+    /* Lists */
     ul, ol {
       color: var(--gray-400);
       margin-left: 1.25rem;
@@ -175,111 +287,174 @@
       line-height: 1.7;
     }
 
+    li strong {
+      color: var(--white);
+    }
+
+    /* Links */
     a {
       color: var(--white);
       text-decoration: underline;
-      text-underline-offset: 3px;
+      text-underline-offset: 2px;
     }
 
     a:hover {
       opacity: 0.7;
     }
 
+    /* Code */
     code {
+      font-family: var(--mono);
+      font-size: 0.8rem;
       background: var(--gray-800);
-      padding: 0.15em 0.4em;
-      border-radius: 3px;
-      font-size: 0.85em;
-      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      color: var(--white);
     }
 
-    /* Steps */
-    .steps {
+    /* Requirements Grid */
+    .requirements-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
       margin: 1.5rem 0;
     }
 
-    .step {
+    .requirement-card {
+      background: #0a0a0a;
+      border: 1px solid var(--gray-800);
+      padding: 1.5rem;
+      border-radius: 8px;
+    }
+
+    .requirement-card h4 {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--white);
+      margin: 0 0 1rem;
       display: flex;
-      gap: 1rem;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .requirement-card ul {
+      margin-left: 0;
+      list-style: none;
+    }
+
+    .requirement-card li {
+      padding-left: 1rem;
+      position: relative;
+      font-size: 0.8125rem;
+    }
+
+    .requirement-card li::before {
+      content: "·";
+      position: absolute;
+      left: 0;
+      color: var(--gray-600);
+    }
+
+    /* Tables */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 1.5rem 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid var(--gray-800);
+    }
+
+    th {
+      color: var(--gray-600);
+      font-weight: 400;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: #0a0a0a;
+    }
+
+    td {
+      color: var(--gray-400);
+    }
+
+    td:first-child {
+      color: var(--white);
+      font-weight: 500;
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Tips */
+    .tip {
+      background: #0a0a0a;
+      border-left: 2px solid var(--gray-600);
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+    }
+
+    .tip-title {
+      font-weight: 500;
+      color: var(--white);
+      font-size: 0.875rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .tip p {
+      margin-bottom: 0;
+      font-size: 0.8125rem;
+    }
+
+    /* Troubleshooting */
+    .troubleshoot-item {
       margin-bottom: 1.5rem;
     }
 
-    .step-number {
-      flex-shrink: 0;
-      width: 32px;
-      height: 32px;
-      background: var(--gray-800);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .troubleshoot-problem {
+      color: var(--white);
+      font-weight: 500;
       font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--white);
+      margin-bottom: 0.25rem;
     }
 
-    .step-content h4 {
-      font-size: 0.9375rem;
-      font-weight: 500;
-      margin-bottom: 0.35rem;
-      color: var(--white);
-    }
-
-    .step-content p {
-      margin-bottom: 0;
-    }
-
-    /* FAQ */
-    .faq-item {
-      margin-bottom: 2rem;
-    }
-
-    .faq-question {
-      font-size: 0.9375rem;
-      font-weight: 500;
-      color: var(--white);
-      margin-bottom: 0.5rem;
-    }
-
-    .faq-answer {
+    .troubleshoot-solution {
       color: var(--gray-400);
-      font-size: 0.875rem;
-      line-height: 1.8;
-    }
-
-    /* Feature Grid */
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1rem;
-      margin: 1.5rem 0;
-    }
-
-    .feature-item {
-      background: var(--gray-800);
-      border-radius: 6px;
-      padding: 1.25rem;
-    }
-
-    .feature-item h4 {
-      font-size: 0.875rem;
-      font-weight: 500;
-      margin-bottom: 0.35rem;
-      color: var(--white);
-    }
-
-    .feature-item p {
       font-size: 0.8125rem;
-      margin-bottom: 0;
+      padding-left: 1rem;
+      border-left: 2px solid var(--gray-800);
+    }
+
+    /* Layout Diagram */
+    .layout-diagram {
+      background: #0a0a0a;
+      border: 1px solid var(--gray-800);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      font-family: var(--mono);
+      font-size: 0.75rem;
       color: var(--gray-400);
-      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.4;
     }
 
     /* Footer */
     footer {
+      margin-left: var(--sidebar-width);
       text-align: center;
       padding: 3rem 2rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-top: 1px solid var(--gray-800);
     }
 
     .footer-text {
@@ -288,7 +463,13 @@
       letter-spacing: 0.1em;
     }
 
-    /* Mobile */
+    /* Mobile Responsive */
+    @media (max-width: 1024px) {
+      .content {
+        padding: 2rem 3rem 4rem;
+      }
+    }
+
     @media (max-width: 768px) {
       nav {
         padding: 1rem 1.5rem;
@@ -299,36 +480,43 @@
       }
 
       .nav-links {
-        gap: 1.25rem;
+        display: none;
       }
 
-      .nav-links a {
-        font-size: 0.55rem;
+      .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .sidebar-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .content {
-        padding: 6rem 1.5rem 3rem;
+        margin-left: 0;
+        padding: 2rem 1.5rem 4rem;
       }
 
-      h1 {
-        font-size: 1.75rem;
+      footer {
+        margin-left: 0;
       }
 
-      h2 {
-        font-size: 1.25rem;
-      }
-
-      h3 {
-        font-size: 0.9375rem;
-      }
-
-      .feature-grid {
+      .requirements-grid {
         grid-template-columns: 1fr;
       }
 
-      .step {
-        flex-direction: column;
-        gap: 0.75rem;
+      table {
+        font-size: 0.75rem;
+      }
+
+      th, td {
+        padding: 0.625rem 0.5rem;
       }
     }
   </style>
@@ -344,209 +532,772 @@
     </div>
   </nav>
 
-  <main class="content">
-    <header class="page-header">
-      <span class="page-label">Documentation</span>
-      <h1>Getting <em>Started</em></h1>
-      <p class="intro">Everything you need to know to set up and use Secret Library with your Audiobookshelf server.</p>
-    </header>
+  <div class="docs-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <p class="sidebar-title">Mobile App</p>
+        <ul class="sidebar-nav">
+          <li><a href="#app-getting-started">Getting Started</a></li>
+          <li><a href="#app-home-tab">Home Tab</a></li>
+          <li><a href="#app-library-tab">Library Tab</a></li>
+          <li><a href="#app-discover-tab">Discover Tab</a></li>
+          <li><a href="#app-profile-tab">Profile Tab</a></li>
+          <li><a href="#app-player">Player</a></li>
+          <li><a href="#app-book-detail">Book Detail Screen</a></li>
+          <li><a href="#app-series-detail">Series Detail Screen</a></li>
+          <li><a href="#app-author-detail">Author Detail Screen</a></li>
+          <li><a href="#app-search">Search</a></li>
+          <li><a href="#app-downloads">Downloads</a></li>
+          <li><a href="#app-queue">Queue</a></li>
+          <li><a href="#app-settings">All Settings</a></li>
+          <li><a href="#app-carplay">CarPlay & Android Auto</a></li>
+          <li><a href="#app-troubleshooting">Troubleshooting</a></li>
+        </ul>
+      </div>
 
-    <!-- Getting Started -->
-    <section id="getting-started" class="section">
-      <h2>Getting <em>Started</em></h2>
-      <p>Secret Library connects to your personal Audiobookshelf server. Here's how to get up and running in minutes.</p>
+      <div class="sidebar-section">
+        <p class="sidebar-title">Tagger</p>
+        <ul class="sidebar-nav">
+          <li><a href="#tagger-requirements">System Requirements</a></li>
+          <li><a href="#tagger-installation">Installation</a></li>
+          <li><a href="#tagger-first-launch">First Launch Setup</a></li>
+          <li><a href="#tagger-library-page">The Library Page</a></li>
+          <li><a href="#tagger-action-bar">Action Bar</a></li>
+          <li><a href="#tagger-book-list">Book List</a></li>
+          <li><a href="#tagger-metadata-panel">Metadata Panel</a></li>
+          <li><a href="#tagger-cover-search">Cover Search</a></li>
+          <li><a href="#tagger-settings">Settings Page</a></li>
+          <li><a href="#tagger-workflows">Common Workflows</a></li>
+          <li><a href="#tagger-troubleshooting">Troubleshooting</a></li>
+        </ul>
+      </div>
+    </aside>
 
-      <h3>Prerequisites</h3>
+    <main class="content">
+      <header class="page-header">
+        <span class="page-label">Documentation</span>
+        <h1>Secret Library <em>Docs</em></h1>
+        <p>Complete guides for the mobile app and desktop tagger.</p>
+      </header>
+
+      <!-- APP SECTION -->
+
+      <div class="section-divider" id="app">
+        <h2>Mobile <em>App</em></h2>
+        <p>Your complete guide to Secret Library for iOS and Android</p>
+      </div>
+
+      <h2 id="app-getting-started">Getting Started</h2>
+
+      <h3>Connecting to Your Server</h3>
+      <p>When you first open Secret Library, you'll need to connect to your Audiobookshelf server.</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Description</th><th>Example</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Server URL</td><td>Your Audiobookshelf server address</td><td><code>https://abs.mydomain.com</code></td></tr>
+            <tr><td>Username</td><td>Your Audiobookshelf account username</td><td><code>john</code></td></tr>
+            <tr><td>Password</td><td>Your Audiobookshelf account password</td><td><code>••••••••</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Connection Tips</h4>
       <ul>
-        <li>An <a href="https://www.audiobookshelf.org/" target="_blank">Audiobookshelf</a> server (self-hosted or cloud)</li>
-        <li>Your server URL (e.g., <code>https://abs.yourdomain.com</code>)</li>
-        <li>Your login credentials</li>
+        <li>Include <code>https://</code> or <code>http://</code> in your URL</li>
+        <li>Don't include a trailing slash</li>
+        <li>If using a custom port, include it: <code>http://server.com:13378</code></li>
+        <li>For local servers, use your server's local IP address</li>
       </ul>
 
-      <h3>Setup Steps</h3>
-      <div class="steps">
-        <div class="step">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <h4>Download the App</h4>
-            <p>Download Secret Library from the home page. Android is available now, iOS coming soon.</p>
-          </div>
-        </div>
+      <h2 id="app-home-tab">Home Tab</h2>
 
-        <div class="step">
-          <div class="step-number">2</div>
-          <div class="step-content">
-            <h4>Enter Your Server URL</h4>
-            <p>On the login screen, enter your Audiobookshelf server address. Include <code>https://</code> if your server uses SSL.</p>
-          </div>
-        </div>
+      <p>Your personalized dashboard for quick access to your audiobooks.</p>
 
-        <div class="step">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <h4>Sign In</h4>
-            <p>Enter your username and password. These are the same credentials you use to log into your Audiobookshelf web interface.</p>
-          </div>
-        </div>
+      <h4>Continue Listening</h4>
+      <p>Shows your currently in-progress audiobook with cover art, title, author, progress, and a large play button for instant resume.</p>
 
-        <div class="step">
-          <div class="step-number">4</div>
-          <div class="step-content">
-            <h4>Start Listening</h4>
-            <p>Your library will sync automatically. Browse your books, download for offline listening, and enjoy.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+      <h4>Recently Played</h4>
+      <p>Horizontal scroll of books you've listened to recently with progress indicators.</p>
 
-    <!-- Features -->
-    <section id="features" class="section">
-      <h2>Features</h2>
-      <p>Secret Library is designed for the best possible audiobook listening experience.</p>
+      <h4>Continue Series</h4>
+      <p>Series you're actively reading with the next unplayed book highlighted.</p>
 
-      <div class="feature-grid">
-        <div class="feature-item">
-          <h4>Offline Mode</h4>
-          <p>Download books to listen anywhere without an internet connection.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Sleep Timer</h4>
-          <p>Set a timer or let it stop at the end of the current chapter.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Variable Speed</h4>
-          <p>Adjust playback speed from 0.5x to 3x with fine-grained control.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Chapter Navigation</h4>
-          <p>Jump between chapters easily with the chapter list view.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Bookmarks</h4>
-          <p>Mark your favorite passages and return to them anytime.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Progress Sync</h4>
-          <p>Your listening progress syncs automatically with your server.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Queue Management</h4>
-          <p>Build a queue of books to listen to next.</p>
-        </div>
-        <div class="feature-item">
-          <h4>Car Mode</h4>
-          <p>Android Auto support for safe listening while driving.</p>
-        </div>
-      </div>
+      <h4>Recently Added</h4>
+      <p>New books added to your library.</p>
 
-      <h3>Playback Controls</h3>
+      <h4>Recommended For You</h4>
+      <p>Personalized suggestions based on your listening history.</p>
+
+      <h2 id="app-library-tab">Library Tab</h2>
+
+      <p>Your complete audiobook collection with powerful filtering and sorting.</p>
+
+      <h3>View Modes</h3>
       <ul>
-        <li><strong>Skip Forward/Back:</strong> Tap to skip 30 seconds, or customize in settings</li>
-        <li><strong>Scrubbing:</strong> Drag the progress bar to seek to any position</li>
-        <li><strong>Per-Book Speed:</strong> Each book remembers its own playback speed</li>
-        <li><strong>Smart Rewind:</strong> Automatically rewinds a few seconds when you resume after a pause</li>
+        <li><strong>All Books</strong> — Complete library</li>
+        <li><strong>In Progress</strong> — Books you've started (1-95% complete)</li>
+        <li><strong>Finished</strong> — Completed books (95%+)</li>
+        <li><strong>Downloaded</strong> — Offline books only</li>
       </ul>
 
-      <h3>Library Organization</h3>
+      <h3>Sort Options</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Sort By</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Title</td><td>Alphabetical A-Z</td></tr>
+            <tr><td>Author</td><td>Grouped by author name</td></tr>
+            <tr><td>Recently Played</td><td>Most recently listened first</td></tr>
+            <tr><td>Recently Added</td><td>Newest additions first</td></tr>
+            <tr><td>Duration</td><td>Shortest to longest</td></tr>
+            <tr><td>Progress</td><td>By completion percentage</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="app-discover-tab">Discover Tab</h2>
+
+      <p>Explore your library by author, narrator, series, genre, and more.</p>
+
       <ul>
-        <li>Browse by author, narrator, series, or genre</li>
-        <li>Filter by in-progress, finished, or not started</li>
-        <li>Search across your entire library</li>
-        <li>View detailed book information and descriptions</li>
-      </ul>
-    </section>
-
-    <!-- FAQ -->
-    <section id="faq" class="section">
-      <h2>FAQ</h2>
-
-      <div class="faq-item">
-        <p class="faq-question">What is Audiobookshelf?</p>
-        <p class="faq-answer">Audiobookshelf is a free, open-source audiobook and podcast server. You install it on your own hardware (or a cloud server) and it organizes and streams your personal audiobook collection. Secret Library is a mobile client that connects to your Audiobookshelf server.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">Is Secret Library free?</p>
-        <p class="faq-answer">Yes, Secret Library is completely free with no ads, subscriptions, or in-app purchases.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">Do you have access to my audiobooks?</p>
-        <p class="faq-answer">No. Secret Library connects directly to your personal server. We never see your server address, your library, or any of your data. Everything stays between your device and your server.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">Can I use this without my own server?</p>
-        <p class="faq-answer">Secret Library requires an Audiobookshelf server to connect to. If you don't have one, you'll need to set one up first. Check out the <a href="https://www.audiobookshelf.org/docs" target="_blank">Audiobookshelf documentation</a> for setup guides.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">When is iOS coming?</p>
-        <p class="faq-answer">iOS is in development and coming soon. Follow our updates for release announcements.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">How do I download books for offline listening?</p>
-        <p class="faq-answer">Open any book and tap the download icon. The book will be saved to your device and available without an internet connection. You can manage downloads in Profile > Downloads.</p>
-      </div>
-
-      <div class="faq-item">
-        <p class="faq-question">Does my progress sync between devices?</p>
-        <p class="faq-answer">Yes. Your listening progress syncs to your Audiobookshelf server, so you can switch between devices and pick up where you left off.</p>
-      </div>
-    </section>
-
-    <!-- Troubleshooting -->
-    <section id="troubleshooting" class="section">
-      <h2>Troubleshooting</h2>
-
-      <h3>Can't connect to server</h3>
-      <ul>
-        <li>Make sure your server URL is correct and includes <code>https://</code> or <code>http://</code></li>
-        <li>Check that your server is running and accessible from your network</li>
-        <li>If using a local IP address, ensure you're on the same network as your server</li>
-        <li>Try accessing your server URL in a web browser to verify it's working</li>
+        <li><strong>Authors</strong> — Alphabetical list with book counts</li>
+        <li><strong>Narrators</strong> — All narrators in your library</li>
+        <li><strong>Series</strong> — All series with progress tracking</li>
+        <li><strong>Genres</strong> — Browse by category</li>
+        <li><strong>Collections</strong> — Custom collections from ABS</li>
       </ul>
 
-      <h3>Audio not playing</h3>
+      <h2 id="app-profile-tab">Profile Tab</h2>
+
+      <p>Your account, settings, and app management.</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Option</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Downloads</td><td>Manage offline books</td></tr>
+            <tr><td>Listening Stats</td><td>Detailed statistics</td></tr>
+            <tr><td>Playback Settings</td><td>Speed, skip intervals</td></tr>
+            <tr><td>Appearance</td><td>Theme and display</td></tr>
+            <tr><td>Storage</td><td>Manage app storage</td></tr>
+            <tr><td>Sign Out</td><td>Disconnect from server</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="app-player">Player</h2>
+
+      <p>The full-screen audio player with all playback controls.</p>
+
+      <h3>Main Controls</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Control</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Play/Pause</td><td>Start or pause playback</td></tr>
+            <tr><td>Skip Back</td><td>Jump back 30 seconds (configurable)</td></tr>
+            <tr><td>Skip Forward</td><td>Jump forward 30 seconds (configurable)</td></tr>
+            <tr><td>Previous Chapter</td><td>Go to previous chapter</td></tr>
+            <tr><td>Next Chapter</td><td>Go to next chapter</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Secondary Controls</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Control</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Speed</td><td>Adjust playback speed (0.5x - 3.0x)</td></tr>
+            <tr><td>Sleep Timer</td><td>Set auto-stop timer</td></tr>
+            <tr><td>Chapters</td><td>View and navigate chapters</td></tr>
+            <tr><td>Bookmarks</td><td>Save and view bookmarks</td></tr>
+            <tr><td>Queue</td><td>View upcoming books</td></tr>
+            <tr><td>AirPlay</td><td>Cast to external speakers</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Sleep Timer</h3>
+      <p>Set a timer: 5, 10, 15, 30, 45, 60, 90 minutes, End of Chapter, or custom.</p>
       <ul>
-        <li>Check your device volume and make sure it's not muted</li>
-        <li>Try closing and reopening the app</li>
-        <li>If using Bluetooth, ensure your device is properly connected</li>
-        <li>Try a different audiobook to see if the issue is file-specific</li>
+        <li><strong>Shake to Extend</strong> — Shake phone to add 5 minutes</li>
+        <li><strong>Fade Out</strong> — Gradually lower volume before stopping</li>
       </ul>
 
-      <h3>Progress not syncing</h3>
+      <h2 id="app-book-detail">Book Detail Screen</h2>
+
+      <p>Comprehensive view of a single audiobook.</p>
+
+      <h3>Action Buttons</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Button</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Play</td><td>Start or resume playback</td></tr>
+            <tr><td>Download</td><td>Save for offline listening</td></tr>
+            <tr><td>Favorite</td><td>Add to favorites</td></tr>
+            <tr><td>Mark Finished</td><td>Mark as complete</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Information Tabs</h3>
       <ul>
-        <li>Ensure you have an internet connection</li>
-        <li>Check that your server is accessible</li>
-        <li>Progress syncs automatically in the background; give it a moment</li>
-        <li>Try manually pulling down to refresh on the library screen</li>
+        <li><strong>Overview</strong> — Description, publication details</li>
+        <li><strong>Chapters</strong> — Complete chapter list</li>
+        <li><strong>Details</strong> — Full metadata, series info</li>
       </ul>
 
-      <h3>Downloads failing</h3>
+      <h2 id="app-series-detail">Series Detail Screen</h2>
+
+      <p>View and manage an entire book series with progress tracking, book list in reading order, and actions like Play Next, Download All, Mark All Finished.</p>
+
+      <h2 id="app-author-detail">Author Detail Screen</h2>
+
+      <p>Explore all books by a specific author with biography, book list, and series by this author.</p>
+
+      <h2 id="app-search">Search</h2>
+
+      <p>Find anything in your library: book titles, author names, narrator names, series names, descriptions.</p>
+
+      <h2 id="app-downloads">Downloads</h2>
+
+      <p>Manage your offline audiobook library.</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>WiFi Only</td><td>Only download on WiFi connections</td></tr>
+            <tr><td>Auto-Download</td><td>Download next book in series automatically</td></tr>
+            <tr><td>Storage Limit</td><td>Maximum space for downloads</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="app-queue">Queue</h2>
+
+      <p>Manage your upcoming listening queue. Add books, reorder by drag and drop, remove by swiping. Queue persists across app restarts.</p>
+
+      <h2 id="app-settings">All Settings</h2>
+
+      <h3>Playback Settings</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Options</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Skip Forward/Back Duration</td><td>10, 15, 30, 45, 60 sec</td></tr>
+            <tr><td>Default Playback Speed</td><td>0.5x - 3.0x</td></tr>
+            <tr><td>Remember Speed Per Book</td><td>On/Off</td></tr>
+            <tr><td>Auto-Rewind on Pause</td><td>Off, 5, 10, 15, 30 sec</td></tr>
+            <tr><td>Continuous Playback</td><td>On/Off</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Sleep Timer Settings</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Options</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Default Timer</td><td>15, 30, 45, 60 min, End of Chapter</td></tr>
+            <tr><td>Shake to Extend</td><td>On/Off</td></tr>
+            <tr><td>Fade Out Audio</td><td>On/Off</td></tr>
+            <tr><td>Fade Duration</td><td>15, 30, 60 sec</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Sync Settings</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Options</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Auto-Sync Progress</td><td>On/Off</td></tr>
+            <tr><td>Sync on WiFi Only</td><td>On/Off</td></tr>
+            <tr><td>Sync Frequency</td><td>Real-time, 1 min, 5 min</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="app-carplay">CarPlay & Android Auto</h2>
+
+      <p>Listen safely while driving with full car integration.</p>
+
+      <h3>Setup</h3>
+      <p><strong>CarPlay:</strong> Connect iPhone to CarPlay, Secret Library appears automatically.</p>
+      <p><strong>Android Auto:</strong> Connect phone, open Secret Library from launcher.</p>
+
+      <h3>Available Features</h3>
+      <p>Browse Library, Continue Listening, Play/Pause, Skip, Chapter Navigation, Playback Speed — all available. Search is limited, Downloads and Settings not available.</p>
+
+      <div class="tip">
+        <p class="tip-title">Tips for Car Use</p>
+        <p>Download books before your trip. Set up your queue before driving. Use voice commands: "Hey Siri, skip forward".</p>
+      </div>
+
+      <h2 id="app-troubleshooting">Troubleshooting</h2>
+
+      <h3>Connection Issues</h3>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Cannot connect to server"</p>
+        <p class="troubleshoot-solution">Verify server URL (include http:// or https://). Check if server is running. Try accessing in a web browser first.</p>
+      </div>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Authentication failed"</p>
+        <p class="troubleshoot-solution">Double-check username and password. Try logging into web interface first.</p>
+      </div>
+
+      <h3>Playback Issues</h3>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Audio won't play"</p>
+        <p class="troubleshoot-solution">Check device volume and silent switch. Try force-closing and reopening app. Download the book for offline play.</p>
+      </div>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Wrong playback position"</p>
+        <p class="troubleshoot-solution">Pull down to sync with server. Force sync: Profile → Sync → Sync Now.</p>
+      </div>
+
+      <h3>Download Issues</h3>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Download won't start"</p>
+        <p class="troubleshoot-solution">Check available storage space. Verify WiFi connection (if WiFi-only enabled). Cancel and restart download.</p>
+      </div>
+
+      <h3>Keyboard Shortcuts (iPad)</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Shortcut</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Space</td><td>Play/Pause</td></tr>
+            <tr><td>← / →</td><td>Skip back / forward</td></tr>
+            <tr><td>↑ / ↓</td><td>Volume up / down</td></tr>
+            <tr><td>⌘ F</td><td>Search</td></tr>
+            <tr><td>⌘ 1-4</td><td>Switch tabs</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- TAGGER SECTION -->
+
+      <div class="section-divider" id="tagger">
+        <h2>Audiobook <em>Tagger</em></h2>
+        <p>Desktop metadata manager for your audiobook library</p>
+      </div>
+
+      <h2 id="tagger-requirements">System Requirements</h2>
+
+      <div class="requirements-grid">
+        <div class="requirement-card">
+          <h4>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+            </svg>
+            macOS
+          </h4>
+          <ul>
+            <li>macOS 12 (Monterey) or later</li>
+            <li>Apple Silicon (M1/M2/M3) or Intel</li>
+            <li>200 MB free disk space</li>
+          </ul>
+        </div>
+
+        <div class="requirement-card">
+          <h4>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+            </svg>
+            Windows
+          </h4>
+          <ul>
+            <li>Windows 10 (version 1809) or later</li>
+            <li>64-bit processor</li>
+            <li>200 MB free disk space</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2 id="tagger-installation">Installation</h2>
+
+      <h3>macOS</h3>
+      <ol>
+        <li>Download <code>Secret Library_1.0.0.dmg</code></li>
+        <li>Double-click the DMG file to open it</li>
+        <li>Drag Secret Library to your Applications folder</li>
+        <li><strong>First launch:</strong> Right-click the app → Open (required once for unsigned apps)</li>
+      </ol>
+
+      <h3>Windows</h3>
+      <ol>
+        <li>Download <code>Secret Library_1.0.0_x64.exe</code></li>
+        <li>Double-click to run — no installation required</li>
+        <li>If Windows SmartScreen appears, click <strong>More info</strong> → <strong>Run anyway</strong></li>
+      </ol>
+
+      <h2 id="tagger-first-launch">First Launch Setup</h2>
+
+      <p>Before scanning your library, configure your connections in Settings:</p>
+      <ol>
+        <li>Launch Secret Library</li>
+        <li>Click the Settings tab</li>
+        <li>Enter your AudiobookShelf server details (if you use ABS)</li>
+        <li>Add your OpenAI API key (optional, enables AI features)</li>
+        <li>Click Save Settings</li>
+      </ol>
+
+      <h2 id="tagger-library-page">The Library Page</h2>
+
+      <p>The Library page is where you'll spend most of your time. It has three main sections:</p>
+
+      <div class="layout-diagram">┌─────────────────────────────────────────────────────────────┐
+│  ACTION BAR                                                 │
+├──────────────────────┬──────────────────────────────────────┤
+│                      │                                      │
+│     BOOK LIST        │         METADATA PANEL               │
+│                      │                                      │
+│   (Left sidebar)     │       (Right detail view)            │
+│                      │                                      │
+└──────────────────────┴──────────────────────────────────────┘</div>
+
+      <h2 id="tagger-action-bar">Action Bar</h2>
+
+      <p>The action bar at the top contains all your main controls:</p>
+
+      <h3>Load from AudiobookShelf</h3>
+      <p><strong>Icon:</strong> Download arrow<br>
+      <strong>What it does:</strong> Pulls your entire library from your AudiobookShelf server<br>
+      <strong>When to use:</strong> First time setup, or when you want to sync changes from ABS</p>
+
+      <h3>Enrich Menu (Sparkle icon)</h3>
+      <p>Click to open a dropdown with metadata enhancement tools:</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Option</th><th>What It Does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Clean Genres</td><td>Normalizes all genres to the approved list (e.g., "Sci-Fi" → "Science Fiction")</td></tr>
+            <tr><td>AI Tags</td><td>Uses GPT to generate descriptive tags based on the book's description</td></tr>
+            <tr><td>Fix Titles</td><td>AI-powered title cleanup — removes series info, fixes capitalization</td></tr>
+            <tr><td>Fix Series</td><td>Detects and corrects series names and book numbers</td></tr>
+            <tr><td>Fix Descriptions</td><td>Cleans up messy descriptions, removes promotional text</td></tr>
+            <tr><td>Lookup Age</td><td>Fetches age/content ratings from Goodreads</td></tr>
+            <tr><td>Lookup ISBN</td><td>Finds missing ISBN numbers</td></tr>
+            <tr><td>Run All</td><td>Executes all of the above in sequence</td></tr>
+            <tr><td>Generate DNA</td><td>Creates unique content fingerprints for matching</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tip">
+        <p class="tip-title">Note</p>
+        <p>AI features require an OpenAI API key in Settings</p>
+      </div>
+
+      <h3>Validate Menu (Search icon)</h3>
+      <p>Click to open analysis tools:</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Option</th><th>What It Does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Scan Errors</td><td>Checks all books for metadata problems (missing fields, invalid data)</td></tr>
+            <tr><td>Analyze Authors</td><td>Finds author name inconsistencies (e.g., "J.K. Rowling" vs "Rowling, J.K.")</td></tr>
+            <tr><td>Analyze Series</td><td>Detects series issues like missing books, wrong numbering</td></tr>
+            <tr><td>Fix All Issues</td><td>Batch-fixes all detected problems (appears when issues are found)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>A red dot appears on this menu when issues are detected.</p>
+
+      <h3>Push to AudiobookShelf</h3>
+      <p><strong>Icon:</strong> Upload arrow<br>
+      <strong>What it does:</strong> Sends your metadata changes to your ABS server<br>
+      <strong>When to use:</strong> After editing metadata, to sync changes back to ABS</p>
+
+      <h3>Selection Controls (Right side)</h3>
       <ul>
-        <li>Check that you have enough storage space on your device</li>
-        <li>Ensure you have a stable internet connection</li>
-        <li>Try downloading over WiFi instead of cellular data</li>
-        <li>Large audiobooks may take some time; check the Downloads screen for progress</li>
+        <li><strong>Force Fresh toggle</strong> (circular arrow): When orange, forces re-processing of all books even if unchanged</li>
+        <li><strong>Select All:</strong> Selects every book in your library</li>
+        <li><strong>Configure ABS →:</strong> Quick link to Settings (shows when ABS isn't configured)</li>
       </ul>
 
-      <h3>App crashing</h3>
+      <h2 id="tagger-book-list">Book List (Left Panel)</h2>
+
+      <p>Your audiobooks appear here after loading from ABS.</p>
+
+      <h3>Understanding the List</h3>
       <ul>
-        <li>Make sure you're running the latest version of the app</li>
-        <li>Try clearing the app cache in your device settings</li>
-        <li>Restart your device</li>
-        <li>If problems persist, try uninstalling and reinstalling the app</li>
+        <li>Books are grouped by folder/directory</li>
+        <li>Each entry shows: Title, Author, and file count</li>
+        <li>Click a book to select it and view details</li>
+        <li>Cmd/Ctrl + Click to select multiple books</li>
+        <li>Use the search bar at the top to filter by title, author, or series</li>
       </ul>
 
-      <h3>Still need help?</h3>
-      <p>If you're still experiencing issues, please open an issue on our GitHub repository with details about your problem, device, and app version.</p>
-    </section>
-  </main>
+      <h3>Status Badges</h3>
+      <p>Books may show colored indicators:</p>
+      <ul>
+        <li><strong>Red dot</strong> — Has errors (missing required fields)</li>
+        <li><strong>Yellow dot</strong> — Has warnings (potential issues)</li>
+        <li><strong>No dot</strong> — Passes validation</li>
+      </ul>
+
+      <h2 id="tagger-metadata-panel">Metadata Panel (Right Panel)</h2>
+
+      <p>When you select a book, its details appear here.</p>
+
+      <h3>Header Section</h3>
+      <ul>
+        <li><strong>Cover Art</strong> — The book's cover image (shows file size in bottom corner)</li>
+        <li><strong>Title</strong> — Main book title with source badge</li>
+        <li><strong>Series</strong> — Series name and position (if applicable)</li>
+        <li><strong>Author/Narrator</strong> — Creator credits</li>
+      </ul>
+
+      <h3>Edit Button</h3>
+      <p>Click Edit to open the full metadata editor where you can modify title, author, narrator(s), series name and position, description, genres, publisher, ISBN/ASIN, and more.</p>
+
+      <h3>Validation Issues</h3>
+      <p>If the book has problems, they appear as colored alert boxes:</p>
+      <ul>
+        <li><strong>Red</strong> — Errors that should be fixed</li>
+        <li><strong>Yellow</strong> — Warnings to review</li>
+        <li><strong>Blue</strong> — Informational notes</li>
+      </ul>
+
+      <h3>Confidence Card</h3>
+      <p>Shows how reliable the metadata is:</p>
+      <ul>
+        <li><strong>Overall score</strong> — Combined confidence percentage</li>
+        <li><strong>Per-field scores</strong> — Individual confidence for each field</li>
+        <li><strong>Sources</strong> — Where the metadata came from</li>
+      </ul>
+      <p>Color coding: Green (85%+) = High confidence, Yellow (60-84%) = Medium, Red (&lt;60%) = Low confidence.</p>
+
+      <h3>Cover Actions</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Button</th><th>What It Does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Find Better Cover</td><td>Searches Google, Audible, and other sources for cover art options</td></tr>
+            <tr><td>Upload Custom Cover</td><td>Opens file picker to upload your own image (JPG, PNG, WebP)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="tagger-cover-search">Cover Search Modal</h2>
+
+      <p>When you click "Find Better Cover":</p>
+      <ol>
+        <li>The app searches multiple sources automatically</li>
+        <li>Results appear in a grid showing cover image preview, source (Google, Audible, etc.), and dimensions</li>
+        <li>Hover over a cover and click <strong>Use This</strong> to apply it</li>
+        <li>Or click <strong>Upload Custom</strong> if none are suitable</li>
+      </ol>
+
+      <h2 id="tagger-settings">The Settings Page</h2>
+
+      <h3>AudiobookShelf Connection</h3>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Server URL</td><td>Your ABS server address (e.g., http://192.168.1.100:13378 or https://abs.example.com)</td></tr>
+            <tr><td>API Token</td><td>Your personal API token from ABS</td></tr>
+            <tr><td>Library ID</td><td>The specific library to sync with (e.g., lib_xxxxx)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>To find your API Token:</strong></p>
+      <ol>
+        <li>Open AudiobookShelf in a browser</li>
+        <li>Go to Settings → Users</li>
+        <li>Click your username</li>
+        <li>Copy the API Token</li>
+      </ol>
+
+      <h3>API Keys</h3>
+      <p><strong>OpenAI:</strong> Your OpenAI API key (starts with sk-). Enables AI-powered features like smart tagging, title fixing, and description cleanup.</p>
+
+      <h3>Performance Preset</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Preset</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Conservative</td><td>Slower, uses minimal resources. Good for older machines.</td></tr>
+            <tr><td>Balanced</td><td>Default setting. Good performance without overwhelming your system.</td></tr>
+            <tr><td>Performance</td><td>Faster processing, uses more CPU/memory.</td></tr>
+            <tr><td>Extreme</td><td>Maximum speed. Best for high-end systems (M2/M3 Pro/Max).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="tagger-workflows">Common Workflows</h2>
+
+      <h3>Initial Library Setup</h3>
+      <ol>
+        <li>Go to Settings</li>
+        <li>Enter your ABS Server URL, API Token, and Library ID</li>
+        <li>Click Test connection to verify</li>
+        <li>Click Save Settings</li>
+        <li>Go to Library tab</li>
+        <li>Click the Download button to load from ABS</li>
+        <li>Wait for the scan to complete</li>
+      </ol>
+
+      <h3>Cleaning Up Metadata</h3>
+      <ol>
+        <li>Load your library from ABS</li>
+        <li>Click Select All</li>
+        <li>Open the Enrich menu (sparkle icon)</li>
+        <li>Click Run All to process everything</li>
+        <li>Review changes in the metadata panel</li>
+        <li>Click Push to ABS to sync back</li>
+      </ol>
+
+      <h3>Finding Better Covers</h3>
+      <ol>
+        <li>Select a book with a missing or low-quality cover</li>
+        <li>In the metadata panel, click Find Better Cover</li>
+        <li>Browse the search results</li>
+        <li>Click Use This on your preferred cover</li>
+        <li>Push to ABS to sync cover changes</li>
+      </ol>
+
+      <h3>Keyboard Shortcuts</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Shortcut</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cmd/Ctrl + A</td><td>Select all books</td></tr>
+            <tr><td>Escape</td><td>Clear selection / Close modal</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="tagger-troubleshooting">Troubleshooting</h2>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">"Configure ABS" keeps showing</p>
+        <p class="troubleshoot-solution">Go to Settings and enter your server URL, API token, and library ID. Click Test connection to verify, then Save Settings.</p>
+      </div>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">Books won't load from ABS</p>
+        <p class="troubleshoot-solution">Verify your server URL is correct (include http:// or https://). Check that your API token hasn't expired.</p>
+      </div>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">AI features are grayed out</p>
+        <p class="troubleshoot-solution">Add your OpenAI API key in Settings, then Save Settings and return to Library.</p>
+      </div>
+
+      <div class="troubleshoot-item">
+        <p class="troubleshoot-problem">Metadata changes don't appear in ABS</p>
+        <p class="troubleshoot-solution">Make sure you clicked Push to ABS after making changes. Check that your API token has write permissions.</p>
+      </div>
+
+      <div class="tip">
+        <p class="tip-title">Tips for Best Results</p>
+        <p><strong>Start with Clean Genres</strong> — Run "Clean Genres" first to standardize your library.<br><br>
+        <strong>Check confidence scores</strong> — Low confidence (red) means metadata may be wrong. Review manually.<br><br>
+        <strong>Keep backups enabled</strong> — The "Backup Tags" setting protects against mistakes.</p>
+      </div>
+
+    </main>
+  </div>
 
   <footer>
-    <p class="footer-text">Secret Library</p>
+    <p class="footer-text">Secret Library · Version 1.0.0</p>
   </footer>
+
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+  </button>
+
+  <script>
+    // Mobile sidebar toggle
+    const sidebar = document.getElementById('sidebar');
+    const toggle = document.getElementById('sidebarToggle');
+
+    toggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+
+    // Close sidebar when clicking a link (mobile)
+    document.querySelectorAll('.sidebar-nav a').forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          sidebar.classList.remove('open');
+        }
+      });
+    });
+
+    // Active link highlighting
+    const sections = document.querySelectorAll('h2[id]');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + entry.target.id) {
+              link.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-20% 0px -80% 0px' });
+
+    sections.forEach(section => observer.observe(section));
+  </script>
 </body>
 </html>

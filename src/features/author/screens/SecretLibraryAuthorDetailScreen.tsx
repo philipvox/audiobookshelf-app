@@ -33,9 +33,7 @@ import { useWishlistStore, useIsAuthorFollowed } from '@/features/wishlist';
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { BookSpineVerticalData, ShelfRow } from '@/shared/spine';
 
 // Extended metadata with additional fields
 interface ExtendedBookMetadata extends BookMetadata {
@@ -80,12 +78,16 @@ function formatDurationCompact(seconds: number): string {
 
 // Extract series sequence number from metadata
 function getSeriesSequence(metadata: any): number | undefined {
-  // Try series.sequence first
-  if (metadata?.series?.sequence) {
-    return parseFloat(metadata.series.sequence);
+  // Check series array first (preferred - has explicit sequence)
+  if (Array.isArray(metadata?.series) && metadata.series.length > 0) {
+    const primarySeries = metadata.series[0];
+    if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
+      const parsed = parseFloat(primarySeries.sequence);
+      if (!isNaN(parsed)) return parsed;
+    }
   }
-  // Try to extract from seriesName like "Series Name #3"
-  const match = metadata?.seriesName?.match(/#([\d.]+)$/);
+  // Fallback: check seriesName for #N pattern
+  const match = metadata?.seriesName?.match(/#([\d.]+)/);
   if (match) {
     return parseFloat(match[1]);
   }
@@ -135,7 +137,6 @@ export function SecretLibraryAuthorDetailScreen() {
   const [authorBooks, setAuthorBooks] = useState<LibraryItem[]>([]);
 
   const { getAuthor, isLoaded } = useLibraryCache();
-  const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
   // Follow functionality
   const isFollowing = useIsAuthorFollowed(authorName);
@@ -184,7 +185,7 @@ export function SecretLibraryAuthorDetailScreen() {
     });
   }, [authorBooks, authorInfo?.books]);
 
-  // Get unique series
+  // Get unique series (books sorted by sequence number within each series)
   const seriesList = useMemo(() => {
     const seriesMap = new Map<string, { name: string; books: LibraryItem[] }>();
     allBooks.forEach(book => {
@@ -199,7 +200,17 @@ export function SecretLibraryAuthorDetailScreen() {
         }
       }
     });
-    return Array.from(seriesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    // Sort series alphabetically, and sort books within each series by sequence number
+    return Array.from(seriesMap.values())
+      .map(series => ({
+        ...series,
+        books: [...series.books].sort((a, b) => {
+          const seqA = getSeriesSequence(getMetadata(a)) ?? 999;
+          const seqB = getSeriesSequence(getMetadata(b)) ?? 999;
+          return seqA - seqB;
+        }),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [allBooks]);
 
   // Group all books by series for "All" tab with sub-headers
@@ -227,7 +238,13 @@ export function SecretLibraryAuthorDetailScreen() {
     Array.from(seriesMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .forEach(([name, books]) => {
-        groups.push({ name, books });
+        // Sort books within each series by sequence number
+        const sorted = [...books].sort((a, b) => {
+          const seqA = getSeriesSequence(getMetadata(a)) ?? 999;
+          const seqB = getSeriesSequence(getMetadata(b)) ?? 999;
+          return seqA - seqB;
+        });
+        groups.push({ name, books: sorted });
       });
 
     // Add standalone books at the end
@@ -237,14 +254,6 @@ export function SecretLibraryAuthorDetailScreen() {
 
     return groups;
   }, [allBooks]);
-
-  // Convert books to spine data with cached colors
-  const getSpineDataList = useCallback((books: LibraryItem[]): BookSpineVerticalData[] => {
-    return books.map(book => {
-      const cached = getSpineData(book.id);
-      return toSpineData(book, cached);
-    });
-  }, [getSpineData]);
 
   // Get unique narrators
   const narratorList = useMemo(() => {
@@ -317,34 +326,7 @@ export function SecretLibraryAuthorDetailScreen() {
     navigation.navigate('BookDetail', { id: book.id });
   }, [navigation]);
 
-  // Shelf view component for a set of books
-  const ShelfView = useCallback(({ books }: { books: LibraryItem[] }) => {
-    const spineDataList = getSpineDataList(books);
-    const layouts = useBookRowLayout(spineDataList, {
-      scaleFactor: 0.75,
-      enableLeaning: true,
-    });
-
-    return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shelfContent}
-      >
-        {layouts.map((layout) => (
-          <View key={layout.book.id} style={styles.spineWrapper}>
-            <BookSpineVertical
-              book={layout.book}
-              width={layout.width}
-              height={layout.height}
-              leanAngle={layout.leanAngle}
-              onPress={handleSpinePress}
-            />
-          </View>
-        ))}
-      </ScrollView>
-    );
-  }, [getSpineDataList, handleSpinePress]);
+  // ShelfView replaced by shared ShelfRow component (proper React component, not useCallback)
 
   // Render inline book list with cover images (paragraph style)
   const renderBookList = (books: LibraryItem[]) => {
@@ -573,7 +555,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 onTitlePress={group.name !== 'Standalone' ? () => handleSeriesPress(group.name) : undefined}
                 isStandalone={group.name === 'Standalone'}
               >
-                <ShelfView books={group.books} />
+                <ShelfRow books={group.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {allBooksBySeries.length === 0 && (
@@ -601,7 +583,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleSeriesPress(series.name)}
               >
-                <ShelfView books={series.books} />
+                <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {seriesList.length === 0 && (
@@ -639,7 +621,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleNarratorPress(narrator.name)}
               >
-                <ShelfView books={narrator.books} />
+                <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {narratorList.length === 0 && (
@@ -677,7 +659,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleGenrePress(genre.name)}
               >
-                <ShelfView books={genre.books} />
+                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {genreList.length === 0 && (

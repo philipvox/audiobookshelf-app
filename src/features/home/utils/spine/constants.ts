@@ -33,16 +33,32 @@ export const BASE_DIMENSIONS = {
 
 /** Spine width calculation (duration-based) */
 export const WIDTH_CALCULATION = {
-  /** Minimum width for very short audiobooks (<1hr) - matches touch target */
-  MIN: 44,
+  /** Minimum width for very short audiobooks (<1hr) */
+  MIN: 58,
   /** Maximum width for epic audiobooks (>50hr) */
-  MAX: 280,
+  MAX: 300,
   /** Median fallback when duration is unknown */
-  MEDIAN: 44,
+  MEDIAN: 206,
   /** Minimum duration in hours (books under this get MIN width) */
   MIN_DURATION_HOURS: 1,
   /** Maximum duration in hours (books over this get MAX width) */
   MAX_DURATION_HOURS: 50,
+} as const;
+
+// =============================================================================
+// BOUNDING-BOX CONSTANTS (for fitToBoundingBox scaling)
+// =============================================================================
+
+/** Server spine bounding box — artwork must not be distorted */
+export const SERVER_SPINE_BOX = {
+  MAX_WIDTH: 100,
+  MAX_HEIGHT: 400,
+} as const;
+
+/** Procedural spine bounding box — the only two tuning knobs for procedural spine size */
+export const PROCEDURAL_SPINE_BOX = {
+  MAX_WIDTH: 150,
+  MAX_HEIGHT: 400,
 } as const;
 
 // =============================================================================

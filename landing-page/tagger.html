@@ -87,10 +87,27 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
       align-items: center;
-      padding: 8rem 3rem 4rem;
+      padding: 10rem 3rem 0;
       text-align: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero-screenshot {
+      width: 90%;
+      max-width: 1100px;
+      margin-top: 3rem;
+      position: relative;
+    }
+
+    .hero-screenshot img {
+      width: 100%;
+      border-radius: 12px 12px 0 0;
+      box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: none;
     }
 
     .hero-label {
@@ -309,6 +326,17 @@
       color: var(--gray-600);
     }
 
+    .download-note a {
+      color: var(--gray-400);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      transition: color 0.3s;
+    }
+
+    .download-note a:hover {
+      color: var(--white);
+    }
+
     /* Footer */
     footer {
       padding: 3rem;
@@ -365,8 +393,17 @@
       }
 
       .hero {
-        padding: 7rem 2rem 3rem;
+        padding: 7rem 1.5rem 0;
         min-height: auto;
+      }
+
+      .hero-screenshot {
+        width: 100%;
+        margin-top: 2.5rem;
+      }
+
+      .hero-screenshot img {
+        border-radius: 8px 8px 0 0;
       }
 
       .hero-buttons {
@@ -433,6 +470,10 @@
         Download
       </a>
       <a href="#features" class="btn btn-secondary">Learn More</a>
+      <a href="docs.html#tagger" class="btn btn-secondary">Getting Started</a>
+    </div>
+    <div class="hero-screenshot">
+      <img src="Bulk batch library view.png" alt="Audiobook Tagger Library View">
     </div>
   </section>
 
@@ -449,7 +490,7 @@
         </ul>
       </div>
       <div class="flow-image">
-        <img src="tagger-1.png" alt="Library view with metadata">
+        <img src="Bulk batch library view.png" alt="Library view with metadata">
       </div>
     </section>
 
@@ -469,7 +510,7 @@
         </ul>
       </div>
       <div class="flow-image">
-        <img src="tagger-2.png" alt="AI tools menu">
+        <img src="2 Ai Scanning.png" alt="AI tools menu">
       </div>
     </section>
 
@@ -477,12 +518,12 @@
 
     <section class="flow-section fade-in">
       <div class="flow-content">
-        <span class="flow-label">Rich Metadata</span>
-        <h2>Every detail, <em>perfect.</em></h2>
-        <p>Author, narrator, publisher, ISBN, ASIN—all fetched automatically from Google Books, Audible, and AI sources. Genres are cleaned and formatted exactly how AudiobookShelf expects.</p>
+        <span class="flow-label">Before & After</span>
+        <h2>See the <em>difference.</em></h2>
+        <p>Compare your library before and after scanning. Watch as missing metadata gets filled in, genres get standardized, and quality scores improve across your collection.</p>
       </div>
       <div class="flow-image">
-        <img src="tagger-3.png" alt="Book detail view">
+        <img src="Pre Scan.png" alt="Before scanning">
       </div>
     </section>
 
@@ -495,7 +536,7 @@
         <p>Run enrichment across your entire library with parallel processing. Watch progress in real-time as titles get fixed, series get detected, and metadata gets perfected.</p>
       </div>
       <div class="flow-image">
-        <img src="tagger-4.png" alt="Enrichment progress">
+        <img src="Running .png" alt="Enrichment progress">
       </div>
     </section>
 
@@ -514,7 +555,7 @@
         </ul>
       </div>
       <div class="flow-image">
-        <img src="tagger-6.png" alt="DNA tags view">
+        <img src="Retags adn DNA.png" alt="DNA tags view">
       </div>
     </section>
 
@@ -522,12 +563,12 @@
 
     <section class="flow-section fade-in">
       <div class="flow-content">
-        <span class="flow-label">Direct Integration</span>
-        <h2>Push to <em>AudiobookShelf.</em></h2>
-        <p>Connect directly to your ABS server. Review changes before pushing, then update metadata and covers with one click. No manual file editing required.</p>
+        <span class="flow-label">Results</span>
+        <h2>Clean <em>metadata.</em></h2>
+        <p>After processing, your library has complete metadata—author, narrator, publisher, ISBN, genres, and descriptions all properly formatted for AudiobookShelf.</p>
       </div>
       <div class="flow-image">
-        <img src="tagger-7.png" alt="Push to AudiobookShelf">
+        <img src="Post Scan.png" alt="After scanning">
       </div>
     </section>
 
@@ -540,7 +581,7 @@
         <p>Connect to your AudiobookShelf instance, configure API keys for enhanced lookups, and tune performance settings. Backup tags before making changes for peace of mind.</p>
       </div>
       <div class="flow-image">
-        <img src="tagger-8.png" alt="Settings">
+        <img src="3 Settings.png" alt="Settings">
       </div>
     </section>
   </div>
@@ -549,7 +590,7 @@
     <div class="download-container fade-in">
       <span class="download-label">Get Started</span>
       <h2>Download <em>Tagger</em></h2>
-      <p class="download-description">Native desktop app with parallel processing. Scans thousands of files in seconds. macOS only for now.</p>
+      <p class="download-description">Native desktop app with parallel processing. Scans thousands of files in seconds.</p>
       <div class="download-buttons">
         <a href="downloads/audiobook-tagger.dmg" class="btn btn-primary" download>
           <svg viewBox="0 0 24 24" fill="currentColor">
@@ -557,8 +598,14 @@
           </svg>
           macOS
         </a>
+        <a href="downloads/audiobook-tagger.exe" class="btn btn-secondary" download>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+          </svg>
+          Windows
+        </a>
       </div>
-      <p class="download-note">Requires macOS 12.0 or later</p>
+      <p class="download-note">macOS 12+ or Windows 10+ required · <a href="docs.html#tagger">Read the docs</a></p>
     </div>
   </section>
 
