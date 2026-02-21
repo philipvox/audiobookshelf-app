@@ -96,6 +96,10 @@ interface LibraryCacheState {
   genresWithBooks: Map<string, GenreInfo>;
   itemsById: Map<string, LibraryItem>;
 
+  // Spine manifest (pre-flight check for server spines)
+  booksWithServerSpines: Set<string>;
+  spineManifestVersion: number | null;
+
   // Actions
   loadCache: (libraryId: string, forceRefresh?: boolean) => Promise<void>;
   refreshCache: (libraryId?: string) => Promise<void>;
@@ -107,6 +111,8 @@ interface LibraryCacheState {
   searchItems: (query: string) => LibraryItem[];
   filterItems: (filters: FilterOptions) => LibraryItem[];
   clearCache: () => Promise<void>;
+  loadSpineManifest: () => Promise<void>;
+  hasServerSpine: (bookId: string) => boolean;
 }
 
 export interface FilterOptions {
@@ -274,6 +280,8 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   genres: [],
   genresWithBooks: new Map(),
   itemsById: new Map(),
+  booksWithServerSpines: new Set(),
+  spineManifestVersion: null,
 
   loadCache: async (libraryId: string, forceRefresh = false) => {
     const { isLoading, isLoaded } = get();
@@ -305,8 +313,11 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
               // Queue search index for lazy build (P2 Fix - defer until first search)
               searchIndex.queueBuild(cachedItems);
 
-              // Populate spine cache for book visualizations (loads from SQLite first)
-              await useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId);
+              // Load spine manifest and populate spine cache in parallel
+              const [, spineManifest] = await Promise.all([
+                useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId),
+                apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
+              ]);
 
               set({
                 items: cachedItems,
@@ -314,21 +325,37 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
                 isLoading: false,
                 lastUpdated: lastSyncTime,
                 currentLibraryId: libraryId,
+                booksWithServerSpines: new Set(spineManifest.items),
+                spineManifestVersion: spineManifest.version,
                 ...indexes,
               });
+
+              if (spineManifest.items.length > 0) {
+                log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
+              }
               return;
             }
           }
         }
       }
 
-      // Fetch fresh data from API - items and authors in parallel
+      // Fetch fresh data from API - items, authors, and spine manifest in parallel
       log.debug('Fetching fresh library data for library:', libraryId);
-      const [itemsResponse, authorsResponse] = await Promise.all([
+      const [itemsResponse, authorsResponse, spineManifest] = await Promise.all([
         apiClient.getLibraryItems(libraryId, { limit: 100000 }),  // Large limit to fetch all books
         apiClient.getLibraryAuthors(libraryId).catch(() => [] as ApiAuthor[]),
+        apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
       ]);
       const apiAuthors = authorsResponse as ApiAuthor[];
+
+      // Store spine manifest for pre-flight checks
+      if (spineManifest.items.length > 0) {
+        set({
+          booksWithServerSpines: new Set(spineManifest.items),
+          spineManifestVersion: spineManifest.version,
+        });
+        log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
+      }
       const items = itemsResponse?.results || [];
 
       // Build indexes from items
@@ -624,21 +651,61 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
     return items;
   },
 
+  loadSpineManifest: async () => {
+    try {
+      const manifest = await apiClient.getSpineManifest();
+      set({
+        booksWithServerSpines: new Set(manifest.items),
+        spineManifestVersion: manifest.version,
+      });
+      log.debug(`Loaded spine manifest: ${manifest.count} books have server spines`);
+    } catch (error) {
+      log.warn('Failed to load spine manifest:', error);
+    }
+  },
+
+  hasServerSpine: (bookId: string) => {
+    return get().booksWithServerSpines.has(bookId);
+  },
+
   clearCache: async () => {
+    // Save libraryId before clearing so we can reload
+    const libraryId = get().currentLibraryId;
+
     // Clear SQLite cache (single source of truth - P1 Fix)
     await sqliteCache.clearAllCache();
     // Clear spine cache as well
     useSpineCacheStore.getState().clearCache();
+    // Bump cover cache version so images refresh
+    apiClient.bumpCoverCacheVersion();
+
     set({
       items: [],
       isLoaded: false,
       lastUpdated: null,
+      lastRefreshed: null,
       authors: new Map(),
       narrators: new Map(),
       series: new Map(),
       genres: [],
+      genresWithBooks: new Map(),
       itemsById: new Map(),
+      booksWithServerSpines: new Set(),
+      spineManifestVersion: null,
+      // Keep currentLibraryId so we know which library to reload
     });
+
+    // Load spine manifest immediately (don't wait for full cache reload)
+    // This prevents black spines during the reload delay
+    get().loadSpineManifest();
+
+    // Automatically reload library data from server
+    if (libraryId) {
+      // Use setTimeout to let the clear complete first
+      setTimeout(() => {
+        get().loadCache(libraryId, true);
+      }, 100);
+    }
   },
 }));
 

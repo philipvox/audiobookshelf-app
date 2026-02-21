@@ -2,7 +2,7 @@
  * src/shared/components/HeartButton.tsx
  *
  * Reusable heart/favorite button component
- * - Handles favorite logic via myLibraryStore
+ * - Handles favorite logic via progressStore (single source of truth)
  * - Customizable size and colors
  * - Swappable icon via render prop
  * - Optional pulse animation on tap
@@ -11,7 +11,7 @@
 import React, { useCallback, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, ViewStyle, Animated } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
+import { useProgressStore } from '@/core/stores/progressStore';
 import { haptics } from '@/core/native/haptics';
 
 // Default colors
@@ -73,7 +73,9 @@ export function HeartButton({
   disabled = false,
   animated = true,
 }: HeartButtonProps) {
-  const { isInLibrary, addToLibrary, removeFromLibrary } = useMyLibraryStore();
+  const isInLibrary = useProgressStore((s) => s.isInLibrary);
+  const addToLibrary = useProgressStore((s) => s.addToLibrary);
+  const removeFromLibrary = useProgressStore((s) => s.removeFromLibrary);
   const isFavorite = isInLibrary(bookId);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 

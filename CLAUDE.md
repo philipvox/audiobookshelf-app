@@ -295,6 +295,53 @@ npx expo run:ios       # Build and run iOS
 
 ---
 
+## Pre-Build Checklist (MANDATORY)
+
+**ALWAYS run these checks before building an APK:**
+
+### 1. Critical Files Integrity
+
+```bash
+# Run this command to verify critical files are intact:
+git diff --name-status HEAD -- \
+  android/app/src/main/AndroidManifest.xml \
+  android/app/src/main/res/xml/automotive_app_desc.xml \
+  android/app/build.gradle \
+  app.json
+```
+
+If any of these show as Modified (M) or Deleted (D) unexpectedly, restore them:
+```bash
+git checkout HEAD -- <file_path>
+```
+
+### 2. Android Auto Must Have
+
+Verify these exist in `AndroidManifest.xml`:
+- [ ] `<service android:name=".automotive.AndroidAutoMediaBrowserService"` declaration
+- [ ] `<meta-data android:name="com.google.android.gms.car.application"` with `@xml/automotive_app_desc`
+
+Verify file exists:
+- [ ] `android/app/src/main/res/xml/automotive_app_desc.xml`
+
+### 3. Quick Verification Command
+
+```bash
+# One-liner to verify Android Auto config:
+grep -q "AndroidAutoMediaBrowserService" android/app/src/main/AndroidManifest.xml && \
+  test -f android/app/src/main/res/xml/automotive_app_desc.xml && \
+  echo "✓ Android Auto config OK" || echo "✗ Android Auto config MISSING"
+```
+
+### 4. Build Command
+
+Only after verification passes:
+```bash
+cd android && ./gradlew assembleRelease
+```
+
+---
+
 ## Version Update Checklist
 
 After making changes:

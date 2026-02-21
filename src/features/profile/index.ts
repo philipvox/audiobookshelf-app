@@ -1,12 +1,16 @@
 export { ProfileScreen } from './screens/ProfileScreen';
 export { PlaybackSettingsScreen } from './screens/PlaybackSettingsScreen';
 export { StorageSettingsScreen } from './screens/StorageSettingsScreen';
+export { DataStorageSettingsScreen } from './screens/DataStorageSettingsScreen';
 export { JoystickSeekSettingsScreen } from './screens/JoystickSeekSettingsScreen';
 export { HapticSettingsScreen } from './screens/HapticSettingsScreen';
 export { ChapterCleaningSettingsScreen } from './screens/ChapterCleaningSettingsScreen';
 export { HiddenItemsScreen } from './screens/HiddenItemsScreen';
 export { KidModeSettingsScreen } from './screens/KidModeSettingsScreen';
 export { AppearanceSettingsScreen } from './screens/AppearanceSettingsScreen';
+export { LibrarySyncSettingsScreen } from './screens/LibrarySyncSettingsScreen';
+export { PlaylistSettingsScreen } from './screens/PlaylistSettingsScreen';
+export { DeveloperSettingsScreen } from './screens/DeveloperSettingsScreen';
 
 // Stores
 export { useHapticSettingsStore, useHapticSettings, isHapticEnabled } from './stores/hapticSettingsStore';

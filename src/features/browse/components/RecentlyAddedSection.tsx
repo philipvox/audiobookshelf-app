@@ -1,12 +1,12 @@
 /**
  * src/features/browse/components/RecentlyAddedSection.tsx
  *
- * Recently Added section for Browse page with 2-column grid.
- * Shows the 6 most recently added books with View All navigation.
+ * Recently Added section for Browse page with horizontal scrolling carousel.
+ * Single row with peeking content on the right.
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { ChevronRight } from 'lucide-react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
@@ -14,14 +14,14 @@ import { useLibraryCache, useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
+import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 
-// Grid layout constants
+// Carousel layout constants
 const PADDING = 16;
 const GAP = 12;
-const NUM_COLUMNS = 2;
-const TOTAL_GAP = GAP * (NUM_COLUMNS - 1);
-const CARD_WIDTH = Math.floor((wp(100) - PADDING * 2 - TOTAL_GAP) / NUM_COLUMNS);
-const COVER_HEIGHT = CARD_WIDTH * 1; // Square covers
+// Card width: Show 2 full cards + peek of 3rd
+const CARD_WIDTH = Math.floor((wp(100) - PADDING - GAP) * 0.42);
+const COVER_HEIGHT = CARD_WIDTH;
 
 // Helper to get book metadata safely
 function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
@@ -35,17 +35,15 @@ interface RecentlyAddedSectionProps {
   limit?: number;
 }
 
-// Grid Book Card
-interface GridCardProps {
+interface CardProps {
   item: LibraryItem;
   onPress: () => void;
 }
 
-// Use static dark colors for this component (always dark mode)
 const colors = secretLibraryColors;
 
-const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCardProps) {
-  const coverUrl = useCoverUrl(item.id);
+const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }: CardProps) {
+  const coverUrl = useCoverUrl(item.id, { width: 200 });
   const metadata = getMetadata(item);
   const title = metadata.title || 'Untitled';
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
@@ -62,7 +60,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCar
         />
         <CompleteBadgeOverlay bookId={item.id} size="small" />
       </View>
-      <Text style={[styles.cardTitle, { color: colors.white }]} numberOfLines={2}>
+      <Text style={[styles.cardTitle, { color: colors.white }]} numberOfLines={1}>
         {title}
       </Text>
       {author && (
@@ -77,19 +75,29 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress }: GridCar
 export function RecentlyAddedSection({
   onBookPress,
   onViewAll,
-  limit = 6
+  limit = 12
 }: RecentlyAddedSectionProps) {
   const { items: libraryItems, isLoaded } = useLibraryCache();
+
+  // Content filter
+  const audience = useContentFilterStore((s) => s.audience);
+  const selectedAges = useContentFilterStore((s) => s.selectedAges);
+  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
+  const selectedTags = useContentFilterStore((s) => s.selectedTags);
+  const lengthRange = useContentFilterStore((s) => s.lengthRange);
 
   // Get recently added books sorted by addedAt
   const recentBooks = useMemo(() => {
     if (!libraryItems?.length) return [];
 
-    return [...libraryItems]
+    // Apply content filter first
+    const filteredItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
+
+    return [...filteredItems]
       .filter(item => item.mediaType === 'book')
       .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
       .slice(0, limit);
-  }, [libraryItems, limit]);
+  }, [libraryItems, limit, audience, selectedAges, selectedRatings, selectedTags, lengthRange]);
 
   const handleBookPress = useCallback((bookId: string) => {
     onBookPress?.(bookId);
@@ -112,17 +120,22 @@ export function RecentlyAddedSection({
         )}
       </View>
 
-      {/* 2-Column Grid */}
-      <View style={styles.grid}>
-        {recentBooks.map((item, index) => (
-          <View key={item.id} style={[styles.gridItem, index % 2 === 0 && styles.gridItemLeft]}>
-            <GridBookCard
-              item={item}
-              onPress={() => handleBookPress(item.id)}
-            />
-          </View>
+      {/* Horizontal Scrolling Carousel - Single Row */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.carousel}
+        decelerationRate="fast"
+        snapToInterval={CARD_WIDTH + GAP}
+      >
+        {recentBooks.map((item) => (
+          <CarouselBookCard
+            key={item.id}
+            item={item}
+            onPress={() => handleBookPress(item.id)}
+          />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -154,17 +167,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: PADDING,
-  },
-  gridItem: {
-    width: CARD_WIDTH,
-    marginBottom: scale(16),
-  },
-  gridItemLeft: {
-    marginRight: GAP,
+  carousel: {
+    paddingLeft: PADDING,
+    paddingRight: PADDING / 2,
+    gap: GAP,
   },
   card: {
     width: CARD_WIDTH,

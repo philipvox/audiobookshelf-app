@@ -32,7 +32,8 @@ import {
   Check,
   type LucideIcon,
 } from 'lucide-react-native';
-import { usePlayerStore } from '@/features/player/stores/playerStore';
+import { usePlayerStore } from '@/features/player/stores';
+import { usePlayerSettingsStore } from '@/features/player/stores/playerSettingsStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale } from '@/shared/theme';
 import {
@@ -188,10 +189,10 @@ export function PlaybackSettingsScreen() {
   const setSkipBackInterval = usePlayerStore((s) => s.setSkipBackInterval);
   const shakeToExtendEnabled = usePlayerStore((s) => s.shakeToExtendEnabled);
   const setShakeToExtendEnabled = usePlayerStore((s) => s.setShakeToExtendEnabled);
-  const smartRewindEnabled = usePlayerStore((s) => s.smartRewindEnabled ?? true);
-  const setSmartRewindEnabled = usePlayerStore((s) => s.setSmartRewindEnabled);
-  const smartRewindMaxSeconds = usePlayerStore((s) => s.smartRewindMaxSeconds ?? 30);
-  const setSmartRewindMaxSeconds = usePlayerStore((s) => s.setSmartRewindMaxSeconds);
+  const smartRewindEnabled = usePlayerSettingsStore((s) => s.smartRewindEnabled);
+  const setSmartRewindEnabled = usePlayerSettingsStore((s) => s.setSmartRewindEnabled);
+  const smartRewindMaxSeconds = usePlayerSettingsStore((s) => s.smartRewindMaxSeconds);
+  const setSmartRewindMaxSeconds = usePlayerSettingsStore((s) => s.setSmartRewindMaxSeconds);
   const showCompletionPrompt = usePlayerStore((s) => s.showCompletionPrompt ?? true);
   const setShowCompletionPrompt = usePlayerStore((s) => s.setShowCompletionPrompt);
   const autoMarkFinished = usePlayerStore((s) => s.autoMarkFinished ?? false);

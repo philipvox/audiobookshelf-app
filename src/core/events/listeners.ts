@@ -11,11 +11,22 @@ import { queryClient, queryKeys } from '@/core/queryClient';
 import { websocketService } from '@/core/services/websocketService';
 import { logger } from '@/shared/utils/logger';
 
+// Fix: Track initialization to prevent duplicate listener registration
+let isInitialized = false;
+let cleanupFunction: (() => void) | null = null;
+
 /**
  * Initialize app-wide event listeners.
  * Call this once at app startup.
+ * Safe to call multiple times - will skip if already initialized.
  */
 export function initializeEventListeners(): () => void {
+  // Guard against duplicate initialization
+  if (isInitialized && cleanupFunction) {
+    logger.warn('[EventListeners] Already initialized, returning existing cleanup function');
+    return cleanupFunction;
+  }
+
   const unsubscribers: (() => void)[] = [];
 
   // === BOOK STARTED ===
@@ -297,9 +308,15 @@ export function initializeEventListeners(): () => void {
   logger.debug('[EventListeners] Initialized');
 
   // Return cleanup function
-  return () => {
+  // Mark as initialized and store cleanup function
+  isInitialized = true;
+  cleanupFunction = () => {
     unsubscribers.forEach((unsub) => unsub());
     websocketService.disconnect('manual');
+    isInitialized = false;
+    cleanupFunction = null;
     logger.debug('[EventListeners] Cleaned up');
   };
+
+  return cleanupFunction;
 }

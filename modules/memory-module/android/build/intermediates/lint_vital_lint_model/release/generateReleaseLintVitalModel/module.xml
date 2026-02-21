@@ -1,6 +1,6 @@
 <lint-module
     format="1"
-    dir="/Users/philips/Desktop/audiobookshelf-app Backup/modules/memory-module/android"
+    dir="/Users/philips/Desktop/audiobookshelf-app/modules/memory-module/android"
     name=":memory-module"
     type="LIBRARY"
     maven="expo.modules.memorymodule:memory-module:1.0.0"

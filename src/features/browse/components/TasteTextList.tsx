@@ -1,148 +1,106 @@
 /**
  * src/features/browse/components/TasteTextList.tsx
  *
- * "Based on Your Taste" section with toggle between list and shelf views.
- * - List mode: True inline flowing text with book cover thumbnails and superscript authors
- * - Shelf mode: Horizontal scroll of BookSpineVertical components (no animation)
+ * "Newest Releases" section for Browse page.
+ * Shows books sorted by publication date (newest first).
+ * Single row horizontal scrolling carousel with peeking content.
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { logger } from '@/shared/utils/logger';
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, TouchableOpacity } from 'react-native';
-import { Plus, Check } from 'lucide-react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Image } from 'expo-image';
+import { ChevronRight } from 'lucide-react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { haptics } from '@/core/native/haptics';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-import { usePersonalizedContent } from '@/features/discover/hooks/usePersonalizedContent';
-import { useLibraryCache } from '@/core/cache';
+import { useLibraryCache, useCoverUrl } from '@/core/cache';
 import { useReadingHistory } from '@/features/reading-history-wizard';
-import { createSeriesFilter } from '@/shared/utils/seriesFilter';
-import { apiClient } from '@/core/api';
 import { LibraryItem, BookMetadata } from '@/core/types';
-import { scale } from '@/shared/theme';
+import { scale, wp } from '@/shared/theme';
+import { CompleteBadgeOverlay } from '@/features/completion';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useToast } from '@/shared/hooks/useToast';
+import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 
-// Extended metadata interface
-interface ExtendedBookMetadata extends BookMetadata {
-  tags?: string[];
-}
+// Carousel layout constants
+const PADDING = 16;
+const GAP = 12;
+const CARD_WIDTH = Math.floor((wp(100) - PADDING - GAP) * 0.42);
+const COVER_HEIGHT = CARD_WIDTH;
 
 // Helper to get book metadata safely
-// Note: We access metadata directly without requiring audioFiles,
-// since library cache items may not include audioFiles to save space
-function getBookMetadata(item: LibraryItem | null | undefined): ExtendedBookMetadata | null {
-  if (!item?.media?.metadata) return null;
-  return item.media.metadata as ExtendedBookMetadata;
+function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
+  if (item.mediaType !== 'book' || !item.media?.metadata) return {};
+  return item.media.metadata as BookMetadata;
 }
-
-// Helper to get book duration safely
-function getBookDuration(item: LibraryItem): number {
-  return (item.media as any)?.duration || 0;
-}
-
-type ViewMode = 'list' | 'shelf';
 
 interface TasteTextListProps {
   onBookPress?: (bookId: string) => void;
+  onViewAll?: () => void;
 }
 
-// Convert LibraryItem to BookSpineVerticalData (without cache - used for fallback)
-function toSpineDataBasic(item: LibraryItem): BookSpineVerticalData {
-  const metadata = getBookMetadata(item);
-  const progress = item.userMediaProgress?.progress || 0;
-
-  return {
-    id: item.id,
-    title: metadata?.title || 'Unknown',
-    author: metadata?.authorName || 'Unknown Author',
-    progress,
-    genres: metadata?.genres || [],
-    tags: metadata?.tags || [],
-    duration: getBookDuration(item),
-    seriesName: metadata?.seriesName || metadata?.series?.[0]?.name,
-  };
+interface CardProps {
+  item: LibraryItem;
+  onPress: () => void;
 }
 
-// Get author's last name for superscript display
-function getAuthorLastName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/);
-  return parts[parts.length - 1] || fullName;
-}
+const colors = secretLibraryColors;
 
-export function TasteTextList({ onBookPress }: TasteTextListProps) {
-  const renderStart = useRef(Date.now());
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [addedBooks, setAddedBooks] = useState<Set<string>>(new Set());
-  const [listExpanded, setListExpanded] = useState(false);
+const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }: CardProps) {
+  const coverUrl = useCoverUrl(item.id, { width: 200 });
+  const metadata = getMetadata(item);
+  const title = metadata.title || 'Untitled';
+  const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
-  // Data hooks - measure cache access time
-  const cacheStart = Date.now();
+  return (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
+        <Image
+          source={coverUrl}
+          style={styles.cover}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+        />
+        <CompleteBadgeOverlay bookId={item.id} size="small" />
+      </View>
+      <Text style={[styles.cardTitle, { color: colors.white }]} numberOfLines={1}>
+        {title}
+      </Text>
+      {author && (
+        <Text style={[styles.cardAuthor, { color: colors.gray }]} numberOfLines={1}>
+          {author}
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+});
+
+export function TasteTextList({ onBookPress, onViewAll }: TasteTextListProps) {
+  // Data hooks
   const { items: libraryItems, isLoaded } = useLibraryCache();
-  const { isFinished, hasBeenStarted, hasHistory } = useReadingHistory();
-  const cacheTime = Date.now() - cacheStart;
+  const { isFinished } = useReadingHistory();
+
+  // Content filter
+  const audience = useContentFilterStore((s) => s.audience);
+  const selectedAges = useContentFilterStore((s) => s.selectedAges);
+  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
+  const selectedTags = useContentFilterStore((s) => s.selectedTags);
+  const lengthRange = useContentFilterStore((s) => s.lengthRange);
 
   // Library and download state
   const librarySet = useProgressStore((state) => state.librarySet);
-  const addToLibrary = useProgressStore((state) => state.addToLibrary);
   const { downloads } = useDownloads();
-  const { showSuccess } = useToast();
 
   // Get set of downloaded book IDs
   const downloadedIds = useMemo(() => {
     return new Set(downloads.filter(d => d.status === 'complete').map(d => d.itemId));
   }, [downloads]);
 
-  // Spine cache for colors
-  const getSpineData = useSpineCacheStore((state) => state.getSpineData);
+  // Get newest releases sorted by publication date
+  const newestReleases = useMemo(() => {
+    if (!libraryItems?.length) return [];
 
-  // Series filter for personalized content
-  const isSeriesAppropriate = useMemo(() => {
-    if (!libraryItems.length) return () => true;
-    return createSeriesFilter({ allItems: libraryItems, isFinished, hasStarted: hasBeenStarted });
-  }, [libraryItems, isFinished, hasBeenStarted]);
-
-  // Convert to book summary (simplified)
-  const convertToBookSummary = useCallback((item: LibraryItem) => {
-    const metadata = getBookMetadata(item);
-    return {
-      id: item.id,
-      title: metadata?.title || '',
-      author: metadata?.authorName || '',
-      coverUrl: apiClient.getItemCoverUrl(item.id, { width: 400, height: 400 }),
-      duration: getBookDuration(item),
-      genres: metadata?.genres || [],
-      addedDate: item.addedAt || 0,
-      isDownloaded: false,
-    };
-  }, []);
-
-  // Get personalized recommendations - this can be slow
-  const personalizedStart = Date.now();
-  const { recommendationRows } = usePersonalizedContent({
-    libraryItems,
-    isLoaded,
-    convertToBookSummary,
-    isFinished,
-    isSeriesAppropriate,
-    hasHistory,
-  });
-  const personalizedTime = Date.now() - personalizedStart;
-
-  // Log component timing
-  useEffect(() => {
-    const totalTime = Date.now() - renderStart.current;
-    logger.debug(`[Browse Perf] TasteTextList mounted in ${totalTime}ms (cache: ${cacheTime}ms, personalized: ${personalizedTime}ms, hasHistory: ${hasHistory})`);
-  }, []);
-
-  // Get 10+ books from recommendations (no mid-series books)
-  // Exclude books already in library, with listening history, or downloaded
-  const recommendedBooks = useMemo(() => {
-    const allItems: LibraryItem[] = [];
-    const seenIds = new Set<string>();
+    // Apply content filter first
+    const filteredItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
 
     // Helper to check if book should be excluded
     const shouldExclude = (bookId: string, item: LibraryItem): boolean => {
@@ -162,384 +120,137 @@ export function TasteTextList({ onBookPress }: TasteTextListProps) {
       return false;
     };
 
-    // First pass: collect from recommendation rows
-    for (const row of recommendationRows) {
-      for (const book of row.items) {
-        if (seenIds.has(book.id)) continue;
+    // Filter eligible books
+    const eligibleItems = filteredItems.filter((item) => {
+      if (item.mediaType !== 'book') return false;
+      if (shouldExclude(item.id, item)) return false;
 
-        const fullItem = libraryItems.find((i) => i.id === book.id);
-        if (!fullItem) continue;
+      const metadata = getMetadata(item);
 
-        // Skip excluded books
-        if (shouldExclude(book.id, fullItem)) continue;
+      // Skip books from the middle of a series (only show #1 or standalone)
+      const seriesInfo = metadata?.series?.[0];
+      const sequence = seriesInfo?.sequence;
+      if (sequence && parseFloat(sequence) > 1) return false;
 
-        const metadata = getBookMetadata(fullItem);
+      return true;
+    });
 
-        // Skip books from the middle of a series (only show #1 or standalone)
-        const seriesInfo = metadata?.series?.[0];
-        const sequence = seriesInfo?.sequence;
-        if (sequence && parseFloat(sequence) > 1) {
-          continue;
-        }
+    // Sort by publication year (newest first), then by addedAt as tiebreaker
+    const sortedByPublishDate = [...eligibleItems].sort((a, b) => {
+      const metaA = getMetadata(a);
+      const metaB = getMetadata(b);
 
-        allItems.push(fullItem);
-        seenIds.add(book.id);
-      }
-    }
+      // Parse publication year (can be string like "2023" or number)
+      const yearA = metaA?.publishedYear ? parseInt(String(metaA.publishedYear), 10) : 0;
+      const yearB = metaB?.publishedYear ? parseInt(String(metaB.publishedYear), 10) : 0;
 
-    // If we don't have enough, add more from library (random unstarted books)
-    if (allItems.length < 10) {
-      for (const item of libraryItems) {
-        if (seenIds.has(item.id)) continue;
-        if (allItems.length >= 15) break;
+      // Sort newest first
+      if (yearB !== yearA) return yearB - yearA;
 
-        // Skip excluded books
-        if (shouldExclude(item.id, item)) continue;
+      // Tiebreaker: most recently added to library
+      return (b.addedAt || 0) - (a.addedAt || 0);
+    });
 
-        const metadata = getBookMetadata(item);
-        const seriesInfo = metadata?.series?.[0];
-        const sequence = seriesInfo?.sequence;
-        if (sequence && parseFloat(sequence) > 1) continue;
+    return sortedByPublishDate.slice(0, 15);
+  }, [libraryItems, librarySet, downloadedIds, isFinished, audience, selectedAges, selectedRatings, selectedTags, lengthRange]);
 
-        allItems.push(item);
-        seenIds.add(item.id);
-      }
-    }
+  const handleBookPress = useCallback((bookId: string) => {
+    onBookPress?.(bookId);
+  }, [onBookPress]);
 
-    return allItems.slice(0, 15); // Max 15 for display
-  }, [recommendationRows, libraryItems, librarySet, downloadedIds, isFinished]);
-
-  // Handle book press
-  const handleBookPress = useCallback(
-    (bookId: string) => {
-      onBookPress?.(bookId);
-    },
-    [onBookPress]
-  );
-
-  // Handle spine press
-  const handleSpinePress = useCallback(
-    (book: BookSpineVerticalData) => {
-      onBookPress?.(book.id);
-    },
-    [onBookPress]
-  );
-
-  // Convert to spine data for shelf view (with cached colors)
-  const spineDataList = useMemo(
-    () => recommendedBooks.map((item) => {
-      const cached = getSpineData(item.id);
-      const basic = toSpineDataBasic(item);
-
-      // Add cached colors if available
-      if (cached) {
-        return {
-          ...basic,
-          backgroundColor: cached.backgroundColor,
-          textColor: cached.textColor,
-        };
-      }
-      return basic;
-    }),
-    [recommendedBooks, getSpineData]
-  );
-
-  // Get layouts for shelf view using shared hook
-  // Use smaller scale for carousel context (0.5 gives ~160px height)
-  const shelfLayouts = useBookRowLayout(spineDataList, {
-    scaleFactor: 0.5,
-    enableLeaning: true,
-  });
-
-  // Toggle handler
-  const toggleView = useCallback((mode: ViewMode) => {
-    setViewMode(mode);
-  }, []);
-
-  // Handle add to library press - MUST be before early return (React hooks rule)
-  const handleAddToLibrary = useCallback(async (bookId: string, bookTitle: string) => {
-    haptics.success();
-    try {
-      await addToLibrary(bookId);
-      setAddedBooks(prev => new Set(prev).add(bookId));
-      showSuccess(`Added "${bookTitle}" to library`);
-    } catch (error) {
-      // Silent fail - store handles errors
-    }
-  }, [addToLibrary, showSuccess]);
-
-  if (!isLoaded || recommendedBooks.length === 0) {
+  if (!isLoaded || newestReleases.length === 0) {
     return null;
   }
 
-  // Format duration in hours
-  const formatDuration = (seconds: number): string => {
-    if (!seconds) return '0h';
-    const hours = Math.round(seconds / 3600);
-    return `${hours}h`;
-  };
-
-  // Build the list view (matches book list style from screenshot)
-  const renderListView = () => {
-    // Show 3 items initially, all when expanded
-    const displayBooks = listExpanded ? recommendedBooks.slice(0, 10) : recommendedBooks.slice(0, 3);
-    const hasMore = recommendedBooks.length > 3;
-
-    return (
-      <View style={styles.listContainer}>
-        {displayBooks.map((book, index) => {
-          const metadata = getBookMetadata(book);
-          const title = metadata?.title || 'Unknown';
-          const seriesInfo = metadata?.series?.[0];
-          const seriesText = seriesInfo
-            ? `${seriesInfo.name}${seriesInfo.sequence ? ` #${seriesInfo.sequence}` : ''}`
-            : null;
-          const duration = getBookDuration(book);
-          const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 120, height: 120 });
-          const isLast = index === displayBooks.length - 1;
-
-          return (
-            <Pressable
-              key={book.id}
-              style={styles.listItem}
-              onPress={() => handleBookPress(book.id)}
-            >
-              <Image source={{ uri: coverUrl }} style={styles.listCover} />
-              <View style={styles.listInfo}>
-                <View style={styles.listTitleRow}>
-                  <Text style={styles.listTitle} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  {duration > 0 && (
-                    <Text style={styles.listTitleDuration}> · {formatDuration(duration)}</Text>
-                  )}
-                </View>
-                {seriesText && (
-                  <Text style={styles.listSeries} numberOfLines={1}>{seriesText}</Text>
-                )}
-              </View>
-              {/* Add to Library pill */}
-              {addedBooks.has(book.id) ? (
-                <View style={[styles.addToLibraryPill, styles.addedPill]}>
-                  <Check size={scale(12)} color={secretLibraryColors.gold} strokeWidth={2.5} />
-                  <Text style={[styles.addToLibraryText, styles.addedText]}>Added</Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.addToLibraryPill}
-                  onPress={() => handleAddToLibrary(book.id, title)}
-                  activeOpacity={0.8}
-                >
-                  <Plus size={scale(12)} color={secretLibraryColors.gray} strokeWidth={2} />
-                  <Text style={styles.addToLibraryText}>Add</Text>
-                </TouchableOpacity>
-              )}
-              {!isLast && <View style={styles.listSeparator} />}
-            </Pressable>
-          );
-        })}
-        {/* Show more / Show less button */}
-        {hasMore && (
-          <TouchableOpacity
-            style={styles.showMoreBtn}
-            onPress={() => setListExpanded(!listExpanded)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.showMoreText}>
-              {listExpanded ? 'Show less' : 'Show more'}
-            </Text>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.black }]}>
+      {/* Section Header */}
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.white }]}>Newest Releases</Text>
+        {onViewAll && (
+          <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll}>
+            <Text style={[styles.viewAllText, { color: colors.gray }]}>View All</Text>
+            <ChevronRight size={16} color={colors.gray} />
           </TouchableOpacity>
         )}
       </View>
-    );
-  };
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}><Text style={styles.titleItalic}>Your Taste</Text></Text>
-        <View style={styles.headerRight}>
-          {/* View toggle */}
-          <View style={styles.toggle}>
-            <Pressable onPress={() => toggleView('shelf')}>
-              <Text style={[styles.toggleText, viewMode === 'shelf' && styles.toggleActive]}>
-                Shelf
-              </Text>
-            </Pressable>
-            <Text style={styles.toggleDivider}> / </Text>
-            <Pressable onPress={() => toggleView('list')}>
-              <Text style={[styles.toggleText, viewMode === 'list' && styles.toggleActive]}>
-                List
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-
-      {/* Content */}
-      {viewMode === 'list' ? (
-        renderListView()
-      ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.shelfContent}
-        >
-          {shelfLayouts.map((layout) => (
-            <View key={layout.book.id} style={styles.spineWrapper}>
-              <BookSpineVertical
-                book={layout.book}
-                width={layout.width}
-                height={layout.height}
-                leanAngle={layout.leanAngle}
-                onPress={handleSpinePress}
-              />
-            </View>
-          ))}
-        </ScrollView>
-      )}
+      {/* Horizontal Scrolling Carousel - Single Row */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.carousel}
+        decelerationRate="fast"
+        snapToInterval={CARD_WIDTH + GAP}
+      >
+        {newestReleases.map((item) => (
+          <CarouselBookCard
+            key={item.id}
+            item={item}
+            onPress={() => handleBookPress(item.id)}
+          />
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 8,
-    paddingBottom: 24,
-    backgroundColor: secretLibraryColors.black,
+    paddingVertical: scale(24),
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: 24,
-    marginBottom: 16,
+    alignItems: 'center',
+    paddingHorizontal: PADDING,
+    marginBottom: scale(16),
   },
   title: {
-    fontFamily: secretLibraryFonts.playfair.regular,
-    fontSize: scale(32),
-    color: secretLibraryColors.white,
+    fontFamily: secretLibraryFonts.playfair.bold,
+    fontSize: scale(22),
+    fontWeight: '700',
   },
-  titleItalic: {
-    fontStyle: 'italic',
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-  },
-  toggle: {
+  viewAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  toggleText: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: secretLibraryColors.gray,
-    textTransform: 'uppercase',
-    letterSpacing: 0.45,
-  },
-  toggleActive: {
-    color: secretLibraryColors.white,
-    textDecorationLine: 'underline',
-  },
-  toggleDivider: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: secretLibraryColors.gray,
-  },
-  // List view styles
-  listContainer: {
-    paddingHorizontal: 24,
-  },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  listCover: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: 4,
-    backgroundColor: secretLibraryColors.gray,
-  },
-  listInfo: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 12,
-  },
-  listTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    marginBottom: 2,
-  },
-  listTitle: {
-    fontFamily: secretLibraryFonts.playfair.regular,
-    fontSize: scale(16),
-    color: secretLibraryColors.white,
-    flexShrink: 1,
-  },
-  listTitleDuration: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(10),
-    color: secretLibraryColors.gray,
-  },
-  listSeries: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(10),
-    color: secretLibraryColors.gray,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  addToLibraryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
     gap: 4,
   },
-  addToLibraryText: {
+  viewAllText: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: secretLibraryColors.gray,
+    fontSize: scale(12),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  addedPill: {
-    backgroundColor: 'rgba(243, 182, 12, 0.15)', // gold with transparency
+  carousel: {
+    paddingLeft: PADDING,
+    paddingRight: PADDING / 2,
+    gap: GAP,
   },
-  addedText: {
-    color: secretLibraryColors.gold,
+  card: {
+    width: CARD_WIDTH,
   },
-  listSeparator: {
-    position: 'absolute',
-    bottom: 0,
-    left: scale(48) + 12,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  coverContainer: {
+    width: CARD_WIDTH,
+    height: COVER_HEIGHT,
+    borderRadius: scale(8),
+    overflow: 'hidden',
+    marginBottom: scale(8),
   },
-  showMoreBtn: {
-    paddingVertical: scale(16),
-    alignItems: 'center',
+  cover: {
+    width: '100%',
+    height: '100%',
   },
-  showMoreText: {
+  cardTitle: {
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(14),
+    lineHeight: scale(18),
+    marginBottom: scale(2),
+  },
+  cardAuthor: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
     fontSize: scale(11),
-    color: secretLibraryColors.gray,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textDecorationLine: 'underline',
-  },
-  shelfContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    gap: 8,
-    alignItems: 'flex-end',
-  },
-  spineWrapper: {
-    // No additional styling needed
   },
 });
+
+export default TasteTextList;

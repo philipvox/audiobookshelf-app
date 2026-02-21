@@ -10,6 +10,7 @@ import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
+import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
 import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
 import { useFinishedBookIds, useInProgressBooks } from '@/core/hooks/useUserBooks';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
@@ -129,6 +130,18 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       }
     };
   }, [isDataReady]);
+
+  // Trigger library sync on mount if a playlist is linked
+  const libraryPlaylistId = useLibrarySyncStore(s => s.libraryPlaylistId);
+  const syncTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (libraryPlaylistId && !syncTriggeredRef.current) {
+      syncTriggeredRef.current = true;
+      import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
+        librarySyncService.fullSync();
+      });
+    }
+  }, [libraryPlaylistId]);
 
   // Final loading state: data must be ready AND settled
   const isFullyReady = isDataReady && hasSettled;

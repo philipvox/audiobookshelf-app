@@ -27,7 +27,12 @@ export const BookRow = React.memo(function BookRow({
   isMarkedFinished = false,
 }: BookRowProps) {
   const { colors } = useTheme();
+
+  // Full-size cover for display
   const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 400, height: 400 });
+  // Tiny placeholder for instant blur-up effect (loads ~200 bytes vs ~12KB)
+  const placeholderUrl = apiClient.getItemCoverUrl(book.id, { width: 20, height: 20 });
+
   const isCompleted = book.progress >= 0.95 || isMarkedFinished;
   const isInProgress = book.progress > 0 && book.progress < 0.95;
 
@@ -48,7 +53,14 @@ export const BookRow = React.memo(function BookRow({
       accessibilityHint="Double tap to view book details"
     >
       <View style={styles.bookCoverContainer}>
-        <Image source={coverUrl} style={styles.bookCover} contentFit="cover" />
+        <Image
+          source={coverUrl}
+          placeholder={placeholderUrl}
+          placeholderContentFit="cover"
+          style={styles.bookCover}
+          contentFit="cover"
+          transition={200}
+        />
         {isCompleted && (
           <View style={styles.completedBadge}>
             <CheckCircle size={14} color={colors.text.primary} strokeWidth={2} />

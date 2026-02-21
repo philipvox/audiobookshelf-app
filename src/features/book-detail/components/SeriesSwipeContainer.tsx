@@ -24,18 +24,20 @@ import Animated, {
   withTiming,
   runOnJS,
   Easing,
-  FadeIn,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { PlayIcon } from '@/features/player/components/PlayerIcons';
 import { useNavigation } from '@react-navigation/native';
 import { LibraryItem } from '@/core/types';
-import { getSeriesNavigationInfo, getCoverUrl } from '@/core/cache';
+import { getSeriesNavigationInfo, useCoverUrl } from '@/core/cache';
 import { scale } from '@/shared/theme';
 import { useSecretLibraryColors } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
-import { getTypographyForGenres, getSeriesStyle } from '@/features/home/utils/spine/adapter';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
+import { useBookProgress } from '@/core/hooks/useUserBooks';
+import {
+  secretLibraryColors as staticColors,
+} from '@/shared/theme/secretLibrary';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.2;
@@ -133,6 +135,7 @@ const arrowStyles = StyleSheet.create({
   },
   arrowRight: {
     padding: scale(8),
+    marginLeft: 'auto',
   },
 });
 
@@ -168,19 +171,27 @@ function splitTitle(title: string): { line1: string; line2: string } {
   };
 }
 
-// Full book detail preview - matches hero section exactly
+// Full book detail preview - matches SecretLibraryBookDetailScreen layout exactly
 function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: { book: LibraryItem; seriesName: string; bookSequence?: string }) {
   const colors = useSecretLibraryColors();
-  const coverUrl = getCoverUrl(book.id);
+  const navigation = useNavigation<any>();
+  const coverUrl = useCoverUrl(book.id, { width: 600 });
 
   const metadata = book.media?.metadata as any;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
-  const narrator = metadata?.narratorName || metadata?.narrators?.[0] || '';
-  const genres = metadata?.genres || [];
+  const narrator = metadata?.narratorName ||
+    (metadata?.narrators && metadata.narrators.length > 0
+      ? metadata.narrators.join(', ')
+      : '');
+  const genres: string[] = metadata?.genres || [];
+  const description: string = metadata?.description || '';
 
-  // Get cached spine data (same as book detail hero)
+  // Get cached spine data for progress/duration
   const cachedSpineData = useSpineCacheStore((s) => s.cache.get(book.id));
+
+  // Get local progress from SQLite
+  const { progress: localProgress, currentTime: localCurrentTime } = useBookProgress(book.id);
 
   // Get series info - use parent-provided name (most reliable), then try metadata
   let seriesName = parentSeriesName || '';
@@ -207,48 +218,57 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
     seriesName = cachedSpineData.seriesName;
   }
 
-  const seriesDisplay = seriesName
-    ? (seriesSequence ? `${seriesName} · Book ${seriesSequence}` : seriesName)
-    : '';
+  // Title typography - matches real detail screen (Georgia/serif, weight 600)
+  const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
+  const titleFontWeight = '600';
 
-  // Get typography - USE CACHED TYPOGRAPHY for consistency (same as book detail hero)
-  const spineTypography = useMemo(() => {
-    // FIRST: Use pre-computed typography from spine cache
-    if (cachedSpineData?.typography) {
-      return cachedSpineData.typography;
-    }
-
-    // FALLBACK: Recalculate if not in cache
-    const cachedSeriesName = cachedSpineData?.seriesName || seriesName;
-    const cachedGenres = cachedSpineData?.genres || genres;
-
-    if (cachedSeriesName) {
-      const seriesStyle = getSeriesStyle(cachedSeriesName);
-      if (seriesStyle?.typography) {
-        return seriesStyle.typography;
-      }
-    }
-    // Genre-based typography (fallback)
-    return getTypographyForGenres(cachedGenres, book.id);
-  }, [cachedSpineData?.typography, cachedSpineData?.seriesName, cachedSpineData?.genres, seriesName, genres, book.id]);
-
-  const titleFontFamily = spineTypography.fontFamily || Platform.select({ ios: 'Georgia', android: 'serif' });
-  const titleFontWeight = spineTypography.titleWeight || spineTypography.fontWeight || '500';
-  const titleFontStyle = spineTypography.fontStyle || 'normal';
-  const titleTransform = spineTypography.titleTransform || 'none';
-
-  // Apply text transform and split title
+  // Split title
   const { line1, line2 } = splitTitle(title);
-  const displayLine1 = titleTransform === 'uppercase' ? line1.toUpperCase() : line1;
-  const displayLine2 = titleTransform === 'uppercase' ? line2.toUpperCase() : line2;
 
-  // Get duration, chapters, and published year
+  // Duration and meta
   const duration = cachedSpineData?.duration || book.media?.duration || 0;
   const formattedDuration = formatDuration(duration);
-  // Chapters may not be loaded in cached items - use numAudioFiles as fallback indicator
   const chapters = book.media?.chapters || [];
   const chapterCount = chapters.length || (book.media as any)?.numAudioFiles || 0;
   const publishedYear = metadata?.publishedYear || '';
+
+  // Progress - prioritize local SQLite, then spine cache, then server
+  const serverProgress = book.userMediaProgress?.progress || 0;
+  const serverCurrentTime = book.userMediaProgress?.currentTime || 0;
+  const cachedProgress = cachedSpineData?.progress || 0;
+  const progress = localProgress > 0 ? localProgress :
+                   cachedProgress > 0 ? cachedProgress :
+                   serverProgress;
+  const currentTime = localCurrentTime > 0 ? localCurrentTime :
+                      cachedProgress > 0 ? cachedProgress * duration :
+                      serverCurrentTime;
+  const isFinished = progress >= 0.95;
+  const timeListened = currentTime;
+  const timeRemaining = duration - currentTime;
+  const progressPercent = Math.round(progress * 100);
+
+  // Navigation handlers
+  const handleAuthorPress = useCallback((name: string) => {
+    haptics.selection();
+    navigation.navigate('AuthorDetail', { authorName: name.trim() });
+  }, [navigation]);
+
+  const handleNarratorPress = useCallback((name: string) => {
+    haptics.selection();
+    navigation.navigate('NarratorDetail', { narratorName: name.trim() });
+  }, [navigation]);
+
+  const handleSeriesPress = useCallback(() => {
+    if (seriesName) {
+      haptics.selection();
+      navigation.navigate('SeriesDetail', { seriesName });
+    }
+  }, [seriesName, navigation]);
+
+  const handleGenrePress = useCallback((genreName: string) => {
+    haptics.selection();
+    navigation.navigate('GenreDetail', { genreName });
+  }, [navigation]);
 
   return (
     <ScrollView
@@ -257,7 +277,7 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
       showsVerticalScrollIndicator={false}
     >
       {/* Cover - Square 320x320 matching hero */}
-      <Animated.View entering={FadeIn.duration(300)} style={styles.heroCover}>
+      <View style={styles.heroCover}>
         {coverUrl ? (
           <Image source={{ uri: coverUrl }} style={styles.coverImage} contentFit="cover" />
         ) : (
@@ -265,60 +285,72 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
             <Text style={styles.coverPlaceholderText}>{title.substring(0, 3).toUpperCase()}</Text>
           </View>
         )}
-      </Animated.View>
+      </View>
 
-      {/* Title - Split into two lines with genre-based typography */}
-      <Animated.View entering={FadeIn.duration(300).delay(100)} style={styles.titleContainer}>
+      {/* Title - Split into two lines with Georgia/serif */}
+      <View style={styles.titleContainer}>
         <Text style={[
           styles.titleLine1,
           {
             fontFamily: titleFontFamily,
             fontWeight: titleFontWeight as any,
-            fontStyle: titleFontStyle as any,
             color: colors.black,
           }
         ]}>
-          {displayLine1}
+          {line1}
         </Text>
-        {displayLine2 ? (
+        {line2 ? (
           <Text style={[
             styles.titleLine2,
             {
               fontFamily: titleFontFamily,
               fontWeight: titleFontWeight as any,
-              fontStyle: titleFontStyle as any,
               color: colors.black,
             }
           ]}>
-            {displayLine2}
+            {line2}
           </Text>
         ) : null}
-      </Animated.View>
+      </View>
 
-      {/* Byline: By Author · Narrated by Narrator */}
-      <Animated.View entering={FadeIn.duration(300).delay(150)} style={styles.byline}>
+      {/* Byline: By Author · Narrated by Narrator - with tappable links */}
+      <View style={styles.byline}>
         <Text style={[styles.bylineText, { color: colors.gray }]}>By </Text>
-        <Text style={[styles.bylineLink, { color: colors.black }]}>{author}</Text>
+        {author.split(',').map((name: string, idx: number, arr: string[]) => (
+          <React.Fragment key={idx}>
+            <TouchableOpacity onPress={() => handleAuthorPress(name)} activeOpacity={0.7}>
+              <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
+            </TouchableOpacity>
+            {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
+          </React.Fragment>
+        ))}
         {narrator ? (
           <>
             <Text style={[styles.bylineDot, { color: colors.gray }]}> · </Text>
             <Text style={[styles.bylineText, { color: colors.gray }]}>Narrated by </Text>
-            <Text style={[styles.bylineLink, { color: colors.black }]}>{narrator}</Text>
+            {narrator.split(',').map((name: string, idx: number, arr: string[]) => (
+              <React.Fragment key={idx}>
+                <TouchableOpacity onPress={() => handleNarratorPress(name)} activeOpacity={0.7}>
+                  <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
+                </TouchableOpacity>
+                {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
+              </React.Fragment>
+            ))}
           </>
         ) : null}
-      </Animated.View>
+      </View>
 
-      {/* Series Link */}
-      {seriesDisplay ? (
-        <Animated.View entering={FadeIn.duration(300).delay(200)} style={styles.seriesRow}>
+      {/* Series Link - tappable */}
+      {seriesName ? (
+        <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} style={styles.seriesRow}>
           <Text style={[styles.seriesLink, { color: colors.gray }]}>
-            {seriesDisplay}
+            {seriesName}{seriesSequence ? ` · Book ${seriesSequence}` : ''}
           </Text>
-        </Animated.View>
+        </TouchableOpacity>
       ) : null}
 
       {/* Meta Grid: Duration | Chapters | Year */}
-      <Animated.View entering={FadeIn.duration(300).delay(250)} style={[styles.metaGrid, { borderColor: colors.grayLine }]}>
+      <View style={[styles.metaGrid, { borderColor: colors.grayLine }]}>
         <View style={styles.metaItem}>
           <Text style={[styles.metaLabel, { color: colors.gray }]}>Duration</Text>
           <Text style={[styles.metaValue, { color: colors.black }]}>{formattedDuration}</Text>
@@ -331,10 +363,10 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
           <Text style={[styles.metaLabel, { color: colors.gray }]}>Published</Text>
           <Text style={[styles.metaValue, { color: colors.black }]}>{publishedYear || '—'}</Text>
         </View>
-      </Animated.View>
+      </View>
 
-      {/* Action Buttons: Play + Download */}
-      <Animated.View entering={FadeIn.duration(300).delay(300)} style={styles.actionRow}>
+      {/* Action Buttons: Play + Download (visual-only in preview) */}
+      <View style={styles.actionRow}>
         <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} activeOpacity={0.7}>
           <PlayIcon color={colors.white} size={16} />
           <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>Play</Text>
@@ -343,7 +375,56 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
           <DownloadIcon color={colors.black} size={16} />
           <Text style={[styles.btnText, { color: colors.black }]}>Download</Text>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
+
+      {/* Progress Section */}
+      {(progress > 0 || isFinished) && (
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <View style={styles.progressLeft}>
+              <Text style={[styles.progressLabel, { color: colors.gray }]}>Progress</Text>
+              <Text style={[styles.progressPercent, { color: colors.black }]}>
+                {isFinished ? 'Complete' : `${progressPercent}%`}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.progressBar, { backgroundColor: colors.grayLine }]}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: colors.black }]} />
+          </View>
+          <View style={styles.progressTimes}>
+            <Text style={[styles.timeText, { color: colors.gray }]}>{formatDuration(timeListened)} listened</Text>
+            <Text style={[styles.timeText, { color: colors.gray }]}>{formatDuration(timeRemaining)} remaining</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Description (simplified - no drop cap in preview) */}
+      {description ? (
+        <View style={[styles.descriptionSection, { borderBottomColor: colors.grayLine }]}>
+          <Text
+            style={[styles.descriptionText, { color: colors.black }]}
+            numberOfLines={4}
+          >
+            {description}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Genre Pills */}
+      {genres.length > 0 && (
+        <View style={styles.genreRow}>
+          {genres.map((genre: string, idx: number) => (
+            <TouchableOpacity
+              key={`genre-${idx}`}
+              style={[styles.genrePill, { borderColor: colors.grayLine }]}
+              onPress={() => handleGenrePress(genre)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.genrePillText, { color: colors.gray }]}>{genre}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -513,13 +594,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: scale(8),
     paddingHorizontal: scale(24),
-    paddingBottom: scale(100),
+    paddingBottom: scale(20),
   },
   heroCover: {
     width: scale(320),
     height: scale(320),
     marginBottom: scale(20),
-    shadowColor: '#000',
+    shadowColor: staticColors.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
@@ -530,7 +611,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   coverPlaceholder: {
-    backgroundColor: '#F5A623', // Orange from theme
+    backgroundColor: staticColors.orange,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -541,22 +622,23 @@ const styles = StyleSheet.create({
     letterSpacing: -2,
   },
 
-  // Title - Split headline
+  // Title - Split headline (matches real screen)
   titleContainer: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     marginBottom: scale(12),
   },
   titleLine1: {
     fontSize: scale(28),
-    fontWeight: '700',
     letterSpacing: 0.5,
+    color: staticColors.black,
     textAlign: 'center',
     lineHeight: scale(32),
   },
   titleLine2: {
     fontSize: scale(28),
-    fontWeight: '700',
     letterSpacing: 0.5,
+    color: staticColors.black,
     textAlign: 'center',
     lineHeight: scale(32),
   },
@@ -570,14 +652,19 @@ const styles = StyleSheet.create({
     marginBottom: scale(6),
   },
   bylineText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
+    color: staticColors.gray,
   },
   bylineLink: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
+    color: staticColors.black,
     textDecorationLine: 'underline',
   },
   bylineDot: {
     fontSize: scale(13),
+    color: staticColors.gray,
   },
 
   // Series
@@ -586,16 +673,18 @@ const styles = StyleSheet.create({
   },
   seriesLink: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontStyle: 'italic',
     fontSize: scale(14),
+    fontStyle: 'italic',
+    color: staticColors.gray,
     textDecorationLine: 'underline',
   },
 
-  // Meta Grid - marginTop matches hero paddingBottom from book detail
+  // Meta Grid
   metaGrid: {
     flexDirection: 'row',
     borderTopWidth: 1,
     borderBottomWidth: 1,
+    borderColor: staticColors.grayLine,
     marginTop: scale(20),
     width: '100%',
   },
@@ -610,21 +699,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderLeftWidth: 1,
     borderRightWidth: 1,
+    borderColor: staticColors.grayLine,
   },
   metaLabel: {
     fontSize: scale(9),
     textTransform: 'uppercase',
     letterSpacing: 1.5,
+    color: staticColors.gray,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     marginBottom: scale(4),
   },
   metaValue: {
     fontSize: scale(16),
     fontWeight: '600',
+    color: staticColors.black,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
 
-  // Action Buttons
+  // Action Row
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -639,6 +731,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: scale(8),
+    backgroundColor: staticColors.black,
     paddingVertical: scale(14),
     borderRadius: scale(6),
   },
@@ -650,15 +743,107 @@ const styles = StyleSheet.create({
     gap: scale(8),
     backgroundColor: 'transparent',
     borderWidth: 1,
+    borderColor: staticColors.black,
     paddingVertical: scale(14),
     borderRadius: scale(6),
   },
   btnText: {
+    color: staticColors.black,
     fontSize: scale(14),
     fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   btnTextActive: {
+    color: staticColors.white,
+  },
+
+  // Progress Section (matches real screen)
+  progressSection: {
+    paddingVertical: scale(12),
+    width: '100%',
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: scale(8),
+  },
+  progressLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+  },
+  progressLabel: {
+    fontSize: scale(11),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: staticColors.gray,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  progressPercent: {
+    fontSize: scale(11),
     fontWeight: '600',
+    color: staticColors.black,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  progressBar: {
+    height: scale(3),
+    backgroundColor: staticColors.grayLine,
+    borderRadius: scale(2),
+    marginBottom: scale(8),
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: staticColors.black,
+    borderRadius: scale(2),
+  },
+  progressTimes: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeText: {
+    fontSize: scale(10),
+    color: staticColors.gray,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+
+  // Description (simplified - no drop cap in preview)
+  descriptionSection: {
+    paddingTop: scale(24),
+    paddingBottom: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: staticColors.grayLine,
+    width: '100%',
+  },
+  descriptionText: {
+    fontSize: scale(14),
+    lineHeight: scale(22),
+    color: staticColors.black,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    textAlign: 'justify',
+  },
+
+  // Genre Pills
+  genreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
+    marginTop: scale(12),
+    width: '100%',
+    justifyContent: 'flex-start',
+  },
+  genrePill: {
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(6),
+    borderWidth: 1,
+    borderColor: staticColors.grayLine,
+    borderRadius: scale(16),
+  },
+  genrePillText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(11),
+    color: staticColors.gray,
   },
 });
 

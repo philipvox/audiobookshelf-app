@@ -9,16 +9,21 @@
  * - dark: Black background
  *
  * Layouts:
- * - list: Full-width with title/count on top row, author/dots on bottom
- * - grid: Compact square with dots on separate row
+ * - list: Full-width with title + author left, mini spines right
+ * - grid: Compact square with spines on separate row
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
+import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-// MIGRATED: Now using new spine system via adapter
-import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { hashString, SPINE_COLOR_PALETTE } from '@/shared/spine';
+import { getSpineUrl } from '@/core/cache';
+import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { SeriesHeartButton } from '@/shared/components/SeriesHeartButton';
+import { fitToBoundingBox } from '@/features/home/utils/spine/core/dimensions';
+import { SERVER_SPINE_BOX } from '@/features/home/utils/spine/constants';
 
 // Re-export for backwards compatibility
 export const SERIES_DOT_COLORS = SPINE_COLOR_PALETTE;
@@ -33,6 +38,16 @@ export function getBookDotColor(bookId: string): string {
 export function getSeriesColorDots(bookIds: string[], maxDots = 8): string[] {
   return bookIds.slice(0, maxDots).map(getBookDotColor);
 }
+
+// Max height for mini spines in series cards
+const MINI_SPINE_MAX_HEIGHT = scale(108);
+const MINI_SPINE_MAX_WIDTH = scale(36);
+// Fallback aspect ratio when server dimensions aren't cached
+const DEFAULT_SPINE_WIDTH = 80;
+const DEFAULT_SPINE_HEIGHT = 1200;
+// Max combined width for all spines - roughly half the screen minus padding
+const SPINE_GAP = 1;
+const MAX_SPINES_TOTAL_WIDTH = Math.round(Dimensions.get('window').width * 0.5);
 
 export type SeriesCardVariant = 'light' | 'dark';
 export type SeriesCardLayout = 'list' | 'grid';
@@ -50,10 +65,18 @@ export interface SeriesCardProps {
   variant?: SeriesCardVariant;
   /** Layout mode */
   layout?: SeriesCardLayout;
-  /** Maximum color dots to show */
+  /** Maximum spines to show */
   maxDots?: number;
   /** Called when card is pressed */
   onPress?: () => void;
+}
+
+interface SpineItem {
+  id: string;
+  url: string;
+  color: string;
+  width: number;
+  height: number;
 }
 
 export function SeriesCard({
@@ -63,71 +86,125 @@ export function SeriesCard({
   bookIds,
   variant = 'light',
   layout = 'list',
-  maxDots = 8,
+  maxDots = 12,
   onPress,
 }: SeriesCardProps) {
   // Theme-aware colors
   const colors = useSecretLibraryColors();
 
-  // Generate color dots based on book IDs
-  const colorDots = useMemo(() => getSeriesColorDots(bookIds, maxDots), [bookIds, maxDots]);
+  // Read server spine dimensions from cache (same source as home page)
+  const serverDims = useSpineCacheStore((s) => s.serverSpineDimensions);
+
+  // Build spine items with proportional dimensions (same logic as BookshelfView)
+  // Cull spines if combined width exceeds max
+  const spines: SpineItem[] = useMemo(() => {
+    const result: SpineItem[] = [];
+    let totalWidth = 0;
+    const ids = bookIds.slice(0, maxDots);
+
+    for (const id of ids) {
+      const cached = serverDims[id];
+      const srcW = cached?.width ?? DEFAULT_SPINE_WIDTH;
+      const srcH = cached?.height ?? DEFAULT_SPINE_HEIGHT;
+
+      const { width, height } = fitToBoundingBox(
+        srcW, srcH, MINI_SPINE_MAX_WIDTH, MINI_SPINE_MAX_HEIGHT
+      );
+
+      const nextTotal = totalWidth + width + (result.length > 0 ? SPINE_GAP : 0);
+      if (nextTotal > MAX_SPINES_TOTAL_WIDTH) break;
+
+      totalWidth = nextTotal;
+      result.push({
+        id,
+        url: getSpineUrl(id),
+        color: getBookDotColor(id),
+        width,
+        height,
+      });
+    }
+
+    return result;
+  }, [bookIds, maxDots, serverDims]);
 
   const isGrid = layout === 'grid';
 
-  return (
-    <Pressable
-      style={[
-        styles.card,
-        { backgroundColor: colors.white },
-        isGrid && styles.cardGrid,
-      ]}
-      onPress={onPress}
-    >
-      {/* Top row: Title and count */}
-      <View style={styles.topRow}>
-        <Text
-          style={[styles.title, { color: colors.black }]}
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
-        {!isGrid && (
-          <Text style={[styles.count, { color: colors.gray }]}>
-            {bookCount} {bookCount === 1 ? 'book' : 'books'}
+  if (isGrid) {
+    return (
+      <Pressable
+        style={[styles.card, styles.cardGrid, { backgroundColor: colors.white }]}
+        onPress={onPress}
+      >
+        <View style={styles.topRow}>
+          <Text style={[styles.title, { color: colors.black }]} numberOfLines={1}>
+            {name}
           </Text>
-        )}
-      </View>
-
-      {/* Bottom row: Author and dots (or count for grid) */}
-      <View style={styles.bottomRow}>
-        <Text style={[styles.author, { color: colors.gray }]} numberOfLines={1}>
-          {author}
-        </Text>
-        {isGrid ? (
+        </View>
+        <View style={styles.bottomRow}>
+          <Text style={[styles.author, { color: colors.gray }]} numberOfLines={1}>
+            {author}
+          </Text>
           <Text style={[styles.count, { color: colors.gray }]}>{bookCount}</Text>
-        ) : (
-          <View style={styles.dotsContainer}>
-            {colorDots.map((color, index) => (
-              <View
-                key={`${index}-${color}`}
-                style={[styles.dot, { backgroundColor: color }]}
+        </View>
+        <View style={styles.gridSpinesRow}>
+          {spines.map(({ id, url, color, width, height }) => (
+            <View key={id} style={[styles.spineBase, { backgroundColor: color, width, height }]}>
+              <Image
+                source={{ uri: url }}
+                style={styles.spineImage}
+                cachePolicy="memory-disk"
+                contentFit="cover"
               />
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Grid layout: Dots on separate row */}
-      {isGrid && (
-        <View style={styles.gridDotsRow}>
-          {colorDots.map((color, index) => (
-            <View
-              key={`${index}-${color}`}
-              style={[styles.dot, { backgroundColor: color }]}
-            />
+            </View>
           ))}
         </View>
-      )}
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      style={[styles.card, { backgroundColor: colors.white }]}
+      onPress={onPress}
+    >
+      <View style={styles.listRow}>
+        {/* Left: Title + Author stacked */}
+        <View style={styles.listLeft}>
+          <Text style={[styles.title, { color: colors.black }]} numberOfLines={2}>
+            {name}
+          </Text>
+          <View style={styles.authorRow}>
+            <Text style={[styles.author, { color: colors.gray }]} numberOfLines={1}>
+              {author}
+            </Text>
+            <Text style={[styles.countInline, { color: colors.gray }]}>
+              {' \u00B7 '}{bookCount}
+            </Text>
+          </View>
+          <View style={styles.heartRow}>
+            <SeriesHeartButton
+              seriesName={name}
+              size={14}
+              activeColor={colors.gold}
+              inactiveColor={colors.gray}
+            />
+          </View>
+        </View>
+
+        {/* Right: Spines with proportional widths, aligned to bottom */}
+        <View style={styles.spinesContainer}>
+          {spines.map(({ id, url, color, width, height }) => (
+            <View key={id} style={[styles.spineBase, { backgroundColor: color, width, height }]}>
+              <Image
+                source={{ uri: url }}
+                style={styles.spineImage}
+                cachePolicy="memory-disk"
+                contentFit="cover"
+              />
+            </View>
+          ))}
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -141,10 +218,23 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
   },
-  topRow: {
+  // List layout: horizontal row with left text + right spines
+  listRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  listLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  authorRow: {
+    flexDirection: 'row',
     alignItems: 'baseline',
+    marginTop: 6,
+  },
+  // Grid layout rows
+  topRow: {
     marginBottom: 10,
   },
   bottomRow: {
@@ -155,9 +245,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: secretLibraryFonts.playfair.regular,
     fontSize: scale(17),
-    lineHeight: scale(17) * 1.2,
-    flex: 1,
-    marginRight: 12,
+    lineHeight: scale(17) * 1.3,
   },
   count: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
@@ -165,24 +253,37 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  countInline: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    letterSpacing: 0.5,
+  },
   author: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
     fontSize: scale(9),
-    flex: 1,
-    marginRight: 12,
+    flexShrink: 1,
   },
-  dotsContainer: {
+  heartRow: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  spinesContainer: {
     flexDirection: 'row',
-    gap: 3,
+    alignItems: 'flex-end',
+    gap: 1,
   },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
+  spineBase: {
+    borderRadius: 1,
+    overflow: 'hidden',
   },
-  gridDotsRow: {
+  spineImage: {
+    width: '100%',
+    height: '100%',
+  },
+  gridSpinesRow: {
     flexDirection: 'row',
-    gap: 3,
+    alignItems: 'flex-end',
+    gap: 1,
     marginTop: 10,
   },
 });

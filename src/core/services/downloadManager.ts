@@ -119,7 +119,10 @@ class DownloadManager {
 
   // Throttle notifications to avoid excessive UI updates
   private lastNotifyTime = 0;
-  private readonly NOTIFY_THROTTLE_MS = 500; // Notify UI every 500ms max
+  private readonly NOTIFY_THROTTLE_MS = 200; // Reduced from 500ms for smoother progress
+
+  // Cache for throttled progress updates (avoids SQLite query on every update)
+  private cachedDownloadTasks: DownloadTask[] = [];
 
   // Directory for downloaded files
   private readonly DOWNLOAD_DIR = `${FileSystem.documentDirectory}audiobooks/`;
@@ -143,14 +146,9 @@ class DownloadManager {
       await this.cleanOrphanDirectories();
     }
 
-    // Subscribe to network changes
-    this.previousCanDownload = networkMonitor.canDownload();
-    this.networkUnsubscribe = networkMonitor.subscribe((state) => {
-      this.handleNetworkChange(state);
-    });
-    log(`Network monitoring enabled, canDownload: ${this.previousCanDownload}`);
-
     // Clear any stuck downloads from previous session
+    // NOTE: Must happen BEFORE network subscription to prevent
+    // network change events from queuing downloads in invalid state
     // (active downloads in memory don't persist across app restarts)
     // If they have resumable state, keep progress for byte-level resume
     const downloading = await sqliteCache.getDownloadsByStatus('downloading');
@@ -180,6 +178,13 @@ class DownloadManager {
 
     // Resume any paused downloads
     await this.resumePausedDownloads();
+
+    // Subscribe to network changes (AFTER stuck downloads processed)
+    this.previousCanDownload = networkMonitor.canDownload();
+    this.networkUnsubscribe = networkMonitor.subscribe((state) => {
+      this.handleNetworkChange(state);
+    });
+    log(`Network monitoring enabled, canDownload: ${this.previousCanDownload}`);
 
     // Start processing the queue
     log('Starting queue processing...');
@@ -425,6 +430,7 @@ class DownloadManager {
         downloadedAt: existingDownload.downloadedAt,
         error: null,
         userPaused: true, // User explicitly paused - don't auto-resume
+        resumableState: existingDownload.resumableState, // Preserve until we update with new state
       });
 
       // Remove from queue if pending
@@ -434,9 +440,38 @@ class DownloadManager {
     // NOW pause the actual download (after DB is updated)
     const download = this.activeDownloads.get(itemId);
     if (download) {
-      await download.pauseAsync();
+      let pauseState: FileSystem.DownloadPauseState | undefined;
+
+      // Try to pause and get resume state
+      try {
+        pauseState = await download.pauseAsync();
+        log(`Download paused, got resume state: fileUri=${pauseState?.fileUri}`);
+      } catch (err) {
+        logWarn(`pauseAsync() failed:`, err);
+        // Try to at least get savable state
+        try {
+          pauseState = await download.savable();
+        } catch {
+          // Ignore
+        }
+      }
+
+      // Save the resume state so we can continue later
+      if (pauseState) {
+        try {
+          await sqliteCache.updateDownloadResumableState(itemId, JSON.stringify(pauseState));
+          log(`Saved resume state for later`);
+        } catch (err) {
+          logWarn(`Failed to save resume state:`, err);
+        }
+      } else {
+        logWarn(`No resume state available - will need to restart on resume`);
+      }
+
       this.activeDownloads.delete(itemId);
       log(`Download paused: ${itemId}`);
+    } else {
+      log(`No active download found for ${itemId} - already paused or not started`);
     }
 
     if (existingDownload && (existingDownload.status === 'downloading' || existingDownload.status === 'pending')) {
@@ -454,24 +489,45 @@ class DownloadManager {
 
     const download = await sqliteCache.getDownload(itemId);
     if (download?.status === 'paused') {
-      log(`Current progress: ${(download.progress * 100).toFixed(1)}%`);
+      const hasResumeState = !!download.resumableState;
+      log(`Resuming paused download, hasResumeState: ${hasResumeState}, progress: ${(download.progress * 100).toFixed(1)}%`);
+
+      // Keep partial files and resume state - we'll continue from where we left off
       await sqliteCache.setDownload({
         ...download,
         status: 'pending',
-        userPaused: false, // Clear user pause flag on resume
+        userPaused: false,
+        // Keep progress and resumableState intact
       });
       await sqliteCache.addToDownloadQueue(itemId, 10); // High priority for resumed
       log(`Added to queue with high priority`);
+      this.notifyListeners(); // Update UI immediately
       this.processQueue();
     } else if (download?.status === 'error') {
-      log(`Retrying failed download...`);
+      log(`Retrying failed download - will restart fresh`);
+
+      // For errors, delete partial files and start fresh
+      try {
+        const destDir = this.getLocalPath(itemId);
+        const dirInfo = await FileSystem.getInfoAsync(destDir);
+        if (dirInfo.exists) {
+          await FileSystem.deleteAsync(destDir, { idempotent: true });
+          log(`Deleted partial download directory for fresh start`);
+        }
+      } catch (err) {
+        logWarn(`Failed to delete partial files:`, err);
+      }
+
       await sqliteCache.setDownload({
         ...download,
         status: 'pending',
+        progress: 0,
         error: null,
-        userPaused: false, // Clear user pause flag on retry
+        resumableState: null,
+        userPaused: false,
       });
       await sqliteCache.addToDownloadQueue(itemId, 10);
+      this.notifyListeners(); // Update UI immediately
       this.processQueue();
     } else {
       logWarn(`Cannot resume - download status: ${download?.status || 'not found'}`);
@@ -866,7 +922,7 @@ class DownloadManager {
   }
 
   /**
-   * Download a single file with retry logic and byte-level resume support
+   * Download a single file with retry logic (no resume - always starts fresh)
    */
   private async downloadFileWithRetry(
     url: string,
@@ -880,37 +936,42 @@ class DownloadManager {
     savedResumeState?: string | null
   ): Promise<FileSystem.FileSystemDownloadResult> {
     let lastError: Error | null = null;
-    let currentResumeData: string | undefined; // Just the resumeData string, not full state
-    let existingBytes = 0;
+    let currentResumeData: string | undefined;
 
-    // Parse saved state if available and check existing file size
+    // Parse saved resume state if available
     if (savedResumeState) {
       try {
         const parsedState: FileSystem.DownloadPauseState = JSON.parse(savedResumeState);
-        currentResumeData = parsedState.resumeData; // Extract just the resumeData string
-        // Check how many bytes already downloaded by checking file on disk
         const fileInfo = await FileSystem.getInfoAsync(destPath);
-        if (fileInfo.exists && fileInfo.size) {
-          existingBytes = fileInfo.size;
+        if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+          currentResumeData = parsedState.resumeData;
+          log(`Will resume from ${formatBytes(fileInfo.size)} on disk`);
+        } else {
+          log(`Resume state exists but file is empty/missing, starting fresh`);
         }
-        log(`Resuming from saved state (${formatBytes(existingBytes)} already on disk)`);
       } catch {
-        log('Failed to parse saved resume state, starting fresh');
+        log('Failed to parse resume state, starting fresh');
       }
     }
 
-    logVerbose(`Downloading file ${fileIndex + 1}/${totalFiles}`);
-    logVerbose(`URL: ${url}`);
-    logVerbose(`Destination: ${destPath}`);
+    log(`Downloading file ${fileIndex + 1}/${totalFiles}`);
+    log(`URL: ${url}`);
+    log(`Destination: ${destPath}`);
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       let waitingInterval: ReturnType<typeof setInterval> | undefined;
-      let stateSaveInterval: ReturnType<typeof setInterval> | undefined;
       let download: FileSystem.DownloadResumable | null = null;
 
       try {
         if (attempt > 0) {
           log(`Retry attempt ${attempt + 1}/${maxRetries} for file ${fileIndex + 1}...`);
+          // On retry, delete partial file and clear resume data
+          currentResumeData = undefined;
+          try {
+            await FileSystem.deleteAsync(destPath, { idempotent: true });
+          } catch {
+            // Ignore
+          }
         }
 
         // Create download with resume data if available
@@ -925,28 +986,12 @@ class DownloadManager {
           (downloadProgress) => {
             onProgress(downloadProgress.totalBytesWritten);
           },
-          currentResumeData // Pass resume data string for resume
+          currentResumeData // Pass resume data for continuation
         );
 
         this.activeDownloads.set(itemId, download);
 
-        // Save download state periodically (every 10 seconds) for resume on crash/restart
-        stateSaveInterval = setInterval(async () => {
-          if (download) {
-            try {
-              const state = await download.savable();
-              if (state) {
-                await sqliteCache.updateDownloadResumableState(itemId, JSON.stringify(state));
-                logVerbose(`Saved download state`);
-              }
-            } catch {
-              // Ignore save errors - not critical
-            }
-          }
-        }, 10000);
-
         // Create a timeout promise - 5 minutes for uncached files
-        // The server may need to fetch from origin first
         const timeoutMs = 5 * 60 * 1000; // 5 minutes per file
         const isResuming = !!currentResumeData;
         log(`${isResuming ? 'Resuming' : 'Starting'} download with ${timeoutMs / 1000}s timeout...`);
@@ -959,7 +1004,7 @@ class DownloadManager {
           log(`Still waiting for download to start... (${elapsed}s elapsed, server may be caching from origin)`);
         }, 30000);
 
-        // Use resumeAsync if we have saved resume data, otherwise downloadAsync
+        // Use resumeAsync if we have resume data, otherwise downloadAsync
         const downloadPromise = currentResumeData
           ? download.resumeAsync()
           : download.downloadAsync();
@@ -970,7 +1015,6 @@ class DownloadManager {
 
         const result = await Promise.race([downloadPromise, timeoutPromise]);
         clearInterval(waitingInterval);
-        clearInterval(stateSaveInterval);
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (!result) {
@@ -983,33 +1027,24 @@ class DownloadManager {
           throw new Error('Download returned null');
         }
 
+        log(`File ${fileIndex + 1}/${totalFiles} downloaded in ${elapsed}s`);
+        log(`Result: status=${result.status}, uri=${result.uri}`);
+
+        // Verify file actually exists after download
+        const postDownloadCheck = await FileSystem.getInfoAsync(destPath);
+        if (!postDownloadCheck.exists) {
+          logError(`Download reported success but file doesn't exist at ${destPath}`);
+          logError(`Result URI was: ${result.uri}`);
+          throw new Error(`Download succeeded but file not found at expected path`);
+        }
+        log(`Verified file exists: ${formatBytes(postDownloadCheck.size || 0)}`);
+
         // Clear resume state on success
         await sqliteCache.updateDownloadResumableState(itemId, null);
-
-        log(`File ${fileIndex + 1}/${totalFiles} downloaded in ${elapsed}s`);
-        logVerbose(`Result status: ${result.status}, URI: ${result.uri}`);
 
         return result;
       } catch (error) {
         if (waitingInterval) clearInterval(waitingInterval);
-        if (stateSaveInterval) clearInterval(stateSaveInterval);
-
-        // Save current state for resume on next attempt
-        if (download) {
-          try {
-            const state = await download.savable();
-            if (state && state.resumeData) {
-              currentResumeData = state.resumeData; // Extract just the resume data string
-              await sqliteCache.updateDownloadResumableState(itemId, JSON.stringify(state));
-              // Check file size to report progress
-              const fileInfo = await FileSystem.getInfoAsync(destPath);
-              const bytesOnDisk = fileInfo.exists && fileInfo.size ? fileInfo.size : 0;
-              log(`Saved resume state on error (${formatBytes(bytesOnDisk)} on disk)`);
-            }
-          } catch {
-            // Ignore save errors
-          }
-        }
 
         lastError = error instanceof Error ? error : new Error('Download failed');
 
@@ -1049,8 +1084,21 @@ class DownloadManager {
       log(`Creating download directory...`);
       await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
 
-      // Update status to downloading
-      await sqliteCache.updateDownloadProgress(itemId, 0);
+      // Check if we're resuming (has resume state) before resetting progress
+      const downloadRecord = await sqliteCache.getDownload(itemId);
+      const isResuming = !!downloadRecord?.resumableState;
+
+      if (!isResuming) {
+        // Fresh start - reset progress
+        await sqliteCache.updateDownloadProgress(itemId, 0);
+      } else {
+        // Resuming - keep existing progress, just update status
+        log(`Resuming download from ${((downloadRecord?.progress || 0) * 100).toFixed(1)}%`);
+        await sqliteCache.setDownload({
+          ...downloadRecord!,
+          status: 'downloading',
+        });
+      }
       this.notifyListeners();
 
       // Get auth info from apiClient
@@ -1111,7 +1159,7 @@ class DownloadManager {
         logWarn('Failed to check disk space, proceeding with download:', spaceError);
       }
 
-      // Check for saved resume state (for byte-level resume after crash/restart)
+      // Check for saved resume state
       const existingDownload = await sqliteCache.getDownload(itemId);
       let savedResumeState: FileSystem.DownloadPauseState | null = null;
       if (existingDownload?.resumableState) {
@@ -1119,16 +1167,43 @@ class DownloadManager {
           savedResumeState = JSON.parse(existingDownload.resumableState);
           log(`Found saved resume state for file: ${savedResumeState?.fileUri}`);
         } catch {
-          log('Failed to parse saved resume state');
+          log('Failed to parse saved resume state, starting fresh');
         }
+      }
+
+      // Calculate already downloaded bytes by checking existing files
+      let alreadyDownloadedBytes = 0;
+      let alreadyDownloadedFiles = 0;
+      for (let idx = 0; idx < audioFiles.length; idx++) {
+        const file = audioFiles[idx];
+        const ext = file.metadata?.ext || '.m4a';
+        const filePath = `${destDir}${idx.toString().padStart(3, '0')}_${file.ino}${ext}`;
+        const expectedFileSize = file.metadata?.size || 0;
+
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(filePath);
+          if (fileInfo.exists && fileInfo.size) {
+            alreadyDownloadedBytes += fileInfo.size;
+            // Count as complete if at least 99% downloaded
+            if (fileInfo.size >= expectedFileSize * 0.99) {
+              alreadyDownloadedFiles++;
+            }
+          }
+        } catch {
+          // Ignore errors checking individual files
+        }
+      }
+
+      if (alreadyDownloadedBytes > 0) {
+        log(`Found ${formatBytes(alreadyDownloadedBytes)} already downloaded (${alreadyDownloadedFiles} complete files)`);
       }
 
       // Initialize progress tracking with total size and file counts
       this.progressInfo.set(itemId, {
-        bytesDownloaded: 0,
+        bytesDownloaded: alreadyDownloadedBytes,
         totalBytes: totalSize,
         totalFiles: audioFiles.length,
-        filesDownloaded: 0,
+        filesDownloaded: alreadyDownloadedFiles,
       });
 
       // Track integrity verification retries per file (to avoid infinite loops)
@@ -1153,15 +1228,25 @@ class DownloadManager {
           continue;
         }
 
-        // Check if this is the file to resume (matches saved state destination)
+        // Check if this file has resume state
         let resumeStateForThisFile: string | null = null;
         let bytesAlreadyOnDisk = 0;
         if (savedResumeState && savedResumeState.fileUri === destPath) {
-          resumeStateForThisFile = existingDownload?.resumableState || null;
-          // Check actual bytes on disk
+          // This is the file we were downloading when paused
           bytesAlreadyOnDisk = fileInfo.exists && fileInfo.size ? fileInfo.size : 0;
-          log(`Resuming file ${i + 1} from ${formatBytes(bytesAlreadyOnDisk)} (${Math.round(bytesAlreadyOnDisk / fileSize * 100)}%)`);
-          downloadedSize += bytesAlreadyOnDisk; // Count already downloaded bytes
+          if (bytesAlreadyOnDisk > 0) {
+            resumeStateForThisFile = existingDownload?.resumableState || null;
+            log(`Will resume file ${i + 1} from ${formatBytes(bytesAlreadyOnDisk)} (${Math.round(bytesAlreadyOnDisk / fileSize * 100)}%)`);
+            downloadedSize += bytesAlreadyOnDisk; // Count already downloaded bytes
+          } else {
+            // Resume state exists but file is empty/missing - clear it
+            log(`Resume state exists but file is empty, starting fresh`);
+            await sqliteCache.updateDownloadResumableState(itemId, null);
+          }
+        } else if (fileInfo.exists && !savedResumeState) {
+          // Partial file but no resume state - delete and start fresh
+          log(`Deleting partial file (no resume state)...`);
+          await FileSystem.deleteAsync(destPath, { idempotent: true });
         }
 
         log(`───────────────────────────────────────────────────────`);
@@ -1196,16 +1281,21 @@ class DownloadManager {
             this.updateProgress(itemId, Math.min(overallProgress, 0.99), currentBytesDownloaded, totalSize);
           },
           3, // maxRetries
-          resumeStateForThisFile // Pass saved resume state if available
+          resumeStateForThisFile // Pass resume state if available
         );
 
-        // Only add remaining file size if we didn't already count resumed bytes
-        if (!resumeStateForThisFile) {
-          downloadedSize += fileSize;
-        } else {
-          // Add the portion that wasn't already counted (fileSize - bytesAlreadyOnDisk)
+        // Calculate bytes to add based on whether we resumed
+        if (resumeStateForThisFile) {
+          // Add only the remaining portion
           downloadedSize += Math.max(0, fileSize - bytesAlreadyOnDisk);
+        } else {
+          downloadedSize += fileSize;
         }
+
+        // Check actual file size before integrity verification
+        const postDownloadInfo = await FileSystem.getInfoAsync(destPath);
+        const actualSize = postDownloadInfo.exists && postDownloadInfo.size ? postDownloadInfo.size : 0;
+        log(`File ${i + 1} download complete: actual=${formatBytes(actualSize)}, expected=${formatBytes(fileSize)}`);
 
         // Verify file integrity after download
         log(`Verifying file ${i + 1} integrity...`);
@@ -1234,18 +1324,24 @@ class DownloadManager {
             throw new Error(`File integrity verification failed after ${MAX_INTEGRITY_RETRIES} retries: ${summary}`);
           }
 
-          // Delete corrupted file and retry
+          // Delete corrupted file for fresh retry
           try {
             await FileSystem.deleteAsync(destPath, { idempotent: true });
-            log(`Deleted corrupted file, retrying download...`);
+            log(`Deleted corrupted file`);
           } catch {
             // Ignore deletion errors
           }
+
+          // Clear resume state so retry downloads fresh
+          await sqliteCache.updateDownloadResumableState(itemId, null);
+          savedResumeState = null;
+          resumeStateForThisFile = null;
 
           // Track retry count and retry this file
           integrityRetries.set(i, retryCount + 1);
           downloadedSize -= fileSize; // Undo the size addition
           i--; // Decrement to retry same index after loop increment
+          log(`Retrying file ${i + 2} download fresh...`);
           continue;
         }
 
@@ -1391,19 +1487,52 @@ class DownloadManager {
       filesDownloaded: existing?.filesDownloaded ?? 0,
     });
 
-    await sqliteCache.updateDownloadProgress(itemId, progress);
+    // Write progress to SQLite (but don't await to avoid blocking progress callback)
+    sqliteCache.updateDownloadProgress(itemId, progress).catch((err) => {
+      logWarn(`Failed to persist progress:`, err);
+    });
 
     // Notify progress listeners (for useDownloadProgress hook)
     for (const listener of this.progressListeners) {
       listener(itemId, progress, bytesDownloaded, totalBytes);
     }
 
-    // Throttled notification to main listeners (for useDownloadStatus hook)
-    // This ensures UI components like BookCard update during downloads
+    // Throttled notification to main listeners using cached data
+    // This avoids expensive SQLite query on every progress update
     const now = Date.now();
     if (now - this.lastNotifyTime >= this.NOTIFY_THROTTLE_MS) {
       this.lastNotifyTime = now;
-      this.notifyListeners();
+      // Update cached task with current progress (fast, no SQLite)
+      this.updateCachedTask(itemId, progress, bytesDownloaded, totalBytes);
+      // Notify listeners with cached data
+      for (const listener of this.listeners) {
+        listener(this.cachedDownloadTasks);
+      }
+    }
+  }
+
+  /**
+   * Update a single task in the cache without querying SQLite
+   */
+  private updateCachedTask(itemId: string, progress: number, bytesDownloaded: number, totalBytes: number): void {
+    const idx = this.cachedDownloadTasks.findIndex(t => t.itemId === itemId);
+    if (idx >= 0) {
+      this.cachedDownloadTasks[idx] = {
+        ...this.cachedDownloadTasks[idx],
+        progress,
+        bytesDownloaded,
+        totalBytes,
+        status: 'downloading',
+      };
+    } else {
+      // Task not in cache yet, add it
+      this.cachedDownloadTasks.push({
+        itemId,
+        status: 'downloading',
+        progress,
+        bytesDownloaded,
+        totalBytes,
+      });
     }
   }
 
@@ -1504,6 +1633,8 @@ class DownloadManager {
 
   private async notifyListeners(): Promise<void> {
     const downloads = await this.getAllDownloads();
+    // Update cache with fresh data from SQLite
+    this.cachedDownloadTasks = downloads;
     for (const listener of this.listeners) {
       listener(downloads);
     }

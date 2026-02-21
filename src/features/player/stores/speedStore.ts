@@ -104,6 +104,12 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
     // =========================================================================
 
     setPlaybackRate: async (rate: number, bookId?: string) => {
+      // Fix MEDIUM: Validate rate before setting
+      if (!Number.isFinite(rate) || rate < 0.25 || rate > 4.0) {
+        log.warn(`Invalid playback rate: ${rate}, ignoring`);
+        return;
+      }
+
       const { bookSpeedMap } = get();
 
       log.debug(`setPlaybackRate: rate=${rate}, bookId=${bookId || 'none'}`);
@@ -115,7 +121,10 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
       // Always persist the active playback rate for app restart recovery
       try {
         await AsyncStorage.setItem(ACTIVE_PLAYBACK_RATE_KEY, rate.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #2: Log storage errors
+        log.debug('Failed to persist active playback rate:', err);
+      }
 
       // Save per-book speed if a book ID is provided
       if (bookId) {
@@ -134,10 +143,18 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
     },
 
     setGlobalDefaultRate: async (rate: number) => {
+      // Fix MEDIUM: Validate rate before setting
+      if (!Number.isFinite(rate) || rate < 0.25 || rate > 4.0) {
+        log.warn(`Invalid global default rate: ${rate}, ignoring`);
+        return;
+      }
       set({ globalDefaultRate: rate });
       try {
         await AsyncStorage.setItem(GLOBAL_DEFAULT_RATE_KEY, rate.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #2: Log storage errors
+        log.debug('Failed to persist global default rate:', err);
+      }
     },
 
     getBookSpeed: (bookId: string) => {
@@ -153,7 +170,10 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
       set({ playbackRate: bookSpeed });
 
       if (bookSpeed !== 1.0) {
-        await audioService.setPlaybackRate(bookSpeed).catch(() => {});
+        await audioService.setPlaybackRate(bookSpeed).catch((err) => {
+          // Log but don't throw - speed change failure shouldn't block playback
+          console.warn('[SpeedStore] Failed to apply playback rate:', bookSpeed, err);
+        });
       }
 
       return bookSpeed;
@@ -174,21 +194,37 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
         ]);
 
         const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
-        const globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
+        // Fix HIGH: Validate parsed rate is within reasonable bounds
+        let globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
+        if (!Number.isFinite(globalDefaultRate) || globalDefaultRate < 0.25 || globalDefaultRate > 4.0) {
+          log.warn(`Invalid globalDefaultRate: ${globalDefaultRate}, resetting to 1.0`);
+          globalDefaultRate = 1.0;
+        }
         const speedPresets = speedPresetsStr ? JSON.parse(speedPresetsStr) : [];
 
         // Restore playback rate from active rate if available
         let playbackRate = globalDefaultRate;
         if (activePlaybackRateStr) {
-          playbackRate = parseFloat(activePlaybackRateStr);
-          log.debug(`Restored active playback rate: ${playbackRate}x`);
+          const parsedRate = parseFloat(activePlaybackRateStr);
+          // Fix HIGH: Validate parsed rate is valid
+          if (Number.isFinite(parsedRate) && parsedRate >= 0.25 && parsedRate <= 4.0) {
+            playbackRate = parsedRate;
+            log.debug(`Restored active playback rate: ${playbackRate}x`);
+          } else {
+            log.warn(`Invalid activePlaybackRate: ${parsedRate}, using default`);
+          }
         }
 
-        // Apply the restored rate to audioService immediately
+        // Best-effort: Try to apply rate to audioService if it's ready
+        // This won't work during app startup, but the rate will be applied when book loads
+        // via applyBookSpeed() which is called during loadBook
         if (playbackRate !== 1.0) {
-          log.debug(`Applying restored playback rate to audioService: ${playbackRate}x`);
-          audioService.setPlaybackRate(playbackRate).catch(() => {
-            // Audio service may not be loaded yet - rate will be applied when book loads
+          log.debug(`Attempting to apply restored playback rate: ${playbackRate}x`);
+          // Note: This will likely fail during app startup since audio isn't loaded yet
+          // The rate is stored in state and will be properly applied in applyBookSpeed()
+          audioService.setPlaybackRate(playbackRate).catch((err) => {
+            // Expected during startup - audio service not ready, rate will be applied later
+            log.debug(`Rate application deferred (expected during startup):`, err);
           });
         }
 
@@ -205,6 +241,12 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
     },
 
     saveSpeedPreset: async (speed: number) => {
+      // Fix MEDIUM: Validate speed before saving
+      if (!Number.isFinite(speed) || speed < 0.25 || speed > 4.0) {
+        log.warn(`Invalid speed preset: ${speed}, ignoring`);
+        return;
+      }
+
       const { speedPresets } = get();
       // Round to 2 decimal places
       const roundedSpeed = Math.round(speed * 100) / 100;

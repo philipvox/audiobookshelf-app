@@ -1,7 +1,7 @@
 /**
  * src/features/profile/screens/AppearanceSettingsScreen.tsx
  *
- * Settings screen for appearance: dark/light mode and accent color theme.
+ * Home screen settings: server spines and series display options.
  */
 
 import React, { useCallback } from 'react';
@@ -18,57 +18,73 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
   ChevronLeft,
-  Moon,
-  Palette,
-  Check,
-  BookOpen,
+  ImageIcon,
+  Library,
   type LucideIcon,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import {
   useTheme,
-  themePresets,
-  accentThemes,
   scale,
   typography,
   fontWeight,
   spacing,
-  type AccentTheme,
 } from '@/shared/theme';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
+import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 
-// Accent theme options
-const ACCENT_THEMES: AccentTheme[] = ['red', 'electric', 'lime'];
+interface SettingToggleProps {
+  Icon: LucideIcon;
+  label: string;
+  description: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  isLast?: boolean;
+}
+
+function SettingToggle({ Icon, label, description, value, onValueChange, isLast }: SettingToggleProps) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.settingsRow, !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border.default }]}>
+      <View style={styles.rowLeft}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.border.default }]}>
+          <Icon size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
+        </View>
+        <View style={styles.rowContent}>
+          <Text style={[styles.rowLabel, { color: colors.text.primary }]}>{label}</Text>
+          <Text style={[styles.rowNote, { color: colors.text.tertiary }]}>{description}</Text>
+        </View>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: colors.border.default, true: colors.accent.primary }}
+        thumbColor={colors.text.inverse}
+      />
+    </View>
+  );
+}
 
 export function AppearanceSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const {
-    colors,
-    isDark,
-    accentTheme,
-    setMode,
-    setAccentTheme,
-  } = useTheme();
+  const { colors, isDark } = useTheme();
 
-  // Colored spines setting
-  const useColoredSpines = useSpineCacheStore((state) => state.useColoredSpines);
-  const setUseColoredSpines = useSpineCacheStore((state) => state.setUseColoredSpines);
+  // Server spines setting
+  const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const setUseServerSpines = useSpineCacheStore((state) => state.setUseServerSpines);
 
-  // Toggle dark mode
-  const handleDarkModeToggle = useCallback((value: boolean) => {
-    setMode(value ? 'dark' : 'light');
-  }, [setMode]);
+  // Hide single-book series setting
+  const hideSingleBookSeries = useMyLibraryStore((state) => state.hideSingleBookSeries);
+  const setHideSingleBookSeries = useMyLibraryStore((state) => state.setHideSingleBookSeries);
 
-  // Toggle colored spines
-  const handleColoredSpinesToggle = useCallback((value: boolean) => {
-    setUseColoredSpines(value);
-  }, [setUseColoredSpines]);
+  const handleServerSpinesToggle = useCallback((value: boolean) => {
+    setUseServerSpines(value);
+  }, [setUseServerSpines]);
 
-  // Select accent theme
-  const handleAccentSelect = useCallback((theme: AccentTheme) => {
-    setAccentTheme(theme);
-  }, [setAccentTheme]);
+  const handleHideSingleSeriesToggle = useCallback((value: boolean) => {
+    setHideSingleBookSeries(value);
+  }, [setHideSingleBookSeries]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.secondary }]}>
@@ -83,7 +99,7 @@ export function AppearanceSettingsScreen() {
         >
           <ChevronLeft size={scale(24)} color={colors.text.primary} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Appearance</Text>
+        <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Spine Appearance</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -92,111 +108,34 @@ export function AppearanceSettingsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Theme Section */}
+        {/* Display Options */}
         <View style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: colors.text.tertiary }]}>THEME</Text>
+          <Text style={[styles.sectionHeader, { color: colors.text.tertiary }]}>DISPLAY OPTIONS</Text>
           <View style={[styles.sectionCard, { backgroundColor: colors.surface.card }]}>
-            <View style={[styles.settingsRow, { borderBottomColor: colors.border.default }]}>
-              <View style={styles.rowLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: colors.border.default }]}>
-                  <Moon size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
-                </View>
-                <View style={styles.rowContent}>
-                  <Text style={[styles.rowLabel, { color: colors.text.primary }]}>Dark Mode</Text>
-                </View>
-              </View>
-              <Switch
-                value={isDark}
-                onValueChange={handleDarkModeToggle}
-                trackColor={{ false: colors.border.default, true: colors.accent.primary }}
-                thumbColor={colors.text.inverse}
-              />
-            </View>
-            <View style={[styles.settingsRow, { borderBottomWidth: 0 }]}>
-              <View style={styles.rowLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: colors.border.default }]}>
-                  <BookOpen size={scale(18)} color={colors.text.secondary} strokeWidth={2} />
-                </View>
-                <View style={styles.rowContent}>
-                  <Text style={[styles.rowLabel, { color: colors.text.primary }]}>Colored Spines</Text>
-                  <Text style={[styles.rowNote, { color: colors.text.tertiary }]}>Genre-based book colors</Text>
-                </View>
-              </View>
-              <Switch
-                value={useColoredSpines}
-                onValueChange={handleColoredSpinesToggle}
-                trackColor={{ false: colors.border.default, true: colors.accent.primary }}
-                thumbColor={colors.text.inverse}
-              />
-            </View>
+            <SettingToggle
+              Icon={ImageIcon}
+              label="Server Spines"
+              description="Use pre-generated book spine images from your server"
+              value={useServerSpines}
+              onValueChange={handleServerSpinesToggle}
+            />
+            <SettingToggle
+              Icon={Library}
+              label="Hide Single-Book Series"
+              description="Don't show series that only have one book"
+              value={hideSingleBookSeries}
+              onValueChange={handleHideSingleSeriesToggle}
+              isLast
+            />
           </View>
         </View>
 
-        {/* Accent Color Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: colors.text.tertiary }]}>ACCENT COLOR</Text>
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface.card }]}>
-            {ACCENT_THEMES.map((theme, index) => {
-              const preset = themePresets[theme];
-              const themeAccent = accentThemes[theme];
-              const isSelected = accentTheme === theme;
-              const isLast = index === ACCENT_THEMES.length - 1;
-
-              return (
-                <TouchableOpacity
-                  key={theme}
-                  style={[
-                    styles.accentRow,
-                    !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border.default },
-                  ]}
-                  onPress={() => handleAccentSelect(theme)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.rowLeft}>
-                    {/* Color swatch */}
-                    <View
-                      style={[
-                        styles.colorSwatch,
-                        { backgroundColor: themeAccent.primary },
-                      ]}
-                    />
-                    <View style={styles.rowContent}>
-                      <Text style={[styles.rowLabel, { color: colors.text.primary }]}>{preset.name}</Text>
-                      <Text style={[styles.rowNote, { color: colors.text.tertiary }]}>{preset.description}</Text>
-                    </View>
-                  </View>
-                  {/* Selection indicator */}
-                  <View style={[
-                    styles.radioOuter,
-                    { borderColor: isSelected ? colors.accent.primary : colors.border.default },
-                  ]}>
-                    {isSelected && (
-                      <View style={[styles.radioInner, { backgroundColor: colors.accent.primary }]} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Preview Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: colors.text.tertiary }]}>PREVIEW</Text>
-          <View style={[styles.previewCard, { backgroundColor: colors.surface.card }]}>
-            <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: colors.text.secondary }]}>Primary</Text>
-              <View style={[styles.previewSwatch, { backgroundColor: colors.accent.primary }]} />
-            </View>
-            <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: colors.text.secondary }]}>Dark</Text>
-              <View style={[styles.previewSwatch, { backgroundColor: colors.accent.primaryDark }]} />
-            </View>
-            <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: colors.text.secondary }]}>Light</Text>
-              <View style={[styles.previewSwatch, { backgroundColor: colors.accent.primaryLight }]} />
-            </View>
-          </View>
+        {/* Info */}
+        <View style={styles.infoSection}>
+          <Text style={[styles.infoText, { color: colors.text.tertiary }]}>
+            Server spines require your Audiobookshelf server to have pre-generated spine images.
+            When enabled, books with available spine images will display those instead of procedurally generated ones.
+          </Text>
         </View>
       </ScrollView>
     </View>
@@ -254,14 +193,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: scale(14),
     paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-  },
-  accentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: scale(16),
-    paddingHorizontal: spacing.lg,
   },
   rowLeft: {
     flexDirection: 'row',
@@ -275,14 +206,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  colorSwatch: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(8),
-  },
   rowContent: {
     flex: 1,
     marginLeft: spacing.md,
+    marginRight: spacing.md,
   },
   rowLabel: {
     ...typography.headlineMedium,
@@ -292,38 +219,11 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     marginTop: scale(2),
   },
-  // Radio button styles
-  radioOuter: {
-    width: scale(22),
-    height: scale(22),
-    borderRadius: scale(11),
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
+  infoSection: {
+    marginHorizontal: spacing.xl,
   },
-  radioInner: {
-    width: scale(12),
-    height: scale(12),
-    borderRadius: scale(6),
-  },
-  // Preview section
-  previewCard: {
-    marginHorizontal: spacing.lg,
-    borderRadius: scale(12),
-    padding: spacing.lg,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  previewLabel: {
-    ...typography.bodyMedium,
-  },
-  previewSwatch: {
-    width: scale(60),
-    height: scale(28),
-    borderRadius: scale(6),
+  infoText: {
+    ...typography.bodySmall,
+    lineHeight: scale(18),
   },
 });

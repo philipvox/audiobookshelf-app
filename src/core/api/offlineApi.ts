@@ -9,7 +9,7 @@ import { syncQueue } from '@/core/services/syncQueue';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { OfflineError, isNetworkError } from './errors';
 import { userApi } from './endpoints/user';
-import { collectionsApi } from './endpoints/collections';
+import { playlistsApi } from './endpoints/playlists';
 
 // Safe NetInfo import - may not be available in Expo Go
 let NetInfo: typeof import('@react-native-community/netinfo').default | null = null;
@@ -93,48 +93,48 @@ export async function toggleFavoriteOffline(
 /**
  * Offline-aware add to collection
  */
-export async function addToCollectionOffline(
-  collectionId: string,
+export async function addToPlaylistOffline(
+  playlistId: string,
   itemId: string
 ): Promise<void> {
   const online = await isOnline();
 
   if (online) {
     try {
-      await collectionsApi.addItem(collectionId, itemId);
+      await playlistsApi.batchAdd(playlistId, [itemId]);
     } catch (error) {
       if (isNetworkError(error)) {
-        await syncQueue.enqueue('add_to_collection', { collectionId, itemId });
+        await syncQueue.enqueue('add_to_playlist', { playlistId, itemId });
       } else {
         throw error;
       }
     }
   } else {
-    await syncQueue.enqueue('add_to_collection', { collectionId, itemId });
+    await syncQueue.enqueue('add_to_playlist', { playlistId, itemId });
   }
 }
 
 /**
- * Offline-aware remove from collection
+ * Offline-aware remove from playlist
  */
-export async function removeFromCollectionOffline(
-  collectionId: string,
+export async function removeFromPlaylistOffline(
+  playlistId: string,
   itemId: string
 ): Promise<void> {
   const online = await isOnline();
 
   if (online) {
     try {
-      await collectionsApi.removeItem(collectionId, itemId);
+      await playlistsApi.batchRemove(playlistId, [itemId]);
     } catch (error) {
       if (isNetworkError(error)) {
-        await syncQueue.enqueue('remove_from_collection', { collectionId, itemId });
+        await syncQueue.enqueue('remove_from_playlist', { playlistId, itemId });
       } else {
         throw error;
       }
     }
   } else {
-    await syncQueue.enqueue('remove_from_collection', { collectionId, itemId });
+    await syncQueue.enqueue('remove_from_playlist', { playlistId, itemId });
   }
 }
 

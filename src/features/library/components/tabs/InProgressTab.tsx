@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Play } from 'lucide-react-native';
-import { SectionHeader } from '@/features/home/components/SectionHeader';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { LibraryEmptyState } from '../LibraryEmptyState';
 import { FannedSeriesCard } from '../FannedSeriesCard';
 import { BookRow } from '../BookRow';
@@ -47,13 +47,7 @@ export function InProgressTab({
     return [...books].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
   }, [books]);
 
-  if (sortedItems.length === 0) {
-    return <LibraryEmptyState tab="in-progress" onAction={onBrowse} />;
-  }
-  const heroItem = sortedItems[0];
-  const otherItems = sortedItems.slice(1);
-
-  // Group in-progress items by series
+  // Group in-progress items by series (must be before early return to satisfy Rules of Hooks)
   const inProgressSeriesData = useMemo<FannedSeriesCardData[]>(() => {
     const seriesMap = new Map<string, EnrichedBook[]>();
     for (const book of sortedItems) {
@@ -75,6 +69,12 @@ export function InProgressTab({
         };
       });
   }, [sortedItems, getSeries]);
+
+  if (sortedItems.length === 0) {
+    return <LibraryEmptyState tab="in-progress" onAction={onBrowse} />;
+  }
+  const heroItem = sortedItems[0];
+  const otherItems = sortedItems.slice(1);
 
   return (
     <View>

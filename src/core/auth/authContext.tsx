@@ -130,7 +130,9 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
             setVersionCheck(result);
             log.warn('Server version mismatch:', result.message);
           }
-        }).catch(() => {});
+        }).catch((err) => {
+          log.warn('Server version check failed:', err);
+        });
 
         // Start token health monitoring
         tokenHealthService.start();
@@ -175,7 +177,9 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
           setVersionCheck(result);
           log.warn('Server version mismatch:', result.message);
         }
-      }).catch(() => {});
+      }).catch((err) => {
+          log.warn('Server version check failed:', err);
+        });
 
       // Start token health monitoring
       tokenHealthService.start();

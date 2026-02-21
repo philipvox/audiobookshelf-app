@@ -269,6 +269,10 @@ export function AuthorsListScreen() {
 
   const isSearching = searchQuery.trim().length > 0;
 
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
+
   if (!isLoaded) {
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
@@ -416,10 +420,6 @@ export function AuthorsListScreen() {
       )}
     </View>
   );
-
-  const handleLogoPress = useCallback(() => {
-    navigation.navigate('Main', { screen: 'HomeTab' });
-  }, [navigation]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background.primary }]}>

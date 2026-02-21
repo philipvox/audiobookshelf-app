@@ -23,11 +23,11 @@ expo.modules.audionoisymodule.audio-noisy-module-lifecycle-livedata-core-2.6.2-2
 expo.modules.audionoisymodule.audio-noisy-module-fragment-1.5.4-22 /Users/philips/.gradle/caches/8.14.3/transforms/eefd4c11e89429fa98490b3b2fd679ec/transformed/fragment-1.5.4/res
 expo.modules.audionoisymodule.audio-noisy-module-lifecycle-viewmodel-2.6.2-23 /Users/philips/.gradle/caches/8.14.3/transforms/f6704fa21faa5a7c59dc9d95b0cfc65e/transformed/lifecycle-viewmodel-2.6.2/res
 expo.modules.audionoisymodule.audio-noisy-module-lifecycle-livedata-2.6.2-24 /Users/philips/.gradle/caches/8.14.3/transforms/f773881a4ac64da5849726656cf0d359/transformed/lifecycle-livedata-2.6.2/res
-expo.modules.audionoisymodule.audio-noisy-module-pngs-25 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/build/generated/res/pngs/release
-expo.modules.audionoisymodule.audio-noisy-module-resValues-26 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/build/generated/res/resValues/release
-expo.modules.audionoisymodule.audio-noisy-module-mergeReleaseResources-27 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
-expo.modules.audionoisymodule.audio-noisy-module-mergeReleaseResources-28 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
-expo.modules.audionoisymodule.audio-noisy-module-release-29 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/build/intermediates/merged_res/release/mergeReleaseResources
-expo.modules.audionoisymodule.audio-noisy-module-main-30 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/src/main/res
-expo.modules.audionoisymodule.audio-noisy-module-release-31 /Users/philips/Desktop/audiobookshelf-app Backup/modules/audio-noisy-module/android/src/release/res
-expo.modules.audionoisymodule.audio-noisy-module-release-32 /Users/philips/Desktop/audiobookshelf-app Backup/node_modules/expo-modules-core/android/build/intermediates/packaged_res/release/packageReleaseResources
+expo.modules.audionoisymodule.audio-noisy-module-pngs-25 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/build/generated/res/pngs/release
+expo.modules.audionoisymodule.audio-noisy-module-resValues-26 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/build/generated/res/resValues/release
+expo.modules.audionoisymodule.audio-noisy-module-mergeReleaseResources-27 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+expo.modules.audionoisymodule.audio-noisy-module-mergeReleaseResources-28 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+expo.modules.audionoisymodule.audio-noisy-module-release-29 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/build/intermediates/merged_res/release/mergeReleaseResources
+expo.modules.audionoisymodule.audio-noisy-module-main-30 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/src/main/res
+expo.modules.audionoisymodule.audio-noisy-module-release-31 /Users/philips/Desktop/audiobookshelf-app/modules/audio-noisy-module/android/src/release/res
+expo.modules.audionoisymodule.audio-noisy-module-release-32 /Users/philips/Desktop/audiobookshelf-app/node_modules/expo-modules-core/android/build/intermediates/packaged_res/release/packageReleaseResources

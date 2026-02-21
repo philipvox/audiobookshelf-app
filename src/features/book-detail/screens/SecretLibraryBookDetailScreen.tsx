@@ -65,11 +65,7 @@ import {
   secretLibraryColors as staticColors,
   secretLibraryFonts as fonts,
 } from '@/shared/theme/secretLibrary';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
-// MIGRATED: Now using new spine system via adapter
-import { getTypographyForGenres, getSeriesStyle } from '@/features/home/utils/spine/adapter';
+import { useSpineCacheStore, BookSpineVertical, BookSpineVerticalData, useBookRowLayout, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
 import { SeriesSwipeContainer, SeriesNavigationArrows } from '../components/SeriesSwipeContainer';
 
 // =============================================================================
@@ -131,6 +127,29 @@ const ResetIcon = ({ color = '#000', size = 14 }: IconProps) => (
 const BookmarkIcon = ({ color = '#000', size = 14, filled = false }: IconProps & { filled?: boolean }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={2}>
     <Path d="M5 4C5 2.89543 5.89543 2 7 2H17C18.1046 2 19 2.89543 19 4V21C19 21.3746 18.7907 21.7178 18.4576 21.8892C18.1245 22.0606 17.7236 22.0315 17.4188 21.8137L12 17.8619L6.58124 21.8137C6.27642 22.0315 5.87549 22.0606 5.54242 21.8892C5.20935 21.7178 5 21.3746 5 21V4Z" />
+  </Svg>
+);
+
+const LibraryPlusIcon = ({ color = '#000', size = 14 }: IconProps) => (
+  <Svg width={size * 1.5} height={size} viewBox="0 0 36 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+    {/* Library books (shifted left) */}
+    <Path d="m12 6 4 14" />
+    <Path d="M8 6v14" />
+    <Path d="M4 8v12" />
+    <Path d="M0 4v16" />
+    {/* Plus sign (right side, large) */}
+    <Path d="M28 12v0M24 12h8" strokeWidth={3} />
+    <Path d="M28 8v8" strokeWidth={3} />
+  </Svg>
+);
+
+const LibraryCheckIcon = ({ color = '#000', size = 14 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    {/* Library books */}
+    <Path d="m16 6 4 14" />
+    <Path d="M12 6v14" />
+    <Path d="M8 8v12" />
+    <Path d="M4 4v16" />
   </Svg>
 );
 
@@ -317,7 +336,9 @@ export function SecretLibraryBookDetailScreen() {
 
   // Data
   const { book, isLoading, error, refetch } = useBookDetails(bookId);
-  const coverUrl = useCoverUrl(bookId);
+  const coverUrl = useCoverUrl(bookId, { width: 600 });
+  // Tiny placeholder for blur-up effect (~200 bytes loads instantly)
+  const coverPlaceholderUrl = useCoverUrl(bookId, { thumb: true });
 
   // Player state
   const { loadBook, currentBook, isPlaying, play, pause, position, togglePlayer } = usePlayerStore();
@@ -770,8 +791,9 @@ export function SecretLibraryBookDetailScreen() {
                       localCurrentTime > 0 ? localCurrentTime :
                       cachedProgress > 0 ? cachedProgress * duration :
                       serverCurrentTime;
-  // Check both server state and local SQLite for finished status
-  const isFinished = book?.userMediaProgress?.isFinished || progress >= 0.95 || isMarkedFinished;
+  // Local SQLite is the source of truth for finished status
+  // Don't auto-derive from progress >= 0.95 as that prevents "unmark finished" from working
+  const isFinished = isMarkedFinished;
   const timeListened = currentTime;
   const timeRemaining = duration - currentTime;
   const progressPercent = Math.round(progress * 100);
@@ -837,12 +859,11 @@ export function SecretLibraryBookDetailScreen() {
     return getTypographyForGenres(genres, bookId);
   }, [cachedSpineData?.typography, cachedSpineData?.seriesName, cachedSpineData?.genres, metadata?.genres, bookId]);
 
-  // Use spine typography fontFamily directly - it's already platform-specific
-  // (spineCalculations.ts converts to 'System'/'Georgia' on iOS, 'sans-serif'/'serif' on Android)
-  const titleFontFamily = spineTypography.fontFamily || Platform.select({ ios: 'Georgia', android: 'serif' });
-  const titleFontWeight = spineTypography.titleWeight || spineTypography.fontWeight || '500';
-  const titleFontStyle = spineTypography.fontStyle || 'normal';
-  const titleTransform = spineTypography.titleTransform || 'none';
+  // Use standard site font for title (Georgia/serif) instead of variable spine fonts
+  const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
+  const titleFontWeight = '600';
+  const titleFontStyle = 'normal' as const;
+  const titleTransform = 'none';
 
   // Apply text transform
   const displayTitle = useMemo(() => {
@@ -892,8 +913,10 @@ export function SecretLibraryBookDetailScreen() {
         pills={[
           {
             key: 'library',
-            label: isInLibrary ? 'In Library' : 'Add',
-            icon: <BookmarkIcon color={isInLibrary ? colors.white : colors.black} size={10} filled={isInLibrary} />,
+            label: isInLibrary ? 'In Library' : 'Add to Library',
+            icon: isInLibrary
+              ? <LibraryCheckIcon color={colors.white} size={12} />
+              : <LibraryPlusIcon color={colors.black} size={10} />,
             active: isInLibrary,
             onPress: handleLibraryToggle,
           },
@@ -935,7 +958,14 @@ export function SecretLibraryBookDetailScreen() {
           {/* Centered Cover */}
           <View style={styles.heroCover}>
             {coverUrl ? (
-              <Image source={{ uri: coverUrl }} style={styles.coverImage} contentFit="cover" />
+              <Image
+                source={{ uri: coverUrl }}
+                placeholder={coverPlaceholderUrl ? { uri: coverPlaceholderUrl } : undefined}
+                placeholderContentFit="cover"
+                style={styles.coverImage}
+                contentFit="cover"
+                transition={200}
+              />
             ) : (
               <View style={[styles.coverImage, styles.coverPlaceholder]}>
                 <Text style={styles.coverPlaceholderText}>
@@ -1040,7 +1070,7 @@ export function SecretLibraryBookDetailScreen() {
         {/* Action Buttons: Play + Download */}
         <View style={styles.actionRow}>
           {/* Play Button - 30% width */}
-          <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} onPress={handlePlay}>
+          <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} onPress={handlePlay} activeOpacity={0.8}>
             <PlayIcon color={colors.white} size={16} />
             <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>
               {isThisBookPlaying ? 'Pause' : 'Play'}
@@ -1056,6 +1086,7 @@ export function SecretLibraryBookDetailScreen() {
             ]}
             onPress={handleDownload}
             disabled={isDownloaded}
+            activeOpacity={0.8}
           >
             {isDownloaded ? (
               <>
@@ -1063,11 +1094,11 @@ export function SecretLibraryBookDetailScreen() {
                 <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>Downloaded</Text>
               </>
             ) : isPaused ? (
-              <Text style={[styles.btnText, { color: colors.white }]}>Paused - {Math.round(downloadProgress * 100)}%</Text>
+              <Text style={[styles.btnText, { color: colors.white }]}>Paused {Math.round(downloadProgress * 100)}%</Text>
             ) : isDownloading ? (
-              <Text style={[styles.btnText, { color: colors.white }]}>{Math.round(downloadProgress * 100)}% - Tap to pause</Text>
+              <Text style={[styles.btnText, { color: colors.white }]}>Downloading {Math.round(downloadProgress * 100)}%</Text>
             ) : isPending ? (
-              <Text style={[styles.btnText, { color: colors.black }]}>Queued - Tap to cancel</Text>
+              <Text style={[styles.btnText, { color: colors.black }]}>Queued</Text>
             ) : (
               <>
                 <DownloadIcon color={colors.black} size={16} />

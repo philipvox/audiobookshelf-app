@@ -573,6 +573,7 @@ export interface CalculatedDimensions {
 
 export interface BookDimensionInput {
   id: string;
+  title?: string;
   genres?: string[];
   tags?: string[];
   duration?: number; // in seconds
@@ -3021,31 +3022,46 @@ export function getTypographyForGenres(
  */
 export function calculateSpineWidth(
   duration: number | undefined,
-  _genres?: string[]
+  _genres?: string[],
+  title?: string
 ): number {
   // Explicit fallback for missing duration
   if (duration === undefined || duration === null || duration <= 0) {
-    return MEDIAN_WIDTH;  // 40px for unknown duration
+    return MEDIAN_WIDTH;  // 60px for unknown duration
   }
 
   const hours = duration / 3600;
 
-  // Very short content gets minimum width
-  if (hours <= MIN_DURATION_HOURS) {
-    return MIN_WIDTH;
+  // Piecewise scaling formula (matches server spine generation)
+  let baseWidth: number;
+  if (hours < 1) {
+    baseWidth = 32 + (hours * 12);           // 32-44px
+  } else if (hours < 5) {
+    baseWidth = 44 + ((hours - 1) * 6);      // 44-68px
+  } else if (hours < 15) {
+    baseWidth = 68 + ((hours - 5) * 4);      // 68-108px
+  } else if (hours < 40) {
+    baseWidth = 108 + ((hours - 15) * 2.5);  // 108-170px
+  } else {
+    baseWidth = Math.min(220, 170 + ((hours - 40) * 1.2)); // 170-220px
   }
 
-  // Very long content gets maximum width
-  if (hours >= MAX_DURATION_HOURS) {
-    return MAX_WIDTH;
+  // Apply ±18% random variance based on title hash (matches server)
+  if (title) {
+    const titleHash = hashString(title);
+    const varianceFactor = seededRandomFloat(titleHash, 0.82, 1.18); // ±18%
+    baseWidth = baseWidth * varianceFactor;
   }
 
-  // Linear scaling: width grows proportionally with duration
-  // This gives maximum visual differentiation between short and long books
-  const ratio = hours / MAX_DURATION_HOURS;
-  const width = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * ratio;
+  // Minimum width for short titles (≤2 words get 50px minimum)
+  if (title) {
+    const wordCount = title.trim().split(/\s+/).length;
+    if (wordCount <= 2) {
+      baseWidth = Math.max(50, baseWidth);
+    }
+  }
 
-  return Math.round(width);
+  return Math.round(baseWidth);
 }
 
 /**
@@ -3111,9 +3127,10 @@ export function getSpineDimensions(
   bookId: string,
   genres: string[] | undefined,
   duration: number | undefined,
-  seriesName?: string
+  seriesName?: string,
+  title?: string
 ): SpineDimensions {
-  const width = calculateSpineWidth(duration, genres);
+  const width = calculateSpineWidth(duration, genres, title);
   const touchPadding = calculateTouchPadding(width);
 
   // Series books use locked series height
@@ -3555,7 +3572,7 @@ function calculateSeriesWidth(
 ): number {
   // Width is DIRECTLY tied to duration - no genre/series modifiers
   // This ensures a 5-hour book is visibly thinner than a 65-hour book
-  return calculateSpineWidth(book.duration);
+  return calculateSpineWidth(book.duration, undefined, book.title);
 }
 
 /**
@@ -3592,9 +3609,9 @@ export function calculateBookDimensions(book: BookDimensionInput): CalculatedDim
   const heightVariation = seededRandomFloat(seed, profile.heightRange[0], profile.heightRange[1]);
   let baseHeight = Math.round(profile.baseHeight * heightVariation);
 
-  // Width: DIRECTLY from duration (28-70px based on audiobook length)
+  // Width: DIRECTLY from duration (32-220px based on audiobook length)
   // This is the primary driver - genre/tags don't affect width
-  let baseWidth = calculateSpineWidth(book.duration);
+  let baseWidth = calculateSpineWidth(book.duration, undefined, book.title);
 
   // Step 4: Apply tag modifiers (height only - width is duration-driven)
   const allTags = book.tags ?? [];

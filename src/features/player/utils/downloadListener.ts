@@ -7,6 +7,7 @@
 
 import { LibraryItem } from '@/core/types';
 import { clearSmartRewindState } from './smartRewind';
+import { useSeekingStore } from '../stores/seekingStore';
 
 // =============================================================================
 // MODULE-LEVEL STATE
@@ -24,7 +25,6 @@ export interface PlayerStateSnapshot {
   position: number;
   isPlaying: boolean;
   isLoading: boolean;
-  isSeeking: boolean;
   isPlayerVisible: boolean;
 }
 
@@ -104,8 +104,9 @@ export async function setupDownloadCompletionListener(
               return false;
             }
             // Wait if seeking or loading
-            if (currentState.isSeeking || currentState.isLoading) {
-              log(`[DOWNLOAD] Waiting for safe state (isSeeking=${currentState.isSeeking}, isLoading=${currentState.isLoading})`);
+            const isSeeking = useSeekingStore.getState().isSeeking;
+            if (isSeeking || currentState.isLoading) {
+              log(`[DOWNLOAD] Waiting for safe state (isSeeking=${isSeeking}, isLoading=${currentState.isLoading})`);
               await new Promise(resolve => setTimeout(resolve, 200));
               continue;
             }

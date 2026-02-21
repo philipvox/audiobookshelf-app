@@ -25,6 +25,9 @@ const SHAKE_TO_EXTEND_KEY = 'playerShakeToExtend';
 const SLEEP_TIMER_SHAKE_THRESHOLD = 60; // Start shake detection when < 60 seconds remaining
 const SLEEP_TIMER_EXTEND_MINUTES = 15;  // Add 15 minutes on shake
 
+// Fix HIGH: Track timer ID to prevent race conditions when timer expires while being cleared
+let currentTimerId = 0;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -93,19 +96,30 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
     setSleepTimer: (minutes: number, onExpire: () => void) => {
       const { sleepTimerInterval, shakeToExtendEnabled } = get();
 
+      // Fix MEDIUM: Validate timer duration
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        log.warn(`[SleepTimer] Invalid duration: ${minutes} minutes`);
+        return;
+      }
+
+      // Fix HIGH: Increment timer ID to invalidate any in-progress timer callbacks
+      const timerId = ++currentTimerId;
+
       // Import shake detector lazily to avoid circular deps
       import('../services/shakeDetector').then(({ shakeDetector }) => {
         // Stop any existing shake detection
         shakeDetector.stop();
         set({ isShakeDetectionActive: false });
-      }).catch(() => {});
+      }).catch((err) => {
+        log.warn('[SleepTimer] Shake detector stop error:', err);
+      });
 
       if (sleepTimerInterval) {
         clearInterval(sleepTimerInterval);
       }
 
       // Set initial timer value
-      const initialSeconds = minutes * 60;
+      const initialSeconds = Math.floor(minutes * 60); // Ensure integer seconds
       set({ sleepTimer: initialSeconds });
 
       // Track last remaining for warning detection
@@ -114,6 +128,13 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
       // IMPORTANT: Use state-based countdown, not fixed endTime
       // This allows extendSleepTimer to work correctly by updating state
       const interval = setInterval(async () => {
+        // Fix HIGH: Check if this timer is still the active one (prevents race condition)
+        if (timerId !== currentTimerId) {
+          clearInterval(interval);
+          log.debug(`[SleepTimer] Timer ${timerId} superseded by ${currentTimerId}, stopping`);
+          return;
+        }
+
         // Read current timer value from state (allows extensions to work)
         const currentTimer = get().sleepTimer;
         if (currentTimer === null) {
@@ -127,6 +148,12 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
         if (remaining <= 0) {
           clearInterval(interval);
 
+          // Fix HIGH: Double-check timer ID before expiration actions (race condition guard)
+          if (timerId !== currentTimerId) {
+            log.debug(`[SleepTimer] Timer ${timerId} was cleared before expiration`);
+            return;
+          }
+
           log.debug('Sleep timer expired - calling onExpire callback');
 
           // Haptic feedback for timer expiration
@@ -139,7 +166,9 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
           try {
             const { shakeDetector } = await import('../services/shakeDetector');
             shakeDetector.stop();
-          } catch {}
+          } catch (err) {
+            log.warn('[SleepTimer] Shake detector stop error:', err);
+          }
 
           set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
         } else {
@@ -191,7 +220,9 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
       import('../services/shakeDetector').then(({ shakeDetector }) => {
         shakeDetector.stop();
         set({ isShakeDetectionActive: false });
-      }).catch(() => {});
+      }).catch((err) => {
+        log.warn('[SleepTimer] Shake detector stop error:', err);
+      });
 
       // Update the timer - the interval will continue with the new value
       set({ sleepTimer: newRemaining });
@@ -199,6 +230,10 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
 
     clearSleepTimer: () => {
       const { sleepTimerInterval } = get();
+
+      // Fix HIGH: Increment timer ID to invalidate any in-progress callbacks
+      currentTimerId++;
+
       if (sleepTimerInterval) {
         clearInterval(sleepTimerInterval);
       }
@@ -206,7 +241,9 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
       // Stop shake detection
       import('../services/shakeDetector').then(({ shakeDetector }) => {
         shakeDetector.stop();
-      }).catch(() => {});
+      }).catch((err) => {
+        log.warn('[SleepTimer] Shake detector stop error:', err);
+      });
 
       set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
     },
@@ -215,7 +252,10 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
       set({ shakeToExtendEnabled: enabled });
       try {
         await AsyncStorage.setItem(SHAKE_TO_EXTEND_KEY, enabled.toString());
-      } catch {}
+      } catch (err) {
+        // Fix Low #1: Log storage errors
+        log.debug('Failed to persist shake-to-extend setting:', err);
+      }
 
       // If disabling while detection is active, stop it
       if (!enabled) {
@@ -223,7 +263,10 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
           const { shakeDetector } = await import('../services/shakeDetector');
           shakeDetector.stop();
           set({ isShakeDetectionActive: false });
-        } catch {}
+        } catch (err) {
+          // Fix Low #1: Log import/stop errors
+          log.debug('Failed to stop shake detector:', err);
+        }
       }
     },
 
@@ -232,8 +275,9 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
         const value = await AsyncStorage.getItem(SHAKE_TO_EXTEND_KEY);
         const enabled = value !== 'false'; // Default true
         set({ shakeToExtendEnabled: enabled });
-      } catch {
-        // Use default
+      } catch (err) {
+        // Fix Low #1: Log but use default
+        log.debug('Failed to load shake-to-extend setting, using default:', err);
       }
     },
   }))

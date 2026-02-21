@@ -6,7 +6,7 @@
  * Data enrichment is handled by useLibraryData hook.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -21,6 +21,7 @@ import { Search, XCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '@/core/api';
+import { useLibraryCache } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
@@ -97,6 +98,11 @@ export function MyLibraryScreen() {
   console.log(`[MyLibrary] isLoading=${isLoading}, books=${filteredBooks.length}, first3:`,
     filteredBooks.slice(0, 3).map(b => b.title)
   );
+
+  // Load spine manifest on mount to ensure spines render correctly
+  useEffect(() => {
+    useLibraryCache.getState().loadSpineManifest();
+  }, []);
 
   // Handlers
   const handleRefresh = useCallback(async () => {
@@ -242,15 +248,8 @@ export function MyLibraryScreen() {
           />
         );
       case 'completed':
-        return (
-          <CompletedTab
-            books={filteredBooks}
-            onBookPress={handleBookPress}
-            onBookPlay={handlePlayBook}
-            isMarkedFinished={isMarkedFinished}
-            onBrowse={handleBrowse}
-          />
-        );
+        // Handled separately above with its own FlatList for virtualization
+        return null;
       default:
         return (
           <AllBooksTab
@@ -322,31 +321,43 @@ export function MyLibraryScreen() {
       />
 
       {/* Content */}
-      <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {isLoading ? (
-            <View style={styles.skeletonContainer}>
-              <SectionSkeleton />
-              <View style={styles.skeletonRow}>
-                <BookCardSkeleton />
-                <BookCardSkeleton />
-                <BookCardSkeleton />
-              </View>
-            </View>
-          ) : !hasAnyContent ? (
-            <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
-          ) : (
-            renderTabContent()
-          )}
-        </ScrollView>
-      </SkullRefreshControl>
+      {isLoading ? (
+        <View style={styles.skeletonContainer}>
+          <SectionSkeleton />
+          <View style={styles.skeletonRow}>
+            <BookCardSkeleton />
+            <BookCardSkeleton />
+            <BookCardSkeleton />
+          </View>
+        </View>
+      ) : !hasAnyContent ? (
+        <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
+      ) : activeTab === 'completed' ? (
+        // CompletedTab has its own FlatList for virtualization
+        <CompletedTab
+          books={filteredBooks}
+          onBookPress={handleBookPress}
+          onBookPlay={handlePlayBook}
+          isMarkedFinished={isMarkedFinished}
+          onBrowse={handleBrowse}
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+        />
+      ) : (
+        // Other tabs use ScrollView (can be refactored later for virtualization)
+        <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {renderTabContent()}
+          </ScrollView>
+        </SkullRefreshControl>
+      )}
     </View>
   );
 }

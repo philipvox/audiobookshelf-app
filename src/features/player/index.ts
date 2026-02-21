@@ -1,5 +1,15 @@
 export { SecretLibraryPlayerScreen } from './screens/SecretLibraryPlayerScreen';
-export { usePlayerStore, useSleepTimerState, useCurrentChapterIndex, useBookProgress } from './stores/playerStore';
+// Export from stores index (single source of truth architecture)
+export {
+  usePlayerStore,
+  useSleepTimerState,
+  useCurrentChapterIndex,
+  useBookProgress,
+  usePlaybackRate,
+  useIsSeeking,
+  useSeekPosition,
+  useSeekDirection,
+} from './stores';
 export { audioService } from './services/audioService';
 export { backgroundSyncService } from './services/backgroundSyncService';
 export { progressService } from './services/progressService';

@@ -11,6 +11,8 @@ import { useMemo } from 'react';
 import { BookSpineVerticalData } from '../components/BookSpineVertical';
 // MIGRATED: Now using new spine system via adapter
 import { calculateBookDimensions, hashString } from '../utils/spine/adapter';
+import { SERVER_SPINE_BOX, PROCEDURAL_SPINE_BOX } from '../utils/spine/constants';
+import { fitToBoundingBox } from '../utils/spine/core/dimensions';
 import { useSpineCacheStore } from '../stores/spineCache';
 
 // =============================================================================
@@ -29,7 +31,7 @@ export interface BookLayoutInfo {
 export interface UseBookRowLayoutOptions {
   /** Scale factor for dimensions (default: 1) */
   scaleFactor?: number;
-  /** Width multiplier for spine thickness (default: 1) */
+  /** @deprecated Ignored — bounding-box scaling preserves aspect ratio automatically */
   thicknessMultiplier?: number;
   /** Lean angle in degrees (default: 3) */
   leanAngle?: number;
@@ -48,11 +50,23 @@ export interface UseBookRowLayoutOptions {
 // =============================================================================
 
 const DEFAULT_SCALE = 0.95;  // Reduced from 1 to prevent clipping
-const DEFAULT_THICKNESS_MULTIPLIER = 1.1;  // Reduced from 1.22 to prevent over-thickening
 const DEFAULT_LEAN_ANGLE = 3;
 const DEFAULT_MIN_TOUCH_TARGET = 44;
 const DEFAULT_BOOK_GAP = 9;
 const DEFAULT_DURATION = 6 * 60 * 60; // 6 hours
+
+// Duration-based scaling (same curve as BookshelfView)
+// Range: 0.70 (0 hours) to 1.15 (30+ hours), ease-out (sqrt)
+const DURATION_SCALE_MIN = 0.70;
+const DURATION_SCALE_MAX = 1.15;
+const DURATION_MAX_HOURS = 30;
+
+function getDurationScale(durationSeconds: number): number {
+  const hours = Math.max(0, durationSeconds / 3600);
+  const clampedHours = Math.min(hours, DURATION_MAX_HOURS);
+  const t = Math.sqrt(clampedHours / DURATION_MAX_HOURS);
+  return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+}
 
 // =============================================================================
 // HOOK
@@ -77,7 +91,6 @@ export function useBookRowLayout(
 ): BookLayoutInfo[] {
   const {
     scaleFactor = DEFAULT_SCALE,
-    thicknessMultiplier = DEFAULT_THICKNESS_MULTIPLIER,
     leanAngle = DEFAULT_LEAN_ANGLE,
     minTouchTarget = DEFAULT_MIN_TOUCH_TARGET,
     enableLeaning = true,
@@ -86,6 +99,12 @@ export function useBookRowLayout(
 
   // Get spine cache for fast lookups
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
+
+  // Server spine settings - subscribe to lightweight version counter instead of the full
+  // dimensions object to avoid re-rendering all consumers when ANY book's dimensions change
+  const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const serverDimsVersion = useSpineCacheStore((state) => state.serverSpineDimensionsVersion);
+  const isHydrated = useSpineCacheStore((state) => state.isHydrated);
 
   return useMemo(() => {
     if (!books || books.length === 0) return [];
@@ -127,10 +146,41 @@ export function useBookRowLayout(
         bookHash = hashString(book.id);
       }
 
-      // Apply scale and thickness multiplier
-      const width = baseWidth * scaleFactor * thicknessMultiplier;
-      // Use fixedHeight if provided, otherwise scale the base height
-      const height = fixedHeight ? fixedHeight * scaleFactor : baseHeight * scaleFactor;
+      // Read dimensions via getState() - version counter in deps triggers recalc
+      const allDims = useSpineCacheStore.getState().serverSpineDimensions;
+      const cachedServerDims = isHydrated ? allDims[book.id] : undefined;
+
+      // Calculate width and height
+      let width: number;
+      let height: number;
+
+      const duration = book.duration || DEFAULT_DURATION;
+      const durationScale = getDurationScale(duration);
+
+      if (fixedHeight) {
+        // Fixed height override — preserve aspect ratio
+        const targetHeight = fixedHeight * scaleFactor;
+        const ratio = baseWidth / baseHeight;
+        height = targetHeight;
+        width = Math.round(targetHeight * ratio);
+      } else if (useServerSpines && cachedServerDims) {
+        // Server spines: Fit within max bounds preserving aspect ratio
+        const { width: serverWidth, height: serverHeight } = cachedServerDims;
+
+        const maxW = SERVER_SPINE_BOX.MAX_WIDTH * scaleFactor * durationScale;
+        const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * scaleFactor * durationScale;
+        const fitted = fitToBoundingBox(serverWidth, serverHeight, maxW, maxH);
+        width = fitted.width;
+        height = fitted.height;
+
+      } else {
+        // Procedural spines: bounding-box fit preserves aspect ratio
+        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * scaleFactor * durationScale;
+        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * scaleFactor * durationScale;
+        const fitted = fitToBoundingBox(baseWidth, baseHeight, maxW, maxH);
+        width = fitted.width;
+        height = fitted.height;
+      }
 
       // Calculate touch padding for small books
       const touchPadding = Math.max(0, Math.ceil((minTouchTarget - width) / 2));
@@ -172,7 +222,7 @@ export function useBookRowLayout(
         touchPadding,
       };
     });
-  }, [books, scaleFactor, thicknessMultiplier, leanAngle, minTouchTarget, enableLeaning, getSpineData]);
+  }, [books, scaleFactor, leanAngle, minTouchTarget, enableLeaning, fixedHeight, getSpineData, useServerSpines, serverDimsVersion, isHydrated]);
 }
 
 /**

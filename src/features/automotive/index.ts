@@ -12,9 +12,6 @@ export {
   useAutomotive,
 } from './useAutomotive';
 export {
-  updateAndroidAutoBrowseData,
-  clearAndroidAutoBrowseData,
-  notifyBrowseDataUpdated,
   updatePlaybackState,
   updateMetadata,
   isAndroidAutoConnected,

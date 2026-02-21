@@ -1,7 +1,14 @@
 /**
  * src/features/player/sheets/SpeedSheet.tsx
  *
- * Playback Speed panel - Editorial design with quick select grid and fine tune slider.
+ * Playback Speed panel - Redesigned based on UX best practices:
+ * - Large speed readout at top for immediate visibility
+ * - Slider with labels ABOVE track (not obscured by thumb)
+ * - Tick marks for spatial orientation
+ * - Unified preset grid (saved presets merged with defaults)
+ * - Clear active state on current speed
+ * - Double-tap to remove saved presets (more discoverable than long-press)
+ * - Explicit "Done" button for dismissal
  */
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
@@ -15,8 +22,8 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Svg, { Path } from 'react-native-svg';
+import { useSpeedStore, useSpeedPresets, usePlaybackRate } from '../stores/speedStore';
 import { usePlayerStore } from '../stores/playerStore';
-import { useSpeedStore, useSpeedPresets } from '../stores/speedStore';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
 import {
@@ -27,32 +34,31 @@ import {
 // CONSTANTS
 // =============================================================================
 
-const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5];
+// Default presets - consistent 0.25× increments, removed 0.5× (rarely used)
+const DEFAULT_PRESETS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5];
 const MIN_SPEED = 0.5;
-const MAX_SPEED = 2.5;
+const MAX_SPEED = 3.0;
+const SLIDER_SNAP_POINTS = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
 
 // =============================================================================
 // ICONS
 // =============================================================================
 
-const PlusIcon = ({ color = colors.black, size = 12 }: { color?: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
-    <Path d="M12 3v18M3 12h18" />
-  </Svg>
-);
-
-const ResetIcon = ({ color = colors.black, size = 12 }: { color?: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
+const ResetIcon = ({ color = colors.white, size = 14 }: { color?: string; size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Path d="M3 12a9 9 0 1 0 9-9" />
     <Path d="M3 3v6h6" />
   </Svg>
 );
 
-const CloseIcon = ({ color = colors.white, size = 10 }: { color?: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={3}>
-    <Path d="M18 6L6 18M6 6l12 12" />
-  </Svg>
-);
+// =============================================================================
+// DARK MODE COLORS
+// =============================================================================
+
+const darkBg = '#0a0a0a';
+const darkCard = '#1a1a1a';
+const darkBorder = '#2a2a2a';
+const accentBorder = '#E8E4DF'; // Cream/white for active state border
 
 // =============================================================================
 // TYPES
@@ -67,92 +73,134 @@ interface SpeedSheetProps {
 // =============================================================================
 
 export function SpeedSheet({ onClose }: SpeedSheetProps) {
-  // Player store state
-  const playbackRate = usePlayerStore((s) => s.playbackRate);
+  // Speed state from speedStore (single source of truth)
+  const playbackRate = usePlaybackRate();
+  // Use playerStore's setPlaybackRate which properly determines the current book
   const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
 
   // Speed presets from store
-  const speedPresets = useSpeedPresets();
+  const savedPresets = useSpeedPresets();
   const saveSpeedPreset = useSpeedStore((s) => s.saveSpeedPreset);
   const removeSpeedPreset = useSpeedStore((s) => s.removeSpeedPreset);
 
-  // Local state for fine-tuning (updates on slider change, commits on release)
-  const [localSpeed, setLocalSpeed] = useState(playbackRate);
+  // Local state for slider (updates on change, commits on release)
+  const [sliderValue, setSliderValue] = useState(playbackRate);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Delete mode state - when true, all presets show X buttons
-  const [deleteMode, setDeleteMode] = useState(false);
+  // Track last tap time for double-tap detection
+  const lastTapRef = useRef<{ speed: number; time: number } | null>(null);
 
-  // Sync local speed when playbackRate changes externally
+  // Animation for speed display scale during drag
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Sync slider when playbackRate changes externally
   useEffect(() => {
-    setLocalSpeed(playbackRate);
+    if (!isDragging) {
+      setSliderValue(playbackRate);
+    }
+  }, [playbackRate, isDragging]);
+
+  // Animate scale when dragging
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: isDragging ? 1.1 : 1,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+  }, [isDragging, scaleAnim]);
+
+  // ==========================================================================
+  // HELPERS
+  // ==========================================================================
+
+  // Merge saved presets into default grid
+  const getAllPresets = useCallback(() => {
+    const all = new Set([...DEFAULT_PRESETS, ...savedPresets]);
+    return Array.from(all).sort((a, b) => a - b);
+  }, [savedPresets]);
+
+  const isSavedPreset = useCallback((speed: number) => {
+    return savedPresets.some(p => Math.abs(p - speed) < 0.01);
+  }, [savedPresets]);
+
+  const isDefaultPreset = useCallback((speed: number) => {
+    return DEFAULT_PRESETS.some(p => Math.abs(p - speed) < 0.01);
+  }, []);
+
+  const isCurrentSpeed = useCallback((speed: number) => {
+    return Math.abs(playbackRate - speed) < 0.01;
   }, [playbackRate]);
 
-  // Exit delete mode when presets change (e.g., after deletion)
-  useEffect(() => {
-    if (speedPresets.length === 0) {
-      setDeleteMode(false);
-    }
-  }, [speedPresets.length]);
+  // Format speed for display
+  const formatSpeed = (speed: number) => {
+    return speed.toFixed(2);
+  };
 
   // ==========================================================================
   // HANDLERS
   // ==========================================================================
 
-  const handleSpeedSelect = useCallback(async (speed: number) => {
-    haptics.speedChange();
-    setLocalSpeed(speed);
-    await setPlaybackRate(speed);
-  }, [setPlaybackRate]);
-
   const handleSliderChange = useCallback((value: number) => {
     // Round to nearest 0.05
     const rounded = Math.round(value * 20) / 20;
-    setLocalSpeed(rounded);
+    setSliderValue(rounded);
+  }, []);
+
+  const handleSliderStart = useCallback(() => {
+    setIsDragging(true);
   }, []);
 
   const handleSliderComplete = useCallback(async (value: number) => {
     const rounded = Math.round(value * 20) / 20;
+    setIsDragging(false);
     haptics.speedChange();
     await setPlaybackRate(rounded);
   }, [setPlaybackRate]);
 
+  const handlePresetPress = useCallback(async (speed: number) => {
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+
+    // Check for double-tap on saved preset
+    if (lastTap && lastTap.speed === speed && now - lastTap.time < 400) {
+      // Double tap detected
+      if (isSavedPreset(speed) && !isDefaultPreset(speed)) {
+        haptics.impact('light');
+        await removeSpeedPreset(speed);
+        lastTapRef.current = null;
+        return;
+      }
+    }
+
+    // Single tap - select speed
+    lastTapRef.current = { speed, time: now };
+    haptics.speedChange();
+    setSliderValue(speed);
+    await setPlaybackRate(speed);
+  }, [setPlaybackRate, removeSpeedPreset, isSavedPreset, isDefaultPreset]);
+
+  const handleSavePreset = useCallback(async () => {
+    // Don't save if it's already a preset
+    if (isDefaultPreset(sliderValue) || isSavedPreset(sliderValue)) {
+      return;
+    }
+    haptics.success();
+    await saveSpeedPreset(sliderValue);
+  }, [saveSpeedPreset, sliderValue, isDefaultPreset, isSavedPreset]);
+
   const handleReset = useCallback(async () => {
     haptics.speedChange();
-    setLocalSpeed(1.0);
+    setSliderValue(1.0);
     await setPlaybackRate(1.0);
   }, [setPlaybackRate]);
 
-  const handleSavePreset = useCallback(async () => {
-    haptics.success();
-    await saveSpeedPreset(localSpeed);
-  }, [saveSpeedPreset, localSpeed]);
+  // ==========================================================================
+  // COMPUTED
+  // ==========================================================================
 
-  const handleRemovePreset = useCallback(async (speed: number) => {
-    haptics.impact('light');
-    await removeSpeedPreset(speed);
-  }, [removeSpeedPreset]);
-
-  const handlePresetLongPress = useCallback(() => {
-    haptics.selection();
-    setDeleteMode(true);
-  }, []);
-
-  const handlePresetPress = useCallback((speed: number) => {
-    if (deleteMode) {
-      // In delete mode, tapping anywhere exits delete mode
-      setDeleteMode(false);
-    } else {
-      handleSpeedSelect(speed);
-    }
-  }, [deleteMode, handleSpeedSelect]);
-
-  // Check if current speed is already a preset
-  const isCurrentSpeedPreset = speedPresets.some(p => Math.abs(p - localSpeed) < 0.01);
-  // Check if current speed is a default option
-  const isDefaultOption = SPEED_OPTIONS.some(s => Math.abs(s - localSpeed) < 0.01);
-
-  // Check if a speed option matches the current speed
-  const isSpeedSelected = (speed: number) => Math.abs(localSpeed - speed) < 0.01;
+  const allPresets = getAllPresets();
+  const canSavePreset = !isDefaultPreset(sliderValue) && !isSavedPreset(sliderValue);
+  const displaySpeed = isDragging ? sliderValue : playbackRate;
 
   // ==========================================================================
   // RENDER
@@ -163,38 +211,103 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
       {/* Handle */}
       <View style={styles.handle} />
 
-      {/* Header */}
+      {/* Header with Done button */}
       <View style={styles.header}>
         <Text style={styles.title}>Speed</Text>
-        <Text style={styles.currentLabel}>Current: {playbackRate.toFixed(1)}×</Text>
+        <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
+          <Text style={styles.doneButton}>Done</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Speed Options Grid */}
-      <View style={styles.optionsGrid}>
-        {SPEED_OPTIONS.map((speed) => {
-          const isSelected = isSpeedSelected(speed);
-          const isDefault = speed === 1.0;
+      {/* Large Speed Display */}
+      <Animated.View style={[styles.speedDisplay, { transform: [{ scale: scaleAnim }] }]}>
+        <Text style={styles.speedValue}>{formatSpeed(displaySpeed)}</Text>
+        <Text style={styles.speedUnit}>×</Text>
+      </Animated.View>
+
+      {/* Slider Section */}
+      <View style={styles.sliderSection}>
+        {/* Labels ABOVE the track */}
+        <View style={styles.sliderLabels}>
+          {SLIDER_SNAP_POINTS.map((point) => (
+            <Text key={point} style={styles.sliderLabel}>{point.toFixed(1)}</Text>
+          ))}
+        </View>
+
+        {/* Slider with tick marks */}
+        <View style={styles.sliderContainer}>
+          <Slider
+            style={styles.slider}
+            minimumValue={MIN_SPEED}
+            maximumValue={MAX_SPEED}
+            value={sliderValue}
+            onValueChange={handleSliderChange}
+            onSlidingStart={handleSliderStart}
+            onSlidingComplete={handleSliderComplete}
+            minimumTrackTintColor={colors.gray}
+            maximumTrackTintColor={darkBorder}
+            thumbTintColor={colors.white}
+          />
+          {/* Tick marks on track */}
+          <View style={styles.tickMarks} pointerEvents="none">
+            {SLIDER_SNAP_POINTS.map((point) => (
+              <View key={point} style={styles.tickMark} />
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={[styles.actionButton, !canSavePreset && styles.actionButtonDisabled]}
+          onPress={handleSavePreset}
+          activeOpacity={0.7}
+          disabled={!canSavePreset}
+        >
+          <Text style={[styles.actionButtonText, !canSavePreset && styles.actionButtonTextDisabled]}>
+            + Save Preset
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={handleReset}
+          activeOpacity={0.7}
+        >
+          <ResetIcon color={colors.white} size={14} />
+          <Text style={styles.actionButtonText}>Reset to 1.0×</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Presets Grid */}
+      <Text style={styles.sectionLabel}>PRESETS</Text>
+      <View style={styles.presetsGrid}>
+        {allPresets.map((speed) => {
+          const isActive = isCurrentSpeed(speed);
+          const isSaved = isSavedPreset(speed) && !isDefaultPreset(speed);
+
           return (
             <TouchableOpacity
               key={speed}
               style={[
-                styles.optionButton,
-                isSelected && styles.optionButtonSelected,
+                styles.presetButton,
+                isActive && styles.presetButtonActive,
               ]}
-              onPress={() => handleSpeedSelect(speed)}
+              onPress={() => handlePresetPress(speed)}
               activeOpacity={0.7}
             >
               <Text style={[
-                styles.optionText,
-                isSelected && styles.optionTextSelected,
+                styles.presetText,
+                isActive && styles.presetTextActive,
               ]}>
-                {speed.toFixed(speed % 1 === 0 ? 1 : 2)}×
+                {speed.toFixed(speed % 0.25 === 0 ? 1 : 2)}×
               </Text>
-              {/* Default indicator dot */}
-              {isDefault && (
+              {/* Dot indicator for saved presets */}
+              {isSaved && (
                 <View style={[
-                  styles.defaultDot,
-                  isSelected && styles.defaultDotSelected,
+                  styles.savedDot,
+                  isActive && styles.savedDotActive,
                 ]} />
               )}
             </TouchableOpacity>
@@ -202,108 +315,12 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
         })}
       </View>
 
-      {/* Saved Presets */}
-      {speedPresets.length > 0 && (
-        <View style={styles.presetsSection}>
-          <Text style={styles.presetsSectionLabel}>Saved Presets</Text>
-          <View style={styles.presetsGrid}>
-            {speedPresets.map((speed) => {
-              const isSelected = isSpeedSelected(speed);
-              return (
-                <View key={speed} style={styles.presetWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.presetOption,
-                      isSelected && styles.optionButtonSelected,
-                      deleteMode && styles.presetOptionDeleteMode,
-                    ]}
-                    onPress={() => handlePresetPress(speed)}
-                    onLongPress={handlePresetLongPress}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.optionText,
-                      isSelected && styles.optionTextSelected,
-                    ]}>
-                      {speed.toFixed(2)}×
-                    </Text>
-                  </TouchableOpacity>
-                  {/* Delete X button - shown in delete mode */}
-                  {deleteMode && (
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleRemovePreset(speed)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <CloseIcon color={colors.white} size={10} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-          <Text style={styles.presetsHint}>
-            {deleteMode ? 'Tap × to delete, tap preset to cancel' : 'Long press to delete'}
-          </Text>
-        </View>
+      {/* Hint text */}
+      {savedPresets.length > 0 && (
+        <Text style={styles.hintText}>
+          Double-tap saved presets (•) to remove
+        </Text>
       )}
-
-      {/* Fine Tune Slider */}
-      <View style={styles.fineTune}>
-        <View style={styles.fineTuneHeader}>
-          <Text style={styles.fineTuneLabel}>Fine Tune</Text>
-          <Text style={styles.fineTuneValue}>{localSpeed.toFixed(2)}×</Text>
-        </View>
-        <View style={styles.sliderContainer}>
-          <Slider
-            style={styles.slider}
-            minimumValue={MIN_SPEED}
-            maximumValue={MAX_SPEED}
-            value={localSpeed}
-            onValueChange={handleSliderChange}
-            onSlidingComplete={handleSliderComplete}
-            minimumTrackTintColor={colors.black}
-            maximumTrackTintColor={colors.grayLine}
-            thumbTintColor={colors.black}
-          />
-          <View style={styles.sliderMarks}>
-            <Text style={styles.sliderMark}>0.5×</Text>
-            <Text style={styles.sliderMark}>1.0×</Text>
-            <Text style={styles.sliderMark}>1.5×</Text>
-            <Text style={styles.sliderMark}>2.0×</Text>
-            <Text style={styles.sliderMark}>2.5×</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Presets Row */}
-      <View style={styles.presets}>
-        <TouchableOpacity
-          style={[
-            styles.presetButton,
-            (isCurrentSpeedPreset || isDefaultOption) && styles.presetButtonDisabled,
-          ]}
-          onPress={handleSavePreset}
-          activeOpacity={0.7}
-          disabled={isCurrentSpeedPreset || isDefaultOption}
-        >
-          <PlusIcon color={(isCurrentSpeedPreset || isDefaultOption) ? colors.gray : colors.black} size={12} />
-          <Text style={[
-            styles.presetButtonText,
-            (isCurrentSpeedPreset || isDefaultOption) && styles.presetButtonTextDisabled,
-          ]}>
-            {isCurrentSpeedPreset ? 'Saved' : isDefaultOption ? 'Default' : 'Save Preset'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.presetButton}
-          onPress={handleReset}
-          activeOpacity={0.7}
-        >
-          <ResetIcon color={colors.black} size={12} />
-          <Text style={styles.presetButtonText}>Reset</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -314,129 +331,133 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.creamGray,
-    paddingHorizontal: scale(28),
-    paddingBottom: scale(40),
+    backgroundColor: darkBg,
+    paddingHorizontal: scale(20),
+    paddingBottom: scale(24),
   },
   handle: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: colors.grayLine,
+    backgroundColor: darkBorder,
     borderRadius: scale(2),
     alignSelf: 'center',
-    marginTop: scale(12),
-    marginBottom: scale(20),
+    marginTop: scale(8),
+    marginBottom: scale(12),
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: scale(24),
-    paddingBottom: scale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: colors.black,
+    alignItems: 'center',
+    marginBottom: scale(16),
   },
   title: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(28),
+    fontSize: scale(20),
     fontWeight: '400',
-    color: colors.black,
-  },
-  currentLabel: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(14),
-    color: colors.gray,
-  },
-
-  // Speed Options Grid
-  optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: scale(8),
-    marginBottom: scale(32),
-  },
-  optionButton: {
-    width: '23.5%',
-    height: scale(48),
-    borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  optionButtonSelected: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
-  },
-  optionText: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(14),
-    color: colors.black,
-  },
-  optionTextSelected: {
     color: colors.white,
   },
-  defaultDot: {
-    position: 'absolute',
-    bottom: scale(6),
-    width: scale(4),
-    height: scale(4),
-    borderRadius: scale(2),
-    backgroundColor: colors.gray,
-  },
-  defaultDotSelected: {
-    backgroundColor: colors.white,
-  },
-
-  // Fine Tune Slider
-  fineTune: {
-    marginBottom: scale(24),
-  },
-  fineTuneHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: scale(12),
-  },
-  fineTuneLabel: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(10),
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  doneButton: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(15),
     color: colors.gray,
   },
-  fineTuneValue: {
+
+  // Speed Display
+  speedDisplay: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    marginBottom: scale(16),
+  },
+  speedValue: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(56),
+    fontWeight: '300',
+    color: colors.white,
+    letterSpacing: -2,
+  },
+  speedUnit: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(24),
-    fontStyle: 'italic',
-    color: colors.black,
+    color: colors.gray,
+    marginLeft: scale(2),
+  },
+
+  // Slider Section
+  sliderSection: {
+    marginBottom: scale(14),
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(8),
+    marginBottom: scale(2),
+  },
+  sliderLabel: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    color: colors.gray,
   },
   sliderContainer: {
-    marginBottom: scale(4),
+    position: 'relative',
+    height: scale(36),
+    justifyContent: 'center',
   },
   slider: {
     width: '100%',
-    height: scale(32),
+    height: scale(36),
   },
-  sliderMarks: {
+  tickMarks: {
+    position: 'absolute',
+    left: scale(8),
+    right: scale(8),
+    top: '50%',
+    marginTop: scale(-6),
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: scale(2),
+    pointerEvents: 'none',
   },
-  sliderMark: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(8),
+  tickMark: {
+    width: scale(1.5),
+    height: scale(12),
+    backgroundColor: darkBorder,
+    borderRadius: scale(1),
+  },
+
+  // Action Buttons
+  actionButtons: {
+    flexDirection: 'row',
+    gap: scale(10),
+    marginBottom: scale(16),
+  },
+  actionButton: {
+    flex: 1,
+    height: scale(40),
+    borderRadius: scale(10),
+    backgroundColor: darkCard,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: scale(6),
+  },
+  actionButtonDisabled: {
+    opacity: 0.4,
+  },
+  actionButtonText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    color: colors.white,
+  },
+  actionButtonTextDisabled: {
     color: colors.gray,
   },
 
-  // Saved Presets Section
-  presetsSection: {
-    marginBottom: scale(24),
-  },
-  presetsSectionLabel: {
+  // Presets Grid
+  sectionLabel: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(10),
-    textTransform: 'uppercase',
     letterSpacing: 1,
     color: colors.gray,
     marginBottom: scale(8),
@@ -444,75 +465,52 @@ const styles = StyleSheet.create({
   presetsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: scale(12),
-    overflow: 'visible',
-    paddingTop: scale(10),
-    paddingRight: scale(10),
-  },
-  presetWrapper: {
-    position: 'relative',
-    overflow: 'visible',
-  },
-  presetOption: {
-    paddingHorizontal: scale(16),
-    height: scale(40),
-    borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  presetOptionDeleteMode: {
-    borderColor: colors.gray,
-  },
-  deleteButton: {
-    position: 'absolute',
-    top: scale(-8),
-    right: scale(-8),
-    width: scale(20),
-    height: scale(20),
-    borderRadius: scale(10),
-    backgroundColor: colors.black,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  presetsHint: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(8),
-    color: colors.gray,
-    marginTop: scale(8),
-    textAlign: 'center',
-  },
-
-  // Presets Row
-  presets: {
-    flexDirection: 'row',
-    gap: scale(8),
-  },
-  presetButton: {
-    flex: 1,
-    height: scale(40),
-    borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
     gap: scale(6),
   },
-  presetButtonDisabled: {
-    backgroundColor: colors.grayLight,
-    borderColor: colors.grayLine,
+  presetButton: {
+    width: '23%',
+    height: scale(38),
+    borderRadius: scale(10),
+    backgroundColor: darkCard,
+    borderWidth: 1.5,
+    borderColor: darkBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
   },
-  presetButtonText: {
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-    fontSize: scale(11),
-    fontWeight: '500',
-    color: colors.black,
+  presetButtonActive: {
+    borderColor: accentBorder,
+    borderWidth: 2,
+    backgroundColor: '#1c1c1c',
   },
-  presetButtonTextDisabled: {
+  presetText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(13),
+    color: colors.white,
+  },
+  presetTextActive: {
+    color: colors.white,
+  },
+  savedDot: {
+    position: 'absolute',
+    top: scale(5),
+    right: scale(5),
+    width: scale(4),
+    height: scale(4),
+    borderRadius: scale(2),
+    backgroundColor: colors.gray,
+  },
+  savedDotActive: {
+    backgroundColor: colors.white,
+  },
+
+  // Hint text
+  hintText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
     color: colors.gray,
+    textAlign: 'center',
+    marginTop: scale(10),
   },
 });
 

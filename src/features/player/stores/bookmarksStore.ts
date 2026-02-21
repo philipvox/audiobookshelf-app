@@ -16,6 +16,22 @@ import { sqliteCache } from '@/core/services/sqliteCache';
 import { haptics } from '@/core/native/haptics';
 import { createLogger } from '@/shared/utils/logger';
 
+// Fix Bug #2: Use crypto for unique IDs to prevent collision
+// Fallback to timestamp + random for environments without crypto
+const generateUniqueId = (): string => {
+  try {
+    // Use expo-crypto for unique IDs
+    const randomBytes = new Uint8Array(8);
+    crypto.getRandomValues(randomBytes);
+    return Array.from(randomBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    // Fallback: timestamp + random to minimize collision chance
+    return `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  }
+};
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -97,25 +113,39 @@ export const useBookmarksStore = create<BookmarksState & BookmarksActions>()(
       set({ bookmarks: [], currentBookId: null });
     },
 
+    /**
+     * FIX Bug #1: Persist first, then update state to prevent inconsistency
+     * FIX Bug #2: Use UUID-style ID to prevent collision on rapid creation
+     * FIX LOW: Added validation for bookmark data
+     */
     addBookmark: async (bookmarkData: Omit<Bookmark, 'id' | 'createdAt'>) => {
       const { currentBookId, bookmarks } = get();
-      if (!currentBookId) return;
+      if (!currentBookId) {
+        log.warn('Cannot add bookmark: no current book');
+        return;
+      }
+
+      // FIX LOW: Validate bookmark time is non-negative
+      if (bookmarkData.time < 0) {
+        log.warn('Cannot add bookmark: negative time value', bookmarkData.time);
+        return;
+      }
+
+      // FIX LOW: Validate title is not empty
+      if (!bookmarkData.title?.trim()) {
+        log.warn('Cannot add bookmark: empty title');
+        return;
+      }
 
       const now = Date.now();
+      // Fix Bug #2: Use unique ID instead of timestamp to prevent collision
       const bookmark: Bookmark = {
-        id: `${currentBookId}_${now}`,
+        id: `${currentBookId}_${generateUniqueId()}`,
         ...bookmarkData,
         createdAt: now,
       };
 
-      // Update local state immediately
-      const updated = [...bookmarks, bookmark];
-      set({ bookmarks: updated });
-
-      // Haptic feedback for bookmark created
-      haptics.bookmarkCreated();
-
-      // Persist to SQLite
+      // Fix Bug #1: Persist to SQLite FIRST
       try {
         await sqliteCache.addBookmark({
           id: bookmark.id,
@@ -126,54 +156,111 @@ export const useBookmarksStore = create<BookmarksState & BookmarksActions>()(
           chapterTitle: bookmark.chapterTitle,
           createdAt: bookmark.createdAt,
         });
+
+        // Only update local state after successful persist
+        const updated = [...bookmarks, bookmark];
+        set({ bookmarks: updated });
+
+        // Haptic feedback for bookmark created
+        haptics.bookmarkCreated();
+
         log.debug('Bookmark added:', bookmark.title);
       } catch (err) {
+        // Fix Bug #1: Don't update state if persist failed
         log.error('Failed to save bookmark:', err);
+        throw err; // Re-throw so caller knows it failed
       }
     },
 
+    /**
+     * FIX Bug #1: Persist first, then update state
+     * FIX LOW: Added validation that bookmark exists
+     */
     updateBookmark: async (bookmarkId: string, updates: { title?: string; note?: string | null }) => {
       const { bookmarks } = get();
 
-      // Update local state
-      const updated = bookmarks.map((b) =>
-        b.id === bookmarkId
-          ? { ...b, title: updates.title ?? b.title, note: updates.note ?? b.note }
-          : b
-      );
-      set({ bookmarks: updated });
+      // FIX LOW: Validate bookmark exists before updating
+      const existingBookmark = bookmarks.find((b) => b.id === bookmarkId);
+      if (!existingBookmark) {
+        log.warn('Cannot update bookmark: not found', bookmarkId);
+        return;
+      }
 
-      // Persist to SQLite
+      // FIX LOW: Validate title is not empty if provided
+      if (updates.title !== undefined && !updates.title?.trim()) {
+        log.warn('Cannot update bookmark: empty title');
+        return;
+      }
+
+      // Fix Bug #1: Persist to SQLite FIRST
       try {
         await sqliteCache.updateBookmark(bookmarkId, updates);
+
+        // Only update local state after successful persist
+        const updated = bookmarks.map((b) =>
+          b.id === bookmarkId
+            ? { ...b, title: updates.title ?? b.title, note: updates.note ?? b.note }
+            : b
+        );
+        set({ bookmarks: updated });
+
         log.debug('Bookmark updated:', bookmarkId);
       } catch (err) {
         log.error('Failed to update bookmark:', err);
+        throw err; // Re-throw so caller knows it failed
       }
     },
 
+    /**
+     * FIX Bug #1: Persist first, then update state
+     * FIX LOW: Added validation that bookmark exists
+     */
     removeBookmark: async (bookmarkId: string) => {
       const { bookmarks } = get();
 
-      // Update local state
-      const updated = bookmarks.filter((b) => b.id !== bookmarkId);
-      set({ bookmarks: updated });
+      // FIX LOW: Validate bookmark exists before removing
+      const existingBookmark = bookmarks.find((b) => b.id === bookmarkId);
+      if (!existingBookmark) {
+        log.warn('Cannot remove bookmark: not found', bookmarkId);
+        return;
+      }
 
-      // Haptic feedback for bookmark deleted
-      haptics.bookmarkDeleted();
-
-      // Persist to SQLite
+      // Fix Bug #1: Persist to SQLite FIRST
       try {
         await sqliteCache.removeBookmark(bookmarkId);
+
+        // Only update local state after successful persist
+        const updated = bookmarks.filter((b) => b.id !== bookmarkId);
+        set({ bookmarks: updated });
+
+        // Haptic feedback for bookmark deleted
+        haptics.bookmarkDeleted();
+
         log.debug('Bookmark removed:', bookmarkId);
       } catch (err) {
         log.error('Failed to remove bookmark:', err);
+        throw err; // Re-throw so caller knows it failed
       }
     },
 
+    /**
+     * FIX: Validate book hasn't changed during async load to prevent stale data
+     */
     loadBookmarks: async (bookId: string) => {
+      // Set currentBookId immediately to track which book we're loading for
+      set({ currentBookId: bookId });
+
       try {
         const records = await sqliteCache.getBookmarks(bookId);
+
+        // FIX: Validate that the book hasn't changed during the async load
+        // This prevents loading bookmarks for the wrong book after rapid switches
+        const { currentBookId: currentBook } = get();
+        if (currentBook !== bookId) {
+          log.debug('Book changed during bookmark load, discarding results for:', bookId);
+          return;
+        }
+
         const bookmarks: Bookmark[] = records.map((r) => ({
           id: r.id,
           title: r.title,
@@ -182,11 +269,15 @@ export const useBookmarksStore = create<BookmarksState & BookmarksActions>()(
           chapterTitle: r.chapterTitle,
           createdAt: r.createdAt,
         }));
-        set({ bookmarks, currentBookId: bookId });
+        set({ bookmarks });
         log.debug('Loaded', bookmarks.length, 'bookmarks for book:', bookId);
       } catch (err) {
-        log.error('Failed to load bookmarks:', err);
-        set({ bookmarks: [] });
+        // Only clear bookmarks if we're still on the same book
+        const { currentBookId: currentBook } = get();
+        if (currentBook === bookId) {
+          log.error('Failed to load bookmarks:', err);
+          set({ bookmarks: [] });
+        }
       }
     },
   }))

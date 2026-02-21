@@ -301,6 +301,16 @@ export function getGenres(item: LibraryItem | null | undefined): string[] {
 }
 
 /**
+ * Get tags from LibraryItem.
+ * Tags are stored on item.media.tags (not metadata.tags).
+ */
+export function getTags(item: LibraryItem | null | undefined): string[] {
+  if (!item?.media) return [];
+  // Tags are stored directly on media, not in metadata
+  return (item.media as any).tags || [];
+}
+
+/**
  * Alias for extractBookMetadata - get all book metadata in a normalized format
  *
  * This is the recommended function for getting book metadata.

@@ -19,7 +19,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore, usePlaybackRate } from '@/features/player';
 import { haptics } from '@/core/native/haptics';
 import { audioService } from '@/features/player/services/audioService';
 import { wp, accentColors, useTheme } from '@/shared/theme';
@@ -192,7 +192,7 @@ export function CoverPlayButton({
   const position = usePlayerStore((s) => s.position);
   const duration = usePlayerStore((s) => s.duration);
   const chapters = usePlayerStore((s) => s.chapters);
-  const playbackRate = usePlayerStore((s) => s.playbackRate);
+  const playbackRate = usePlaybackRate(); // From speedStore (single source of truth)
   const play = usePlayerStore((s) => s.play);
   const pause = usePlayerStore((s) => s.pause);
 

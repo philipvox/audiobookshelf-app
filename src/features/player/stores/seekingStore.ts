@@ -116,6 +116,8 @@ const log = createLogger('SeekingStore');
 // =============================================================================
 
 let seekInterval: NodeJS.Timeout | null = null;
+// Fix MEDIUM: Track if an interval callback is in progress to prevent overlapping
+let seekIntervalInProgress = false;
 
 // =============================================================================
 // STORE
@@ -266,41 +268,57 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       });
 
       // Start interval
+      // Fix MEDIUM: Reset in-progress flag
+      seekIntervalInProgress = false;
+
       seekInterval = setInterval(async () => {
-        const state = get();
-
-        if (!state.isSeeking) {
-          // Seeking was stopped externally
-          if (seekInterval) {
-            clearInterval(seekInterval);
-            seekInterval = null;
-          }
+        // Fix MEDIUM: Prevent overlapping interval callbacks
+        if (seekIntervalInProgress) {
+          log.debug('Skipping interval - previous callback still in progress');
           return;
         }
+        seekIntervalInProgress = true;
 
-        const newPosition = Math.max(0, Math.min(duration, state.seekPosition + step));
+        try {
+          const state = get();
 
-        // Stop at boundaries
-        if ((direction === 'backward' && newPosition <= 0) ||
-            (direction === 'forward' && newPosition >= duration)) {
-          set({ seekPosition: newPosition });
+          if (!state.isSeeking) {
+            // Seeking was stopped externally
+            if (seekInterval) {
+              clearInterval(seekInterval);
+              seekInterval = null;
+            }
+            return;
+          }
+
+          const newPosition = Math.max(0, Math.min(duration, state.seekPosition + step));
+
+          // Stop at boundaries
+          if ((direction === 'backward' && newPosition <= 0) ||
+              (direction === 'forward' && newPosition >= duration)) {
+            set({ seekPosition: newPosition });
+            await audioService.seekTo(newPosition).catch(err => {
+              log.warn('Continuous seek boundary step failed:', err);
+            });
+            await get().stopContinuousSeeking();
+            return;
+          }
+
+          // Fix MEDIUM: Set position AFTER successful seek to prevent state inconsistency
           await audioService.seekTo(newPosition).catch(err => {
-            log.warn('Continuous seek boundary step failed:', err);
+            log.warn('Continuous seek step failed:', err);
+            // Stop seeking on repeated errors to prevent stuck UI
+            if (seekInterval) {
+              clearInterval(seekInterval);
+              seekInterval = null;
+            }
+            set({ isSeeking: false, seekDirection: null, lastSeekTime: Date.now() });
+            throw err; // Re-throw to skip the position update below
           });
-          await get().stopContinuousSeeking();
-          return;
+          set({ seekPosition: newPosition });
+        } finally {
+          seekIntervalInProgress = false;
         }
-
-        set({ seekPosition: newPosition });
-        await audioService.seekTo(newPosition).catch(err => {
-          log.warn('Continuous seek step failed:', err);
-          // Stop seeking on repeated errors to prevent stuck UI
-          if (seekInterval) {
-            clearInterval(seekInterval);
-            seekInterval = null;
-          }
-          set({ isSeeking: false, seekDirection: null, lastSeekTime: Date.now() });
-        });
       }, REWIND_INTERVAL);
     },
 
@@ -322,6 +340,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
         clearInterval(seekInterval);
         seekInterval = null;
       }
+      // Fix MEDIUM: Reset in-progress flag
+      seekIntervalInProgress = false;
     },
 
     resetSeekingState: () => {
@@ -330,6 +350,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
         clearInterval(seekInterval);
         seekInterval = null;
       }
+      // Fix MEDIUM: Reset in-progress flag
+      seekIntervalInProgress = false;
 
       set({
         isSeeking: false,

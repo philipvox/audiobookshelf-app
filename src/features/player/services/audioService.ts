@@ -120,8 +120,8 @@ class AudioService {
   private currentPollRate = 100;
 
   // Pre-buffer threshold (seconds before track end to start preloading)
-  // 60 seconds gives ample time to prefetch next chapter for smooth transitions
-  private readonly PRELOAD_THRESHOLD = 60;
+  // 120 seconds gives ample time to prefetch next chapter for smooth transitions
+  private readonly PRELOAD_THRESHOLD = 120;
 
   // Media control position update counter (every N updates)
   private mediaControlUpdateCounter = 0;
@@ -145,15 +145,51 @@ class AudioService {
   // Continuous stuck detection - monitors playback during active play
   private stuckDetectionLastPosition = 0;
   private stuckDetectionLastTime = 0;
-  private readonly STUCK_THRESHOLD_MS = 5000; // 5 seconds without position change = stuck
+  private readonly STUCK_THRESHOLD_MS = 3000; // 3 seconds without position change = stuck (faster detection)
+
+  // Timeout tracking for proper cleanup (Fix: untracked timeouts)
+  private ghostPausedCheckTimeout: NodeJS.Timeout | null = null;
+  private ghostPausedRetryTimeout: NodeJS.Timeout | null = null;
+  private durationUpdateTimeout: NodeJS.Timeout | null = null;
 
   // NETWORK RETRY CONFIG - for transient network failures (not 403/401)
   private readonly MAX_LOAD_RETRIES = 3;
   private readonly INITIAL_RETRY_DELAY_MS = 1000;  // 1s, 2s, 4s exponential backoff
 
+  // Foreground grace period: when app returns to foreground, expo-av may briefly
+  // report playing=false as the audio system reconnects. We ignore this for a short window.
+  private foregroundGraceUntil = 0;
+  private wasPlayingBeforeBackground = false;
+  private appStateSubscription: { remove: () => void } | null = null;
+
   constructor() {
     // Pre-warm on construction - don't await, let it run in background
     this.setupPromise = this.setup();
+    this.setupForegroundGrace();
+  }
+
+  /**
+   * Listen for app state changes to prevent false pause on foreground return.
+   * When the app backgrounds while playing and returns, expo-av may briefly
+   * report playing=false. We add a 1.5s grace period to suppress this.
+   */
+  private setupForegroundGrace(): void {
+    const { AppState } = require('react-native');
+    let currentState = AppState.currentState;
+
+    this.appStateSubscription = AppState.addEventListener('change', (nextState: string) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        // Remember if we were playing when backgrounding
+        this.wasPlayingBeforeBackground = this.player?.playing ?? false;
+      } else if (nextState === 'active' && currentState !== 'active') {
+        // Returning to foreground - set grace period if we were playing
+        if (this.wasPlayingBeforeBackground) {
+          this.foregroundGraceUntil = Date.now() + 1500;
+          log('🔄 Foreground grace period active (1.5s) - suppressing false pause');
+        }
+      }
+      currentState = nextState;
+    });
   }
 
   /**
@@ -534,6 +570,14 @@ class AudioService {
       // Play next track
       this.currentTrackIndex++;
       const nextTrack = this.tracks[this.currentTrackIndex];
+
+      // Fix HIGH: Validate nextTrack exists before accessing properties
+      if (!nextTrack) {
+        audioLog.error(`[handleTrackEnd] nextTrack is undefined at index ${this.currentTrackIndex}`);
+        this.trackSwitchInProgress = false;
+        return;
+      }
+
       log(`Auto-advancing to track ${this.currentTrackIndex}: ${nextTrack.title}`);
       // DIAGNOSTIC: Log track advance to help debug 2-chapter issue
       console.error(`[AUDIO_DIAGNOSTIC] Auto-advancing to track ${this.currentTrackIndex + 1}/${this.tracks.length}: ${nextTrack.title}`);
@@ -800,7 +844,9 @@ class AudioService {
         try {
           await this.play();
           return this.player?.playing || false;
-        } catch {
+        } catch (err) {
+          // Fix Low #5: Log retry failure for debugging
+          log('retryPlay failed:', err);
           return false;
         }
       },
@@ -809,12 +855,12 @@ class AudioService {
     const updateProgress = () => {
       if (!this.isLoaded || !this.player) return;
 
-      // Track switch timeout fallback - clear flag after 1500ms
-      // (extended from 500ms to handle slower network/track loads)
+      // Track switch timeout fallback - clear flag after 5000ms
+      // (extended from 1500ms to handle slow network/track loads)
       if (this.trackSwitchInProgress) {
         const elapsed = Date.now() - this.trackSwitchStartTime;
-        if (elapsed >= 1500) {
-          log('Track switch timeout - clearing flag');
+        if (elapsed >= 5000) {
+          audioLog.warn('Track switch timeout after 5s - clearing flag (may indicate slow network)');
           this.trackSwitchInProgress = false;
         }
       }
@@ -823,8 +869,22 @@ class AudioService {
         // ALWAYS get position from getGlobalPositionSync - it returns cached value during
         // track switch/scrubbing, ensuring consistent position even during transitions
         const position = this.getGlobalPositionSync();
-        const isPlaying = this.player.playing;
+        let isPlaying = this.player.playing;
         const isBuffering = this.player.isBuffering;
+
+        // Foreground grace: expo-av may briefly report playing=false when app returns
+        // to foreground. Suppress this for 1.5s to prevent UI showing paused state.
+        if (this.foregroundGraceUntil > 0) {
+          if (isPlaying) {
+            // Player confirmed playing — clear grace early
+            this.foregroundGraceUntil = 0;
+          } else if (!isBuffering && Date.now() < this.foregroundGraceUntil) {
+            isPlaying = true;
+          } else {
+            // Grace expired
+            this.foregroundGraceUntil = 0;
+          }
+        }
 
         // Report buffering state transitions to buffer recovery service
         if (isBuffering && !this.wasBuffering) {
@@ -924,6 +984,25 @@ class AudioService {
     }
     // Stop buffer recovery monitoring
     bufferRecoveryService.stop();
+
+    // Clear tracked timeouts to prevent stale callbacks
+    if (this.ghostPausedCheckTimeout) {
+      clearTimeout(this.ghostPausedCheckTimeout);
+      this.ghostPausedCheckTimeout = null;
+    }
+    if (this.ghostPausedRetryTimeout) {
+      clearTimeout(this.ghostPausedRetryTimeout);
+      this.ghostPausedRetryTimeout = null;
+    }
+    if (this.durationUpdateTimeout) {
+      clearTimeout(this.durationUpdateTimeout);
+      this.durationUpdateTimeout = null;
+    }
+    // Fix: Clear track switch timeout to prevent orphaned callbacks
+    if (this.trackSwitchTimeout) {
+      clearTimeout(this.trackSwitchTimeout);
+      this.trackSwitchTimeout = null;
+    }
   }
 
   async loadAudio(
@@ -946,6 +1025,18 @@ class AudioService {
     if (!validateUrl(url, 'loadAudio')) {
       audioLog.error('Invalid URL provided to loadAudio');
       throw new Error('Invalid audio URL');
+    }
+
+    // Fix MEDIUM: Validate startPositionSec
+    if (!Number.isFinite(startPositionSec) || startPositionSec < 0) {
+      audioLog.warn(`[loadAudio] Invalid startPosition: ${startPositionSec}, using 0`);
+      startPositionSec = 0;
+    }
+
+    // Fix MEDIUM: Validate knownDuration
+    if (knownDuration !== undefined && (!Number.isFinite(knownDuration) || knownDuration < 0)) {
+      audioLog.warn(`[loadAudio] Invalid knownDuration: ${knownDuration}, ignoring`);
+      knownDuration = undefined;
     }
 
     // Ensure setup is done first
@@ -1030,13 +1121,40 @@ class AudioService {
       }
       timing('Load complete');
 
-      // Update duration from player in background if we used knownDuration
+      // Update duration from player in background
+      // Clear any existing duration update timeout
+      if (this.durationUpdateTimeout) {
+        clearTimeout(this.durationUpdateTimeout);
+      }
+
       if (knownDuration && this.player) {
-        setTimeout(() => {
+        // If we had knownDuration, just verify it matches player after 1s
+        this.durationUpdateTimeout = setTimeout(() => {
           if (this.player && this.player.duration > 0) {
             this.totalDuration = this.player.duration;
           }
+          this.durationUpdateTimeout = null;
         }, 1000);
+      } else if (!knownDuration || this.totalDuration === 0) {
+        // FIX: If we didn't have duration, poll for it (streaming audio may not have it immediately)
+        // Poll every 500ms for up to 10 seconds
+        let pollCount = 0;
+        const maxPolls = 20;
+        const pollInterval = setInterval(() => {
+          pollCount++;
+          if (this.player && this.player.duration > 0 && this.totalDuration === 0) {
+            this.totalDuration = this.player.duration;
+            log(`[DURATION_POLL] Duration detected: ${this.totalDuration.toFixed(1)}s (after ${pollCount * 500}ms)`);
+            clearInterval(pollInterval);
+          } else if (pollCount >= maxPolls) {
+            if (this.totalDuration === 0) {
+              log('[DURATION_POLL] Failed to detect duration after 10s');
+            }
+            clearInterval(pollInterval);
+          }
+        }, 500);
+        // Store interval reference for cleanup
+        this.durationUpdateTimeout = pollInterval as unknown as NodeJS.Timeout;
       }
 
       // Update media controls with metadata
@@ -1085,12 +1203,18 @@ class AudioService {
   private async loadUrlWithRetry(url: string): Promise<void> {
     let lastError: Error | null = null;
 
+    // DIAGNOSTIC: Log the full URL for debugging "plays but no audio" issue
+    console.error('[AUDIO_DIAGNOSTIC] Loading URL:', url);
+
     for (let attempt = 0; attempt < this.MAX_LOAD_RETRIES; attempt++) {
       try {
         if (this.player) {
           this.player.replace({ uri: url });
           // Wait briefly to detect immediate load failures
           await new Promise(resolve => setTimeout(resolve, 200));
+
+          // DIAGNOSTIC: Log player state after replace
+          console.error('[AUDIO_DIAGNOSTIC] After replace - duration:', this.player.duration, 'playing:', this.player.playing, 'isBuffering:', this.player.isBuffering);
 
           // Check if player is in error state (heuristic: duration is 0 or NaN after load)
           // Note: expo-audio may not throw on HTTP errors, they manifest as playback failures
@@ -1146,6 +1270,25 @@ class AudioService {
     const timing = createTimer('loadTracks');
 
     logSection('LOAD AUDIO (multi-track)');
+
+    // Fix MEDIUM: Validate tracks array
+    if (!tracks || !Array.isArray(tracks) || tracks.length === 0) {
+      audioLog.error('[loadTracks] Invalid or empty tracks array');
+      throw new Error('No audio tracks provided');
+    }
+
+    // Fix MEDIUM: Validate startPositionSec
+    if (!Number.isFinite(startPositionSec) || startPositionSec < 0) {
+      audioLog.warn(`[loadTracks] Invalid startPosition: ${startPositionSec}, using 0`);
+      startPositionSec = 0;
+    }
+
+    // Fix MEDIUM: Validate knownTotalDuration
+    if (knownTotalDuration !== undefined && (!Number.isFinite(knownTotalDuration) || knownTotalDuration < 0)) {
+      audioLog.warn(`[loadTracks] Invalid knownTotalDuration: ${knownTotalDuration}, ignoring`);
+      knownTotalDuration = undefined;
+    }
+
     log(`Track count: ${tracks.length}`);
     log(`Start position: ${formatDuration(startPositionSec)} (${startPositionSec.toFixed(1)}s)`);
     log('AutoPlay:', autoPlay);
@@ -1294,9 +1437,17 @@ class AudioService {
   async seekToGlobal(globalPositionSec: number): Promise<void> {
     if (!this.player) return;
 
+    // Fix HIGH: Validate position is a valid number
+    if (!Number.isFinite(globalPositionSec) || globalPositionSec < 0) {
+      audioLog.warn(`[seekToGlobal] Invalid position: ${globalPositionSec}, clamping to 0`);
+      globalPositionSec = 0;
+    }
+
     if (this.tracks.length === 0) {
-      // Single track mode - just seek directly
-      await this.player.seekTo(globalPositionSec);
+      // Single track mode - clamp position to valid range and seek
+      const maxPosition = this.totalDuration > 0 ? this.totalDuration : (this.player.duration || 0);
+      const clampedPosition = Math.min(globalPositionSec, maxPosition);
+      await this.player.seekTo(clampedPosition);
       return;
     }
 
@@ -1320,7 +1471,16 @@ class AudioService {
 
     // If seeking to very near the end of a track, move to start of next track instead
     // This prevents immediate track-end events
+    // Fix HIGH: Validate track index before access
+    if (targetTrackIndex < 0 || targetTrackIndex >= this.tracks.length) {
+      audioLog.warn(`[seekToGlobal] Invalid targetTrackIndex: ${targetTrackIndex}, tracks: ${this.tracks.length}`);
+      return;
+    }
     const track = this.tracks[targetTrackIndex];
+    if (!track) {
+      audioLog.warn(`[seekToGlobal] Track at index ${targetTrackIndex} is undefined`);
+      return;
+    }
     const trackDuration = track.duration;
     const nearEndThreshold = 0.5; // Within 0.5 seconds of track end
 
@@ -1346,6 +1506,12 @@ class AudioService {
         // Increased from 50ms to 150ms - 50ms was too short for typical scrub gestures
         // and caused pending track switches to be overwritten during rapid scrubbing
         this.trackSwitchTimeout = setTimeout(() => {
+          // Fix HIGH: Check isScrubbing INSIDE timeout - if scrubbing ended, bail out
+          // The final seekTo from setScrubbing(false) will handle the correct position
+          if (!this.isScrubbing) {
+            this.pendingTrackSwitch = null;
+            return;
+          }
           if (this.pendingTrackSwitch) {
             this.executeTrackSwitch(
               this.pendingTrackSwitch.trackIndex,
@@ -1372,79 +1538,121 @@ class AudioService {
   private async executeTrackSwitch(targetTrackIndex: number, positionInTrack: number): Promise<void> {
     if (!this.player) return;
 
+    // Fix HIGH: Validate track index before proceeding
+    if (targetTrackIndex < 0 || targetTrackIndex >= this.tracks.length) {
+      audioLog.warn(`[executeTrackSwitch] Invalid targetTrackIndex: ${targetTrackIndex}, tracks: ${this.tracks.length}`);
+      return;
+    }
+
     // CRITICAL: Set flag FIRST to prevent race condition where currentTrackIndex
     // is updated but flag isn't set, causing getGlobalPositionSync to return bad value
     this.trackSwitchInProgress = true;
     this.trackSwitchStartTime = Date.now();
 
-    const wasPlaying = this.player.playing;
-    const newTrack = this.tracks[targetTrackIndex];
+    // Fix Bug #2: Use try-finally to ensure flag is ALWAYS cleared, even on error
+    try {
+      const wasPlaying = this.player.playing;
+      const newTrack = this.tracks[targetTrackIndex];
 
-    // FIX: Set lastKnownGoodPosition to TARGET position BEFORE changing currentTrackIndex
-    // This ensures that if the flag clears prematurely for any reason, getGlobalPositionSync()
-    // will return the correct target position instead of a stale value
-    const targetGlobalPosition = newTrack.startOffset + positionInTrack;
-    log(`📍 Pre-setting lastKnownGoodPosition to ${targetGlobalPosition.toFixed(1)}s before track switch`);
-    this.lastKnownGoodPosition = targetGlobalPosition;
+      // Fix HIGH: Validate track exists
+      if (!newTrack) {
+        audioLog.warn(`[executeTrackSwitch] Track at index ${targetTrackIndex} is undefined`);
+        return;
+      }
 
-    this.currentTrackIndex = targetTrackIndex;
+      // FIX: Set lastKnownGoodPosition to TARGET position BEFORE changing currentTrackIndex
+      // This ensures that if the flag clears prematurely for any reason, getGlobalPositionSync()
+      // will return the correct target position instead of a stale value
+      const targetGlobalPosition = newTrack.startOffset + positionInTrack;
+      log(`📍 Pre-setting lastKnownGoodPosition to ${targetGlobalPosition.toFixed(1)}s before track switch`);
+      this.lastKnownGoodPosition = targetGlobalPosition;
 
-    log(`⏩ Track switch → ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
+      this.currentTrackIndex = targetTrackIndex;
 
-    // Check if we have this track preloaded for instant switch
-    if (this.preloadedTrackIndex === targetTrackIndex && this.preloadPlayer) {
-      // CRITICAL: Stop the old player BEFORE swapping to prevent multiple audio streams
+      log(`⏩ Track switch → ${targetTrackIndex}, pos ${positionInTrack.toFixed(1)}s`);
+
+      // Check if we have this track preloaded for instant switch
+      if (this.preloadedTrackIndex === targetTrackIndex && this.preloadPlayer) {
+        // CRITICAL: Stop the old player BEFORE swapping to prevent multiple audio streams
+        // Fix HIGH: Add null check - player could have been unloaded
+        if (!this.player) {
+          audioLog.warn('[executeTrackSwitch] Player became null before preload swap');
+          return;
+        }
+        this.player.pause();
+
+        // Swap players for seamless transition
+        const temp = this.player;
+        this.player = this.preloadPlayer;
+        this.preloadPlayer = temp;
+        this.preloadedTrackIndex = -1;
+
+        // Fix HIGH: Check player after swap - preloadPlayer could have been released
+        if (!this.player) {
+          audioLog.warn('[executeTrackSwitch] Player null after swap');
+          return;
+        }
+        await this.player.seekTo(positionInTrack);
+        // Fix HIGH: Check player after async seek
+        if (wasPlaying && this.player) {
+          this.player.play();
+        }
+        return; // Flag cleared in finally block
+      }
+
+      // Store the desired seek position - will be applied after track loads
+      this.pendingSeekAfterLoad = positionInTrack;
+
+      // Fix HIGH: Check player before pause - could have been unloaded
+      if (!this.player) {
+        audioLog.warn('[executeTrackSwitch] Player became null before pause');
+        return;
+      }
+
+      // CRITICAL: Pause before replacing to prevent audio overlap
       this.player.pause();
 
-      // Swap players for seamless transition
-      const temp = this.player;
-      this.player = this.preloadPlayer;
-      this.preloadPlayer = temp;
-      this.preloadedTrackIndex = -1;
+      // Load the new track
+      this.player.replace({ uri: newTrack.url });
 
-      await this.player.seekTo(positionInTrack);
-      if (wasPlaying) {
+      // Wait for the player to be ready before seeking
+      // expo-audio needs time to initialize after replace()
+      await this.waitForTrackReady();
+
+      // Fix HIGH: Check player after async wait - could have been unloaded during wait
+      if (!this.player) {
+        audioLog.warn('[executeTrackSwitch] Player became null during track load');
+        this.pendingSeekAfterLoad = null;
+        return;
+      }
+
+      // Now perform the seek
+      if (this.pendingSeekAfterLoad !== null) {
+        log(`📍 Applying pending seek to ${this.pendingSeekAfterLoad.toFixed(1)}s`);
+        await this.player.seekTo(this.pendingSeekAfterLoad);
+        this.pendingSeekAfterLoad = null;
+      }
+
+      // Fix HIGH: Check player before play - could have been unloaded during seek
+      if (wasPlaying && this.player) {
         this.player.play();
       }
-      // Clear flag - seek is complete
+
+      // Refine lastKnownGoodPosition with actual player position after seek completes
+      // (We pre-set it before track switch as a safety net, now we update with actual value)
+      if (this.player && this.tracks.length > 0 && targetTrackIndex < this.tracks.length) {
+        const refinedPosition = this.tracks[targetTrackIndex].startOffset + this.player.currentTime;
+        log(`📍 Refined lastKnownGoodPosition: ${this.lastKnownGoodPosition.toFixed(1)}s → ${refinedPosition.toFixed(1)}s`);
+        this.lastKnownGoodPosition = refinedPosition;
+      }
+    } catch (error) {
+      audioLog.error('[Audio] Track switch failed:', getErrorMessage(error));
+      // Re-throw so caller knows it failed
+      throw error;
+    } finally {
+      // Fix Bug #2: ALWAYS clear flag, even on error
       this.trackSwitchInProgress = false;
-      return;
     }
-
-    // Store the desired seek position - will be applied after track loads
-    this.pendingSeekAfterLoad = positionInTrack;
-
-    // CRITICAL: Pause before replacing to prevent audio overlap
-    this.player.pause();
-
-    // Load the new track
-    this.player.replace({ uri: newTrack.url });
-
-    // Wait for the player to be ready before seeking
-    // expo-audio needs time to initialize after replace()
-    await this.waitForTrackReady();
-
-    // Now perform the seek
-    if (this.pendingSeekAfterLoad !== null) {
-      log(`📍 Applying pending seek to ${this.pendingSeekAfterLoad.toFixed(1)}s`);
-      await this.player.seekTo(this.pendingSeekAfterLoad);
-      this.pendingSeekAfterLoad = null;
-    }
-
-    if (wasPlaying) {
-      this.player.play();
-    }
-
-    // Refine lastKnownGoodPosition with actual player position after seek completes
-    // (We pre-set it before track switch as a safety net, now we update with actual value)
-    if (this.player && this.tracks.length > 0 && targetTrackIndex < this.tracks.length) {
-      const refinedPosition = this.tracks[targetTrackIndex].startOffset + this.player.currentTime;
-      log(`📍 Refined lastKnownGoodPosition: ${this.lastKnownGoodPosition.toFixed(1)}s → ${refinedPosition.toFixed(1)}s`);
-      this.lastKnownGoodPosition = refinedPosition;
-    }
-
-    // Clear flag after seek is complete
-    this.trackSwitchInProgress = false;
   }
 
   /**
@@ -1571,23 +1779,15 @@ class AudioService {
     }
 
     try {
+      // PERF: Fire play command and return immediately for instant response
+      // Don't wait for playback to actually start - playerStore has stuck detection
+      // that will handle any failures with a 3000ms timeout
       this.player.play();
 
-      // Verify playback started within 500ms
-      const startTime = Date.now();
-      while (Date.now() - startTime < 500) {
-        if (this.player.playing || this.player.isBuffering) {
-          // Playback started or buffering - success
-          await this.updateMediaControlPlaybackState(true);
-          return;
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-
-      // If still not playing after 500ms, log warning but don't throw
-      // (could be slow network, will be caught by stuck detection)
-      audioLog.warn('Play: Playback not started after 500ms, may be slow network');
-      await this.updateMediaControlPlaybackState(true);
+      // Update media controls in background (fire-and-forget)
+      this.updateMediaControlPlaybackState(true).catch((err) => {
+        audioLog.warn('[play] Media control update failed:', err);
+      });
     } catch (error) {
       audioLog.error('Play failed:', getErrorMessage(error));
       throw error;
@@ -1601,18 +1801,34 @@ class AudioService {
       return;
     }
     try {
+      // PERF: Fire pause command immediately - don't block on media control update
       this.player.pause();
-      this.updateMediaControlPlaybackState(false);
+
+      // Update media controls in background (fire-and-forget) - same as play()
+      // Awaiting this was causing 30+ second delays when MediaControl hung
+      this.updateMediaControlPlaybackState(false).catch((err) => {
+        audioLog.warn('[pause] Media control update failed:', err);
+      });
+
+      // Clear any existing ghost paused timeouts
+      if (this.ghostPausedCheckTimeout) {
+        clearTimeout(this.ghostPausedCheckTimeout);
+        this.ghostPausedCheckTimeout = null;
+      }
+      if (this.ghostPausedRetryTimeout) {
+        clearTimeout(this.ghostPausedRetryTimeout);
+        this.ghostPausedRetryTimeout = null;
+      }
 
       // GHOST PAUSED DETECTION: Verify audio actually stopped
       // If the player is still playing after 500ms, we have a ghost paused state
-      setTimeout(() => {
+      this.ghostPausedCheckTimeout = setTimeout(() => {
         if (this.player?.playing) {
           audioLog.warn('[GHOST_PAUSED] Audio still playing after pause command - forcing stop');
           // Try pause again
           this.player?.pause();
           // If still playing after second attempt, notify via callback
-          setTimeout(() => {
+          this.ghostPausedRetryTimeout = setTimeout(() => {
             if (this.player?.playing) {
               audioLog.error('[GHOST_PAUSED] Failed to pause after 2 attempts');
               // Notify the status callback about the issue
@@ -1624,8 +1840,10 @@ class AudioService {
                 didJustFinish: false,
               });
             }
+            this.ghostPausedRetryTimeout = null;
           }, 200);
         }
+        this.ghostPausedCheckTimeout = null;
       }, 500);
     } catch (error) {
       audioLog.warn('Pause failed:', getErrorMessage(error));
@@ -1803,6 +2021,18 @@ class AudioService {
       } catch (e) {
         // Ignore errors during cleanup
       }
+    }
+
+    // Clean up app state listener (foreground grace period)
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
+    }
+
+    // Clean up duration polling interval
+    if (this.durationUpdateTimeout) {
+      clearInterval(this.durationUpdateTimeout);
+      this.durationUpdateTimeout = null;
     }
   }
 }

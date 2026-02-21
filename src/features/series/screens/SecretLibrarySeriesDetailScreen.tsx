@@ -33,9 +33,7 @@ import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
-import { useBookRowLayout } from '@/features/home/hooks/useBookRowLayout';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { BookSpineVerticalData, ShelfRow } from '@/shared/spine';
 
 // Type guard for book media
 function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
@@ -58,7 +56,7 @@ type SeriesDetailRouteParams = {
   SeriesDetail: { seriesName?: string; name?: string };
 };
 
-type FilterTab = 'all' | 'narrator' | 'genre';
+type FilterTab = 'all' | 'author' | 'narrator' | 'genre';
 type ViewMode = 'series' | 'book';
 
 // Helper to get metadata
@@ -77,12 +75,16 @@ function formatDurationCompact(seconds: number): string {
 
 // Extract series sequence number from metadata
 function getSeriesSequence(metadata: any): number | undefined {
-  // Try series.sequence first
-  if (metadata?.series?.sequence) {
-    return parseFloat(metadata.series.sequence);
+  // Check series array first (preferred - has explicit sequence)
+  if (Array.isArray(metadata?.series) && metadata.series.length > 0) {
+    const primarySeries = metadata.series[0];
+    if (primarySeries.sequence !== undefined && primarySeries.sequence !== null) {
+      const parsed = parseFloat(primarySeries.sequence);
+      if (!isNaN(parsed)) return parsed;
+    }
   }
-  // Try to extract from seriesName like "Series Name #3"
-  const match = metadata?.seriesName?.match(/#([\d.]+)$/);
+  // Fallback: check seriesName for #N pattern
+  const match = metadata?.seriesName?.match(/#([\d.]+)/);
   if (match) {
     return parseFloat(match[1]);
   }
@@ -134,7 +136,6 @@ export function SecretLibrarySeriesDetailScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('book');
 
   const { getSeries, isLoaded } = useLibraryCache();
-  const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
   // Favorite functionality
   const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
@@ -165,6 +166,26 @@ export function SecretLibrarySeriesDetailScreen() {
       return seqA - seqB;
     });
   }, [seriesInfo?.books]);
+
+  // Get unique authors
+  const authorList = useMemo(() => {
+    const authorMap = new Map<string, { name: string; books: LibraryItem[] }>();
+    allBooks.forEach(book => {
+      const metadata = getMetadata(book);
+      const authorName = metadata?.authorName || '';
+      if (authorName) {
+        // Handle comma-separated authors (use first author for grouping)
+        const firstAuthor = authorName.split(',')[0].trim();
+        const existing = authorMap.get(firstAuthor);
+        if (existing) {
+          existing.books.push(book);
+        } else {
+          authorMap.set(firstAuthor, { name: firstAuthor, books: [book] });
+        }
+      }
+    });
+    return Array.from(authorMap.values()).sort((a, b) => b.books.length - a.books.length);
+  }, [allBooks]);
 
   // Get unique narrators
   const narratorList = useMemo(() => {
@@ -207,14 +228,6 @@ export function SecretLibrarySeriesDetailScreen() {
     return Array.from(genreMap.values()).sort((a, b) => b.books.length - a.books.length);
   }, [allBooks]);
 
-  // Convert books to spine data with cached colors
-  const getSpineDataList = useCallback((books: LibraryItem[]): BookSpineVerticalData[] => {
-    return books.map(book => {
-      const cached = getSpineData(book.id);
-      return toSpineData(book, cached);
-    });
-  }, [getSpineData]);
-
   // Total duration
   const totalDuration = useMemo(() => {
     return allBooks.reduce((sum, book) => sum + getBookDuration(book), 0);
@@ -236,6 +249,10 @@ export function SecretLibrarySeriesDetailScreen() {
     navigation.navigate('BookDetail', { id: bookId });
   }, [navigation]);
 
+  const handleAuthorPress = useCallback((authorName: string) => {
+    navigation.navigate('AuthorDetail', { authorName });
+  }, [navigation]);
+
   const handleNarratorPress = useCallback((narratorName: string) => {
     navigation.navigate('NarratorDetail', { narratorName });
   }, [navigation]);
@@ -251,35 +268,6 @@ export function SecretLibrarySeriesDetailScreen() {
   const handleSpinePress = useCallback((book: BookSpineVerticalData) => {
     navigation.navigate('BookDetail', { id: book.id });
   }, [navigation]);
-
-  // Shelf view component for a set of books
-  const ShelfView = useCallback(({ books }: { books: LibraryItem[] }) => {
-    const spineDataList = getSpineDataList(books);
-    const layouts = useBookRowLayout(spineDataList, {
-      scaleFactor: 0.75,
-      enableLeaning: true,
-    });
-
-    return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shelfContent}
-      >
-        {layouts.map((layout) => (
-          <View key={layout.book.id} style={styles.spineWrapper}>
-            <BookSpineVertical
-              book={layout.book}
-              width={layout.width}
-              height={layout.height}
-              leanAngle={layout.leanAngle}
-              onPress={handleSpinePress}
-            />
-          </View>
-        ))}
-      </ScrollView>
-    );
-  }, [getSpineDataList, handleSpinePress]);
 
   // Render vertical book list (one per line)
   const renderVerticalBookList = (books: LibraryItem[]) => {
@@ -424,6 +412,12 @@ export function SecretLibrarySeriesDetailScreen() {
               <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'all' && { color: colors.white }]}>All</Text>
             </Pressable>
             <Pressable
+              style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'author' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
+              onPress={() => setActiveTab('author')}
+            >
+              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'author' && { color: colors.white }]}>Author</Text>
+            </Pressable>
+            <Pressable
               style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'narrator' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
               onPress={() => setActiveTab('narrator')}
             >
@@ -451,7 +445,7 @@ export function SecretLibrarySeriesDetailScreen() {
         {activeTab === 'all' && viewMode === 'series' && (
           <View style={styles.groupedList}>
             <View style={styles.groupSection}>
-              <ShelfView books={allBooks} />
+              <ShelfRow books={allBooks} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
             </View>
             {allBooks.length === 0 && (
               <Text style={[styles.emptyText, { color: colors.gray }]}>No books found</Text>
@@ -468,6 +462,44 @@ export function SecretLibrarySeriesDetailScreen() {
           </View>
         )}
 
+        {activeTab === 'author' && viewMode === 'series' && (
+          <View style={styles.groupedList}>
+            {authorList.map((author, index) => (
+              <CollapsibleSection
+                key={author.name}
+                title={author.name}
+                count={author.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleAuthorPress(author.name)}
+              >
+                <ShelfRow books={author.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+              </CollapsibleSection>
+            ))}
+            {authorList.length === 0 && (
+              <Text style={[styles.emptyText, { color: colors.gray }]}>No authors found</Text>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'author' && viewMode === 'book' && (
+          <View style={styles.groupedList}>
+            {authorList.map((author, index) => (
+              <CollapsibleSection
+                key={author.name}
+                title={author.name}
+                count={author.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleAuthorPress(author.name)}
+              >
+                {renderVerticalBookList(author.books)}
+              </CollapsibleSection>
+            ))}
+            {authorList.length === 0 && (
+              <Text style={[styles.emptyText, { color: colors.gray }]}>No authors found</Text>
+            )}
+          </View>
+        )}
+
         {activeTab === 'narrator' && viewMode === 'series' && (
           <View style={styles.groupedList}>
             {narratorList.map((narrator, index) => (
@@ -478,7 +510,7 @@ export function SecretLibrarySeriesDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleNarratorPress(narrator.name)}
               >
-                <ShelfView books={narrator.books} />
+                <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {narratorList.length === 0 && (
@@ -516,7 +548,7 @@ export function SecretLibrarySeriesDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleGenrePress(genre.name)}
               >
-                <ShelfView books={genre.books} />
+                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
               </CollapsibleSection>
             ))}
             {genreList.length === 0 && (

@@ -105,6 +105,15 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
 
         // Load initial browse data
         loadBrowseData()
+
+        // Set initial paused state so Android Auto shows controls immediately
+        // Without this, Android Auto shows nothing until JS sends first update
+        updatePlaybackState(
+            PlaybackStateCompat.STATE_PAUSED,
+            0L,
+            1.0f
+        )
+        Log.d(TAG, "Initial playback state set to PAUSED")
     }
 
     override fun onDestroy() {

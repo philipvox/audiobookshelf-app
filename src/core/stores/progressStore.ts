@@ -414,6 +414,13 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
           };
         });
 
+        // Sync to myLibraryStore + ABS collection
+        const { useMyLibraryStore } = await import('@/shared/stores/myLibraryStore');
+        const myLib = useMyLibraryStore.getState();
+        if (!myLib.libraryIds.includes(bookId)) {
+          myLib.addToLibrary(bookId);
+        }
+
         log.info(`Added ${bookId} to library`);
       },
 
@@ -445,6 +452,13 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
             version: state.version + 1,
           };
         });
+
+        // Sync to myLibraryStore + ABS collection
+        const { useMyLibraryStore } = await import('@/shared/stores/myLibraryStore');
+        const myLib = useMyLibraryStore.getState();
+        if (myLib.libraryIds.includes(bookId)) {
+          myLib.removeFromLibrary(bookId);
+        }
 
         log.info(`Removed ${bookId} from library`);
       },

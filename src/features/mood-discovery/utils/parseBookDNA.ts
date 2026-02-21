@@ -266,14 +266,14 @@ export function hasMoodScores(dna: BookDNA): boolean {
 /**
  * Maps quiz moods to BookDNA mood score keys.
  * Quiz uses different names than BookDNA for UX reasons.
+ * Note: Mood type has 4 values (comfort, thrills, escape, feels).
+ * BookDNA has 6 mood scores (thrills, drama, laughs, wonder, heart, ideas).
  */
 export const QUIZ_MOOD_TO_DNA_MOOD: Record<Mood, keyof BookDNA['moodScores']> = {
   thrills: 'thrills',
-  laughs: 'laughs',
   comfort: 'heart',    // "comfort" maps to "heart" in DNA
   feels: 'drama',      // "feels" maps to "drama" in DNA
   escape: 'wonder',    // "escape" maps to "wonder" in DNA
-  thinking: 'ideas',   // "thinking" maps to "ideas" in DNA
 };
 
 /**
@@ -286,4 +286,438 @@ export const QUIZ_MOOD_TO_DNA_MOOD: Record<Mood, keyof BookDNA['moodScores']> = 
 export function getDNAMoodScore(dna: BookDNA, quizMood: Mood): number | null {
   const dnaKey = QUIZ_MOOD_TO_DNA_MOOD[quizMood];
   return dna.moodScores[dnaKey];
+}
+
+// ============================================================================
+// VOCABULARY MAPPING
+// Maps alternative terms to canonical DNA values for flexible tag parsing
+// ============================================================================
+
+/**
+ * Vocabulary mapping for pacing terms.
+ * Allows "slow-burn", "leisurely", etc. to map to canonical "slow".
+ */
+export const PACING_VOCABULARY: Record<string, BookDNA['pacing']> = {
+  // Slow variations
+  'slow': 'slow',
+  'slow-burn': 'slow',
+  'leisurely': 'slow',
+  'atmospheric': 'slow',
+  'meditative': 'slow',
+  'contemplative': 'slow',
+  'literary': 'slow',
+
+  // Moderate variations
+  'moderate': 'moderate',
+  'steady': 'moderate',
+  'balanced': 'moderate',
+  'well-paced': 'moderate',
+
+  // Fast variations
+  'fast': 'fast',
+  'fast-paced': 'fast',
+  'page-turner': 'fast',
+  'propulsive': 'fast',
+  'gripping': 'fast',
+  'action-packed': 'fast',
+  'thriller': 'fast',
+
+  // Variable
+  'variable': 'variable',
+  'mixed': 'variable',
+  'dynamic': 'variable',
+};
+
+/**
+ * Vocabulary mapping for weight/tone terms.
+ */
+export const WEIGHT_VOCABULARY: Record<string, 'light' | 'balanced' | 'heavy'> = {
+  // Light
+  'light': 'light',
+  'cozy': 'light',
+  'fun': 'light',
+  'feel-good': 'light',
+  'uplifting': 'light',
+  'lighthearted': 'light',
+  'beach-read': 'light',
+
+  // Balanced
+  'balanced': 'balanced',
+  'moderate': 'balanced',
+  'mixed-tone': 'balanced',
+
+  // Heavy
+  'heavy': 'heavy',
+  'dark': 'heavy',
+  'intense': 'heavy',
+  'gritty': 'heavy',
+  'brutal': 'heavy',
+  'devastating': 'heavy',
+  'raw': 'heavy',
+  'unflinching': 'heavy',
+  'challenging': 'heavy',
+};
+
+/**
+ * Vocabulary mapping for vibe terms.
+ */
+export const VIBE_VOCABULARY: Record<string, string> = {
+  // Cozy variations
+  'cozy': 'cozy',
+  'hygge': 'cozy',
+  'comfort-read': 'cozy',
+  'heartwarming': 'cozy',
+
+  // Atmospheric
+  'atmospheric': 'atmospheric',
+  'moody': 'atmospheric',
+  'immersive': 'atmospheric',
+
+  // Suspenseful
+  'suspenseful': 'suspenseful',
+  'tense': 'suspenseful',
+  'edge-of-seat': 'suspenseful',
+
+  // Whimsical
+  'whimsical': 'whimsical',
+  'magical': 'whimsical',
+  'enchanting': 'whimsical',
+
+  // Emotional
+  'emotional': 'emotional',
+  'moving': 'emotional',
+  'poignant': 'emotional',
+  'touching': 'emotional',
+
+  // Dark
+  'dark': 'dark',
+  'gothic': 'dark',
+  'noir': 'dark',
+
+  // Funny
+  'funny': 'funny',
+  'hilarious': 'funny',
+  'witty': 'funny',
+  'satirical': 'funny',
+
+  // Thought-provoking
+  'thought-provoking': 'thought-provoking',
+  'philosophical': 'thought-provoking',
+  'cerebral': 'thought-provoking',
+};
+
+// ============================================================================
+// TROPE NORMALIZATION
+// Maps trope variations to canonical forms
+// ============================================================================
+
+export const TROPE_VOCABULARY: Record<string, string> = {
+  // Found family variations
+  'found-family': 'found-family',
+  'found family': 'found-family',
+  'found_family': 'found-family',
+  'chosen-family': 'found-family',
+
+  // Enemies to lovers variations
+  'enemies-to-lovers': 'enemies-to-lovers',
+  'enemies to lovers': 'enemies-to-lovers',
+  'enemies_to_lovers': 'enemies-to-lovers',
+
+  // Friends to lovers
+  'friends-to-lovers': 'friends-to-lovers',
+  'friends to lovers': 'friends-to-lovers',
+  'best-friends-to-lovers': 'friends-to-lovers',
+
+  // Slow burn
+  'slow-burn': 'slow-burn',
+  'slow burn': 'slow-burn',
+  'slowburn': 'slow-burn',
+
+  // Chosen one
+  'chosen-one': 'chosen-one',
+  'chosen one': 'chosen-one',
+  'the-chosen-one': 'chosen-one',
+
+  // Redemption arc
+  'redemption-arc': 'redemption-arc',
+  'redemption arc': 'redemption-arc',
+  'redemption': 'redemption-arc',
+
+  // Unreliable narrator
+  'unreliable-narrator': 'unreliable-narrator',
+  'unreliable narrator': 'unreliable-narrator',
+
+  // Fish out of water
+  'fish-out-of-water': 'fish-out-of-water',
+  'fish out of water': 'fish-out-of-water',
+
+  // Second chance
+  'second-chance': 'second-chance',
+  'second chance': 'second-chance',
+  'second-chance-romance': 'second-chance',
+};
+
+/**
+ * Normalize a trope name to its canonical form.
+ */
+export function normalizeTrope(trope: string): string {
+  const lower = trope.toLowerCase().trim();
+  return TROPE_VOCABULARY[lower] || lower.replace(/\s+/g, '-');
+}
+
+// ============================================================================
+// THEME NORMALIZATION
+// ============================================================================
+
+export const THEME_VOCABULARY: Record<string, string> = {
+  // Identity variations
+  'identity': 'identity',
+  'self-discovery': 'identity',
+  'finding-yourself': 'identity',
+
+  // Grief variations
+  'grief': 'grief',
+  'loss': 'grief',
+  'mourning': 'grief',
+  'bereavement': 'grief',
+
+  // Family variations
+  'family': 'family',
+  'family-drama': 'family',
+  'family-dynamics': 'family',
+  'dysfunctional-family': 'family',
+
+  // Love variations
+  'love': 'love',
+  'romance': 'love',
+  'first-love': 'love',
+
+  // Coming of age
+  'coming-of-age': 'coming-of-age',
+  'growing-up': 'coming-of-age',
+  'bildungsroman': 'coming-of-age',
+
+  // Survival
+  'survival': 'survival',
+  'survival-story': 'survival',
+
+  // Power
+  'power': 'power',
+  'power-dynamics': 'power',
+  'corruption': 'power',
+
+  // Morality
+  'morality': 'morality',
+  'ethics': 'morality',
+  'moral-ambiguity': 'morality',
+};
+
+/**
+ * Normalize a theme name to its canonical form.
+ */
+export function normalizeTheme(theme: string): string {
+  const lower = theme.toLowerCase().trim();
+  return THEME_VOCABULARY[lower] || lower.replace(/\s+/g, '-');
+}
+
+// ============================================================================
+// CONTENT WARNINGS
+// ============================================================================
+
+/**
+ * Content warning categories.
+ */
+export type ContentWarningCategory =
+  | 'violence'
+  | 'sexual-content'
+  | 'substance-abuse'
+  | 'mental-health'
+  | 'death'
+  | 'trauma'
+  | 'abuse'
+  | 'language';
+
+/**
+ * Parse content warnings from DNA tags.
+ * Format: dna:cw:violence, dna:cw:sexual-content, etc.
+ */
+export function parseContentWarnings(tags: string[] | undefined): ContentWarningCategory[] {
+  if (!tags || tags.length === 0) return [];
+
+  return tags
+    .filter(t => t.toLowerCase().startsWith('dna:cw:'))
+    .map(t => t.split(':')[2]?.toLowerCase() as ContentWarningCategory)
+    .filter(Boolean);
+}
+
+// ============================================================================
+// AGE GROUP HANDLING
+// ============================================================================
+
+export type AgeGroup = 'children' | 'middle-grade' | 'young-adult' | 'adult';
+
+/**
+ * Get age group from DNA tags or infer from other metadata.
+ * Format: dna:age:children, dna:age:young-adult, etc.
+ */
+export function getAgeGroup(tags: string[] | undefined): AgeGroup | null {
+  if (!tags || tags.length === 0) return null;
+
+  const ageTag = tags.find(t => t.toLowerCase().startsWith('dna:age:'));
+  if (!ageTag) return null;
+
+  const age = ageTag.split(':')[2]?.toLowerCase();
+
+  switch (age) {
+    case 'children':
+    case 'kids':
+    case 'juvenile':
+      return 'children';
+    case 'middle-grade':
+    case 'mg':
+      return 'middle-grade';
+    case 'young-adult':
+    case 'ya':
+    case 'teen':
+      return 'young-adult';
+    case 'adult':
+    case 'mature':
+      return 'adult';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a book is children's/juvenile content.
+ */
+export function isChildrensBook(tags: string[] | undefined): boolean {
+  const age = getAgeGroup(tags);
+  return age === 'children' || age === 'middle-grade';
+}
+
+// ============================================================================
+// DNA SUMMARY
+// ============================================================================
+
+/**
+ * Get a human-readable summary of a book's DNA.
+ */
+export function getDNASummary(dna: BookDNA): string[] {
+  const summary: string[] = [];
+
+  // Primary mood
+  const moodScores = Object.entries(dna.moodScores)
+    .filter(([_, score]) => score !== null && score >= 0.5)
+    .sort((a, b) => (b[1] || 0) - (a[1] || 0));
+
+  if (moodScores.length > 0) {
+    const primaryMood = moodScores[0][0];
+    summary.push(`Primary mood: ${primaryMood}`);
+  }
+
+  // Pacing
+  if (dna.pacing) {
+    summary.push(`Pacing: ${dna.pacing}`);
+  }
+
+  // Vibe
+  if (dna.vibe) {
+    summary.push(`Vibe: ${dna.vibe}`);
+  }
+
+  // Key spectrums
+  if (dna.spectrums.darkLight !== null) {
+    const tone = dna.spectrums.darkLight > 0.3 ? 'Light' :
+                 dna.spectrums.darkLight < -0.3 ? 'Dark' : 'Balanced';
+    summary.push(`Tone: ${tone}`);
+  }
+
+  // Top tropes
+  if (dna.tropes.length > 0) {
+    summary.push(`Tropes: ${dna.tropes.slice(0, 3).join(', ')}`);
+  }
+
+  // Top themes
+  if (dna.themes.length > 0) {
+    summary.push(`Themes: ${dna.themes.slice(0, 3).join(', ')}`);
+  }
+
+  return summary;
+}
+
+// ============================================================================
+// COMPARABLE TITLE PARSING
+// ============================================================================
+
+/**
+ * Parse comparable titles more robustly.
+ * Handles various formats:
+ * - dna:comparable:harry-potter
+ * - dna:comparable:Harry Potter
+ * - dna:like:the-name-of-the-wind
+ */
+export function parseComparableTitles(tags: string[] | undefined): string[] {
+  if (!tags || tags.length === 0) return [];
+
+  const prefixes = ['dna:comparable:', 'dna:like:', 'dna:similar-to:'];
+
+  return tags
+    .filter(t => {
+      const lower = t.toLowerCase();
+      return prefixes.some(p => lower.startsWith(p));
+    })
+    .map(t => {
+      const parts = t.split(':');
+      // Get everything after the second colon (in case title has colons)
+      return parts.slice(2).join(':').trim().toLowerCase();
+    })
+    .filter(Boolean);
+}
+
+// ============================================================================
+// DNA COMPLETENESS
+// ============================================================================
+
+/**
+ * Calculate how complete a book's DNA is (0-100%).
+ */
+export function calculateDNACompleteness(dna: BookDNA): number {
+  if (!dna.hasDNA) return 0;
+
+  let score = 0;
+  const maxScore = 100;
+
+  // Mood scores (30 points max)
+  const moodCount = Object.values(dna.moodScores).filter(v => v !== null).length;
+  score += Math.min(moodCount * 5, 30);
+
+  // Spectrums (18 points max)
+  const spectrumCount = Object.values(dna.spectrums).filter(v => v !== null).length;
+  score += spectrumCount * 3;
+
+  // Structural attributes (20 points max)
+  if (dna.pacing) score += 5;
+  if (dna.length) score += 3;
+  if (dna.structure) score += 3;
+  if (dna.pov) score += 3;
+  if (dna.pubEra) score += 3;
+  if (dna.seriesPosition) score += 3;
+
+  // Categorical (20 points max)
+  score += Math.min(dna.tropes.length * 2, 8);
+  score += Math.min(dna.themes.length * 2, 8);
+  score += Math.min(dna.settings.length, 4);
+
+  // Audiobook specific (6 points max)
+  if (dna.narratorStyle) score += 3;
+  if (dna.production) score += 3;
+
+  // Vibe (3 points)
+  if (dna.vibe) score += 3;
+
+  // Comparables (3 points)
+  if (dna.comparableTitles.length > 0) score += 3;
+
+  return Math.min(Math.round((score / maxScore) * 100), 100);
 }

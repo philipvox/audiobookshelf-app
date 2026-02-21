@@ -83,7 +83,7 @@ interface SkullCandleProps {
  * SkullCandle - Uses Reanimated for UI thread animations.
  * Animation runs on UI thread so it won't freeze during heavy JS operations.
  */
-const SkullCandle = memo(function SkullCandle({ color, size }: SkullCandleProps) {
+export const SkullCandle = memo(function SkullCandle({ color, size }: SkullCandleProps) {
   const totalFrames = CANDLE_FRAMES.length;
   const totalDuration = totalFrames * FRAME_DURATION_MS;
 

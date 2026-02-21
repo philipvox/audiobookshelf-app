@@ -49,28 +49,33 @@ export interface StepTiming {
   status: 'success' | 'timeout' | 'error';
 }
 
+const TIMEOUT_SENTINEL = Symbol('timeout');
+
 /**
  * Wraps a promise with a timeout.
- * Returns the result or undefined if timeout exceeded.
+ * Returns { value, timedOut } to distinguish void results from timeouts.
  */
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   stepName: string
-): Promise<T | undefined> {
+): Promise<{ value: T | undefined; timedOut: boolean }> {
   let timeoutId: ReturnType<typeof setTimeout>;
 
-  const timeoutPromise = new Promise<undefined>((resolve) => {
+  const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) => {
     timeoutId = setTimeout(() => {
       log.warn(`${stepName} timed out after ${timeoutMs}ms`);
-      resolve(undefined);
+      resolve(TIMEOUT_SENTINEL);
     }, timeoutMs);
   });
 
   try {
     const result = await Promise.race([promise, timeoutPromise]);
     clearTimeout(timeoutId!);
-    return result;
+    if (result === TIMEOUT_SENTINEL) {
+      return { value: undefined, timedOut: true };
+    }
+    return { value: result as T, timedOut: false };
   } catch (err) {
     clearTimeout(timeoutId!);
     throw err;
@@ -97,15 +102,18 @@ class AppInitializer {
       this._initialize(),
       new Promise<InitResult>((resolve) => {
         setTimeout(() => {
-          log.error(`CRITICAL: Init timed out after ${INIT_GLOBAL_TIMEOUT_MS}ms`);
-          log.error('Failed steps:', this.failedSteps);
-          resolve({
-            user: null,
-            serverUrl: null,
-            fontsLoaded: false,
-            hadErrors: true,
-            failedSteps: [...this.failedSteps, 'global_timeout'],
-          });
+          // Only log error if init hasn't actually completed
+          if (!this.isReady) {
+            log.error(`CRITICAL: Init timed out after ${INIT_GLOBAL_TIMEOUT_MS}ms`);
+            log.error('Failed steps:', this.failedSteps);
+            resolve({
+              user: null,
+              serverUrl: null,
+              fontsLoaded: false,
+              hadErrors: true,
+              failedSteps: [...this.failedSteps, 'global_timeout'],
+            });
+          }
         }, INIT_GLOBAL_TIMEOUT_MS);
       }),
     ]);
@@ -134,18 +142,17 @@ class AppInitializer {
     const startTime = Date.now();
 
     try {
-      const result = await withTimeout(task(), timeoutMs, stepName);
+      const { value, timedOut } = await withTimeout(task(), timeoutMs, stepName);
       const duration = Date.now() - startTime;
 
-      // Determine status: undefined result means timeout
-      const status = result !== undefined ? 'success' : 'timeout';
+      const status = timedOut ? 'timeout' : 'success';
       this.stepTimings.set(stepName, { step: stepName, duration, status });
 
-      if (status === 'timeout') {
+      if (timedOut) {
         this.failedSteps.push(stepName);
       }
 
-      return result;
+      return value;
     } catch (err) {
       const duration = Date.now() - startTime;
       this.stepTimings.set(stepName, { step: stepName, duration, status: 'error' });
@@ -175,31 +182,21 @@ class AppInitializer {
     // Import auth service lazily to avoid circular dependencies
     const { authService } = await import('@/core/auth/authService');
 
-    // PARALLEL: Run all initialization tasks concurrently with timing
-    // Critical tasks (fonts, auth) use longer timeout
-    // Non-critical tasks use shorter timeout and can fail gracefully
+    // BLOCKING: Wait for fonts, auth, and book state (progress/completion/migration)
+    // so the UI shows correct finished/in-progress states immediately
     const [fontResult, authResult] = await Promise.all([
-      // Font loading (critical)
       this.timedStep('fonts', () => this.loadFonts(), INIT_STEP_TIMEOUT_MS),
-
-      // Session restoration (critical)
       this.timedStep('auth', () => this.restoreSession(authService), INIT_STEP_TIMEOUT_MS),
-
-      // Hydrate completion store from SQLite (non-critical)
       this.timedStep('completion', () => this.hydrateCompletionStore(), INIT_STEP_TIMEOUT_MS),
-
-      // Run user_books migration (non-critical - only runs once)
       this.timedStep('migration', () => this.migrateUserBooks(), INIT_STEP_TIMEOUT_MS),
-
-      // Load progress store (non-critical)
       this.timedStep('progress', () => this.loadProgressStore(), INIT_STEP_TIMEOUT_MS),
-
-      // FAST: Sync recent progress (non-critical)
-      this.timedStep('recentSync', () => this.syncRecentProgress(), INIT_STEP_TIMEOUT_MS),
-
-      // Pre-initialize audio system (non-critical)
-      this.timedStep('audio', () => this.preInitAudio(), INIT_STEP_TIMEOUT_MS),
     ]);
+
+    // NON-CRITICAL: Fire and forget - don't block startup
+    Promise.all([
+      this.timedStep('recentSync', () => this.syncRecentProgress(), INIT_STEP_TIMEOUT_MS),
+      this.timedStep('audio', () => this.preInitAudio(), INIT_STEP_TIMEOUT_MS),
+    ]).catch(err => log.warn('Non-critical init steps error:', err));
 
     const elapsed = Date.now() - startTime;
 
@@ -241,6 +238,8 @@ class AppInitializer {
       this.connectWebSocket();
       // Sync finished books with server
       this.syncFinishedBooks();
+      // Sync My Library with linked collection
+      this.syncLibrary();
       // Preload recommendations cache (speeds up Browse screen)
       this.preloadRecommendationsCache();
     }
@@ -605,6 +604,16 @@ class AppInitializer {
       }).catch((err) => {
         log.warn('Background finished books sync failed:', err);
       });
+
+      // BACKGROUND: Prefetch sessions for recent books (enables instant playback)
+      // This caches audioTracks with MOOV data so play() doesn't need network calls
+      finishedBooksSync.prefetchSessions().then((prefetched) => {
+        if (prefetched > 0) {
+          log.info(`Prefetched ${prefetched} sessions for instant playback`);
+        }
+      }).catch((err) => {
+        log.warn('Session prefetch failed:', err);
+      });
     } catch (err) {
       log.warn('Finished books sync failed:', err);
     }
@@ -621,6 +630,85 @@ class AppInitializer {
       log.debug('Recommendations cache preloaded');
     } catch (err) {
       log.warn('Recommendations cache preload failed:', err);
+    }
+  }
+
+  /**
+   * Sync My Library with linked ABS collection.
+   * Runs in background after auth - doesn't block startup.
+   */
+  async syncLibrary(): Promise<void> {
+    try {
+      const { useMyLibraryStore } = await import('@/shared/stores/myLibraryStore');
+      const { useLibrarySyncStore } = await import('@/shared/stores/librarySyncStore');
+      const { apiClient } = await import('@/core/api');
+      const { playlistsApi } = await import('@/core/api/endpoints/playlists');
+      const syncStore = useLibrarySyncStore.getState();
+
+      // Get library ID
+      const libraries = await apiClient.getLibraries();
+      const libraryId = libraries?.[0]?.id;
+      if (!libraryId) return;
+
+      // Fetch all playlists once for both lookups
+      let allPlaylists: Awaited<ReturnType<typeof playlistsApi.getAll>> | null = null;
+
+      // Auto-find or create BOOK library playlist
+      if (!syncStore.libraryPlaylistId) {
+        allPlaylists = await playlistsApi.getAll();
+        log.debug(`Found ${allPlaylists.length} playlists, looking for "__sl_my_library"`);
+
+        // Search by name only - the playlist name is unique per user
+        const existingLibrary = allPlaylists.find(
+          (p) => p.name === '__sl_my_library'
+        );
+
+        if (existingLibrary) {
+          syncStore.setLibraryPlaylistId(existingLibrary.id);
+          log.debug('Found existing My Library playlist:', existingLibrary.id, 'libraryId:', existingLibrary.libraryId);
+        } else {
+          const libraryIds = useMyLibraryStore.getState().libraryIds;
+          const newPlaylist = await playlistsApi.create({
+            libraryId,
+            name: '__sl_my_library',
+            items: libraryIds.map(id => ({ libraryItemId: id })),
+          });
+          syncStore.setLibraryPlaylistId(newPlaylist.id);
+          log.debug('Auto-created My Library playlist:', newPlaylist.id);
+        }
+      }
+
+      // Auto-find or create SERIES favorites playlist
+      if (!syncStore.seriesPlaylistId) {
+        // Reuse the playlists array if already fetched, otherwise fetch now
+        if (!allPlaylists) {
+          allPlaylists = await playlistsApi.getAll();
+        }
+
+        // Search by name only - the playlist name is unique per user
+        const existingSeries = allPlaylists.find(
+          (p) => p.name === '__sl_favorite_series'
+        );
+
+        if (existingSeries) {
+          syncStore.setSeriesPlaylistId(existingSeries.id);
+          log.debug('Found existing Favorite Series playlist:', existingSeries.id);
+        } else {
+          const favoriteSeriesNames = useMyLibraryStore.getState().favoriteSeriesNames;
+          const newPlaylist = await playlistsApi.create({
+            libraryId,
+            name: '__sl_favorite_series',
+            description: JSON.stringify({ seriesNames: favoriteSeriesNames }),
+          });
+          syncStore.setSeriesPlaylistId(newPlaylist.id);
+          log.debug('Auto-created Favorite Series playlist:', newPlaylist.id);
+        }
+      }
+
+      const { librarySyncService } = await import('./librarySyncService');
+      await librarySyncService.fullSync();
+    } catch (err) {
+      log.warn('Library sync failed:', err);
     }
   }
 

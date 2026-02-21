@@ -17,11 +17,12 @@ import { useMemo, useEffect } from 'react';
 import { LibraryItem } from '@/core/types';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { useMyLibraryStore } from '@/features/library';
-import { getGenres, getAuthorName, getNarratorName, getSeriesName, getDuration } from '@/shared/utils/metadata';
+import { getGenres, getAuthorName, getNarratorName, getSeriesName, getDuration, getTags } from '@/shared/utils/metadata';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { useDismissedIds } from '../stores/dismissedItemsStore';
 import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
-import { Mood } from '@/features/mood-discovery/types';
+import { Mood, MOOD_FLAVORS, FlavorConfig } from '@/features/mood-discovery/types';
+import { parseBookDNA, BookDNA, getDNAMoodScore } from '@/features/mood-discovery/utils/parseBookDNA';
 import {
   useRecommendationsCacheStore,
   selectHistoryStats,
@@ -91,6 +92,80 @@ const SLOT_CONFIG = {
   wild_card: 2,
 } as const;
 
+// === FLAVOR & DNA SCORING ===
+
+/**
+ * Get flavor config for the current session.
+ * Returns the FlavorConfig with matchTags for scoring.
+ */
+function getFlavorConfig(mood: Mood, flavorId: string | null): FlavorConfig | null {
+  if (!flavorId) return null;
+  const flavors = MOOD_FLAVORS[mood];
+  if (!flavors) return null;
+  return flavors.find(f => f.id === flavorId) || null;
+}
+
+/**
+ * Score how well a book's tags/genres match the selected flavor's matchTags.
+ * Returns bonus points for flavor matching.
+ */
+function scoreFlavorMatch(
+  item: LibraryItem,
+  flavorConfig: FlavorConfig | null
+): { score: number; matchedTags: string[] } {
+  if (!flavorConfig || !flavorConfig.matchTags.length) {
+    return { score: 0, matchedTags: [] };
+  }
+
+  const tags = getTags(item).map(t => t.toLowerCase());
+  const genres = getGenres(item).map(g => g.toLowerCase());
+  const allTerms = [...tags, ...genres];
+
+  const matchedTags: string[] = [];
+  let score = 0;
+
+  for (const matchTag of flavorConfig.matchTags) {
+    const normalizedMatch = matchTag.toLowerCase();
+    // Check exact match
+    if (allTerms.includes(normalizedMatch)) {
+      matchedTags.push(matchTag);
+      score += 15; // Strong match
+    } else {
+      // Check partial/fuzzy match
+      const partialMatch = allTerms.some(term =>
+        term.includes(normalizedMatch) || normalizedMatch.includes(term)
+      );
+      if (partialMatch) {
+        matchedTags.push(matchTag);
+        score += 8; // Partial match
+      }
+    }
+  }
+
+  return { score, matchedTags };
+}
+
+/**
+ * Score how well a book matches the mood using BookDNA.
+ * Returns bonus points for DNA mood match.
+ */
+function scoreDNAMoodMatch(item: LibraryItem, mood: Mood): { score: number; hasDNA: boolean } {
+  const tags = getTags(item);
+  const dna = parseBookDNA(tags);
+
+  if (!dna.hasDNA) {
+    return { score: 0, hasDNA: false };
+  }
+
+  const moodScore = getDNAMoodScore(dna, mood);
+  if (moodScore === null) {
+    return { score: 0, hasDNA: true };
+  }
+
+  // DNA mood score is 0-1, scale to points (max 25 bonus)
+  return { score: moodScore * 25, hasDNA: true };
+}
+
 // === PROGRESS STATE MACHINE ===
 
 function getProgressState(
@@ -142,10 +217,17 @@ interface PoolContext {
   authorPenalties: Map<string, number>;
   preferredLength: string;
   prefersSeries: boolean | null;
+  // Session mood info for flavor/DNA scoring
+  sessionMood: Mood | null;
+  flavorConfig: FlavorConfig | null;
 }
 
 function buildComfortPool(ctx: PoolContext, limit: number): ScoredItem[] {
   const scored: ScoredItem[] = [];
+
+  // Check what expensive scoring we need to do
+  const hasMoodSession = ctx.sessionMood !== null;
+  const hasFlavorConfig = ctx.flavorConfig !== null;
 
   for (const item of ctx.availableItems) {
     const author = getAuthorName(item).toLowerCase();
@@ -154,8 +236,28 @@ function buildComfortPool(ctx: PoolContext, limit: number): ScoredItem[] {
     const authorAffinity = ctx.authorAffinities.get(author) || 0;
     const narratorAffinity = ctx.narratorAffinities.get(narrator) || 0;
 
-    // Must have author OR narrator affinity for comfort picks
-    if (authorAffinity === 0 && narratorAffinity === 0) continue;
+    // Only run expensive scoring when needed
+    let flavorMatch = { score: 0, matchedTags: [] as string[] };
+    let dnaMatch = { score: 0, hasDNA: false };
+
+    // Flavor scoring only if we have a flavor config
+    if (hasFlavorConfig) {
+      flavorMatch = scoreFlavorMatch(item, ctx.flavorConfig);
+    }
+
+    // DNA scoring only if we have a mood session
+    if (hasMoodSession) {
+      dnaMatch = scoreDNAMoodMatch(item, ctx.sessionMood!);
+    }
+
+    // If we have a session mood with flavor, allow books without author/narrator affinity
+    // if they have strong flavor or DNA matches
+    const hasFlavorBoost = flavorMatch.score >= 15;
+    const hasDNABoost = dnaMatch.score >= 15;
+    const hasAffinityBoost = authorAffinity > 0 || narratorAffinity > 0;
+
+    // Must have at least one source of affinity/match
+    if (!hasAffinityBoost && !hasFlavorBoost && !hasDNABoost) continue;
 
     let score = 0;
     const reasons: string[] = [];
@@ -170,6 +272,22 @@ function buildComfortPool(ctx: PoolContext, limit: number): ScoredItem[] {
     if (narratorAffinity > 0) {
       score += 30 + Math.min(narratorAffinity * 8, 40); // 30-70 range
       if (!reasons.length) reasons.push(`Narrated by ${getNarratorName(item)}`);
+    }
+
+    // Flavor match bonus (from session)
+    if (flavorMatch.score > 0) {
+      score += flavorMatch.score;
+      if (flavorMatch.matchedTags.length > 0 && ctx.flavorConfig) {
+        reasons.push(`Matches "${ctx.flavorConfig.label}"`);
+      }
+    }
+
+    // DNA mood match bonus
+    if (dnaMatch.score > 0) {
+      score += dnaMatch.score;
+      if (dnaMatch.hasDNA && !reasons.some(r => r.includes('Matches'))) {
+        reasons.push('DNA mood match');
+      }
     }
 
     // Apply abandonment penalty
@@ -187,6 +305,10 @@ function buildComfortPool(ctx: PoolContext, limit: number): ScoredItem[] {
 function buildGenreExplorationPool(ctx: PoolContext, limit: number): ScoredItem[] {
   const scored: ScoredItem[] = [];
 
+  // Check what expensive scoring we need to do
+  const hasMoodSession = ctx.sessionMood !== null;
+  const hasFlavorConfig = ctx.flavorConfig !== null;
+
   for (const item of ctx.availableItems) {
     const author = getAuthorName(item).toLowerCase();
     const genres = getGenres(item);
@@ -194,11 +316,28 @@ function buildGenreExplorationPool(ctx: PoolContext, limit: number): ScoredItem[
     // Skip if we already know this author (genre exploration = new authors)
     if (ctx.knownAuthors.has(author)) continue;
 
-    // Must have genre match
+    // Only run expensive scoring when needed
+    let flavorMatch = { score: 0, matchedTags: [] as string[] };
+    let dnaMatch = { score: 0, hasDNA: false };
+
+    // Flavor scoring only if we have a flavor config
+    if (hasFlavorConfig) {
+      flavorMatch = scoreFlavorMatch(item, ctx.flavorConfig);
+    }
+
+    // DNA scoring only if we have a mood session
+    if (hasMoodSession) {
+      dnaMatch = scoreDNAMoodMatch(item, ctx.sessionMood!);
+    }
+
+    // Must have genre match OR strong flavor/DNA match
     const matchingGenres = genres.filter(g =>
       ctx.topGenres.some(tg => g.toLowerCase().includes(tg) || tg.includes(g.toLowerCase()))
     );
-    if (matchingGenres.length === 0) continue;
+    const hasFlavorBoost = flavorMatch.score >= 15;
+    const hasDNABoost = dnaMatch.score >= 15;
+
+    if (matchingGenres.length === 0 && !hasFlavorBoost && !hasDNABoost) continue;
 
     let score = 0;
     const reasons: string[] = [];
@@ -216,9 +355,24 @@ function buildGenreExplorationPool(ctx: PoolContext, limit: number): ScoredItem[
       reasons.push(`Explore ${matchingGenres[0]}`);
     }
 
+    // Flavor match bonus (from session)
+    if (flavorMatch.score > 0) {
+      score += flavorMatch.score;
+      if (flavorMatch.matchedTags.length > 0 && ctx.flavorConfig) {
+        reasons.push(`Matches "${ctx.flavorConfig.label}"`);
+      }
+    }
+
+    // DNA mood match bonus
+    if (dnaMatch.score > 0) {
+      score += dnaMatch.score;
+    }
+
     // Bonus for new author
     score += 15;
-    reasons.push(`Discover ${getAuthorName(item)}`);
+    if (!reasons.some(r => r.startsWith('Explore') || r.includes('Matches'))) {
+      reasons.push(`Discover ${getAuthorName(item)}`);
+    }
 
     scored.push({ item, score, reasons, slotType: 'genre_exploration' });
   }
@@ -326,8 +480,10 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 15) 
   const hasCompletedOnboarding = usePreferencesStore((s) => s.hasCompletedOnboarding);
 
   // Get active mood session (from Browse mood quiz) - this takes priority
+  // Extract primitives for stable dependency array (avoid object reference changes)
   const activeSession = useActiveSession();
   const sessionMood = activeSession?.mood || null;
+  const sessionFlavor = activeSession?.flavor || null;
 
   const libraryIds = useMyLibraryStore((s) => s.libraryIds);
   const dismissedIds = useDismissedIds();
@@ -451,19 +607,24 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 15) 
   // Main recommendations logic
   const recommendations = useMemo(() => {
     // Wait for cache to load before computing recommendations
-    if (!isCacheLoaded || !allItems.length) return [];
+    if (!isCacheLoaded || !allItems.length) {
+      return [];
+    }
+
+    // Build a Map for O(1) lookups (avoids O(n²) in series filter with 2500+ items)
+    const itemsById = new Map(allItems.map(i => [i.id, i]));
 
     // Helpers for series filtering
     const isFinished = (bookId: string): boolean => {
       if (finishedBookIds.has(bookId)) return true;
-      const item = allItems.find(i => i.id === bookId);
+      const item = itemsById.get(bookId);
       if (!item) return false;
       const progress = item.userMediaProgress?.progress || 0;
       return progress >= 0.95 || item.userMediaProgress?.isFinished === true;
     };
 
     const hasStarted = (bookId: string): boolean => {
-      const item = allItems.find(i => i.id === bookId);
+      const item = itemsById.get(bookId);
       if (!item) return false;
       return (item.userMediaProgress?.progress || 0) > 0;
     };
@@ -489,6 +650,12 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 15) 
       return true;
     });
 
+    // Get flavor config for session
+    // Use extracted primitives (sessionMood, sessionFlavor) instead of activeSession object
+    const flavorConfig = sessionMood && sessionFlavor
+      ? getFlavorConfig(sessionMood, sessionFlavor)
+      : null;
+
     // Build pool context
     const ctx: PoolContext = {
       availableItems,
@@ -501,6 +668,8 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 15) 
       authorPenalties,
       preferredLength,
       prefersSeries,
+      sessionMood,
+      flavorConfig,
     };
 
     // Build pools
@@ -546,21 +715,30 @@ export function useRecommendations(allItems: LibraryItem[], limit: number = 15) 
     }
 
     // If we don't have enough, backfill from largest pools
+    let backfillIterations = 0;
+    const maxBackfillIterations = 100; // Safety limit
     while (result.length < limit && (comfortPool.length + genrePool.length > result.length)) {
+      backfillIterations++;
+      if (backfillIterations > maxBackfillIterations) break;
+      let addedAny = false;
       for (const pool of [comfortPool, genrePool, narratorPool, wildCardPool]) {
         for (const item of pool) {
           if (!seen.has(item.item.id)) {
             result.push(item);
             seen.add(item.item.id);
+            addedAny = true;
             break;
           }
         }
         if (result.length >= limit) break;
       }
+      // If we couldn't add anything, break to avoid infinite loop
+      if (!addedAny) break;
     }
 
     return result.slice(0, limit);
-  }, [allItems, finishedBookIds, libraryIds, dismissedIds, userBooksMap, affinities, knownAuthors, knownNarrators, topGenres, authorPenalties, preferredLength, prefersSeries, limit, isCacheLoaded]);
+    // Note: Don't include activeSession object - use sessionMood and sessionFlavor as stable primitives
+  }, [allItems, finishedBookIds, libraryIds, dismissedIds, userBooksMap, affinities, knownAuthors, knownNarrators, topGenres, authorPenalties, preferredLength, prefersSeries, limit, isCacheLoaded, sessionMood, sessionFlavor]);
 
   // Group recommendations for display
   const groupedRecommendations = useMemo((): RecommendationGroup[] => {
@@ -646,12 +824,10 @@ const MOOD_GENRE_MAP: Record<string, string[]> = {
 };
 
 // Map session moods (from moodSessionStore) to genres
-// These are the 6 core moods from the mood discovery quiz
+// Note: Mood type only has 4 values: comfort, thrills, escape, feels
 const SESSION_MOOD_GENRE_MAP: Record<Mood, string[]> = {
-  'comfort': ['cozy', 'romance', 'slice of life', 'contemporary', 'feel-good', 'heartwarming'],
+  'comfort': ['cozy', 'romance', 'slice of life', 'contemporary', 'feel-good', 'heartwarming', 'humor', 'comedy', 'lighthearted'],
   'thrills': ['thriller', 'mystery', 'horror', 'suspense', 'crime', 'action'],
   'escape': ['fantasy', 'sci-fi', 'paranormal', 'urban fantasy', 'epic fantasy', 'space opera'],
-  'laughs': ['humor', 'comedy', 'satire', 'comedic', 'funny', 'lighthearted'],
-  'feels': ['literary', 'drama', 'emotional', 'contemporary', 'coming-of-age', 'family'],
-  'thinking': ['philosophy', 'non-fiction', 'history', 'science', 'literary', 'thought-provoking'],
+  'feels': ['literary', 'drama', 'emotional', 'contemporary', 'coming-of-age', 'family', 'philosophy', 'non-fiction', 'thought-provoking'],
 };

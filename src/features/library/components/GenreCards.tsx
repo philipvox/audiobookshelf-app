@@ -19,8 +19,7 @@ import {
 } from 'react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale } from '@/shared/theme';
-// MIGRATED: Now using new spine system via adapter
-import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { hashString, SPINE_COLOR_PALETTE } from '@/shared/spine';
 import { GenreWithData } from '../constants/genreCategories';
 import { useColors } from '@/shared/theme/themeStore';
 

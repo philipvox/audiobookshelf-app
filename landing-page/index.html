@@ -303,7 +303,7 @@
 
     /* Showcase Section - iPhone Mockups */
     .showcase {
-      padding: 18rem 3rem 6rem;
+      padding: 6rem 3rem;
       background: #0a0a0a;
       overflow: visible;
       position: relative;
@@ -403,6 +403,187 @@
 
     .showcase-statement p em {
       font-style: italic;
+    }
+
+    /* Ecosystem Section - App + Tagger */
+    .ecosystem {
+      padding: 4rem 3rem 6rem;
+      background: #0a0a0a;
+    }
+
+    .ecosystem-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .ecosystem-header span {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gray-600);
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    .ecosystem-header h2 {
+      font-family: var(--serif);
+      font-size: clamp(1.75rem, 4vw, 2.75rem);
+      font-weight: 400;
+      color: var(--white);
+    }
+
+    .ecosystem-header h2 em {
+      font-style: italic;
+    }
+
+    .ecosystem-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 3rem;
+      align-items: center;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    .ecosystem-item {
+      text-align: center;
+    }
+
+    .ecosystem-item-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gray-600);
+      margin-bottom: 1.5rem;
+    }
+
+    .ecosystem-phones {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    .ecosystem-phone {
+      background: #1a1a1a;
+      border-radius: 24px;
+      padding: 8px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .ecosystem-phone-screen {
+      width: 140px;
+      height: 303px;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .ecosystem-phone-screen img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+    }
+
+    .ecosystem-phone-large {
+      transform: scale(1.15);
+      z-index: 2;
+    }
+
+    .ecosystem-desktop {
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .ecosystem-desktop img {
+      width: 100%;
+      max-width: 500px;
+      display: block;
+    }
+
+    .ecosystem-plus {
+      font-family: var(--serif);
+      font-size: 3rem;
+      color: var(--gray-600);
+      font-weight: 300;
+    }
+
+    .ecosystem-item-title {
+      font-family: var(--serif);
+      font-size: 1.25rem;
+      color: var(--white);
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .ecosystem-item-desc {
+      font-size: 0.8rem;
+      color: var(--gray-400);
+      max-width: 280px;
+      margin: 0 auto 1.25rem;
+      line-height: 1.6;
+    }
+
+    .ecosystem-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1.25rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border: 1px solid var(--gray-800);
+      color: var(--gray-400);
+      transition: all 0.3s;
+    }
+
+    .ecosystem-btn:hover {
+      border-color: var(--white);
+      color: var(--white);
+    }
+
+    .ecosystem-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    @media (max-width: 1024px) {
+      .ecosystem-grid {
+        grid-template-columns: 1fr;
+        gap: 4rem;
+      }
+
+      .ecosystem-plus {
+        display: none;
+      }
+
+      .ecosystem-desktop img {
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .ecosystem {
+        padding: 3rem 2rem 4rem;
+      }
+
+      .ecosystem-phone-screen {
+        width: 100px;
+        height: 217px;
+      }
+
+      .ecosystem-phone {
+        border-radius: 16px;
+        padding: 6px;
+      }
+
+      .ecosystem-phone-screen {
+        border-radius: 12px;
+      }
     }
 
     /* Story Section - Two Column with Drop Cap */
@@ -936,12 +1117,12 @@
   <div class="floating-phones">
     <div class="floating-phone floating-phone-left">
       <div class="floating-phone-screen">
-        <img src="screenshot-detail.png" alt="Book Detail">
+        <img src="screenshot-book-detail.png" alt="Book Detail">
       </div>
     </div>
     <div class="floating-phone floating-phone-right">
       <div class="floating-phone-screen">
-        <img src="screenshot-spines.png" alt="Library">
+        <img src="screenshot-library-spines.png" alt="Library">
       </div>
     </div>
   </div>
@@ -957,45 +1138,17 @@
         </svg>
         Android
       </a>
-      <a href="#" class="hero-btn hero-btn-outline" style="pointer-events: none;">
+      <a href="https://testflight.apple.com/join/ah2XdVu6" class="hero-btn hero-btn-outline" target="_blank">
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
         </svg>
-        iOS Soon
+        iOS TestFlight
       </a>
     </div>
 
     <div class="scroll-indicator">
       <span>Scroll</span>
       <div class="scroll-line"></div>
-    </div>
-  </section>
-
-  <section class="showcase">
-    <div class="showcase-header fade-in">
-      <span>The Experience</span>
-      <h2>Crafted for <em>readers.</em></h2>
-    </div>
-    <div class="phones-container fade-in">
-      <div class="iphone iphone-small">
-        <div class="iphone-screen">
-          <img src="screenshot-spines.png" alt="Library Spines">
-        </div>
-      </div>
-      <div class="iphone iphone-large">
-        <div class="iphone-screen">
-          <img src="screenshot-detail.png" alt="Book Detail">
-        </div>
-      </div>
-      <div class="iphone iphone-small">
-        <div class="iphone-screen">
-          <img src="screenshot-spines.png" alt="Library">
-        </div>
-      </div>
-    </div>
-
-    <div class="showcase-statement fade-in">
-      <p>A <em>premium</em> audiobook player crafted for your personal library. Designed with intention. Built without compromise. For those who believe listening is an <em>art form.</em></p>
     </div>
   </section>
 
@@ -1016,41 +1169,112 @@
     </div>
   </section>
 
+  <section class="ecosystem">
+    <div class="ecosystem-header fade-in">
+      <span>The Ecosystem</span>
+      <h2>Two tools, <em>one problem.</em></h2>
+    </div>
+    <div class="ecosystem-grid">
+      <div class="ecosystem-item fade-in">
+        <p class="ecosystem-item-label">Mobile App</p>
+        <div class="ecosystem-phones">
+          <div class="ecosystem-phone">
+            <div class="ecosystem-phone-screen">
+              <img src="screenshot-library-spines.png" alt="Library">
+            </div>
+          </div>
+          <div class="ecosystem-phone ecosystem-phone-large">
+            <div class="ecosystem-phone-screen">
+              <img src="screenshot-book-detail.png" alt="Book Detail">
+            </div>
+          </div>
+        </div>
+        <h3 class="ecosystem-item-title">Secret Library</h3>
+        <p class="ecosystem-item-desc">The app I wished existed. Now it does.</p>
+      </div>
+
+      <div class="ecosystem-plus fade-in">+</div>
+
+      <div class="ecosystem-item fade-in">
+        <p class="ecosystem-item-label">Desktop Tool</p>
+        <div class="ecosystem-desktop">
+          <img src="Bulk batch library view.png" alt="Audiobook Tagger">
+        </div>
+        <h3 class="ecosystem-item-title">Audiobook Tagger</h3>
+        <p class="ecosystem-item-desc">Fixes the metadata mess so you don't have to do it by hand.</p>
+        <a href="downloads/audiobook-tagger.zip" class="ecosystem-btn" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Download Tagger
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="showcase">
+    <div class="showcase-header fade-in">
+      <span>The Experience</span>
+      <h2>Built for <em>actual use.</em></h2>
+    </div>
+    <div class="phones-container fade-in">
+      <div class="iphone iphone-small">
+        <div class="iphone-screen">
+          <img src="screenshot-player.png" alt="Player">
+        </div>
+      </div>
+      <div class="iphone iphone-large">
+        <div class="iphone-screen">
+          <img src="screenshot-mood-results.png" alt="Mood Discovery">
+        </div>
+      </div>
+      <div class="iphone iphone-small">
+        <div class="iphone-screen">
+          <img src="screenshot-library-spines.png" alt="Library">
+        </div>
+      </div>
+    </div>
+
+    <div class="showcase-statement fade-in">
+      <p>I got tired of apps that looked nice but didn't <em>work.</em> So I built one that does both. It's opinionated. It's specific. It's exactly what I wanted—and hopefully what you wanted <em>too.</em></p>
+    </div>
+  </section>
+
   <section class="features" id="features">
     <div class="features-header fade-in">
       <span>Capabilities</span>
-      <h2>Everything, <em>nothing more.</em></h2>
+      <h2>The stuff that <em>matters.</em></h2>
     </div>
     <div class="features-grid">
       <div class="feature fade-in">
         <span class="feature-number">01</span>
         <h3>Offline Mode</h3>
-        <p>Download your entire library. Listen anywhere—subway, plane, wilderness. Your books, always with you.</p>
+        <p>Download books before you lose signal. I commute through tunnels—this was non-negotiable.</p>
       </div>
       <div class="feature fade-in">
         <span class="feature-number">02</span>
         <h3>CarPlay & Auto</h3>
-        <p>Seamless integration with your vehicle. Full control without reaching for your phone.</p>
+        <p>Works in the car without fumbling with your phone. The main way I actually listen.</p>
       </div>
       <div class="feature fade-in">
         <span class="feature-number">03</span>
         <h3>Smart Rewind</h3>
-        <p>Picks up where your memory left off. Brief pause? Short rewind. Long absence? We'll help you remember.</p>
+        <p>Automatically backs up when you resume. Gone for a week? It rewinds more. Just paused? Barely any.</p>
       </div>
       <div class="feature fade-in">
         <span class="feature-number">04</span>
         <h3>Sleep Timer</h3>
-        <p>Drift off to stories. Customizable fade-out. Wake up exactly where you fell asleep.</p>
+        <p>Falls asleep listening? Same. Timer fades out gradually so you don't wake up three chapters ahead.</p>
       </div>
       <div class="feature fade-in">
         <span class="feature-number">05</span>
-        <h3>Cross-Device Sync</h3>
-        <p>Start on your phone. Continue on your tablet. Your position follows you everywhere.</p>
+        <h3>Progress Sync</h3>
+        <p>Syncs with your Audiobookshelf server. Switch devices and pick up where you left off.</p>
       </div>
       <div class="feature fade-in">
         <span class="feature-number">06</span>
-        <h3>Obsessive Details</h3>
-        <p>Chapter navigation. Playback speed. Bookmarks. Every feature considered, refined, perfected.</p>
+        <h3>The Little Things</h3>
+        <p>Per-book playback speed. Chapter skip. Bookmarks with notes. Queue management. The details add up.</p>
       </div>
     </div>
   </section>
@@ -1069,11 +1293,11 @@
         </svg>
         Android
       </a>
-      <a href="#" class="btn btn-secondary" style="pointer-events: none;">
+      <a href="https://testflight.apple.com/join/ah2XdVu6" class="btn btn-secondary" target="_blank">
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
         </svg>
-        iOS — Soon
+        iOS TestFlight
       </a>
       </div>
     </div>

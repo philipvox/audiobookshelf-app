@@ -9,6 +9,2181 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.8.135] - 2026-02-19
+
+### Fixed
+
+- **Android Auto browse data sync**: Fixed critical bug where `syncBrowseDataToAndroidAuto()` called non-existent `AndroidAutoModule.updateBrowseCategory()`. Now correctly uses `writeBrowseData()` to serialize all browse sections as JSON and write to the file that the native `MediaBrowserService` reads in `onLoadChildren()`. This makes Continue Listening, Downloads, Library, Series, Authors, and Recently Added browsable in Android Auto.
+- **Android Auto bridge**: Added `writeBrowseData()` wrapper to `androidAutoBridge.ts`
+- **Cleanup**: Fixed `automotiveService.cleanup()` calling non-existent `stopListening()` on native module
+
+### Files Modified
+
+- `src/features/automotive/automotiveService.ts` — Fix `syncBrowseDataToAndroidAuto()` to use `writeBrowseData()`, fix cleanup
+- `src/features/automotive/androidAutoBridge.ts` — Add `writeBrowseData()` export
+
+---
+
+## [0.8.134] - 2026-02-19
+
+### Fixed
+
+- **pushSeriesChange auto-creates playlist**: When tapping the series heart, if the `__sl_favorite_series` playlist doesn't exist (deleted or never created), `pushSeriesChange` now auto-creates it using `getOrCreateSeriesPlaylist` before pushing. Previously it silently returned, losing the heart action.
+
+### Files Modified
+
+- `src/core/services/librarySyncService.ts` — Add auto-creation fallback in `pushSeriesChange` when `seriesPlaylistId` is null
+
+---
+
+## [0.8.133] - 2026-02-19
+
+### Added
+
+- **"Synced My Series" in Cloud Sync settings**: New row with Heart icon lets users see and change which playlist syncs series favorites. Uses the same playlist picker modal as "Synced My Library". Includes "Create New" option that auto-creates the `__sl_favorite_series` playlist.
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Add Heart icon import, series playlist state/handlers, "Synced My Series" SettingsRow, second PlaylistPickerModal instance
+
+---
+
+## [0.8.132] - 2026-02-19
+
+### Fixed
+
+- **Auto-recreate series playlist on sync**: If the `__sl_favorite_series` playlist is deleted or the stored ID is null, `syncSeries` now auto-discovers or recreates it using `getOrCreateSeriesPlaylist` instead of silently skipping.
+
+### Files Modified
+
+- `src/core/services/librarySyncService.ts` — Add playlist auto-creation in `syncSeries` for both null ID and 404 recovery paths
+
+---
+
+## [0.8.131] - 2026-02-19
+
+### Changed
+
+- **Rename "Synced Playlist" → "Synced My Library"** in the Cloud Sync settings section
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Rename label
+
+---
+
+## [0.8.130] - 2026-02-19
+
+### Changed
+
+- **Series playlist sync: one book per series**: When favoriting a series, only one representative book is added to the `__sl_favorite_series` playlist instead of all books. The My Series view uses the library cache for full book lists, so the playlist only needs the series names (in description) and a single item for ABS to show it.
+
+### Files Modified
+
+- `src/core/services/librarySyncService.ts` — Add only first book on favorite, remove all on unfavorite (handles legacy)
+
+---
+
+## [0.8.129] - 2026-02-19
+
+### Added
+
+- **Tappable series headers**: Series name headers in the series-grouped shelf view now navigate to the series detail page when tapped (except "No Series").
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Wrap series section header in TouchableOpacity with navigation to SeriesDetail
+
+---
+
+## [0.8.128] - 2026-02-19
+
+### Changed
+
+- **My Series shows all books from favorited series**: Instead of only showing books synced to the playlist, My Series now pulls ALL books from each favorited series via the library cache. Favoriting a series immediately shows every book in that series.
+- **My Series defaults to Series sort**: Switching to My Series automatically sets the sort mode to "Series", and if My Series is the default view, the app opens with Series sort.
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Import `useMyLibraryStore`, rewrite `mySeries` case to use `favoriteSeriesNames` + `getSeries()` from library cache, auto-set sort to series on content select, initial sort state from default view
+
+---
+
+## [0.8.127] - 2026-02-19
+
+### Added
+
+- **"My Series" built-in view**: Added "My Series" as a built-in view in the Library screen dropdown (with heart icon in Homepage Settings). Shows all books from favorited series via the `__sl_favorite_series` playlist.
+- **Hide internal playlists**: Internal `__sl_` prefixed playlists are now filtered from both the Homepage Settings playlist list and the Library dropdown, preventing duplicate entries.
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Add `mySeries` to BASE_CONTENT_OPTIONS, add case in baseLibraryItems, filter `__sl_` playlists from dropdown
+- `src/features/profile/screens/PlaylistSettingsScreen.tsx` — Add "My Series" built-in view with Heart icon, filter `__sl_` playlists from playlist views
+
+---
+
+## [0.8.126] - 2026-02-19
+
+### Added
+
+- **Series heart → playlist sync**: When a user favorites a series via the heart button, all books in that series are now added to the `__sl_favorite_series` playlist on the server. Unfavoriting removes them. This uses the existing sync queue for offline-first support.
+
+### Files Modified
+
+- `src/core/services/librarySyncService.ts` — Import `useLibraryCache`, update `pushSeriesChange` to enqueue add/remove for all books in the series
+
+---
+
+## [0.8.125] - 2026-02-19
+
+### Added
+
+- **Series-grouped shelf view in My Library**: When sorting by "Series" in shelf mode, books are now grouped into sections with a header showing the series name (uppercase) and a count of books in library vs total (e.g. "2:44"). Each series group renders its own horizontal bookshelf.
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Add `seriesGroups` memo, `renderContent` series-sectioned shelf path, series header styles
+
+---
+
+## [0.8.124] - 2026-02-19
+
+### Changed
+
+- **Series cards with proportional mini spines**: Both the browse page series cards and the all-series list now show miniature book spine images with proportional widths/heights using `fitToBoundingBox` + `serverSpineDimensions`. Spines are culled when combined width exceeds screen bounds.
+- **Heart button on browse series cards**: SeriesHeartButton added under the author name on browse/home series cards for quick favoriting
+- **All-series list spines**: SeriesListScreen color dot squares replaced with proportional spine images matching the browse page design
+
+### Files Modified
+
+- `src/features/browse/components/SeriesCard.tsx` — Add SeriesHeartButton under author, proportional spine sizing with width culling
+- `src/features/library/screens/SeriesListScreen.tsx` — Replace color dots with proportional spine images using `fitToBoundingBox` + `useSpineCacheStore`
+
+---
+
+## [0.8.120] - 2026-02-19
+
+### Fixed
+
+- **Narrator name tappable on CD Player screen**: The narrator name in the player byline is now a tappable link that navigates to the NarratorDetail screen (matching the author link behavior)
+- **Series navigation arrow on right for first book**: When viewing the first book in a series, the forward chevron now correctly appears on the right side instead of the left
+
+### Files Modified
+
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Add `handleNarratorPress` callback, wrap narrator name in `TouchableOpacity`
+- `src/features/book-detail/components/SeriesSwipeContainer.tsx` — Add `marginLeft: 'auto'` to `arrowRight` style
+
+---
+
+## [0.8.119] - 2026-02-19
+
+### Added
+
+- **Sort by Series in My Library**: New "Series" sort option groups books by series name (A-Z) then by sequence number within each series. Books not in a series appear at the bottom sorted by title.
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Add `series` sort mode, populate `seriesName`/`seriesSequence` on `LibraryBook`
+
+---
+
+## [0.8.118] - 2026-02-19
+
+### Changed
+
+- **Series swipe preview matches book detail screen**: The `AdjacentBookPage` preview shown during series swipe navigation now visually matches `SecretLibraryBookDetailScreen` exactly. Changes: title uses Georgia/serif font (not spine genre typography), author/narrator names are tappable links navigating to detail screens, series link is tappable, progress section with bar and time stats added, description paragraph (truncated, no drop cap) added, genre pills added, staggered FadeIn animations removed, cover uses `useCoverUrl` with proper sizing.
+
+### Files Modified
+
+- `src/features/book-detail/components/SeriesSwipeContainer.tsx` — Rewrite AdjacentBookPage to match real detail screen layout
+
+---
+
+## [0.8.117] - 2026-02-19
+
+### Changed
+
+- **Unify procedural spine scaling to bounding-box model**: Procedural spines previously used 7+ stacked multipliers with independent width/height clamping that broke aspect ratio. Now uses the same `fitToBoundingBox()` approach as server spines — a single scale factor preserves aspect ratio. All procedural spine sizes are controlled by two tuning knobs: `PROCEDURAL_SPINE_BOX.MAX_WIDTH` (150) and `MAX_HEIGHT` (500). Removed `THICKNESS_MULTIPLIER`, `maxScaledWidth`, `shelfMaxHeight`, and deprecated `thicknessMultiplier` option in `useBookRowLayout`.
+
+### Files Modified
+
+- `src/features/home/utils/spine/core/dimensions.ts` — Add `fitToBoundingBox()` shared function
+- `src/features/home/utils/spine/constants.ts` — Add `SERVER_SPINE_BOX` and `PROCEDURAL_SPINE_BOX` constants
+- `src/features/home/components/BookshelfView.tsx` — Refactor all 3 procedural paths + server path + `getStackItemDims` to use `fitToBoundingBox`
+- `src/features/home/hooks/useBookRowLayout.ts` — Refactor procedural/server/fixedHeight paths, deprecate `thicknessMultiplier`
+- `src/features/home/components/DiscoverMoreCard.tsx` — Replace `WIDTH_SCALE`/`HEIGHT_SCALE`/`MIN_SPINE_HEIGHT`/`MAX_SPINE_HEIGHT` with card-scale bounding-box fit
+
+---
+
+## [0.8.116] - 2026-02-19
+
+### Fixed
+
+- **Fix server spine scaling on detail screens to match home screen**: Detail screens used a custom `SERVER_SPINE_SCALE` approach that caused inconsistent heights — wide server spines got shorter due to width capping affecting the shared scale factor. Replaced with the same "fit within max bounds + duration scaling + aspect ratio preservation" logic used by `BookshelfView`. Now books with similar durations (e.g., Summer Knight 11hrs, Death Masks 11hrs) get consistent heights, and width varies naturally by server image aspect ratio.
+- **Fix Android spines being smaller than iOS**: `ShelfRow` used a fixed `scaleFactor: 0.75` designed for the 402pt iPhone canvas. On narrower Android screens (~360pt), spines appeared proportionally smaller. Now uses a screen-responsive scale factor: `0.75 * (screenWidth / 402)`.
+
+---
+
+## [0.8.114] - 2026-02-18
+
+### Changed
+
+- **Remove 10 unused dependencies and orphan backup folder**: Identified via knip scan. Removed 6 unused runtime deps (`@react-native-masked-view/masked-view`, `@xstate/react`, `xstate`, `memory-module`, `react-native-image-colors`, `expo-status-bar`) and 4 unused devDeps (`@types/react-native`, `madge`, `ts-prune`, `@testing-library/jest-native`). Deleted `.orphan-backup-20260121/` folder (71 dead files, 640KB).
+
+### Files Modified
+
+- `package.json` — Remove 10 unused dependencies
+- `.orphan-backup-20260121/` — Deleted entirely
+
+---
+
+## [0.8.113] - 2026-02-18
+
+### Fixed
+
+- **Fix all Rules of Hooks violations (10 total)**: Identified by react-doctor scan. Fixed hooks called inside `useCallback` (4 detail screens used `useBookRowLayout` inside callbacks — extracted to shared `ShelfRow` component), hooks after early returns (4 list screens + InProgressTab had `useCallback`/`useMemo` after `if (!isLoaded)` returns), and conditional hook call in BarcodeScannerModal (`useCameraPermissions()` was conditionally called based on module availability — replaced with stable unconditional hook reference).
+
+### Files Modified
+
+- `src/shared/spine/ShelfRow.tsx` — New shared component wrapping `useBookRowLayout` hook legally
+- `src/shared/spine/index.ts` — Export ShelfRow
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` — Replace useCallback ShelfView with ShelfRow
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` — Replace useCallback ShelfView with ShelfRow
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` — Replace useCallback ShelfView with ShelfRow
+- `src/features/collections/screens/CollectionDetailScreen.tsx` — Replace useCallback ShelfView with ShelfRow
+- `src/features/library/components/tabs/InProgressTab.tsx` — Move useMemo before early return
+- `src/features/library/screens/SeriesListScreen.tsx` — Move useCallback before early return
+- `src/features/library/screens/NarratorsListScreen.tsx` — Move useCallback before early return
+- `src/features/library/screens/AuthorsListScreen.tsx` — Move useCallback before early return
+- `src/features/library/screens/GenresListScreen.tsx` — Move useCallback before early return
+- `src/features/search/components/BarcodeScannerModal.tsx` — Replace conditional hook with stable unconditional reference
+
+---
+
+## [0.8.112] - 2026-02-18
+
+### Fixed
+
+- **Fix server spine scaling — spines were ~2x too tall**: `SERVER_SPINE_SCALE` was 0.525, producing ~472pt tall spines from 1200px server images (55% of screen height). Reduced to 0.272 to match procedural spine heights (~310pt on home, ~245pt on author detail). Also fixed max width cap (180→95), min width (45→30), and series target range (70-130→35-65) to match. Removed unused duplicate `SERVER_SPINE_SCALE` constants from BookSpineVertical.tsx and BookshelfView.tsx.
+
+### Files Modified
+
+- `src/features/home/hooks/useBookRowLayout.ts` — Reduce SERVER_SPINE_SCALE from 0.525 to 0.272, adjust width caps and series target range
+- `src/features/home/components/BookSpineVertical.tsx` — Remove unused SERVER_SPINE_SCALE constant
+- `src/features/home/components/BookshelfView.tsx` — Remove unused SERVER_SPINE_SCALE constant
+
+---
+
+## [0.8.111] - 2026-02-18
+
+### Fixed
+
+- **Fix SQLite "cannot start a transaction within a transaction" error**: `librarySyncService` was bypassing sqliteCache's transaction lock by accessing the raw database directly via `(sqliteCache as any).ensureReady()`. When library sync and item cache operations ran concurrently, both tried to open transactions simultaneously, causing crashes. All three methods (`bulkAddToSQLiteLibrary`, `bulkRemoveFromSQLiteLibrary`, `bulkResetSQLiteLibrary`) now route through sqliteCache's public API with proper `withTransactionLock` serialization.
+
+### Files Modified
+
+- `src/core/services/sqliteCache.ts` — Add `resetLibraryBooks()` public method with transaction lock
+- `src/core/services/librarySyncService.ts` — Replace raw DB access with `sqliteCache.bulkSetLibraryBooks()` and `sqliteCache.resetLibraryBooks()`
+
+---
+
+## [0.8.110] - 2026-02-18
+
+### Fixed
+
+- **Spine performance: eliminate mass re-render cascade**: Each `BookSpineVertical` was subscribing to the entire `serverSpineDimensions` object — any single book's dimension update triggered re-renders in ALL spine components on screen. Now uses per-book selectors (each spine only re-renders when its own dimensions change) and a lightweight version counter for layout components.
+- **Strip 24 debug console.log statements from BookSpineVertical**: Production logs for every spine render were flooding the JS bridge and causing GC pressure over time, leading to freezes after extended playback.
+- **Fix BookshelfView and useBookRowLayout subscriptions**: Replaced whole-object `serverSpineDimensions` subscription with `serverSpineDimensionsVersion` counter. Layout recalculates when needed without creating massive intermediate object references.
+
+### Files Modified
+
+- `src/features/home/stores/spineCache.ts` — Add `serverSpineDimensionsVersion` counter, increment on set/clear
+- `src/features/home/components/BookSpineVertical.tsx` — Per-book dimension selector, strip all debug logs
+- `src/features/home/components/BookshelfView.tsx` — Version counter subscription, strip debug logs
+- `src/features/home/hooks/useBookRowLayout.ts` — Version counter subscription, strip debug log
+
+---
+
+## [0.8.109] - 2026-02-18
+
+### Fixed
+
+- **Refresh Spines sizing bug**: After pressing "Refresh Spines", spine images could retain incorrect dimensions
+  - Removed over-restrictive `!cachedSpineDimensions` guard in `onLoad` callback — now always updates dimensions (store deduplicates unchanged values)
+  - Fixed refresh order: URL cache-busting (`lastRefreshed`) now happens before clearing dimensions, preventing old images from racing ahead and re-setting stale dims from expo-image cache
+
+### Files Modified
+
+- `src/features/home/components/BookSpineVertical.tsx` — Always call `setServerSpineDimensions()` in onLoad
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Reorder refresh: manifest → cache bust → clear dims
+
+---
+
+## [0.8.107] - 2026-02-18
+
+### Fixed
+
+- **Memory leak fixes**: Added missing cleanup in audioService
+  - `appStateSubscription` (foreground grace period listener) now cleaned up in `cleanup()`
+  - `durationUpdateTimeout` (duration polling interval) now cleaned up in `cleanup()`
+  - Prevents memory leaks when audio service is cleaned up
+
+### Files Modified
+
+- `src/features/player/services/audioService.ts` — Add cleanup for appStateSubscription and durationUpdateTimeout
+
+---
+
+## [0.8.106] - 2026-02-18
+
+### Fixed
+
+- **Pause delay fix**: Fixed 30+ second pause delay
+  - `audioService.pause()` was awaiting `MediaControl.updatePlaybackState()` which could hang
+  - Changed to fire-and-forget (same as `play()`) - audio pauses immediately
+  - Media control UI update happens in background
+
+### Files Modified
+
+- `src/features/player/services/audioService.ts` — Make pause() fire-and-forget like play()
+
+---
+
+## [0.8.105] - 2026-02-17
+
+### Changed
+
+- **Player cover dims during scrubbing**: Cover image now goes to 60% opacity when time delta popup is shown
+  - Makes scrubbing numbers more readable over the cover
+
+### Files Modified
+
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Add opacity to coverContainer when showDelta is true
+
+---
+
+## [0.8.104] - 2026-02-17
+
+### Fixed
+
+- **Speed setting crash**: Fixed crash when changing playback speed
+  - SpeedSheet was calling `useSpeedStore.setPlaybackRate()` directly without bookId
+  - Now uses `usePlayerStore.setPlaybackRate()` which properly determines the current book
+
+### Files Modified
+
+- `src/features/player/sheets/SpeedSheet.tsx` — Use playerStore's setPlaybackRate
+
+---
+
+## [0.8.103] - 2026-02-17
+
+### Fixed
+
+- **Stale spine images on fresh install**: Fixed old spine designs showing after reinstall
+  - `_coverCacheVersion` now initializes to `Date.now()` instead of 0
+  - All spine/cover URLs now have cache-busting params from first request
+  - Prevents OS-level HTTP cache from serving stale images across reinstalls
+
+### Files Modified
+
+- `src/core/api/apiClient.ts` — Initialize `_coverCacheVersion` to `Date.now()`
+
+---
+
+## [0.8.102] - 2026-02-17
+
+### Fixed
+
+- **Spine blackout on refresh**: Fixed spines going black when refreshing spines
+  - **Root cause**: Clearing cached dimensions on refresh caused `canDisplayServerSpine` to become false,
+    which set background to `spineBgColor` (#0f0f0f in dark mode = almost black)
+  - **Fix**: No longer clearing `serverSpineDimensions` on refresh
+  - URL timestamps in the spine manifest handle cache busting automatically
+  - When a spine image changes, its URL timestamp changes, expo-image fetches the new version
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Removed dimension clearing from handleRefreshSpines
+
+---
+
+## [0.8.101] - 2026-02-17
+
+### Fixed
+
+- **Spine black flash on refresh**: Complete fix for spines showing black during refresh
+  - Hidden prefetch Image now pre-loads BOTH dimensions AND image content
+  - Main Image only renders after image is fully cached in expo-image
+  - Eliminates all loading states where black could appear
+  - Procedural spine shows until server image is completely ready
+
+### Files Modified
+
+- `src/features/home/components/BookSpineVertical.tsx` — Rewrote image loading to pre-cache before display
+
+---
+
+## [0.8.98] - 2026-02-17
+
+### Fixed
+
+- **Android Auto playback controls**: Fixed reliability issues with play/pause/rewind/fast-forward
+  - Set initial paused state on MediaSession creation so Android Auto shows controls immediately
+  - Reduced command retry delay from 500ms to 100ms for faster response
+  - Added immediate state feedback after play/pause/rewind/fast-forward commands
+  - Play/pause changes now always sync to Android Auto regardless of position threshold
+  - Added periodic position sync (every 2 seconds) during playback for accurate time display
+
+### Files Modified
+
+- `android/.../AndroidAutoMediaBrowserService.kt` — Set initial PAUSED state on create
+- `android/.../AndroidAutoModule.kt` — Reduced RETRY_DELAY_MS from 500ms to 100ms
+- `src/features/automotive/automotiveService.ts` — Fixed sync logic, added periodic updates, immediate command feedback
+
+---
+
+## [0.8.97] - 2026-02-17
+
+### Changed
+
+- **Smooth duration scaling curve**: Replaced discrete breakpoints with smooth ease-out curve
+  - Uses square root function for natural distribution
+  - 0 hours → 0.70
+  - 1 hour → 0.78
+  - 5 hours → 0.88
+  - 10 hours → 0.96
+  - 20 hours → 1.07
+  - 30+ hours → 1.15
+  - Smooth interpolation between all values
+
+### Files Modified
+
+- `src/features/home/components/BookshelfView.tsx` — Replaced breakpoints with sqrt ease-out curve
+
+---
+
+## [0.8.94] - 2026-02-17
+
+### Changed
+
+- **Homepage Settings drag and drop**: Replaced up/down arrow buttons with drag and drop reordering
+  - Long press the grip handle to drag items
+  - Smoother and more intuitive reordering
+- **Duration scale max reduced**: DURATION_SCALE_MAX: 1.15 → 1.05
+
+### Files Modified
+
+- `src/features/profile/screens/PlaylistSettingsScreen.tsx` — Replaced up/down arrows with DraggableFlatList
+- `src/features/home/components/BookshelfView.tsx` — Updated DURATION_SCALE_MAX to 1.05
+
+---
+
+## [0.8.93] - 2026-02-17
+
+### Fixed
+
+- **Mini player bottom gap**: Extended mini player to the bottom edge of the screen
+  - Removed 8px gap between mini player and screen bottom
+
+### Files Modified
+
+- `src/navigation/components/GlobalMiniPlayer.tsx` — Changed wrapper bottom from scale(8) to 0
+
+---
+
+## [0.8.92] - 2026-02-17
+
+### Changed
+
+- **Short audiobook spine scaling**: Adjusted duration scales
+  - DURATION_SCALE_TINY: 0.7 (0 min)
+  - DURATION_SCALE_SHORT: 1.0 (30 min)
+  - DURATION_SCALE_MAX: 1.15 (30+ hours)
+
+### Files Modified
+
+- `src/features/home/components/BookshelfView.tsx` — Updated duration scale constants
+
+---
+
+## [0.8.88] - 2026-02-17
+
+### Changed
+
+- **Server spine minimum width**: Narrow server spine images now have a 45px minimum width
+  - Prevents very short audiobooks from being scaled too small
+  - Previously a 60px server spine at 0.525 scale = 31px (too thin)
+  - Now floors at 45px, scaling up proportionally to preserve aspect ratio
+
+### Files Modified
+
+- `src/features/home/hooks/useBookRowLayout.ts` — Added SERVER_SPINE_MIN_WIDTH constant and floor logic
+
+---
+
+## [0.8.87] - 2026-02-17
+
+### Fixed
+
+- **Spine sizes after refresh**: "Refresh Spines" now also refreshes the library cache
+  - This triggers a full re-render so spine sizes adjust correctly
+  - Previously spines would show with wrong sizes until scrolling/interacting
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Added refreshCache() call to handleRefreshSpines
+
+---
+
+## [0.8.86] - 2026-02-17
+
+### Fixed
+
+- **Black spines after cache clear**: Spine manifest now loads immediately when cache is cleared
+  - Previously there was a 100ms delay before reloading data, causing black/missing spines
+  - Manifest now loads right away, preventing the black spine flash
+
+### Files Modified
+
+- `src/core/cache/libraryCache.ts` — Load spine manifest immediately in clearCache()
+
+---
+
+## [0.8.85] - 2026-02-17
+
+### Fixed
+
+- **Spines not rendering on app launch**: Added automatic spine manifest loading when library screens mount
+  - Previously spines wouldn't render until manually refreshing
+  - Now both LibraryScreen and MyLibraryScreen load the manifest on mount
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Added useEffect to load spine manifest on mount
+- `src/features/library/screens/MyLibraryScreen.tsx` — Added useEffect to load spine manifest on mount
+
+---
+
+## [0.8.84] - 2026-02-17
+
+### Fixed
+
+- **Spine manifest caching**: Added cache-busting parameter to spine manifest fetch
+  - Manifest endpoint had 1-hour cache which caused stale data after regenerating
+  - Now always fetches fresh manifest when "Refresh Spines" is tapped
+
+### Files Modified
+
+- `src/core/api/apiClient.ts` — Added timestamp query param to bypass cache
+
+---
+
+## [0.8.83] - 2026-02-17
+
+### Changed
+
+- **Homepage Settings redesign**: Unified the three separate sections into one cohesive interface
+  - Each row now shows: icon, label, default radio, order arrows, and visibility toggle
+  - Column headers indicate Default, Order, and Show controls
+  - Built-in views (My Library, Last Played, Finished) are always visible with unique icons
+  - Playlists can be toggled, reordered, and set as default in one place
+  - Page title changed from "Playlist Settings" to "Homepage Settings"
+
+### Files Modified
+
+- `src/features/profile/screens/PlaylistSettingsScreen.tsx` — Complete redesign with unified row controls
+
+---
+
+## [0.8.82] - 2026-02-17
+
+### Removed
+
+- **Image caching feature**: Removed the local image cache functionality from Data & Storage settings
+  - Removed "Cache All Images" button and progress UI
+  - Removed "Auto-Cache" toggle
+  - Removed "Clear Image Cache" button
+  - Server is now fast enough that local caching is unnecessary
+  - "Refresh Spines" button moved to Troubleshooting section
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Removed image cache section and related handlers
+
+---
+
+## [0.8.81] - 2026-02-17
+
+### Fixed
+
+- **Black spines when scrolling**: Fixed bug where server spine images would turn black/disappear when scrolling
+  - Root cause: Background was set to transparent when a spine URL existed, but image wasn't rendered yet after FlatList recycled the component
+  - Fix: Only hide procedural background when server spine is actually displayed (`canDisplayServerSpine`)
+
+### Files Modified
+
+- `src/features/home/components/BookSpineVertical.tsx` — Fixed background color condition to use `canDisplayServerSpine`
+
+---
+
+## [0.8.80] - 2026-02-17
+
+### Added
+
+- **Refresh Spines button**: New button in Data & Storage settings to reload spine manifest from server
+  - Clears cached spine dimensions to force fresh image loading
+  - Shows count of spine images available after refresh
+  - Useful after uploading new spine images to the server
+
+### Files Modified
+
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Added Refresh Spines button and handler
+
+---
+
+## [0.8.78] - 2026-02-16
+
+### Infrastructure
+
+- **Server migration to Oregon**: ABS moved from Germany to Hillsboro, OR for lower latency to US users
+- **New architecture**: Oregon server handles all requests with local image cache for fast spine/cover loading
+- No app code changes - server routing handles everything transparently
+
+---
+
+## [0.8.77] - 2026-02-15
+
+### Fixed
+
+- **Logging consistency**: Updated `completionSheetStore.ts` to use `createLogger` pattern matching all other player stores
+
+### Technical Notes
+
+Audit review confirmed all minor issues were already fixed in previous versions:
+- **Chapter index bounds validation** (`playerStore.ts`): All chapter navigation methods validate array and index bounds
+- **Input validation** (`speedStore.ts`, `bookmarksStore.ts`): Rate limits (0.25-4.0x), bookmark time/title validation
+- **Persist-first pattern** (`bookmarksStore.ts`): SQLite writes complete before state updates
+- **Async race guards** (`bookmarksStore.ts`): Book change detection during async loads
+- **Seek interval guards** (`seekingStore.ts`): `seekIntervalInProgress` flag prevents overlapping callbacks
+
+### Files Modified
+
+- `src/features/player/stores/completionSheetStore.ts` — Standardized logging with createLogger
+
+---
+
+## [0.8.76] - 2026-02-15
+
+### Fixed
+
+- **Lazy import error handling**: progressStore lazy imports in `backgroundSyncService.ts` now log errors instead of silently ignoring them, making debugging easier
+- **progressStore readiness check**: Now checks `isLoaded` flag before updating progressStore to prevent race conditions during app startup
+
+### Technical Notes
+
+Audit review confirmed these critical issues were already fixed in previous versions:
+- **Background sync guard** (`backgroundSyncService.ts:46`): `backgroundSyncInProgress` flag prevents concurrent background sync operations
+- **Sleep timer interval race** (`sleepTimerStore.ts:29`): `currentTimerId` pattern invalidates stale timer callbacks
+
+### Files Modified
+
+- `src/features/player/services/backgroundSyncService.ts` — Improved error logging and isLoaded check for progressStore updates
+
+---
+
+## [0.8.75] - 2026-02-16
+
+### Added
+
+- **Spine manifest endpoint** (server): New `/api/spines/manifest` endpoint returns JSON list of all book IDs with server-generated spine images. Allows app to skip 404 requests for books without spines.
+- **Pre-flight spine check**: App now checks spine manifest before requesting server spine images, eliminating failed requests for books without server spines.
+- **Dimension cache with 24h TTL**: Server spine dimension cache now persists to AsyncStorage with 24-hour expiry. Cached dimensions refresh automatically when stale.
+- **Unified style system**: New simplified spine style system in `src/features/home/utils/spine/styles/` - reduces 41 profile files (~4100 lines) to 4 files (~200 lines). Maps genres to 8 base typography styles and 4 composition presets.
+
+### Changed
+
+- `spineCache.ts`: `serverSpineDimensions` now includes `cachedAt` timestamp for TTL-based expiry
+- `libraryCache.ts`: Added `booksWithServerSpines` Set and `loadSpineManifest()` action
+- `apiClient.ts`: Added `getSpineManifest()` method and `/api/spines/manifest` endpoint
+- `BookSpineVertical.tsx`: Now checks `booksWithServerSpines` before attempting server spine load
+
+### Server Changes
+
+- Created `/opt/scripts/generate_spine_manifest.py` - Generates manifest.json listing 2640 books with server spines
+- Updated Caddyfile to serve manifest at `/api/spines/manifest` with 1-hour cache
+
+### Files Modified
+
+- `src/features/home/stores/spineCache.ts` — Added TTL-based dimension caching
+- `src/core/cache/libraryCache.ts` — Added spine manifest loading and `hasServerSpine()`
+- `src/core/api/apiClient.ts` — Added `getSpineManifest()` method
+- `src/core/api/endpoints.ts` — Added `spines.manifest` endpoint
+- `src/features/home/components/BookSpineVertical.tsx` — Pre-flight check before server spine load
+- `src/features/home/utils/spine/styles/baseStyles.ts` — **NEW** 8 base typography styles
+- `src/features/home/utils/spine/styles/compositionPresets.ts` — **NEW** 4 composition presets
+- `src/features/home/utils/spine/styles/genreMap.ts` — **NEW** 40+ genre mappings
+- `src/features/home/utils/spine/styles/index.ts` — **NEW** Style resolver
+- `src/features/home/utils/spine/templateAdapter.ts` — Re-exports unified style system
+
+---
+
+## [0.8.74] - 2026-02-15
+
+### Fixed
+
+- Android Auto: App now recognized immediately on startup (set initial MediaSession state)
+- Android Auto: Progress position now syncs correctly when starting playback from car
+- Added forced sync after play/resume commands to ensure correct position is shown
+
+### Files Modified
+- `android/app/src/main/java/com/secretlibrary/app/automotive/AndroidAutoMediaBrowserService.kt` — Set initial playback state on create
+- `src/features/automotive/automotiveService.ts` — Force sync after playItem and play commands
+
+---
+
+## [0.8.73] - 2026-02-14
+
+### Added
+
+- Developer Settings screen (5 taps on version in dev mode)
+  - Reset cache prompt option
+  - Links to Spine Playground and Debug Stress Test
+- Cache prompt size display now shows MB size with audiobook equivalent below
+
+### Changed
+
+- Data & Storage "Cache All Images" now shows MB size with audiobook equivalent in description
+- 5-tap dev access now opens Developer Settings instead of Spine Playground
+
+### Files Modified
+- `src/features/profile/screens/DeveloperSettingsScreen.tsx` — **NEW** Developer settings screen
+- `src/features/profile/screens/ProfileScreen.tsx` — Navigate to DeveloperSettings on 5-tap
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Show MB size, audiobook equivalent in description
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Show MB + audiobook equivalent in size section
+- `src/core/services/imageCacheService.ts` — Added resetCachePromptSeen method
+- `src/navigation/AppNavigator.tsx` — Added DeveloperSettings route
+
+---
+
+## [0.8.72] - 2026-02-14
+
+### Added
+
+- Image Cache section in Data & Storage settings
+  - "Cache All Images" button to run caching on demand
+  - "Auto-Cache New Books" toggle
+  - "Clear Image Cache" button
+  - Shows progress during caching
+
+### Fixed
+
+- Changed cache prompt icon from image to stopwatch (Timer)
+- Fixed candle animation pushing content down (constrained to 80x80 container)
+- Fixed Storage Settings using wrong data source for library items
+
+### Files Modified
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Added Image Cache section
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Timer icon, constrained candle
+- `src/features/profile/screens/StorageSettingsScreen.tsx` — Fixed data source
+
+---
+
+## [0.8.71] - 2026-02-14
+
+### Fixed
+
+- Changed cache prompt icon from image to stopwatch (Timer)
+- Fixed candle animation pushing content down (constrained to 80x80 container)
+- Fixed Storage Settings using wrong data source for library items (was showing 0 books)
+
+### Files Modified
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Timer icon, constrained candle size
+- `src/features/profile/screens/StorageSettingsScreen.tsx` — Use useLibraryCache instead of prefetchService
+
+---
+
+## [0.8.70] - 2026-02-14
+
+### Fixed
+
+- Progress bar no longer adds extra padding when in layout flow (was too far down)
+- Size display now shows "SIZE" label above "~1 audiobook" text
+
+### Files Modified
+- `src/shared/components/GlobalCacheProgressBar.tsx` — Removed extra safe area padding in non-absolute mode
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Fixed size label layout
+- `src/core/services/imageCacheService.ts` — Full audiobook text in equivalent string
+
+---
+
+## [0.8.69] - 2026-02-14
+
+### Enhanced
+
+Improved cache prompt and progress bar UX.
+
+**Changes:**
+- Cache prompt now shows candle animation instead of generic spinner
+- Progress bar pushes navigation down instead of overlaying on top
+- Cache size now shows audiobook equivalents (e.g., "~1-2 AUDIOBOOKS") instead of raw MB
+
+### Files Modified
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Candle animation, audiobook equivalent display
+- `src/shared/components/GlobalCacheProgressBar.tsx` — Removed slide animation, simplified for non-absolute mode
+- `src/navigation/AppNavigator.tsx` — Progress bar at top of layout (pushes content down)
+- `src/core/services/imageCacheService.ts` — Added audiobook equivalent calculation
+
+---
+
+## [0.8.68] - 2026-02-14
+
+### Fixed
+
+Fixed crash in GlobalCacheProgressBar due to incorrect color import.
+
+**Issue:**
+- Used `colors.dark.gold` but the theme structure uses `colors.gold` directly
+- Caused "Cannot read property 'dark' of undefined" error
+
+**Fix:**
+- Import `secretLibraryDarkColors` directly for consistent gold bar styling
+- Use `barColors.gold` and `barColors.background` in styles
+
+### Files Modified
+- `src/shared/components/GlobalCacheProgressBar.tsx` — Fixed color imports
+
+---
+
+## [0.8.67] - 2026-02-14
+
+### Enhanced
+
+Improved image cache progress UI with better visual feedback.
+
+**New Features:**
+- Skull loading animation during caching (using existing Loading component)
+- Download speed indicator (e.g., "2.5 MB/s")
+- Time remaining estimate (e.g., "3m 45s")
+- Large percentage display with bytes downloaded
+- Global yellow progress bar at top of all screens when caching runs in background
+- Cancel button on background progress bar
+
+**New Files:**
+- `src/core/stores/imageCacheProgressStore.ts` — Global state for cache progress
+- `src/shared/components/GlobalCacheProgressBar.tsx` — Yellow top bar for background caching
+
+**Modified Files:**
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — Added speed/time/skull UI
+- `src/navigation/AppNavigator.tsx` — Added GlobalCacheProgressBar
+- `src/shared/components/index.ts` — Export GlobalCacheProgressBar
+
+---
+
+## [0.8.66] - 2026-02-14
+
+### Fixed
+
+Fixed image cache prompt not appearing on first login.
+
+**Issues:**
+1. Cache prompt was checking `prefetchService.getCachedItems()` which is never populated - library items are loaded via `useLibraryCache` zustand store instead
+2. The `hasCheckedCachePrompt` ref persisted across sign-out/sign-in, preventing the prompt from showing after re-login
+
+**Fixes:**
+- Changed to use `useLibraryCache.getState().items` instead of `prefetchService.getCachedItems()`
+- Changed ref to track which library ID was checked (`checkedCachePromptForLibrary`) so it resets when user signs out and back in
+
+### Files Modified
+- `src/navigation/AppNavigator.tsx` — Fixed cache prompt detection logic
+
+---
+
+## [0.8.65] - 2026-02-14
+
+### Feature: Cache All Library Images on First Login
+
+Added an option to download and cache ALL book covers and spines upfront for instant loading across the entire library.
+
+**User Flow:**
+- First login: Prompt offers to cache all images with estimated size (~236MB for ~2,637 books)
+- Cache Now: Downloads all covers then spines with progress display
+- Skip: User can cache later from Settings > Storage
+- Background: Can continue using the app while caching runs
+
+**Features:**
+- Progress tracking with resume on app restart
+- Auto-cache toggle for new books added to library
+- Cache status display in Storage Settings
+- Clear cache option to free space
+
+**Technical Details:**
+- Removed `Image.clearDiskCache()` on app start (URLs now have timestamps for cache busting)
+- Batched prefetch (50 images at a time) for responsiveness
+- Progress persisted to AsyncStorage for resume capability
+- Covers cached at 1024x1024, spines at full resolution
+
+### Files Created
+- `src/core/services/imageCacheService.ts` — Cache management service
+- `src/features/onboarding/screens/CachePromptScreen.tsx` — First-login prompt
+- `src/features/onboarding/index.ts` — Feature exports
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Removed cache clearing on app start
+- `src/features/profile/screens/StorageSettingsScreen.tsx` — Added Image Cache section
+- `src/navigation/AppNavigator.tsx` — Integrated cache prompt on first login
+- `src/core/services/prefetchService.ts` — Added auto-cache for new books
+
+---
+
+## [0.8.64] - 2026-02-14
+
+### Feature: Series Width Consistency (Server + Procedural Spines)
+
+Books in the same series now have more consistent spine widths for a unified "collection" look. This applies to both server-rendered spine images AND procedural spines.
+
+**How it works:**
+- Each series gets a consistent target width based on its name hash
+- Server spines: 60% actual width + 40% series target (70-130px range)
+- Procedural spines: 55% duration-based + 45% series target (80-180px range)
+- Height is preserved to maintain server-generated consistency
+- Non-series books are unaffected
+
+**Example:** A 10-book series with varying spine widths (90px, 120px, 85px, 110px...) will now cluster around a common width (e.g., 95-105px) while still showing slight variation.
+
+### Files Modified
+- `src/features/home/hooks/useBookRowLayout.ts` — Added series width blending for server spines
+- `src/features/home/utils/spine/core/dimensions.ts` — Added series width blending for procedural spines
+- `src/features/home/utils/spine/adapter.ts` — Pass seriesName to calculateWidth
+
+---
+
+## [0.8.63] - 2026-02-14
+
+### Feature: Series Width Consistency (Procedural Only)
+
+Initial implementation of series width consistency for procedural spines only.
+
+**Note:** This was incomplete - only affected procedural spines. See v0.8.64 for complete implementation including server spines.
+
+### Files Modified
+- `src/features/home/utils/spine/core/dimensions.ts` — Added series-based width blending to calculateWidth
+- `src/features/home/utils/spine/adapter.ts` — Pass seriesName to calculateWidth
+
+---
+
+## [0.8.62] - 2026-02-14
+
+### Revert: Dimension Validation Changes
+
+Reverted the dimension validation changes from v0.8.59 as they were preventing spine images from loading (only procedural spines were appearing).
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Removed dimension validation
+- `src/features/home/hooks/useBookRowLayout.ts` — Removed dimension validation
+
+---
+
+## [0.8.61] - 2026-02-14
+
+### Fix: Sort Books by Sequence in Series Tab on Author/Narrator Pages
+
+Books within each series on the Author and Narrator detail pages are now sorted by sequence number instead of being unsorted.
+
+- Author detail screen: Series tab now shows books in order (Book 1, Book 2, etc.)
+- Narrator detail screen: Series tab now shows books in order
+- Applies to both Shelf (spine) and Book (list) view modes
+
+### Files Modified
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` — Sort series books by sequence
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` — Sort series books by sequence
+
+---
+
+## [0.8.60] - 2026-02-14
+
+### Feature: Author Tab on Series Detail Page
+
+Added an Author tab to the Series detail screen, allowing users to view books grouped by author.
+
+- New "Author" tab between "All" and "Narrator" tabs
+- Groups books by first author name
+- Supports both Shelf (spine) and Book (list) view modes
+- Tapping author name navigates to Author detail page
+
+### Files Modified
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` — Added Author tab
+
+---
+
+## [0.8.59] - 2026-02-14
+
+### Fix: Tiny Spine Slivers on Android Series Page
+
+Fixed spines rendering as tiny 4x12 pixel slivers on the Series detail screen.
+
+**Root cause:** Server spine dimensions cache (`serverSpineDimensions`) was accepting dimensions from thumbnail images (10x30 pixels). When these tiny dimensions were used for layout calculations with the scaling factors, they produced 4x12 pixel spines.
+
+**Solution:** Added dimension validation in two places:
+1. `setServerSpineDimensions` now rejects dimensions smaller than 100x300 (thumbnail sizes)
+2. `useBookRowLayout` validates cached dimensions before using them, falling back to procedural if invalid
+
+This ensures only full-size spine dimensions (300-600px wide, 1000-1400px tall) are used for layout calculations.
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Added dimension validation to setServerSpineDimensions
+- `src/features/home/hooks/useBookRowLayout.ts` — Added defensive dimension validation
+
+---
+
+## [0.8.58] - 2026-02-14
+
+### Performance: Prefetch All Spine Thumbnails for Instant Blur-Up
+
+Changed spine prefetch strategy to load ALL thumbnails instead of limited full images.
+
+- Prefetch ALL 2,637 spine thumbnails (~230 bytes each = ~600KB total)
+- Thumbnails are cached instantly on startup
+- When viewing Finished tab, placeholders appear immediately from cache
+- Full spines load after, creating smooth blur-up transition
+- Much better than prefetching 100 full spines (100 × 25KB = 2.5MB, still blocks queue)
+
+---
+
+## [0.8.57] - 2026-02-14
+
+### Fix: 20-Second Spine Loading Delay
+
+Fixed massive delays when loading spine images in Finished view.
+
+**Root cause:** On startup, `prefetchAllSpines` was trying to prefetch ALL 2000+ spine images in batches of 50. This created a huge queue that blocked any on-demand image loads. When viewing Finished tab, new spine requests would get stuck behind 2000+ pending prefetch requests.
+
+**Solution:** Only prefetch ~100 priority spines (in-progress + first 50 finished) instead of all 2000+. FlatList virtualization means we only need ~15 visible spines at a time, and they load quickly from server (~30ms each).
+
+### Files Modified
+- `src/core/services/prefetchService.ts` — Capped spine prefetch to 100 priority items
+
+---
+
+## [0.8.56] - 2026-02-14
+
+### Performance: Optimized Data Loading for Library Screen
+
+Eliminated redundant Map creation in data loading paths for Finished, Last Played, and Playlist tabs.
+
+- Use pre-built `itemsById` Map from library cache instead of creating new Maps in useMemo
+- Removed 3 instances of `new Map(allCacheItems.map(...))` which ran on every filter change
+- `finishedLibraryItems`, `localRecentlyListened`, and `baseLibraryItems` now use cached index
+- `libraryItemsMap` now directly references `cacheItemsById` (no per-render allocation)
+
+Combined with v0.8.55 virtualization, Finished tab with 200+ books should now load nearly instantly.
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` — Use pre-built cache index
+
+---
+
+## [0.8.55] - 2026-02-14
+
+### Performance: Virtualized Stack Mode for Large Libraries
+
+Fixed slow loading for Finished tab with 200+ books.
+
+- Added FlatList virtualization for stack mode (vertical spine list)
+- Only renders 15 items initially, loads more as user scrolls
+- Moved dimension calculation inline to avoid pre-computing 200+ items
+- Initial render now happens much faster with large libraries
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` — FlatList virtualization for stack mode
+
+---
+
+## [0.8.54] - 2026-02-14
+
+### Fix: Empty Spine Images
+
+Fixed spines not loading at all (showing empty space with just "1w✓" badges).
+
+- Removed `imageCacheCleared` dependency that was blocking spine loading
+- Removed `isHydrated` check for spine dimensions - use dimensions immediately when available
+- Disabled `isWaitingForServerSpine` blocking - show procedural fallback while loading
+- Server spines now load properly with procedural fallback during loading
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Fixed blocking conditions
+
+---
+
+## [0.8.53] - 2026-02-14
+
+### Spine & Cover Loading Performance: Blur-Up Placeholders
+
+Major performance improvement for spine loading on pages with many books (e.g., Finished tab).
+
+- Added blur-up placeholder images for spine images (tiny ~200 byte thumbnails load instantly)
+- Server generates and serves 10x30px spine thumbnails when width/height params present
+- Spines now transition smoothly from blurred placeholder to full image
+- Added removeClippedSubviews to BookshelfView for better scroll performance
+- Changed spine image cache policy from memory to memory-disk for better caching
+
+### Server Changes (Hetzner)
+- Generated 2,638 spine thumbnails (~232 bytes each vs ~25KB full size)
+- Added Caddy route: `/api/items/{id}/spine?width=X` serves spine-thumb.webp
+- Thumbnails cached for 7 days (full spines cached 1 day)
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Blur-up placeholder support
+- `src/features/home/components/BookshelfView.tsx` — Added removeClippedSubviews
+- `src/core/cache/useSpineUrl.ts` — (no changes, already supports width/height)
+
+---
+
+## [0.8.52] - 2026-02-13
+
+### CompletedTab Virtualization Fix
+
+- CompletedTab now uses FlatList for proper virtualization (only renders visible items)
+- Removed ScrollView wrapper for CompletedTab - it now owns its own scrolling
+- Added getItemLayout optimization for consistent item heights
+- Should dramatically improve performance for large finished book libraries
+
+### Files Modified
+- `src/features/library/components/tabs/CompletedTab.tsx` — Complete rewrite with FlatList
+- `src/features/library/screens/MyLibraryScreen.tsx` — Conditional rendering for CompletedTab
+
+---
+
+## [0.8.51] - 2026-02-13
+
+### Performance & UX Improvements
+
+- Added blur-up placeholder images for BookRow covers (20x20 thumbnail loads instantly, then transitions to full image)
+- Fixed cache clearing not auto-reloading library data (now automatically refreshes from server after clear)
+- Bumps cover cache version on cache clear to ensure fresh images
+
+### Files Modified
+- `src/features/library/components/BookRow.tsx` — Added placeholder image support
+- `src/core/cache/libraryCache.ts` — Auto-reload after cache clear
+
+---
+
+## [0.8.50] - 2026-02-13
+
+### Speed Panel Position Fix
+
+- Added bottom margin to sheet container to prevent clipping with bottom controls
+- Sheet now floats above the control bar with rounded corners
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Sheet positioning
+
+---
+
+## [0.8.49] - 2026-02-13
+
+### Speed Panel Compact Layout & Bottom Position
+
+- Made speed panel more compact (smaller buttons, reduced spacing)
+- Moved all sheets to bottom of screen instead of center
+- Updated sheet container to have top-only border radius
+- Reduced preset button size and font sizes throughout
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` — Compact layout
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Bottom sheet positioning
+
+---
+
+## [0.8.48] - 2026-02-13
+
+### Speed Panel Button Styling Fix
+
+- Fixed preset buttons to be rounded rectangles (not circles)
+- Reduced borderRadius from scale(26) to scale(12) for proper shape
+- Reduced gap between buttons for proper 4-column layout
+- Matched mockup design with rounded rectangle appearance
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` — Button shape fix
+
+---
+
+## [0.8.47] - 2026-02-13
+
+### Speed Panel Button Styling
+
+- Updated preset buttons to pill-shaped design (larger border radius)
+- Changed active state border from warm brown to cream/white (#E8E4DF)
+- Updated action buttons to match pill-shaped style
+- Refined saved preset dot indicator position and size
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` — Button styling refinements
+
+---
+
+## [0.8.46] - 2026-02-13
+
+### Speed Panel UX Redesign
+
+Complete redesign based on UX best practices:
+- Large speed readout at top for immediate visibility (scales up while dragging)
+- Slider with labels ABOVE track (not obscured by thumb)
+- Tick marks at 0.5× intervals for spatial orientation
+- Slider range extended to 0.5×–3.0×
+- Unified preset grid merging saved and default presets
+- Consistent 0.25× increments: 0.75×, 1.0×, 1.25×, 1.5×, 1.75×, 2.0×, 2.25×, 2.5×
+- Clear active state with warm accent border on current speed
+- Saved presets show dot indicator (•)
+- Double-tap to remove saved presets (more discoverable than long-press)
+- Explicit "Done" button for dismissal
+- Dark mode styling
+
+### Sleep Timer Dark Mode
+
+- Converted sleep timer sheet to dark mode theme
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` — Complete UX redesign
+- `src/features/player/sheets/SleepTimerSheet.tsx` — Dark mode styling
+
+---
+
+## [0.8.44] - 2026-02-13
+
+### Speed Panel Dark Mode
+
+- Converted speed sheet to dark mode theme
+- Dark background (#1a1a1a) with dark card backgrounds (#2a2a2a)
+- White text and slider elements
+- Selected options now show white background with black text
+
+### Bookmark Long Press
+
+- Added `onLongPress` support to TopNav pills
+- Bookmark button now opens bookmarks panel on long press
+
+### Files Modified
+- `src/features/player/sheets/SpeedSheet.tsx` — Dark mode styling
+- `src/shared/components/TopNav.tsx` — Added onLongPress to pills interface
+
+---
+
+## [0.8.43] - 2026-02-13
+
+### Player UI Cleanup
+
+- Removed "Chapters" dropdown from top nav (chapters accessible by tapping chapter title)
+- Added "Queue" label to queue button in top nav
+- Added "Bookmark" label to bookmark button (moved from circle to pill)
+- Changed bottom-left pill from "Chapter" (open sheet) to progress mode toggle ("Book"/"Chapter")
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Updated TopNav pills and settings row
+
+---
+
+## [0.8.42] - 2026-02-13
+
+### Fixed Book Duration Not Loading for Non-Cached Books
+
+Fixed issue where book duration and elapsed time showed as 0 for books that weren't in cache. The fixes include:
+- Calculate duration from session audioTracks when session.duration is 0
+- Poll for duration from audio player for up to 10 seconds after load (handles streaming audio)
+- Update player store when audioService detects duration
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` — Calculate duration from audioTracks, update store when duration detected
+- `src/features/player/services/audioService.ts` — Poll for duration when not immediately available
+
+---
+
+## [0.8.38] - 2026-02-13
+
+### Mini Player Fixes
+
+- Changed background color to pure black (#000000)
+- Fixed bookshelf bottom padding so content isn't cut off by mini player
+
+### Files Modified
+- `src/navigation/components/GlobalMiniPlayer.tsx` — Pure black background, adjusted height constant
+- `src/features/home/screens/LibraryScreen.tsx` — Removed -50 offset from shelf padding calculation
+
+---
+
+## [0.8.37] - 2026-02-13
+
+### Mini Player Redesign
+
+Completely redesigned the mini player with a cleaner, more editorial look:
+- Dark background (#1a1a1a) instead of light
+- Removed scrubber/progress bar for cleaner appearance
+- Editorial serif font (Playfair) for book title
+- Italic serif font for chapter name
+- Pill-shaped control buttons with rounded corners
+- Skip buttons with subtle outline border
+- White filled play/pause button
+- Reduced overall height
+
+### Files Modified
+- `src/navigation/components/GlobalMiniPlayer.tsx` — Complete redesign
+
+---
+
+## [0.8.36] - 2026-02-13
+
+### Add to Library Button in Fresh Release Section
+
+Added "Add to Library" button to the Fresh Release / Top Pick hero section on the Browse page. The button:
+- Shows "Add" with a library+plus icon when not in library
+- Shows "Library" with a library icon when already in library (filled button state)
+- Toggles library membership on tap
+
+### Files Modified
+- `src/features/browse/components/TopPickHero.tsx` — Added library button, icons, and toggle handler
+
+---
+
+## [0.8.35] - 2026-02-13
+
+### Swipe Down to Close Mini Player
+
+Added swipe down gesture to the mini player. When swiping down:
+- Pauses playback
+- Saves progress locally and syncs to server
+- Closes the player session
+- Hides the mini player
+
+Swipe up still opens the full-screen player.
+
+### Files Modified
+- `src/navigation/components/GlobalMiniPlayer.tsx` — Added swipe down gesture and cleanup handler
+
+---
+
+## [0.8.27] - 2026-02-13
+
+### Duration-Based Book Scaling
+
+Books now scale proportionally based on their duration/length:
+- Short books (< 3 hours): 88% scale
+- Medium books (3-25 hours): linear interpolation
+- Long books (> 25 hours): 112% scale
+
+This makes longer audiobooks appear slightly larger and shorter ones slightly smaller, giving a more realistic bookshelf appearance.
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` — Added getDurationScale() and applied to dimension calculations
+
+---
+
+## [0.8.23] - 2026-02-13
+
+### Fix Label Overlap on Tilted Books
+
+Adjusted top label position to account for lean angle on tilted books. Labels now move up proportionally to avoid overlapping with the tilted spine.
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Dynamic top offset based on leanAngle
+
+---
+
+## [0.8.22] - 2026-02-13
+
+### Justified Top Label - Time Left, Progress Right
+
+Changed the top label layout from centered to justified:
+- Left side: last played time ("1d")
+- Right side: progress percentage ("47%") or checkmark ("✓")
+
+```
+1d                    47%
+┌────────────────────────┐
+│                        │
+│     BOOK SPINE         │
+│                        │
+└────────────────────────┘
+```
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Justified row layout
+
+---
+
+## [0.8.20] - 2026-02-13
+
+### Fixed Sort Flicker - Use Local Timestamps Instead of Server
+
+Fixed the re-sort delay/flicker by using LOCAL `lastPlayedAt` timestamps from progressStore instead of waiting for server data.
+
+**Root cause:**
+- `transformToLibraryBook` used `item.mediaProgress.lastUpdate` from server cache
+- Server refresh takes network round-trip time
+- When fresh data arrived, sort order changed visibly
+
+**Fix:**
+- Now use `progressStore.getProgress(bookId).lastPlayedAt` (local SQLite data)
+- Local timestamps are updated immediately when you play
+- No wait for server = no re-sort flicker
+- Added `progressVersion` dependency so list re-sorts on local progress updates
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` — Use local progressStore timestamps
+
+---
+
+## [0.8.19] - 2026-02-13
+
+### Improved Library Loading UX - Show Books as Dark Placeholders Immediately
+
+Changed library screen loading behavior to show books immediately as dark placeholders (correct size and position) instead of waiting for background refresh to complete.
+
+**Previous behavior:**
+- Skeleton loader showed while waiting for ALL data including background server refresh
+- This prevented re-sorting but made skeleton display longer
+
+**New behavior:**
+- Books show immediately as dark placeholders once essential data loads
+- No more re-sort since we now use local timestamps (see v0.8.20)
+
+**Change:**
+- Removed `isRefreshComplete` from `isDataReady` condition
+- Books now render as soon as `isProgressLoaded`, `isCacheLoaded`, `!isDownloadsLoading`, and `isBootComplete` are true
+- `isWaitingForServerSpine` logic in BookSpineVertical still shows dark placeholders until images load
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` — Removed isRefreshComplete from isDataReady
+
+---
+
+## [0.8.13] - 2026-02-13
+
+### Fixed Stale Server Spine Images
+
+Fixed issue where OLD server spine images would appear before NEW ones after spine images were updated on the server.
+
+**Root cause:**
+- `serverSpineDimensions` was persisted to AsyncStorage
+- expo-image disk cache retained old spine images
+- When spine images were regenerated on server, app would show stale cached versions first
+
+**Fix:**
+- Removed `serverSpineDimensions` from persistence (dimensions are fetched fresh each app start)
+- Changed expo-image `cachePolicy` from `"memory-disk"` to `"memory"` (no stale disk cache)
+- Now spine images load fresh from server on each app start
+
+**Trade-off:** Spine images take slightly longer to appear on app start (network fetch required), but you'll never see stale/wrong images.
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Removed serverSpineDimensions from persistence
+- `src/features/home/components/BookSpineVertical.tsx` — Changed cachePolicy to memory-only
+
+---
+
+## [0.8.12] - 2026-02-13
+
+### Fixed Server Spine Flash - Image Load Timing
+
+Fixed the server spine flash by waiting for the image to actually load before hiding procedural content. Previously, even though dimensions were cached, the procedural content would hide immediately when `canDisplayServerSpine=true`, leaving an empty space while the image decoded.
+
+**Root cause:**
+- `canDisplayServerSpine` was true as soon as dimensions were available
+- Procedural content hid immediately, but Image hadn't loaded yet
+- User saw empty/transparent space for ~500ms-1s while image decoded
+
+**Fix:**
+- Added `spineImageLoaded` state to track when Image's `onLoad` fires
+- Server spine Image now renders with `opacity: 0` initially
+- Procedural content stays visible until `spineImageLoaded=true`
+- Server spine fades in (opacity: 1) after image loads
+- No more flash of empty space or procedural content
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Added spineImageLoaded tracking, layered rendering
+
+---
+
+## [0.8.11] - 2026-02-13
+
+### Fixed Server Spine Flash - Hydration Timing
+
+Fixed the remaining ~1 second flash of procedural spines on app start. The issue was that Zustand's AsyncStorage hydration is **asynchronous** - even though dimensions were persisted, the first render happened before hydration completed, showing empty dimensions.
+
+**Root cause:**
+- Zustand persist middleware loads from AsyncStorage asynchronously
+- First render: `serverSpineDimensions = {}` (initial empty state)
+- AsyncStorage loads: dimensions become available
+- Re-render: server spines appear (but too late, user saw procedural first)
+
+**Fix:**
+- Added `isHydrated` flag to track when AsyncStorage hydration completes
+- Added `onRehydrateStorage` callback to set `isHydrated = true` after hydration
+- Components now wait for `isHydrated` before using persisted dimensions
+- Until hydrated, dimensions return `undefined` → triggers procedural render
+- After hydration, dimensions are available → triggers server spine render
+
+**Note:** First render will show procedural spines briefly until hydration completes (~50-100ms typically), but this is much faster than the previous ~1 second delay of loading images.
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Added isHydrated flag and onRehydrateStorage callback
+- `src/features/home/components/BookshelfView.tsx` — Wait for isHydrated before using dimensions
+- `src/features/home/components/BookSpineVertical.tsx` — Wait for isHydrated before using dimensions
+- `src/features/home/hooks/useBookRowLayout.ts` — Wait for isHydrated before using dimensions
+
+---
+
+## [0.8.10] - 2026-02-13
+
+### Fixed Server Spine Flash on App Start
+
+Eliminated the ~1 second flash where procedural spines showed before server spines loaded. Previously, server spine dimensions were stored in a `Map` that was not persisted, so on every app start the dimensions had to be re-fetched by loading each spine image.
+
+**Fix:**
+- Changed `serverSpineDimensions` from `Map` to `Record` (plain object) for JSON serialization
+- Added `serverSpineDimensions` to the persisted state
+- Now on app restart, dimensions are immediately available and server spines render without flash
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Changed Map to Record, added to persist partialize, version 4
+- `src/features/home/components/BookshelfView.tsx` — Updated Map.get() to object access
+- `src/features/home/components/BookSpineVertical.tsx` — Updated Map.get() to object access
+- `src/features/home/hooks/useBookRowLayout.ts` — Updated Map.get() to object access
+
+---
+
+## [0.8.9] - 2026-02-13
+
+### Fixed Server Spine Aspect Ratio in useBookRowLayout
+
+Fixed the remaining aspect ratio distortion for server spines in views that use `useBookRowLayout` (GenreDetail, SeriesDetail, BookDetail shelf view, etc.).
+
+**Root cause:**
+- `useBookRowLayout.ts` was applying a `heightVariation` factor (0.85-1.0) to server spine dimensions
+- This factor was multiplied into a combined scale that was then applied to both width and height
+- While the same factor was applied to both dimensions, the intent was for procedural spines only
+- For server spines with actual artwork, any variation distorts the image
+
+**Fix:**
+- Removed `heightVariation` from server spine scaling in `useBookRowLayout.ts`
+- Server spines now use a uniform scale factor: `SERVER_SPINE_SCALE * scaleFactor`
+- This preserves the exact aspect ratio of the original server spine image
+
+### Files Modified
+- `src/features/home/hooks/useBookRowLayout.ts` — Removed heightVariation from server spine scaling
+
+---
+
+## [0.8.8] - 2026-02-13
+
+### Fixed Server Spine Aspect Ratio in My Library
+
+Fixed an order of operations issue where server spine aspect ratios were not being preserved in the "My Library" view. This was a follow-up to the v0.8.7 fix.
+
+**Root cause:**
+- Parent components (BookshelfView, MyLibraryScreen) calculate dimensions for BookSpineVertical and pass them as props
+- These calculations could happen BEFORE server spine dimensions were cached
+- BookSpineVertical was using prop dimensions as priority, so stale/wrong dimensions persisted even after server dims became available
+
+**Fix:**
+- Changed priority order in BookSpineVertical: server dimensions now ALWAYS take priority when available, even over props
+- This ensures correct aspect ratio regardless of when parent components calculated their dimensions
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Server dimensions now override props when available
+
+---
+
+## [0.8.7] - 2026-02-13
+
+### Fixed Server Spine Aspect Ratio
+
+Server spine images were being distorted because a `heightVariation` factor (0.92-1.0) was applied only to height, not width. This was intended for procedural spines to add visual variety, but for server spines with actual artwork, it stretched/squished the images.
+
+**Fix:** Removed `heightVariation` from server spine scaling - now both width and height use the same scale factor, preserving the exact aspect ratio of the original image.
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` — Remove heightVariation from server spine scaling
+- `src/features/home/components/BookSpineVertical.tsx` — Same fix for fallback scaling path
+
+---
+
+## [0.8.6] - 2026-02-12
+
+### Fixed Android Auto Blank Browse Screen
+
+Fixed an issue where Android Auto would show a blank screen with no browse selections when resuming playback. The audio would play correctly, but the browse interface (Continue Listening, Downloads, Library) would be empty.
+
+**Root cause:**
+- When the app resumes from background, `AndroidAutoMediaBrowserService` starts before React Native has populated the browse data
+- The native `onLoadChildren()` was returning empty results immediately instead of waiting for data
+
+**Fix:**
+- Native service now requests browse data from React Native when `onLoadChildren()` is called with empty categories
+- Added `requestBrowseData` command that triggers immediate sync from React Native
+- Service waits up to 3 seconds for data to arrive before timing out
+- Multiple sync attempts on Android Auto initialization (immediate, 1s, 3s delays)
+- Browse data also syncs after play command to ensure it's populated
+
+### Files Modified
+- `android/app/src/main/java/com/secretlibrary/app/automotive/AndroidAutoMediaBrowserService.kt` — Added pending request handling, data request callback, timeout mechanism
+- `src/features/automotive/automotiveService.ts` — Handle `requestBrowseData` command, sync on play, more aggressive initial sync
+
+---
+
+## [0.8.5] - 2026-02-12
+
+### Server Spine Scaling Fixes
+
+Fixed server spine image scaling issues and simplified settings.
+
+### Files Modified
+- `src/features/home/components/BookshelfView.tsx` — Fixed spine scaling to cap both width (100px) and height (400px)
+- `src/features/home/components/BookSpineVertical.tsx` — Changed contentFit from "cover" to "fill" to prevent clipping
+- `src/features/profile/screens/AppearanceSettingsScreen.tsx` — Renamed to "Spine Appearance", simplified to two toggles
+- `src/features/profile/screens/ProfileScreen.tsx` — Updated settings links and labels
+
+---
+
+## [0.8.4] - 2026-02-12
+
+### Playlist Selection for Cloud Sync
+
+Added ability for users to select which playlist syncs with their library in Cloud Sync settings.
+
+**New features:**
+- "Synced Playlist" row shows currently linked playlist name
+- Tap to open playlist picker modal
+- Choose from existing playlists or create a new one
+- Checkmark indicates currently selected playlist
+
+### Improved Settings Readability
+
+Made section headers in Data & Storage settings larger and easier to read with clearer descriptions.
+
+**Before:**
+- Small uppercase text: "DOWNLOADS"
+- Vague description: "Manage offline listening"
+
+**After:**
+- Larger readable text: "Downloads"
+- Clear description: "Save books to your device so you can listen without internet"
+
+### Files Modified
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Added playlist picker modal, improved section header styles
+
+---
+
+## [0.8.3] - 2026-02-12
+
+### Removed Auto-Download Feature
+
+Removed the "Auto-Download Next Book" toggle from settings as it was not needed.
+
+### Files Modified
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — Removed auto-download toggle
+
+---
+
+## [0.8.2] - 2026-02-12
+
+### Combined Data & Storage Settings
+
+Merged the Storage and Library Sync settings into a single "Data & Storage" screen with clearer, user-friendly language.
+
+**New organized sections:**
+- **Downloads** — View downloads, WiFi-only toggle, auto-download next book
+- **Cloud Sync** — Enable/disable sync, sync now, sync status
+- **Troubleshooting** — Reload library from server, reset from server
+- **Clear Data** — Clear temp files, remove downloads, empty library
+
+**Clearer button labels:**
+- "Clear Cache" → "Clear Temporary Files" (with description: "Frees space without deleting books")
+- "Refresh Library Cache" → "Reload Library from Server" (with description: "Re-download your book list and covers")
+- "Clear My Library" → "Empty My Library"
+- "Clear All Downloads" → "Remove All Downloads"
+- "WiFi Only" → "Download Only on WiFi"
+- "Auto-Download Series" → "Auto-Download Next Book"
+
+### Files Modified
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx` — New combined screen
+- `src/features/profile/screens/ProfileScreen.tsx` — Updated to link to new screen
+- `src/features/profile/index.ts` — Export new screen
+- `src/navigation/AppNavigator.tsx` — Add new route
+
+---
+
+## [0.8.1] - 2026-02-12
+
+### Server Spine Max Height
+
+Added max height constraint (520px) for server-rendered spine images to prevent them from extending beyond the top of the screen on smaller devices.
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Added serverMaxHeight cap
+
+---
+
+## [0.8.0] - 2026-02-12
+
+### Local Storage Notice Popup
+
+Added a modal that notifies users their library data is stored locally on their device.
+
+**Behavior:**
+- Shows on fresh login (first time user sees the app)
+- Shows after app updates (when major.minor version changes)
+- "Don't show again" checkbox respects user preference per version
+- Quick access to Settings for storage configuration
+
+**Features:**
+- Info icon with themed accent background
+- Clear messaging about local storage and sync behavior
+- "Got it" dismisses, "Settings" navigates to Storage Settings
+- Persists user preference in AsyncStorage
+
+### Files Modified
+- `src/core/stores/localStorageNoticeStore.ts` — New store for tracking notice state
+- `src/shared/components/LocalStorageNoticeModal.tsx` — New modal component
+- `src/shared/components/index.ts` — Export new modal
+- `src/navigation/AppNavigator.tsx` — Integrate modal into AuthenticatedApp
+
+---
+
+## [0.7.200] - 2026-02-10
+
+### Player Screen Typography Fixes
+
+**Fixed styling issues:**
+- **Title font** — Always uses Georgia serif (no longer inherits from spine typography)
+- **Time text** — Removed italic styling, now uses regular monospace
+- **Byline justification** — "By Author" now left-aligned, "Narrated by Narrator" right-aligned (justified to cover width)
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Fixed title font, byline structure, time text styling
+
+---
+
+## [0.7.199] - 2026-02-10
+
+### Player Screen Redesign
+
+Redesigned the player screen with a new editorial layout matching the design mockup.
+
+**Layout (Top to Bottom):**
+1. **Header** — Logo, chapter dropdown, queue icon, close button
+2. **Cover Image** — Full-width square cover (with padding)
+3. **Credits Row** — "Written By {Author}" left, "Read by {Narrator}" right (italic serif font)
+4. **Title/Chapter Row** — Large book title on left, chapter name (3 lines, narrow) + bookmark icon on right
+5. **Progress Slider** — Full-width with bookmark markers
+6. **Time Labels** — Italic monospace showing elapsed / remaining
+7. **5-Button Controls** — `|<` `⏪` `▶` `⏩` `>|` evenly spaced
+8. **Settings Row** — Speed, sleep timer, progress mode (Book/Chapter)
+
+**Control Button Styling:**
+- Chapter skip buttons (`|<` `>|`) — Icons only, no border
+- Skip back/forward (`⏪` `⏩`) — Icons inside circle with border
+- Play/Pause (`▶`) — Large white rounded pill shape (100×72pt) with shadow
+- Bookmark — Just the icon (no circle border), positioned below chapter name
+
+**Typography:**
+- Credits: Italic serif for labels, regular serif for names
+- Title: Large serif (32pt)
+- Chapter: Bold serif (16pt), right-aligned, 3 lines max, narrow width
+- Time: Italic monospace (13pt)
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Complete layout restructure
+
+---
+
+## [0.7.195] - 2026-02-06
+
+### Fixed Server Spine Image Width Calculation
+
+Server-provided spine images have varying widths based on book duration. Previously, the app used a formula to calculate widths which didn't match the actual image dimensions, causing book overlap on the shelf.
+
+**Solution:**
+- Added `serverSpineDimensions` cache to spineCache store
+- When a server spine image loads, capture its actual dimensions via `onLoad`
+- Calculate display width from actual image aspect ratio: `displayWidth = displayHeight × (imageWidth / imageHeight)`
+
+**Impact:**
+- Books now display at their correct widths matching server spine images
+- No more overlap between books on the shelf
+- Dimensions are cached per-book for consistent rendering
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — added onLoad handler to capture and cache image dimensions
+- `src/features/home/stores/spineCache.ts` — added serverSpineDimensions Map with getter/setter actions
+
+---
+
+## [0.7.185] - 2026-02-04
+
+### Enabled Session Prefetching for Instant Playback
+
+The `prefetchSessions()` function existed but was never called. Now enabled during app startup.
+
+**What This Does:**
+- On app launch, prefetches session data (audioTracks, chapters, MOOV metadata) for top 5 recent books
+- Cached sessions enable instant playback without network round-trip
+- Sessions are closed immediately after caching to prevent progress corruption
+
+**Impact:**
+- Play button on recent books should now respond instantly
+- No waiting for `/api/items/{id}/play` API call when resuming recent books
+
+### Files Modified
+- `src/core/services/appInitializer.ts` — added call to `finishedBooksSync.prefetchSessions()`
+
+---
+
+## [0.7.184] - 2026-02-04
+
+### Fixed Android Auto / Playback Latency
+
+Significantly improved play/pause response time for Android Auto and general playback by removing unnecessary delays and optimizing the command flow.
+
+**Performance Improvements:**
+- **Removed 500ms verification loop in audioService.play()** — Play command now fires instantly instead of waiting up to 500ms to verify playback started. Stuck detection in playerStore handles failures separately.
+- **Pre-imported player store in automotiveService** — Eliminated ~100-300ms dynamic import latency on first command after app launch.
+- **Made play/pause fire-and-forget in automotive commands** — UI responds instantly, playback catches up in background.
+- **Reduced command queue delay from 50ms to 10ms** — Queued commands now process 5x faster.
+- **Reduced Android Auto native retry delay from 500ms to 100ms** — Commands reach JS layer faster when React context is initializing.
+
+**Expected Improvement:**
+- Play/pause should now respond in <50ms vs. previous 100-500ms+ latency
+- Especially noticeable in Android Auto where the delay was most pronounced
+
+### Files Modified
+- `src/features/automotive/automotiveService.ts` — pre-import player store, fire-and-forget play/pause, reduced queue delay
+- `src/features/player/services/audioService.ts` — removed 500ms verification loop in play()
+- `android/app/src/main/java/com/secretlibrary/app/automotive/AndroidAutoModule.kt` — reduced retry delay
+
+---
+
+## [0.7.183] - 2026-02-02
+
+### Added Playlists to Library VIEW Dropdown
+
+User playlists from AudiobookShelf can now be accessed directly from the Library screen's VIEW dropdown, alongside "My Library", "Last Played", and "Finished".
+
+**New Features:**
+- Playlists appear in the Library VIEW dropdown menu
+- Selecting a playlist shows its books in the current view mode (shelf/grid/list)
+- Playlist Settings screen to manage which playlists appear and their order
+- Set default view to any playlist (or standard options) when opening Library screen
+- Toggle individual playlists on/off from showing in the dropdown
+- Reorder visible playlists with up/down controls
+- Improved dropdown touch targets (56px min height) for better accessibility
+- Wider dropdown (240px) to accommodate longer playlist names
+- Scrollable dropdown when many playlists are visible
+
+**Settings Location:** Profile > Library > Playlist Settings
+
+### Files Added
+- `src/features/playlists/hooks/usePlaylists.ts` — React Query hook for fetching playlists
+- `src/features/playlists/stores/playlistSettingsStore.ts` — Zustand store for playlist display preferences
+- `src/features/playlists/index.ts` — Feature module exports
+- `src/features/profile/screens/PlaylistSettingsScreen.tsx` — Settings screen for managing playlists
+
+### Files Modified
+- `src/features/home/screens/LibraryScreen.tsx` — integrated playlists into VIEW dropdown, added playlist content rendering
+- `src/features/profile/screens/ProfileScreen.tsx` — added Playlist Settings link
+- `src/features/profile/index.ts` — exported PlaylistSettingsScreen
+- `src/navigation/AppNavigator.tsx` — added PlaylistSettings route
+
+---
+
+## [0.7.182] - 2026-02-02
+
+### Fixed Library Sync Auto-Rediscovery on 404 Errors
+
+When the stored playlist ID becomes stale (e.g., playlist was deleted and recreated on server), the sync now automatically rediscovers the correct playlist by name instead of showing "Resource not found" errors.
+
+**Changes:**
+- `syncBooks()` now auto-rediscovers `__sl_my_library` playlist on 404
+- `syncSeries()` now auto-rediscovers `__sl_favorite_series` playlist on 404
+- `resetAndPull()` now auto-rediscovers playlist before pulling
+- If playlist is found by name, the stored ID is updated and sync continues
+- If playlist is not found, the link is cleared with a helpful error message
+
+This fixes the "Resource not found" error when playlist IDs get out of sync.
+
+### Files Modified
+- `src/core/services/librarySyncService.ts` — added auto-rediscover logic to all sync methods
+
+---
+
+## [0.7.181] - 2026-02-02
+
+### Fixed Library Sync to Discover Existing Playlists
+
+The library sync now properly discovers existing playlists on the ABS server instead of always creating new ones.
+
+**Changes:**
+- Library sync now checks for existing `__sl_my_library` playlist on first login
+- Library sync now checks for existing `__sl_favorite_series` playlist on first login
+- Both playlists are discovered with a single API call (optimized)
+- If playlists exist on server, they are linked and synced bidirectionally
+- If playlists don't exist, they are created with local data
+
+This fixes the issue where switching devices or reinstalling the app would create duplicate playlists instead of syncing with the existing ones.
+
+### Files Modified
+- `src/core/services/appInitializer.ts` — added series playlist discovery, optimized to fetch playlists once
+
+---
+
+## [0.7.180] - 2026-02-02
+
+### Redesigned Collections UI
+
+Complete redesign of collections feature to match the Secret Library design language.
+
+**Collections Section (Browse Page):**
+- Square collection cards with cover images on dark background
+- Book count badge (coral/salmon color) in bottom-right corner
+- Collection name in white below the card
+- Horizontal scrolling layout
+
+**Collections List Screen:**
+- Dark theme 2-column grid layout
+- Square cards matching browse section style
+- Search bar for filtering collections
+- Consistent styling with other list screens
+
+**Collection Detail Screen:**
+- Completely redesigned to match Series/Author/Narrator detail screens
+- Dark TopNav header with "All Collections" pill
+- White content area with large collection title
+- Tabs: All, Author, Narrator with view mode toggle (Book/Shelf)
+- Book list with cover thumbnails, titles, authors, and durations
+- Shelf view with book spine visualizations
+- Collapsible sections when viewing by author/narrator
+
+### Files Added
+- `src/features/browse/components/CollectionSquareCard.tsx` — square card component
+
+### Files Modified
+- `src/features/browse/components/CollectionsSection.tsx` — redesigned with square cards
+- `src/features/browse/screens/CollectionsListScreen.tsx` — 2-column grid layout
+- `src/features/collections/screens/CollectionDetailScreen.tsx` — complete redesign
+- `src/features/browse/index.ts` — added CollectionSquareCard export
+
+---
+
+## [0.7.179] - 2026-02-02
+
+### Added Collections Section to Browse Page
+
+Added a new Collections section to the browse page, placed above the Series Gallery. This allows users to quickly access their curated collections from the discover tab.
+
+**Features:**
+- Collections section shows up to 3 collections with book thumbnails
+- "VIEW ALL" link navigates to full collections list screen
+- Tapping a collection navigates to collection detail
+- Tapping a book thumbnail navigates to book detail
+- Section gracefully hides when no collections exist
+
+### Files Added
+- `src/features/browse/components/CollectionsSection.tsx` — new section component following SeriesGallery pattern
+- `src/features/browse/screens/CollectionsListScreen.tsx` — new full collections list screen
+
+### Files Modified
+- `src/features/browse/screens/SecretLibraryBrowseScreen.tsx` — added CollectionsSection and navigation handlers
+- `src/features/browse/index.ts` — exports for new components
+- `src/navigation/AppNavigator.tsx` — registered CollectionsList route
+
+---
+
+## [0.7.177] - 2026-01-29
+
+### Queue Redesign
+
+- Dark mode styling for QueueScreen and QueuePanel
+- Books stay in queue after playing (marked as "played") with grayed-out styling
+- Up Next / Played section headers
+- Swipe-left to delete, X button to remove
+- Play button on first unplayed book (gold accent)
+- End-of-queue dialog asks to clear played books when queue finishes
+- Played items automatically cleared on next app launch
+- Updated playerStore to work with new played-tracking queue
+
+### Files Modified
+- `src/features/queue/stores/queueStore.ts` — played field, clearPlayed, dialog state
+- `src/features/queue/screens/QueueScreen.tsx` — full dark mode rewrite with SectionList
+- `src/features/queue/components/QueuePanel.tsx` — dark mode with Up Next/Played sections
+- `src/features/queue/index.ts` — new exports
+- `src/features/player/stores/playerStore.ts` — simplified queue check
+- `src/constants/version.ts` — version bump
+
+## [0.7.174] - 2026-01-29
+
+### Refactor: Architecture Cleanup (Audit Phase 4 — E2, E3, G4)
+
+Fixes cross-feature module boundary violations and removes dead code.
+
+**E3 — Delete deprecated re-export:**
+- Deleted `src/features/library/stores/myLibraryStore.ts` (re-export shim with zero imports)
+- Removed empty `src/features/library/stores/` directory
+
+**E2 — Fix cross-feature spine imports (16 files):**
+- Moved `SectionHeader` component from `features/home/components/` to `src/shared/components/`
+  - Updated 5 library tab files to import from `@/shared/components/SectionHeader`
+  - Left re-export shim in features/home for backward compatibility
+- Created `src/shared/spine/index.ts` — shared re-export module for spine system utilities
+  - Re-exports: `useSpineCacheStore`, `BookSpineVertical`, `useBookRowLayout`, `hashString`, `SPINE_COLOR_PALETTE`, `getTypographyForGenres`, `getSeriesStyle`
+  - Updated 16 files across 8 features (series, author, narrator, book-detail, library, browse, player, profile) to import from `@/shared/spine` instead of `@/features/home/`
+  - Consolidated multi-line home imports into single `@/shared/spine` imports
+- **Impact:** No feature now directly imports from `@/features/home/`. Cross-feature imports go through the shared layer. The actual spine code remains in features/home but has a stable shared interface.
+
+**G4 — Remove DEV logging from adapter.ts:**
+- Removed 3 `__DEV__` console.log blocks from `generateSpineComposition()`
+- Removed module-level monkey-patch of `calculateBookDimensions` that logged every call in dev mode
+- **Impact:** Eliminates excessive console noise during development
+
+### Files Added
+- `src/shared/components/SectionHeader.tsx`
+- `src/shared/spine/index.ts`
+
+### Files Deleted
+- `src/features/library/stores/myLibraryStore.ts`
+- `src/features/library/stores/` (empty directory)
+
+### Files Modified
+- `src/features/home/components/SectionHeader.tsx` (now re-exports from shared)
+- `src/features/home/utils/spine/adapter.ts`
+- `src/shared/components/index.ts`
+- 16 feature files (import path updates only)
+
+---
+
+## [0.7.173] - 2026-01-29
+
+### Fix: Safety & Stability Improvements (Audit Phase 3)
+
+Fixes initialization ordering, unmount races, and adds safety timeouts to prevent app hangs.
+
+**App.tsx — Cache ready timeout (C1):**
+- Added 30-second absolute timeout for `isCacheReady` flag (fonts + library + spine + refresh)
+- **Impact:** Previously, if any cache condition stalled (e.g., spine cache never populated), the authenticated user would be stuck on the splash screen forever with only "taking longer than usual" messages. Now force-proceeds after 30s with whatever data is available.
+- Added `CACHE_READY_TIMEOUT_MS` constant in `src/constants/loading.ts`
+
+**downloadManager.ts — Init ordering fix (C2):**
+- Moved network change subscription to AFTER stuck-download processing completes
+- **Impact:** Previously, if a network state change fired during init (before stuck downloads were re-queued), `handleNetworkChange` could try to process a queue that wasn't ready. Now the queue is fully initialized before network events can trigger processing.
+
+**useDownloads.ts — Unmount race + missing catch (C3):**
+- Added `mounted` flag to `useDownloadStatus`, `useDownloadProgress`, and `useIsOfflineAvailable`
+- Added `.catch()` to all `.then()` chains
+- **Impact:** Previously, if a component using these hooks unmounted before the initial status promise resolved, `setState` would fire on an unmounted component (React warning, potential memory leak). Promise rejections were also unhandled.
+
+**websocketService.ts — Disconnect guard (C4):**
+- Added `isDisconnecting` flag checked by event handlers during intentional disconnect
+- **Impact:** Prevents disconnect event handlers from firing during intentional cleanup, avoiding potential state corruption if socket.io delivers events between `removeAllListeners()` and `disconnect()`.
+
+**authContext.tsx — Log version check failures (D2):**
+- Changed empty `.catch(() => {})` to `.catch((err) => log.warn(...))` for `serverVersionService.checkServerVersion()` calls
+- **Impact:** Server version check failures were silently swallowed. Now logged for debugging.
+
+**Deferred items (D1, D3, D4, D5):**
+- D1 (surface init failures): Background init tasks already degrade gracefully; toasts would confuse users
+- D3 (timeout sentinel): downloadManager already uses reject-on-timeout which is distinguishable
+- D4 (API validation): High-effort/low-urgency; deferred to future phase
+- D5 (auth silent logout): Rare edge case; existing behavior (show login screen) is reasonable
+
+### Files Modified
+- `App.tsx`
+- `src/constants/loading.ts`
+- `src/core/services/downloadManager.ts`
+- `src/core/hooks/useDownloads.ts`
+- `src/core/services/websocketService.ts`
+- `src/core/auth/authContext.tsx`
+
+---
+
+## [0.7.172] - 2026-01-29
+
+### Refactor: Source-of-Truth Reconciliation (Audit Phase 2)
+
+Fixed dual library membership data flow, removed dead components, and eliminated a namespace collision between two stores with identical export names.
+
+**HeartButton.tsx (bug fix — B1):**
+- Changed from `myLibraryStore.addToLibrary()` to `progressStore.addToLibrary()`
+- **Impact:** Previously, adding a book to library via HeartButton (used in SearchScreen, SeriesListScreen, SeriesCard) only updated AsyncStorage + server, missing SQLite/progressStore. This meant library membership could diverge — progressStore wouldn't know the book was in the library, affecting continue-listening, spine cache, and progress tracking.
+- Now uses `progressStore` which writes to SQLite + updates in-memory state + syncs to myLibraryStore + syncs to server (complete chain)
+
+**Dead code removal (B2):**
+- Deleted `src/shared/components/AddToLibraryButton.tsx` (233 lines, zero imports)
+- Deleted `src/features/library/components/AddToLibraryButton.tsx` (105 lines, zero imports)
+- Removed exports from `src/shared/components/index.ts` and `src/features/library/index.ts`
+
+**Completion store rename (B3):**
+- Renamed `src/features/player/stores/completionStore.ts` → `completionSheetStore.ts`
+- Renamed export `useCompletionStore` → `useCompletionSheetStore` (player version only)
+- **Impact:** Previously, both `features/completion/stores/completionStore.ts` and `features/player/stores/completionStore.ts` exported `useCompletionStore` with completely different state shapes. Wrong import would silently compile but return wrong data. Now disambiguated.
+
+### Files Modified
+- `src/shared/components/HeartButton.tsx`
+- `src/shared/components/index.ts`
+- `src/features/library/index.ts`
+- `src/features/player/stores/completionSheetStore.ts` (renamed from completionStore.ts)
+- `src/features/player/stores/index.ts`
+- `src/features/player/stores/playerHooks.ts`
+- `src/features/player/stores/playerStore.ts`
+
+### Files Deleted
+- `src/shared/components/AddToLibraryButton.tsx`
+- `src/features/library/components/AddToLibraryButton.tsx`
+
+---
+
+## [0.7.171] - 2026-01-29
+
+### Refactor: Dead State Cleanup (Audit Phase 1)
+
+Removed dead state fields, duplicate selectors, and unused variables identified during comprehensive codebase audit. Zero behavior change — all removed code was never executed.
+
+**playerStore.ts:**
+- Removed 22 dead interface fields (seeking, sleep timer, bookmarks, speed, settings, completion) that were never updated after the Phase 10 store split refactor
+- Removed 12 dead selector exports that read from dead state (`useDisplayPosition`, `useIsSeeking`, `useSeekDirection`, `useSleepTimerState`, etc.) — correct versions exist in `playerSelectors.ts`
+- Removed duplicate `Bookmark` interface — now imported from `bookmarksStore`
+- Removed unused `useShallow` import
+
+**downloadListener.ts (bug fix):**
+- Fixed `isSeeking` check to read from `useSeekingStore.getState()` instead of dead playerStore field (was always `false`)
+- **Impact:** Previously, download-complete → local-playback switch would happen even during active seeking (scrubbing), potentially causing position jumps. Now correctly waits for seek to finish.
+- Removed `isSeeking` from `PlayerStateSnapshot` interface
+
+**playerSelectors.ts:**
+- Removed 13 duplicate hook definitions that were identical copies of hooks already in their source stores (seekingStore, sleepTimerStore, speedStore)
+- Eliminated duplicate import paths — each hook now has exactly one definition
+- Removed unused `useSleepTimerStore` and `useSpeedStore` imports
+
+**stores/index.ts:**
+- Changed `Bookmark` type export source from `playerStore` to `bookmarksStore`
+
+**syncStatusStore.ts:**
+- Removed dead `failedCount` field (declared but never set by any action)
+
+**globalLoadingStore.ts:**
+- Removed dead `showCount` variable (incremented but never compared)
+- Removed unused `LOADING_DEBOUNCE_MS` import
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts`
+- `src/features/player/stores/playerSelectors.ts`
+- `src/features/player/stores/index.ts`
+- `src/features/player/utils/downloadListener.ts`
+- `src/core/stores/syncStatusStore.ts`
+- `src/shared/stores/globalLoadingStore.ts`
+- `src/constants/version.ts`
+
+---
+
 ## [0.7.169] - 2026-01-22
 
 ### Fix: Playback Position Reset to Chapter Start

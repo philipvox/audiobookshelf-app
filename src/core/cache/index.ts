@@ -11,4 +11,6 @@ export {
 
 export { useCoverUrl, getCoverUrl } from './useCoverUrl';
 
+export { useSpineUrl, getSpineUrl } from './useSpineUrl';
+
 export { searchIndex, SearchIndex, type SearchResult } from './searchIndex';

@@ -17,11 +17,11 @@ import { createLogger } from '@/shared/utils/logger';
 
 const log = createLogger('BufferRecovery');
 
-// Configuration
-const BUFFER_STALL_THRESHOLD_MS = 5000;      // 5 seconds of buffering = potential underrun
+// Configuration (tuned for faster recovery)
+const BUFFER_STALL_THRESHOLD_MS = 3000;      // 3 seconds of buffering = potential underrun (faster detection)
 const MAX_RETRIES = 3;                        // Max recovery attempts before notifying user
-const RETRY_BACKOFF_BASE_MS = 1000;           // Base backoff: 1s, 2s, 4s
-const REWIND_RECOVERY_SECONDS = 2;            // Seek back 2s on recovery
+const RETRY_BACKOFF_BASE_MS = 500;            // Base backoff: 0.5s, 1s, 2s (faster retry)
+const REWIND_RECOVERY_SECONDS = 3;            // Seek back 3s on recovery (better buffer refill)
 const RECOVERY_COOLDOWN_MS = 30000;           // 30s cooldown between recovery cycles
 const BUFFER_MONITOR_INTERVAL_MS = 1000;      // Check buffer state every second
 

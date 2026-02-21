@@ -15,8 +15,6 @@ import { networkMonitor } from '@/core/services/networkMonitor';
 interface SyncStatusState {
   /** Number of items pending sync */
   pendingCount: number;
-  /** Number of items that have failed max retries */
-  failedCount: number;
   /** Last successful sync timestamp */
   lastSyncedAt: number | null;
   /** Whether a sync is currently in progress */
@@ -41,7 +39,6 @@ interface SyncStatusState {
 
 export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
   pendingCount: 0,
-  failedCount: 0,
   lastSyncedAt: null,
   isSyncing: false,
   isOnline: true,

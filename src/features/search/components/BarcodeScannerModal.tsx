@@ -50,6 +50,9 @@ try {
   log.warn('expo-camera native module not available - barcode scanning disabled');
 }
 
+// Stable hook reference - always callable unconditionally (Rules of Hooks)
+const usePermissionsHook = useCameraPermissions ?? (() => [null, () => {}]);
+
 interface BarcodeScannerModalProps {
   visible: boolean;
   onClose: () => void;
@@ -92,10 +95,7 @@ export function BarcodeScannerModal({
   const colors = useSecretLibraryColors();
   const { items } = useLibraryCache();
 
-  // Use camera permissions only if module is available
-  const [permission, requestPermission] = cameraModuleAvailable && useCameraPermissions
-    ? useCameraPermissions()
-    : [null, () => {}];
+  const [permission, requestPermission] = usePermissionsHook();
   const [isScanning, setIsScanning] = useState(true);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<'found' | 'not_found' | 'prompt' | null>(null);

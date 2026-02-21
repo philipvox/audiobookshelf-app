@@ -65,32 +65,16 @@ export const collectionsApi = {
   },
 
   /**
-   * Add an item to a collection
+   * Batch add items to a collection
    */
-  addItem: async (collectionId: string, itemId: string): Promise<Collection> => {
-    const collection = await apiClient.getCollection(collectionId);
-    const currentBookIds = collection.books?.map((b) => b.id) || [];
-
-    if (currentBookIds.indexOf(itemId) === -1) {
-      // API accepts book IDs, not full LibraryItem objects
-      return apiClient.updateCollection(collectionId, {
-        books: [...currentBookIds, itemId],
-      } as unknown as Partial<Collection>);
-    }
-
-    return collection;
+  batchAdd: async (collectionId: string, bookIds: string[]): Promise<Collection> => {
+    return apiClient.batchAddToCollection(collectionId, bookIds);
   },
 
   /**
-   * Remove an item from a collection
+   * Batch remove items from a collection
    */
-  removeItem: async (collectionId: string, itemId: string): Promise<Collection> => {
-    const collection = await apiClient.getCollection(collectionId);
-    const currentBookIds = collection.books?.map((b) => b.id) || [];
-
-    // API accepts book IDs, not full LibraryItem objects
-    return apiClient.updateCollection(collectionId, {
-      books: currentBookIds.filter((id) => id !== itemId),
-    } as unknown as Partial<Collection>);
+  batchRemove: async (collectionId: string, bookIds: string[]): Promise<Collection> => {
+    return apiClient.batchRemoveFromCollection(collectionId, bookIds);
   },
 };

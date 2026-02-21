@@ -52,10 +52,13 @@ class SessionService {
   private syncIntervalId: NodeJS.Timeout | null = null;
   // Backup chapters from last session (for fallback when session is null)
   private lastKnownChapters: SessionChapter[] = [];
+  // Fix Bug #1/#4: Track pending close operations to prevent race conditions
+  private pendingClosePromise: Promise<void> | null = null;
+  private closingSessionId: string | null = null;
 
   /**
    * Start a new playback session
-   * NON-BLOCKING: closes old session in background
+   * FIX Bug #1: Now properly awaits pending close operations to prevent race conditions
    */
   async startSession(libraryItemId: string): Promise<PlaybackSession> {
     const timing = createTimer('startSession');
@@ -63,10 +66,16 @@ class SessionService {
     logSection('START SESSION');
     log('Library item ID:', libraryItemId);
 
-    // Close old session in BACKGROUND (don't await)
+    // Fix Bug #1: Await any pending close operation to prevent race conditions
+    if (this.pendingClosePromise) {
+      log('Waiting for pending session close to complete...');
+      await this.pendingClosePromise;
+    }
+
+    // Close old session and wait for it
     if (this.currentSession) {
       log('Closing previous session:', this.currentSession.id);
-      this.closeSessionAsync();
+      await this.closeSessionAsync();
     }
 
     const baseUrl = apiClient.getBaseURL();
@@ -150,6 +159,10 @@ class SessionService {
 
   /**
    * Get full stream URL with authentication token
+   *
+   * For direct file URLs (/api/items/{id}/file/{ino}), appends /stream
+   * to use the moov cache proxy's stream endpoint which properly handles
+   * moov-at-end M4B files by rewriting stco offsets.
    */
   getStreamUrl(trackIndex: number = 0): string | null {
     const tracks = this.currentSession?.audioTracks;
@@ -170,14 +183,25 @@ class SessionService {
     log('  Content URL:', track.contentUrl);
     log('  Token present:', !!token);
 
-    if (track.contentUrl.includes('token=')) {
-      const url = `${baseUrl}${track.contentUrl}`;
+    // Check if this is a direct file URL that needs /stream endpoint
+    // Pattern: /api/items/{item_id}/file/{file_ino}
+    let contentUrl = track.contentUrl;
+    const fileUrlPattern = /^\/api\/items\/[^/]+\/file\/\d+/;
+    if (fileUrlPattern.test(contentUrl)) {
+      // Extract the path before any query params
+      const [path, query] = contentUrl.split('?');
+      contentUrl = `${path}/stream${query ? '?' + query : ''}`;
+      log('  Using /stream endpoint for moov-at-end support');
+    }
+
+    if (contentUrl.includes('token=')) {
+      const url = `${baseUrl}${contentUrl}`;
       log('  Final URL (token in content):', url.substring(0, 80) + '...');
       return url;
     }
 
-    const separator = track.contentUrl.includes('?') ? '&' : '?';
-    const url = `${baseUrl}${track.contentUrl}${separator}token=${token}`;
+    const separator = contentUrl.includes('?') ? '&' : '?';
+    const url = `${baseUrl}${contentUrl}${separator}token=${token}`;
     log('  Final URL:', url.substring(0, 80) + '...');
     return url;
   }
@@ -323,23 +347,27 @@ class SessionService {
   }
 
   /**
-   * Close session - NON-BLOCKING with retry
+   * Close session - with retry and proper tracking
    *
-   * Clears currentSession immediately to prevent new requests using stale session.
-   * Chapters are backed up in lastKnownChapters for fallback during race conditions.
+   * FIX Bug #1/#4: Now returns a Promise and tracks the closing operation.
+   * Only clears currentSession after close completes AND if it's still the same session.
+   * This prevents race conditions when starting a new session while closing the old one.
    *
    * FIX: Added retry logic to prevent orphaned sessions on the server.
    * FIX: Added position validation to prevent corrupted data from being synced.
    */
-  closeSessionAsync(finalTime?: number): void {
+  async closeSessionAsync(finalTime?: number): Promise<void> {
     this.stopAutoSync();
 
     if (!this.currentSession) return;
 
-    // Capture session data before clearing
+    // Capture session data before any async work
     const sessionToClose = this.currentSession;
     const sessionId = sessionToClose.id;
     const duration = sessionToClose.duration;
+
+    // Fix Bug #4: Track which session is being closed
+    this.closingSessionId = sessionId;
 
     // VALIDATION: Sanitize finalTime before sending
     let sanitizedFinalTime = finalTime;
@@ -363,11 +391,22 @@ class SessionService {
       log('  Final time:', formatDuration(sanitizedFinalTime));
     }
 
-    // Clear immediately to prevent stale session usage
-    this.currentSession = null;
+    // Fix Bug #1: Track the close promise so startSession can await it
+    this.pendingClosePromise = this.closeSessionWithRetry(sessionId, sanitizedFinalTime, 3)
+      .finally(() => {
+        // Fix Bug #4: Only clear currentSession if it's still the session we're closing
+        // This prevents clearing a new session that was started while we were closing
+        if (this.currentSession?.id === sessionId) {
+          this.currentSession = null;
+        }
+        // Clear tracking state
+        if (this.closingSessionId === sessionId) {
+          this.closingSessionId = null;
+        }
+        this.pendingClosePromise = null;
+      });
 
-    // Close with retry to prevent orphaned sessions
-    this.closeSessionWithRetry(sessionId, sanitizedFinalTime, 3);
+    await this.pendingClosePromise;
   }
 
   /**
@@ -398,9 +437,15 @@ class SessionService {
   /**
    * Close session and wait (for app shutdown)
    * FIX: Added position validation to prevent corrupted data from being synced.
+   * FIX Bug #4: Only clears currentSession if it's still the same session.
    */
   async closeSession(finalTime?: number): Promise<void> {
     this.stopAutoSync();
+
+    // Await any pending async close first
+    if (this.pendingClosePromise) {
+      await this.pendingClosePromise;
+    }
 
     if (!this.currentSession) {
       log('closeSession: No active session');
@@ -409,6 +454,9 @@ class SessionService {
 
     const sessionId = this.currentSession.id;
     const duration = this.currentSession.duration;
+
+    // Track which session is being closed
+    this.closingSessionId = sessionId;
 
     // VALIDATION: Sanitize finalTime before sending
     let sanitizedFinalTime = finalTime;
@@ -437,8 +485,21 @@ class SessionService {
     } catch (error) {
       audioLog.warn('Close session failed:', getErrorMessage(error));
     } finally {
-      this.currentSession = null;
+      // Fix Bug #4: Only clear if it's still the same session
+      if (this.currentSession?.id === sessionId) {
+        this.currentSession = null;
+      }
+      if (this.closingSessionId === sessionId) {
+        this.closingSessionId = null;
+      }
     }
+  }
+
+  /**
+   * Check if a session close operation is in progress
+   */
+  isClosingSession(): boolean {
+    return this.closingSessionId !== null || this.pendingClosePromise !== null;
   }
 }
 

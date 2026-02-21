@@ -30,8 +30,10 @@ import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { LibraryItem, BookMetadata } from '@/core/types';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-import { getTypographyForGenres, getSeriesStyle } from '@/features/home/utils/spine/adapter';
+import { useSpineCacheStore, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
+import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
+import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
+import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
 
 // Extended metadata interface with narrator
 interface ExtendedBookMetadata extends BookMetadata {
@@ -58,6 +60,29 @@ const DownloadIcon = ({ color = '#000', size = 16 }: IconProps) => (
 const CheckIcon = ({ color = '#000', size = 14 }: IconProps) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Path d="M20 6L9 17l-5-5" />
+  </Svg>
+);
+
+const LibraryPlusIcon = ({ color = '#000', size = 14 }: IconProps) => (
+  <Svg width={size * 1.5} height={size} viewBox="0 0 36 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+    {/* Library books (shifted left) */}
+    <Path d="m12 6 4 14" />
+    <Path d="M8 6v14" />
+    <Path d="M4 8v12" />
+    <Path d="M0 4v16" />
+    {/* Plus sign (right side, large) */}
+    <Path d="M28 12v0M24 12h8" strokeWidth={3} />
+    <Path d="M28 8v8" strokeWidth={3} />
+  </Svg>
+);
+
+const LibraryCheckIcon = ({ color = '#000', size = 14 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    {/* Library books */}
+    <Path d="m16 6 4 14" />
+    <Path d="M12 6v14" />
+    <Path d="M8 8v12" />
+    <Path d="M4 4v16" />
   </Svg>
 );
 
@@ -113,6 +138,17 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
   const renderStart = useRef(Date.now());
   const navigation = useNavigation<any>();
 
+  // Mood session - determines title
+  const activeSession = useActiveSession();
+  const hasMoodSession = !!activeSession?.mood;
+
+  // Content filter
+  const audience = useContentFilterStore((s) => s.audience);
+  const selectedAges = useContentFilterStore((s) => s.selectedAges);
+  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
+  const selectedTags = useContentFilterStore((s) => s.selectedTags);
+  const lengthRange = useContentFilterStore((s) => s.lengthRange);
+
   // Library data
   const cacheStart = Date.now();
   const { items: libraryItems, isLoaded } = useLibraryCache();
@@ -167,10 +203,13 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
 
   // Get the top pick book from personalized recommendations (same as "Your Taste")
   const topPickData = useMemo(() => {
+    // Apply content filter to library items
+    const filteredLibraryItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
+
     // Find first valid book from recommendation rows
     for (const row of recommendationRows) {
       for (const book of row.items) {
-        const fullItem = libraryItems.find((i) => i.id === book.id);
+        const fullItem = filteredLibraryItems.find((i) => i.id === book.id);
         if (!fullItem) continue;
 
         // Skip if has listening progress or finished
@@ -190,19 +229,37 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
       }
     }
 
-    // Fallback: First unfinished book from library
-    for (const item of libraryItems) {
+    // Fallback: Newest unfinished book by publication date
+    const unfinishedItems = filteredLibraryItems.filter((item) => {
       const progress = item.userMediaProgress?.progress || 0;
-      if (!isFinished(item.id) && progress < 0.95) {
-        return {
-          item,
-          source: 'library' as const,
-        };
-      }
+      return !isFinished(item.id) && progress < 0.95;
+    });
+
+    // Sort by publication year (newest first), then by addedAt as tiebreaker
+    const sortedByPublishDate = [...unfinishedItems].sort((a, b) => {
+      const metaA = getBookMetadata(a);
+      const metaB = getBookMetadata(b);
+
+      // Parse publication year (can be string like "2023" or number)
+      const yearA = metaA?.publishedYear ? parseInt(String(metaA.publishedYear), 10) : 0;
+      const yearB = metaB?.publishedYear ? parseInt(String(metaB.publishedYear), 10) : 0;
+
+      // Sort newest first
+      if (yearB !== yearA) return yearB - yearA;
+
+      // Tiebreaker: most recently added to library
+      return (b.addedAt || 0) - (a.addedAt || 0);
+    });
+
+    if (sortedByPublishDate.length > 0) {
+      return {
+        item: sortedByPublishDate[0],
+        source: 'library' as const,
+      };
     }
 
     return null;
-  }, [recommendationRows, libraryItems, isFinished]);
+  }, [recommendationRows, libraryItems, isFinished, audience, selectedAges, selectedRatings, selectedTags, lengthRange]);
 
   // Get book details
   const book = topPickData?.item;
@@ -272,6 +329,11 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     progress: downloadProgress,
   } = useDownloadStatus(book?.id || '');
 
+  // Library membership state
+  const isInLibrary = useIsInLibrary(bookId);
+  const addToLibrary = useProgressStore((s) => s.addToLibrary);
+  const removeFromLibrary = useProgressStore((s) => s.removeFromLibrary);
+
   // Check if this book is currently loaded and playing
   const isCurrentBook = currentBook?.id === book?.id;
   const isCurrentlyPlaying = isCurrentBook && isPlaying;
@@ -310,17 +372,18 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
   }, [navigation]);
 
   // Handle play button
+  // FIX: Don't await play/pause for instant UI response
   const handlePlay = useCallback(async () => {
     if (!book) return;
     haptics.buttonPress();
 
     if (isCurrentlyPlaying) {
-      await pause();
+      pause(); // Fire and forget - instant response
       return;
     }
 
     if (isCurrentBook) {
-      await play();
+      play(); // Fire and forget - instant response
       return;
     }
 
@@ -366,6 +429,17 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     }
   }, [book, isDownloaded, isDownloading, isPaused, isPending]);
 
+  // Handle library toggle
+  const handleLibraryToggle = useCallback(async () => {
+    if (!book) return;
+    haptics.buttonPress();
+    if (isInLibrary) {
+      await removeFromLibrary(book.id);
+    } else {
+      await addToLibrary(book.id);
+    }
+  }, [book, isInLibrary, addToLibrary, removeFromLibrary]);
+
   // Don't render if no book
   if (!isLoaded || !book || !metadata) {
     return null;
@@ -375,7 +449,9 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     <View style={styles.container}>
       {/* Section Label - matches Your Taste styling */}
       <View style={styles.header}>
-        <Text style={styles.title}><Text style={styles.titleItalic}>Top Pick</Text></Text>
+        <Text style={styles.title}>
+          <Text style={styles.titleItalic}>{hasMoodSession ? 'Top Pick' : 'Fresh Release'}</Text>
+        </Text>
       </View>
 
       {/* Hero Section - Centered like book detail */}
@@ -385,63 +461,97 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
           <Image source={{ uri: coverUrl }} style={styles.coverImage} contentFit="cover" />
         </TouchableOpacity>
 
-        {/* Title + Author inline row with circle buttons */}
-        <View style={styles.titleRow}>
-          <View style={styles.titleInfo}>
-            <Text
-              style={[
-                styles.titleInline,
-                {
-                  fontFamily: titleFontFamily,
-                  fontWeight: titleFontWeight as any,
-                }
-              ]}
-              numberOfLines={3}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-            >
-              {displayLine1}{displayLine2 ? ` ${displayLine2}` : ''}
-            </Text>
+        {/* Title + Author */}
+        <View style={styles.titleSection}>
+          <Text
+            style={[
+              styles.titleText,
+              {
+                fontFamily: titleFontFamily,
+                fontWeight: titleFontWeight as any,
+              }
+            ]}
+            numberOfLines={3}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {displayLine1}{displayLine2 ? ` ${displayLine2}` : ''}
+          </Text>
+          <View style={styles.authorNarratorRow}>
             <TouchableOpacity onPress={handleAuthorPress} activeOpacity={0.7}>
-              <Text style={styles.authorInline}>{author}</Text>
+              <Text style={styles.authorText}>{author}</Text>
             </TouchableOpacity>
-            {/* Series Link */}
-            {seriesInfo && (
-              <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
-                <Text style={styles.seriesLink}>
-                  {seriesInfo.name}{seriesInfo.sequence ? ` · Book ${seriesInfo.sequence}` : ''}
-                </Text>
-              </TouchableOpacity>
+            {narrator && (
+              <>
+                <Text style={styles.authorSeparator}>•</Text>
+                <TouchableOpacity onPress={() => handleNarratorPress(narrator)} activeOpacity={0.7}>
+                  <Text style={styles.narratorText}>{narrator}</Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
-
-          {/* Circle Buttons */}
-          <View style={styles.circleButtons}>
-            {/* Download Circle */}
-            <TouchableOpacity
-              style={[
-                styles.circleBtn,
-                (isDownloaded || isDownloading || isPaused) && styles.circleBtnActive,
-              ]}
-              onPress={handleDownload}
-              disabled={isDownloaded}
-            >
-              {isDownloaded ? (
-                <CheckIcon color={secretLibraryColors.black} size={20} />
-              ) : (
-                <DownloadIcon color={secretLibraryColors.white} size={20} />
-              )}
+          {/* Series Link */}
+          {seriesInfo && (
+            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
+              <Text style={styles.seriesLink}>
+                {seriesInfo.name}{seriesInfo.sequence ? ` · Book ${seriesInfo.sequence}` : ''}
+              </Text>
             </TouchableOpacity>
+          )}
+        </View>
 
-            {/* Play Circle */}
-            <TouchableOpacity style={[styles.circleBtn, styles.circleBtnActive]} onPress={handlePlay}>
-              {isCurrentlyPlaying ? (
-                <PauseIcon color={secretLibraryColors.black} size={20} />
-              ) : (
-                <PlayIcon color={secretLibraryColors.black} size={20} />
-              )}
-            </TouchableOpacity>
-          </View>
+        {/* Action Buttons - Pill shaped like book detail page */}
+        <View style={styles.actionButtons}>
+          {/* Play Button - Filled */}
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnFilled]} onPress={handlePlay}>
+            {isCurrentlyPlaying ? (
+              <PauseIcon color={secretLibraryColors.black} size={16} />
+            ) : (
+              <PlayIcon color={secretLibraryColors.black} size={16} />
+            )}
+            <Text style={styles.actionBtnTextDark}>
+              {isCurrentlyPlaying ? 'Pause' : 'Play'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Download Button - Outline */}
+          <TouchableOpacity
+            style={[
+              styles.actionBtn,
+              styles.actionBtnOutline,
+              isDownloaded && styles.actionBtnFilled,
+            ]}
+            onPress={handleDownload}
+            disabled={isDownloaded}
+          >
+            {isDownloaded ? (
+              <CheckIcon color={secretLibraryColors.black} size={16} />
+            ) : (
+              <DownloadIcon color={secretLibraryColors.white} size={16} />
+            )}
+            <Text style={[styles.actionBtnText, isDownloaded && styles.actionBtnTextDark]}>
+              {isDownloaded ? 'Downloaded' : 'Download'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Library Button - Outline */}
+          <TouchableOpacity
+            style={[
+              styles.actionBtn,
+              styles.actionBtnOutline,
+              isInLibrary && styles.actionBtnFilled,
+            ]}
+            onPress={handleLibraryToggle}
+          >
+            {isInLibrary ? (
+              <LibraryCheckIcon color={secretLibraryColors.black} size={16} />
+            ) : (
+              <LibraryPlusIcon color={secretLibraryColors.white} size={14} />
+            )}
+            <Text style={[styles.actionBtnText, isInLibrary && styles.actionBtnTextDark]}>
+              {isInLibrary ? 'Library' : 'Add'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -501,29 +611,41 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 
-  // Title row - inline with circle buttons
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+  // Title section - centered
+  titleSection: {
+    alignItems: 'center',
     width: '100%',
   },
-  titleInfo: {
-    flex: 1,
-    marginRight: scale(16),
-  },
-  titleInline: {
-    fontSize: scale(22),
+  titleText: {
+    fontSize: scale(24),
     letterSpacing: 0.3,
     color: secretLibraryColors.white,
-    lineHeight: scale(26),
+    lineHeight: scale(28),
+    marginBottom: scale(6),
+    textAlign: 'center',
+  },
+  authorNarratorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     marginBottom: scale(4),
   },
-  authorInline: {
+  authorText: {
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(14),
     color: secretLibraryColors.gray,
-    marginBottom: scale(4),
+  },
+  authorSeparator: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(14),
+    color: secretLibraryColors.gray,
+    marginHorizontal: scale(8),
+  },
+  narratorText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(14),
+    color: secretLibraryColors.gray,
   },
   seriesLink: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
@@ -531,26 +653,81 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: secretLibraryColors.gray,
     textDecorationLine: 'underline',
-    marginTop: scale(2),
+    marginTop: scale(4),
   },
 
-  // Circle buttons
-  circleButtons: {
+  // Action buttons - pill shaped like book detail page
+  actionButtons: {
     flexDirection: 'row',
-    gap: scale(12),
+    justifyContent: 'center',
+    gap: scale(8),
+    marginTop: scale(20),
+    width: '100%',
+    paddingHorizontal: scale(16),
   },
-  circleBtn: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(24),
-    borderWidth: 1,
-    borderColor: secretLibraryColors.white,
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: scale(10),
+    borderRadius: scale(6),
+    gap: scale(6),
   },
-  circleBtnActive: {
-    backgroundColor: secretLibraryColors.white,
+  actionBtnOutline: {
+    borderWidth: 1,
     borderColor: secretLibraryColors.white,
+    backgroundColor: 'transparent',
+  },
+  actionBtnFilled: {
+    backgroundColor: secretLibraryColors.white,
+    borderWidth: 0,
+  },
+  actionBtnText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(13),
+    color: secretLibraryColors.white,
+    fontWeight: '500',
+  },
+  actionBtnTextDark: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(13),
+    color: secretLibraryColors.black,
+    fontWeight: '500',
+  },
+
+  // Stats Row
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: scale(20),
+    paddingTop: scale(16),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  statItem: {
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
+  },
+  statLabel: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: secretLibraryColors.gray,
+    marginBottom: scale(4),
+  },
+  statValue: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(16),
+    fontWeight: '600',
+    color: secretLibraryColors.white,
+  },
+  statDivider: {
+    width: 1,
+    height: scale(32),
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
 
   // Divider

@@ -66,11 +66,14 @@ class SyncQueue {
 
     try {
       const pendingItems = await sqliteCache.getSyncQueue();
+      logger.debug(`[SyncQueue] Processing ${pendingItems.length} pending items`);
 
       for (const item of pendingItems) {
         try {
+          logger.debug(`[SyncQueue] Processing: ${item.action}`);
           await this.processItem(item);
           await sqliteCache.removeSyncQueueItem(item.id);
+          logger.debug(`[SyncQueue] Completed: ${item.action}`);
         } catch (error) {
           logger.warn('[SyncQueue] Failed to process item:', item.action, error);
 
@@ -90,41 +93,115 @@ class SyncQueue {
   }
 
   private async processItem(item: SyncQueueItem): Promise<void> {
-    const payload = JSON.parse(item.payload);
+    // Fix HIGH: Safe JSON parsing with descriptive error
+    let payload: unknown;
+    try {
+      payload = JSON.parse(item.payload);
+    } catch (parseError) {
+      throw new Error(
+        `[SyncQueue] Invalid JSON in queue item ${item.id} (action: ${item.action}): ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`
+      );
+    }
+
+    // Validate payload is an object
+    if (!payload || typeof payload !== 'object') {
+      throw new Error(
+        `[SyncQueue] Invalid payload type in queue item ${item.id} (action: ${item.action}): expected object, got ${typeof payload}`
+      );
+    }
+
+    // Cast to record for property access
+    const data = payload as Record<string, unknown>;
 
     switch (item.action) {
       case 'favorite':
         // AudiobookShelf doesn't have a native favorites API, so we use myLibrary store
         // For server sync, we could use a custom collection named "Favorites"
-        logger.debug('[SyncQueue] Processing favorite:', payload.itemId);
+        logger.debug('[SyncQueue] Processing favorite:', data.itemId);
         break;
 
       case 'unfavorite':
-        logger.debug('[SyncQueue] Processing unfavorite:', payload.itemId);
+        logger.debug('[SyncQueue] Processing unfavorite:', data.itemId);
         break;
 
-      case 'progress':
-        await apiClient.updateProgress(payload.itemId, {
-          currentTime: payload.currentTime,
-          duration: payload.duration,
-          progress: payload.duration > 0 ? payload.currentTime / payload.duration : 0,
+      case 'progress': {
+        // Fix HIGH: Validate required fields for progress sync
+        const itemId = data.itemId as string;
+        const currentTime = data.currentTime as number;
+        const duration = data.duration as number;
+        if (!itemId || typeof currentTime !== 'number' || typeof duration !== 'number') {
+          throw new Error(`[SyncQueue] Progress item missing required fields: itemId=${itemId}, currentTime=${currentTime}, duration=${duration}`);
+        }
+        await apiClient.updateProgress(itemId, {
+          currentTime,
+          duration,
+          progress: duration > 0 ? currentTime / duration : 0,
         });
-        await sqliteCache.markProgressSynced(payload.itemId);
+        await sqliteCache.markProgressSynced(itemId);
         break;
+      }
 
-      case 'add_to_collection':
-        // Get current collection and add item
-        const collection = await apiClient.getCollection(payload.collectionId);
-        const updatedBooks = [...(collection.books || []), { id: payload.itemId }];
-        await apiClient.updateCollection(payload.collectionId, { books: updatedBooks as any });
+      case 'add_to_playlist': {
+        const playlistId = data.playlistId as string;
+        const itemId = data.itemId as string;
+        if (!playlistId || !itemId) {
+          throw new Error(`[SyncQueue] add_to_playlist missing required fields: playlistId=${playlistId}, itemId=${itemId}`);
+        }
+        logger.debug(`[SyncQueue] playlist batch/add: ${itemId} to ${playlistId}`);
+        const { playlistsApi } = await import('@/core/api/endpoints/playlists');
+        await playlistsApi.batchAdd(playlistId, [itemId]);
+        logger.debug(`[SyncQueue] playlist batch/add complete`);
         break;
+      }
 
-      case 'remove_from_collection':
-        // Get current collection and remove item
-        const col = await apiClient.getCollection(payload.collectionId);
-        const filteredBooks = (col.books || []).filter((b: any) => b.id !== payload.itemId);
-        await apiClient.updateCollection(payload.collectionId, { books: filteredBooks as any });
+      case 'remove_from_playlist': {
+        const playlistId = data.playlistId as string;
+        const itemId = data.itemId as string;
+        if (!playlistId || !itemId) {
+          throw new Error(`[SyncQueue] remove_from_playlist missing required fields: playlistId=${playlistId}, itemId=${itemId}`);
+        }
+        logger.debug(`[SyncQueue] playlist batch/remove: ${itemId} from ${playlistId}`);
+        const { playlistsApi } = await import('@/core/api/endpoints/playlists');
+        await playlistsApi.batchRemove(playlistId, [itemId]);
+        logger.debug(`[SyncQueue] playlist batch/remove complete`);
         break;
+      }
+
+      case 'playlist_update_series': {
+        const playlistId = data.playlistId as string;
+        const description = data.description as string;
+        if (!playlistId || !description) {
+          throw new Error(`[SyncQueue] playlist_update_series missing required fields: playlistId=${playlistId}`);
+        }
+        const { playlistsApi } = await import('@/core/api/endpoints/playlists');
+        await playlistsApi.update(playlistId, { description });
+        break;
+      }
+
+      // Legacy collection actions (kept for processing any queued items from before migration)
+      case 'add_to_collection': {
+        const collectionId = data.collectionId as string;
+        const itemId = data.itemId as string;
+        if (!collectionId || !itemId) break;
+        await apiClient.batchAddToCollection(collectionId, [itemId]);
+        break;
+      }
+
+      case 'remove_from_collection': {
+        const collectionId = data.collectionId as string;
+        const itemId = data.itemId as string;
+        if (!collectionId || !itemId) break;
+        await apiClient.batchRemoveFromCollection(collectionId, [itemId]);
+        break;
+      }
+
+      case 'library_update_series': {
+        const collectionId = data.collectionId as string;
+        const description = data.description as string;
+        if (!collectionId || !description) break;
+        await apiClient.updateCollection(collectionId, { description } as any);
+        break;
+      }
 
       default:
         logger.warn('[SyncQueue] Unknown action:', item.action);

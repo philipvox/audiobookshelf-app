@@ -34,7 +34,7 @@ export interface CompleteDimensions {
 }
 
 // =============================================================================
-// WIDTH CALCULATION (Duration-based)
+// WIDTH CALCULATION (Duration-based with Series Consistency)
 // =============================================================================
 
 /**
@@ -44,10 +44,11 @@ export interface CompleteDimensions {
  * - Steeper growth in the common 1-15 hour range (most audiobooks)
  * - Gradual flattening for longer books (20-50 hours)
  *
- * This makes short/medium books more distinguishable from each other,
- * while epic books still look impressively thick without dominating.
+ * SERIES CONSISTENCY: When a series name is provided, the width is blended
+ * with a series-specific target width to reduce variation between books
+ * in the same series. This creates a more unified "collection" look.
  *
- * Example widths:
+ * Example widths (without series):
  * - 1 hour: 44px (minimum)
  * - 5 hours: ~89px (typical novel)
  * - 10 hours: ~129px (long novel)
@@ -58,36 +59,56 @@ export interface CompleteDimensions {
  * - 50 hours: 280px (maximum)
  *
  * @param duration - Duration in seconds (undefined = median fallback)
+ * @param seriesName - Optional series name for width consistency
  * @returns Width in pixels
  */
-export function calculateWidth(duration: number | undefined): number {
+export function calculateWidth(
+  duration: number | undefined,
+  seriesName?: string
+): number {
+  // Calculate base width from duration
+  let baseWidth: number;
+
   // Fallback for unknown duration
   if (duration === undefined || duration === null || duration <= 0) {
-    return WIDTH_CALCULATION.MEDIAN;
+    baseWidth = WIDTH_CALCULATION.MEDIAN;
+  } else {
+    const hours = duration / 3600;
+
+    // Clamp to min/max
+    if (hours <= WIDTH_CALCULATION.MIN_DURATION_HOURS) {
+      baseWidth = WIDTH_CALCULATION.MIN;
+    } else if (hours >= WIDTH_CALCULATION.MAX_DURATION_HOURS) {
+      baseWidth = WIDTH_CALCULATION.MAX;
+    } else {
+      // Ease-out quadratic curve: rapid growth early, gradual flattening later
+      // Formula: easedRatio = 1 - (1 - ratio)^2
+      // This gives more visual differentiation in the 1-15 hour range
+      const ratio = (hours - WIDTH_CALCULATION.MIN_DURATION_HOURS) /
+        (WIDTH_CALCULATION.MAX_DURATION_HOURS - WIDTH_CALCULATION.MIN_DURATION_HOURS);
+      const easedRatio = 1 - Math.pow(1 - ratio, 2);
+
+      baseWidth = WIDTH_CALCULATION.MIN +
+        (WIDTH_CALCULATION.MAX - WIDTH_CALCULATION.MIN) * easedRatio;
+    }
   }
 
-  const hours = duration / 3600;
+  // SERIES CONSISTENCY: Blend individual width with series target
+  // This reduces variation between books in the same series
+  if (seriesName) {
+    const normalizedSeries = normalizeSeriesName(seriesName);
+    const seriesHash = hashString(normalizedSeries);
 
-  // Clamp to min/max
-  if (hours <= WIDTH_CALCULATION.MIN_DURATION_HOURS) {
-    return WIDTH_CALCULATION.MIN;
+    // Generate series-specific target width (80-180px range covers most audiobooks)
+    // Each series gets a consistent target based on its name hash
+    const seriesTargetWidth = 80 + (seriesHash % 100);
+
+    // Blend: 55% duration-based + 45% series target
+    // This preserves duration hints while creating visual consistency
+    baseWidth = baseWidth * 0.55 + seriesTargetWidth * 0.45;
   }
 
-  if (hours >= WIDTH_CALCULATION.MAX_DURATION_HOURS) {
-    return WIDTH_CALCULATION.MAX;
-  }
-
-  // Ease-out quadratic curve: rapid growth early, gradual flattening later
-  // Formula: easedRatio = 1 - (1 - ratio)^2
-  // This gives more visual differentiation in the 1-15 hour range
-  const ratio = (hours - WIDTH_CALCULATION.MIN_DURATION_HOURS) /
-    (WIDTH_CALCULATION.MAX_DURATION_HOURS - WIDTH_CALCULATION.MIN_DURATION_HOURS);
-  const easedRatio = 1 - Math.pow(1 - ratio, 2);
-
-  const width = WIDTH_CALCULATION.MIN +
-    (WIDTH_CALCULATION.MAX - WIDTH_CALCULATION.MIN) * easedRatio;
-
-  return Math.round(width);
+  return Math.round(baseWidth);
 }
 
 // =============================================================================
@@ -260,7 +281,7 @@ export function calculateCompleteDimensions(
   seriesName?: string
 ): CompleteDimensions {
   const base: BaseDimensions = {
-    width: calculateWidth(duration),
+    width: calculateWidth(duration, seriesName),
     height: calculateHeight(genreProfile, bookId, seriesName),
   };
 
@@ -270,6 +291,37 @@ export function calculateCompleteDimensions(
     base,
     scaled,
     aspectRatio: base.height / base.width,
+  };
+}
+
+// =============================================================================
+// BOUNDING-BOX FIT
+// =============================================================================
+
+/**
+ * Scale dimensions to fit within a bounding box while preserving aspect ratio.
+ * Uses a single scaleFactor applied to both width and height, so aspect ratio
+ * is always preserved. Used by both server and procedural spine paths.
+ *
+ * @param canonicalWidth - Unscaled width (e.g. from calculateWidth or server)
+ * @param canonicalHeight - Unscaled height (e.g. from calculateHeight or server)
+ * @param maxWidth - Maximum allowed width
+ * @param maxHeight - Maximum allowed height
+ * @returns Fitted width/height and the scaleFactor used
+ */
+export function fitToBoundingBox(
+  canonicalWidth: number,
+  canonicalHeight: number,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number; scaleFactor: number } {
+  const widthScale = maxWidth / canonicalWidth;
+  const heightScale = maxHeight / canonicalHeight;
+  const scaleFactor = Math.min(widthScale, heightScale);
+  return {
+    width: Math.round(canonicalWidth * scaleFactor),
+    height: Math.round(canonicalHeight * scaleFactor),
+    scaleFactor,
   };
 }
 

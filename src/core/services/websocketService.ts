@@ -85,6 +85,7 @@ class WebSocketService {
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private currentUserId: string | null = null;
   private serverUrl: string | null = null;
+  private isDisconnecting = false;
 
   constructor(options: WebSocketServiceOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -114,6 +115,7 @@ class WebSocketService {
       return;
     }
 
+    this.isDisconnecting = false;
     // Clear any pending reconnect timer to prevent duplicate connections
     this.clearReconnectTimer();
 
@@ -137,6 +139,14 @@ class WebSocketService {
       this.currentUserId = user?.id ?? null;
 
       log.info(`Connecting to ${serverUrl}...`);
+
+      // Fix: Clean up any existing socket handlers before creating new connection
+      // This prevents handler accumulation on reconnect
+      if (this.socket) {
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        this.socket = null;
+      }
 
       // Create socket.io connection
       // AudiobookShelf uses the /socket.io path by default
@@ -164,6 +174,7 @@ class WebSocketService {
   disconnect(reason: 'manual' | 'error' | 'network' | 'auth' = 'manual'): void {
     log.info(`Disconnecting (reason: ${reason})`);
 
+    this.isDisconnecting = true;
     this.clearReconnectTimer();
     this.reconnectAttempts = 0;
 
@@ -179,6 +190,7 @@ class WebSocketService {
     }
 
     this.setState('disconnected');
+    this.isDisconnecting = false;
 
     eventBus.emit('websocket:disconnected', { reason });
   }
@@ -219,6 +231,7 @@ class WebSocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
+      if (this.isDisconnecting) return; // Ignore events during intentional disconnect
       log.info(`Disconnected: ${reason}`);
 
       // socket.io disconnect reasons:

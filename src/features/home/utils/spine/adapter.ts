@@ -83,7 +83,7 @@ export function getSpineDimensions(
   const genreMatch = matchBestGenre(genres);
   const genreProfile = genreMatch?.profile;
 
-  const width = calculateWidth(duration);
+  const width = calculateWidth(duration, seriesName);  // Pass seriesName for width consistency
   const height = calculateHeight(genreProfile, bookId, seriesName);  // Pass seriesName for height locking
   const touchPadding = Math.max(0, Math.ceil((TOUCH_TARGETS.MIN - width) / 2));
 
@@ -275,19 +275,8 @@ export function generateSpineComposition(
   series?: { name: string; number: number },
   spineWidth?: number
 ): any {
-  if (__DEV__) {
-    console.log(`[Adapter] generateSpineComposition called for "${title}" (width: ${spineWidth || 'unknown'})`);
-  }
-
   if (!useNewSpineSystem()) {
-    if (__DEV__) {
-      console.log(`[Adapter] Using OLD system for "${title}"`);
-    }
     return oldSystem.generateSpineComposition(bookId, title, author, genres, series);
-  }
-
-  if (__DEV__) {
-    console.log(`[Adapter] Using NEW system for "${title}" with width ${spineWidth || 'unknown'}`);
   }
 
   // Use new composition generator with smart constraints
@@ -320,15 +309,3 @@ export function generateSpineComposition(
  */
 export type { SpineComposition };
 
-// =============================================================================
-// MIGRATION LOGGING
-// =============================================================================
-
-if (__DEV__) {
-  // Log when adapter functions are called
-  const originalCalc = calculateBookDimensions;
-  (calculateBookDimensions as any) = function(...args: any[]) {
-    console.log('[Adapter] calculateBookDimensions called (using', useNewSpineSystem() ? 'NEW' : 'OLD', 'system)');
-    return originalCalc.apply(this, args);
-  };
-}

@@ -122,7 +122,9 @@ export const DEFAULT_AUTHOR_CONSTRAINTS: LayoutConstraints = {
  * - Total: 35.4px
  */
 function createMeasureFunction(fontFamily: string, letterSpacing: number = 0): MeasureFunction {
-  const ratio = FONT_CHAR_RATIOS[fontFamily] || FONT_CHAR_RATIOS['default'];
+  const ratioEntry = FONT_CHAR_RATIOS[fontFamily] || FONT_CHAR_RATIOS['default'];
+  // FONT_CHAR_RATIOS values are { uppercase, lowercase, tight } objects — extract scalar
+  const ratio = typeof ratioEntry === 'number' ? ratioEntry : (ratioEntry?.lowercase ?? 0.5);
   return (text: string, fontSize: number): number => {
     if (!text) return 0;
     const baseWidth = text.length * ratio * fontSize;

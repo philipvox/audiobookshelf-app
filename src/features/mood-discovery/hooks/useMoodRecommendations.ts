@@ -3,6 +3,11 @@
  *
  * Hook to score and rank library books based on mood session preferences.
  * Uses orthogonal dimensions: Mood, Pace, Weight, World.
+ *
+ * Enhanced with v2.0 recommendation utilities:
+ * - Flavor matchTags scoring (the key fix for magic-system, etc.)
+ * - Comparable books engine for seed book similarity
+ * - Comprehensive scoring weights
  */
 
 import { useMemo, useDeferredValue, useEffect, useRef, useState, useCallback } from 'react';
@@ -29,6 +34,8 @@ import {
   PACE_INDICATORS,
   WEIGHT_INDICATORS,
   LENGTH_OPTIONS,
+  MOOD_FLAVORS,
+  FlavorConfig,
 } from '../types';
 import { calculateTagMoodScore, tagScoreToPercentage, getItemTags } from '../utils/tagScoring';
 import {
@@ -46,6 +53,22 @@ import {
   useMoodScoringCacheStore,
   getSessionCacheKey,
 } from '../stores/moodScoringCacheStore';
+
+// New v2.0 recommendation utilities
+import {
+  MOOD_WEIGHTS,
+  MISMATCH_PENALTIES,
+  COMPARABLE_WEIGHTS,
+  calculateMetadataRichness,
+  getConfidenceLevel,
+} from '@/features/recommendations/utils/scoreWeights';
+import {
+  prepareSourceBook,
+  prepareCandidate,
+  calculateSimilarity,
+  ComparableSourceBook,
+} from '@/features/recommendations/utils/comparableBooksEngine';
+
 // Legacy exports for backwards compatibility
 import {
   clearMoodRecommendationsCache,
@@ -76,6 +99,10 @@ const SCORE_WEIGHTS = {
   themeMatch: 15,
   /** Bonus from trope matching */
   tropeMatch: 15,
+  /** Bonus from flavor matching (e.g., magic-system, heist) - KEY for drill-down */
+  flavorMatch: 30,
+  /** Partial flavor match (tag contains keyword) */
+  flavorPartial: 15,
 };
 
 // ============================================================================
@@ -99,14 +126,13 @@ const DNA_WEIGHTS = {
 /**
  * Maps quiz moods to preferred spectrum values.
  * Used when a book has DNA spectrum data.
+ * Note: Only 4 moods now (comfort, thrills, escape, feels)
  */
 const MOOD_TO_SPECTRUM_PREFERENCE: Record<Mood, { key: keyof BookDNA['spectrums']; preferred: number }> = {
   thrills: { key: 'seriousHumorous', preferred: -0.3 },    // slightly serious
-  laughs: { key: 'seriousHumorous', preferred: 0.7 },      // humorous
   comfort: { key: 'bleakHopeful', preferred: 0.6 },        // hopeful
   feels: { key: 'bleakHopeful', preferred: -0.2 },         // slight melancholy ok
   escape: { key: 'familiarChallenging', preferred: -0.3 }, // familiar/comfort
-  thinking: { key: 'denseAccessible', preferred: -0.4 },   // denser reads
 };
 
 /**
@@ -120,31 +146,19 @@ const PACE_TO_DNA_PACING: Record<Exclude<Pace, 'any'>, BookDNA['pacing'][]> = {
 
 /**
  * Maps moods to preferred narrator styles.
+ * Note: Only 4 moods now (comfort, thrills, escape, feels)
  */
 const MOOD_TO_NARRATOR_STYLE: Record<Mood, BookDNA['narratorStyle'][]> = {
   thrills: ['intense', 'theatrical'],
-  laughs: ['theatrical', 'warm'],
   comfort: ['warm', 'subtle'],
   feels: ['warm', 'subtle', 'theatrical'],
   escape: ['theatrical', 'warm'],
-  thinking: ['subtle', 'dry'],
 };
 
 // ============================================================================
-// HARD MISMATCH PENALTIES (Tier 1.1)
-// Wrong tone should hurt more than soft matches help
+// MISMATCH PENALTIES - now imported from scoreWeights.ts
+// See: MISMATCH_PENALTIES from '@/features/recommendations/utils/scoreWeights'
 // ============================================================================
-
-const MISMATCH_PENALTIES = {
-  /** Heavy book when user wants light = significant penalty */
-  heavyForLight: 0.5,
-  /** Light book when user wants heavy = moderate penalty */
-  lightForHeavy: 0.75,
-  /** Fast-paced when user wants slow burn = moderate penalty */
-  fastForSlow: 0.65,
-  /** Slow burn when user wants fast = moderate penalty */
-  slowForFast: 0.7,
-};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -224,6 +238,145 @@ function textContainsKeyword(text: string, keywords: string[] | undefined): bool
   if (!keywords || keywords.length === 0) return false;
   const lowerText = text.toLowerCase();
   return keywords.some((keyword) => lowerText.includes(keyword.toLowerCase()));
+}
+
+// ============================================================================
+// FLAVOR SCORING (v2.0 - The KEY fix for magic-system, heist, etc.)
+// ============================================================================
+
+/**
+ * Get flavor config for a session's flavor selection.
+ * Returns the matchTags that should boost this book's score.
+ */
+function getFlavorConfig(session: MoodSession): FlavorConfig | null {
+  if (!session.flavor || !session.mood) return null;
+
+  const flavorsForMood = MOOD_FLAVORS[session.mood];
+  if (!flavorsForMood) return null;
+
+  return flavorsForMood.find(f => f.id === session.flavor) || null;
+}
+
+/**
+ * Score a book based on flavor matchTags.
+ * This is the KEY scoring that was missing - when user selects "magic-system",
+ * books with tags/genres containing 'hard magic', 'magic system', 'magical'
+ * should get a significant boost.
+ */
+function scoreFlavorMatch(
+  bookData: {
+    genres: string[];
+    tags: string[];
+    description: string;
+    dna: BookDNA;
+  },
+  session: MoodSession
+): { score: number; isFlavorMatch: boolean; matchedTags: string[] } {
+  const flavorConfig = getFlavorConfig(session);
+
+  // Flavor config lookup is logged once at start of scoring, not per-book
+
+  if (!flavorConfig || !flavorConfig.matchTags || flavorConfig.matchTags.length === 0) {
+    return { score: 0, isFlavorMatch: false, matchedTags: [] };
+  }
+
+  const matchTags = flavorConfig.matchTags;
+  const matchedTags: string[] = [];
+  let score = 0;
+
+  // Check genres for flavor match
+  for (const genre of bookData.genres) {
+    const genreLower = genre.toLowerCase();
+    for (const tag of matchTags) {
+      const tagLower = tag.toLowerCase();
+      if (genreLower.includes(tagLower) || tagLower.includes(genreLower)) {
+        matchedTags.push(genre);
+        score += SCORE_WEIGHTS.flavorMatch;
+        break; // Don't double-count same genre
+      }
+    }
+  }
+
+  // Check book tags for flavor match
+  for (const bookTag of bookData.tags) {
+    const bookTagLower = bookTag.toLowerCase();
+    for (const flavorTag of matchTags) {
+      const flavorTagLower = flavorTag.toLowerCase();
+      if (bookTagLower.includes(flavorTagLower) || flavorTagLower.includes(bookTagLower)) {
+        if (!matchedTags.includes(bookTag)) {
+          matchedTags.push(bookTag);
+          score += SCORE_WEIGHTS.flavorMatch;
+        }
+        break;
+      }
+    }
+  }
+
+  // Check description for flavor keywords (partial match - lower weight)
+  if (score === 0 && bookData.description) {
+    const descLower = bookData.description.toLowerCase();
+    for (const tag of matchTags) {
+      if (descLower.includes(tag.toLowerCase())) {
+        score += SCORE_WEIGHTS.flavorPartial;
+        matchedTags.push(`"${tag}" in description`);
+        break; // Only count once for description
+      }
+    }
+  }
+
+  // Check DNA tropes and themes for flavor match
+  if (bookData.dna.hasDNA) {
+    // Check tropes
+    for (const trope of bookData.dna.tropes) {
+      const tropeLower = trope.toLowerCase();
+      for (const tag of matchTags) {
+        if (tropeLower.includes(tag.toLowerCase()) || tag.toLowerCase().includes(tropeLower)) {
+          if (!matchedTags.includes(trope)) {
+            matchedTags.push(trope);
+            score += SCORE_WEIGHTS.flavorMatch;
+          }
+          break;
+        }
+      }
+    }
+
+    // Check themes
+    for (const theme of bookData.dna.themes) {
+      const themeLower = theme.toLowerCase();
+      for (const tag of matchTags) {
+        if (themeLower.includes(tag.toLowerCase()) || tag.toLowerCase().includes(themeLower)) {
+          if (!matchedTags.includes(theme)) {
+            matchedTags.push(theme);
+            score += SCORE_WEIGHTS.flavorPartial; // Themes get partial weight
+          }
+          break;
+        }
+      }
+    }
+
+    // Check vibe
+    if (bookData.dna.vibe) {
+      const vibeLower = bookData.dna.vibe.toLowerCase();
+      for (const tag of matchTags) {
+        if (vibeLower.includes(tag.toLowerCase()) || tag.toLowerCase().includes(vibeLower)) {
+          if (!matchedTags.includes(bookData.dna.vibe)) {
+            matchedTags.push(bookData.dna.vibe);
+            score += SCORE_WEIGHTS.flavorPartial;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  const isFlavorMatch = matchedTags.length > 0;
+
+  // DEBUG: Log result if there was a match
+  if (isFlavorMatch) {
+    console.warn(`🎯 [Flavor Scoring] MATCH! Score=${score}, matchedTags=[${matchedTags.join(', ')}]`);
+  }
+
+  return { score, isFlavorMatch, matchedTags };
 }
 
 /**
@@ -488,34 +641,49 @@ function calculateDNAScore(dna: BookDNA, session: MoodSession): DNAScoreResult {
 
 /**
  * Scoring weights for seed book similarity
+ * Now uses COMPARABLE_WEIGHTS from v2.0 utilities for consistency
  */
 const SEED_WEIGHTS = {
-  /** Same author (big boost) */
-  sameAuthor: 25,
+  /** Same author (big boost) - from COMPARABLE_WEIGHTS */
+  sameAuthor: COMPARABLE_WEIGHTS.sameAuthor,
   /** Same series (big boost) */
-  sameSeries: 30,
+  sameSeries: COMPARABLE_WEIGHTS.sameSeries,
+  /** Same narrator */
+  sameNarrator: COMPARABLE_WEIGHTS.sameNarrator,
   /** Matching genres */
-  matchingGenre: 8,
+  matchingGenre: COMPARABLE_WEIGHTS.matchingGenre,
   /** Matching tags */
-  matchingTag: 5,
+  matchingTag: COMPARABLE_WEIGHTS.matchingTag,
+  /** Matching tropes (BookDNA) */
+  matchingTrope: COMPARABLE_WEIGHTS.matchingTrope,
+  /** Matching themes (BookDNA) */
+  matchingTheme: COMPARABLE_WEIGHTS.matchingTheme,
+  /** Matching vibe (BookDNA) */
+  matchingVibe: COMPARABLE_WEIGHTS.matchingVibe,
   /** Max boost from seed similarity */
-  maxBoost: 40,
+  maxBoost: 50,
 } as const;
 
 /**
  * Pre-computed seed book data for similarity scoring
+ * Extended to support full comparableBooksEngine features
  */
 interface SeedBookData {
   id: string;
   author: string | null;
+  narrator: string | null;
   series: string | null;
   genres: Set<string>;
   tags: Set<string>;
   dna: BookDNA;
+  /** Prepared source for comparableBooksEngine */
+  comparableSource: ComparableSourceBook;
 }
 
 /**
  * Calculate similarity score between a book and the seed book.
+ * v2.0: Now uses comparableBooksEngine for comprehensive scoring including
+ * DNA tropes, themes, vibes, and narrator matching.
  */
 function calculateSeedSimilarity(
   bookData: {
@@ -523,69 +691,49 @@ function calculateSeedSimilarity(
     genres: string[];
     tags: string[];
     dna: BookDNA;
+    item: LibraryItem;
   },
   seedData: SeedBookData
-): { score: number; reason: string | null } {
-  let score = 0;
-  let reason: string | null = null;
+): { score: number; reason: string | null; matchReasons: string[] } {
+  // Use the new comparableBooksEngine for comprehensive similarity
+  const candidate = prepareCandidate(bookData.item);
+  const similarity = calculateSimilarity(seedData.comparableSource, candidate);
 
-  const bookMeta = bookData.metadata as BookMetadata;
+  // Scale the similarity score to our max boost range
+  // comparableBooksEngine returns 0-100, we want 0-maxBoost
+  const scaledScore = Math.round((similarity.score / 100) * SEED_WEIGHTS.maxBoost);
 
-  // Same author (big boost)
-  if (seedData.author && bookMeta.authorName) {
-    const bookAuthor = bookMeta.authorName.toLowerCase();
-    if (bookAuthor.includes(seedData.author) || seedData.author.includes(bookAuthor)) {
-      score += SEED_WEIGHTS.sameAuthor;
-      reason = 'Same author';
-    }
-  }
+  // Get the primary reason
+  const reason = similarity.reasons.length > 0 ? similarity.reasons[0] : null;
 
-  // Same series (big boost)
-  if (seedData.series && bookMeta.seriesName) {
-    const bookSeries = bookMeta.seriesName.toLowerCase();
-    if (bookSeries.includes(seedData.series) || seedData.series.includes(bookSeries)) {
-      score += SEED_WEIGHTS.sameSeries;
-      reason = reason ? `${reason}, same series` : 'Same series';
-    }
-  }
-
-  // Matching genres
-  for (const genre of bookData.genres) {
-    if (seedData.genres.has(genre.toLowerCase())) {
-      score += SEED_WEIGHTS.matchingGenre;
-      if (score >= SEED_WEIGHTS.maxBoost) break;
-    }
-  }
-
-  // Matching tags
-  for (const tag of bookData.tags) {
-    if (seedData.tags.has(tag.toLowerCase())) {
-      score += SEED_WEIGHTS.matchingTag;
-      if (score >= SEED_WEIGHTS.maxBoost) break;
-    }
-  }
-
-  // Cap at max boost
-  score = Math.min(score, SEED_WEIGHTS.maxBoost);
-
-  return { score, reason };
+  return {
+    score: scaledScore,
+    reason,
+    matchReasons: similarity.reasons,
+  };
 }
 
 /**
  * Pre-compute seed book data for efficient similarity scoring.
+ * v2.0: Now prepares data for both legacy scoring and new comparableBooksEngine.
  */
 function prepareSeedBookData(seedBook: LibraryItem): SeedBookData {
   const meta = seedBook.media?.metadata as BookMetadata | undefined;
   const tags = getItemTags(seedBook);
   const dna = parseBookDNA(tags);
 
+  // Prepare for comparableBooksEngine
+  const comparableSource = prepareSourceBook(seedBook, null);
+
   return {
     id: seedBook.id,
     author: meta?.authorName?.toLowerCase() || null,
+    narrator: meta?.narratorName?.toLowerCase() || null,
     series: meta?.seriesName?.toLowerCase() || null,
     genres: new Set((meta?.genres || []).map(g => g.toLowerCase())),
     tags: new Set(tags.map(t => t.toLowerCase())),
     dna,
+    comparableSource,
   };
 }
 
@@ -614,6 +762,10 @@ interface ExtendedMoodScore extends MoodScore {
   matchReasons: string[];
   /** DNA score contribution (if DNA was used) */
   dnaScore: number;
+  /** Flavor score contribution (v2.0 - magic-system, heist, etc.) */
+  flavorScore: number;
+  /** Tags that matched the flavor selection */
+  flavorMatchedTags: string[];
 }
 
 /**
@@ -628,6 +780,10 @@ function calculateMoodScore(
 ): ExtendedMoodScore {
   const { genres: bookGenres, description, tags, durationHours, dna } = bookData;
   const matchReasons: string[] = [];
+
+  // DEBUG: Log book being scored - removed to reduce spam
+  // const bookTitle = (bookData.metadata as BookMetadata)?.title || 'Unknown';
+  // console.log(`[MoodScore] Scoring: "${bookTitle}" | genres=[${bookGenres.slice(0,3).join(',')}] | tags=[${tags.slice(0,5).join(',')}]`);
 
   // Initialize scores
   let moodScore = 0;
@@ -713,6 +869,30 @@ function calculateMoodScore(
   isPrimaryMoodMatch = isPrimaryMoodMatch || tagResult.isPrimaryMoodMatch;
 
   // ============================================================================
+  // FLAVOR SCORING (v2.0 - The KEY fix!)
+  // When user selects "magic-system", books with magic tags get big boost
+  // ============================================================================
+
+  const flavorResult = scoreFlavorMatch(
+    { genres: bookGenres, tags, description, dna },
+    session
+  );
+  const flavorScore = flavorResult.score;
+
+  // If flavor matched, add to match reasons
+  if (flavorResult.isFlavorMatch) {
+    const flavorConfig = getFlavorConfig(session);
+    if (flavorConfig) {
+      matchReasons.push(`${flavorConfig.label} match`);
+    }
+  }
+
+  // Flavor match can also establish mood match (it's a strong signal)
+  if (flavorResult.isFlavorMatch && !isPrimaryMoodMatch) {
+    isPrimaryMoodMatch = true;
+  }
+
+  // ============================================================================
   // APPLY HARD MISMATCH PENALTIES (Tier 1.1)
   // Wrong tone hurts more than soft matches help
   // ============================================================================
@@ -733,8 +913,15 @@ function calculateMoodScore(
 
   // Calculate base total then apply penalty
   // DNA score is added on top of genre-based scoring
-  const baseTotal = moodScore + paceScore + weightScore + worldScore + lengthScore + tagResult.score + dnaScore;
+  // Flavor score is the KEY addition - boosts books matching magic-system, heist, etc.
+  const baseTotal = moodScore + paceScore + weightScore + worldScore + lengthScore + tagResult.score + dnaScore + flavorScore;
   const total = Math.round(baseTotal * penaltyMultiplier);
+
+  // DEBUG: Log final score breakdown for books with decent scores
+  const bookTitle = (bookData.metadata as BookMetadata)?.title || 'Unknown';
+  if (total > 30 || flavorScore > 0) {
+    console.log(`📊 [MoodScore] "${bookTitle}" FINAL: total=${total}, mood=${moodScore}, flavor=${flavorScore}, dna=${dnaScore}, penalty=${penaltyMultiplier}`);
+  }
 
   return {
     total,
@@ -750,6 +937,8 @@ function calculateMoodScore(
     usedDNA,
     matchReasons,
     dnaScore,
+    flavorScore,
+    flavorMatchedTags: flavorResult.matchedTags,
   };
 }
 
@@ -764,21 +953,31 @@ function scoreToPercent(score: MoodScore, session: MoodSession): number {
   const maxWorldScore = session.world !== 'any' ? SCORE_WEIGHTS.worldMatch : 0;
   const maxLengthScore = session.length !== 'any' ? SCORE_WEIGHTS.lengthMatch : 0;
 
+  // Include flavor in max if session has a flavor selection
+  const maxFlavorScore = session.flavor ? SCORE_WEIGHTS.flavorMatch : 0;
+
   // Base max (excluding theme/trope bonuses)
-  const maxBaseScore = maxMoodScore + maxPaceScore + maxWeightScore + maxWorldScore + maxLengthScore;
+  const maxBaseScore = maxMoodScore + maxPaceScore + maxWeightScore + maxWorldScore + maxLengthScore + maxFlavorScore;
 
   if (maxBaseScore === 0) return 100;
 
-  // Calculate base percentage
+  // Calculate base percentage - now includes flavor score
+  // Cast to ExtendedMoodScore to access flavorScore
+  const extScore = score as ExtendedMoodScore;
+  const flavorScoreVal = extScore.flavorScore || 0;
+
   const baseScore = score.moodScore + score.paceScore + score.weightScore +
-    score.worldScore + score.lengthScore;
+    score.worldScore + score.lengthScore + flavorScoreVal;
   let percent = (baseScore / maxBaseScore) * 100;
 
   // Theme and trope bonuses can boost percentage
   const themeBoost = Math.min(score.themeScore / SCORE_WEIGHTS.themeMatch, 2) * 10;
   const tropeBoost = Math.min(score.tropeScore / SCORE_WEIGHTS.tropeMatch, 2) * 10;
 
-  percent += themeBoost + tropeBoost;
+  // Flavor match is a strong signal - give significant percentage boost
+  const flavorBoost = flavorScoreVal > 0 ? Math.min(flavorScoreVal / SCORE_WEIGHTS.flavorMatch, 2) * 15 : 0;
+
+  percent += themeBoost + tropeBoost + flavorBoost;
 
   return Math.max(0, Math.min(100, Math.round(percent)));
 }
@@ -831,6 +1030,36 @@ function runMoodScoring(params: RunMoodScoringParams): RunMoodScoringResult {
     includeUntagged,
     minMatchPercent,
   } = params;
+
+  // DEBUG: Log the session to verify flavor is being passed
+  // Using logger and console.warn for visibility
+  const sessionDebug = {
+    mood: session.mood,
+    flavor: session.flavor,
+    seedBookId: session.seedBookId,
+    pace: session.pace,
+    weight: session.weight,
+    world: session.world,
+  };
+  console.warn(`🎬 [MoodScoring] Starting scoring with session:`, JSON.stringify(sessionDebug));
+  console.warn(`🎬 [MoodScoring] Scoring ${items.length} items`);
+  logger.warn(`[MoodScoring] Session: mood=${session.mood}, flavor=${session.flavor}, items=${items.length}`);
+
+  // DEBUG: Log flavor config once at start
+  if (session.flavor && session.mood) {
+    const flavorsForMood = MOOD_FLAVORS[session.mood];
+    const flavorConfig = flavorsForMood?.find(f => f.id === session.flavor);
+    console.warn(`🎯 [Flavor] Looking for flavor="${session.flavor}" in mood="${session.mood}"`);
+    console.warn(`🎯 [Flavor] Found config: ${flavorConfig ? flavorConfig.label : 'NULL!'}`);
+    logger.warn(`[Flavor] Looking for flavor="${session.flavor}" in mood="${session.mood}", found=${flavorConfig?.label || 'NULL'}`);
+    if (flavorConfig) {
+      console.warn(`🎯 [Flavor] MatchTags: [${flavorConfig.matchTags.join(', ')}]`);
+      logger.warn(`[Flavor] MatchTags: [${flavorConfig.matchTags.join(', ')}]`);
+    }
+  } else {
+    console.warn(`🎯 [Flavor] No flavor selected (session.flavor=${session.flavor})`);
+    logger.warn(`[Flavor] No flavor selected (session.flavor=${session.flavor})`);
+  }
 
   const scored: ScoredBook[] = [];
   const unscored: LibraryItem[] = [];
@@ -911,13 +1140,18 @@ function runMoodScoring(params: RunMoodScoringParams): RunMoodScoringResult {
       preferenceBoost = getPreferenceBoost(item).totalBoost;
     }
 
-    // Calculate seed similarity boost
+    // Calculate seed similarity boost (v2.0: uses comparableBooksEngine)
     let seedSimilarityBoost = 0;
     let seedMatchReason: string | null = null;
+    let seedMatchReasons: string[] = [];
     if (seedBookData) {
-      const similarity = calculateSeedSimilarity(bookData, seedBookData);
+      const similarity = calculateSeedSimilarity(
+        { ...bookData, item },
+        seedBookData
+      );
       seedSimilarityBoost = similarity.score;
       seedMatchReason = similarity.reason;
+      seedMatchReasons = similarity.matchReasons;
     }
 
     // Determine confidence
@@ -933,9 +1167,12 @@ function runMoodScoring(params: RunMoodScoringParams): RunMoodScoringResult {
     // Calculate final score with boosts
     const boostedScore = score.total + preferenceBoost + seedSimilarityBoost;
 
-    // Collect match reasons
+    // Collect match reasons (including seed similarity reasons from v2.0 engine)
     const matchReasons = [...score.matchReasons];
-    if (seedMatchReason) {
+    if (seedMatchReasons.length > 0) {
+      // Add up to 2 seed similarity reasons to avoid clutter
+      matchReasons.push(...seedMatchReasons.slice(0, 2));
+    } else if (seedMatchReason) {
       matchReasons.push(seedMatchReason);
     }
 
@@ -1147,9 +1384,10 @@ export function useMoodRecommendations(
         const startTime = Date.now();
 
         // Run the scoring (this is the expensive part)
+        // Note: params.session is guaranteed non-null due to early return check above
         const scoringResult = runMoodScoring({
           items: params.items,
-          session: params.session,
+          session: params.session!,
           sessionKey: params.sessionKey,
           isFinished: params.isFinished,
           isSeriesAppropriate: params.isSeriesAppropriate,

@@ -276,9 +276,9 @@ export async function prefetchMainTabData(): Promise<void> {
         staleTime: 5 * 60 * 1000, // 5 minutes
       }),
 
-      // Library cache refresh (loads all items, series, authors)
-      // Now we have the library ID, so this will actually work
-      useLibraryCache.getState().loadCache(defaultLibraryId, true),
+      // Library cache load (loads all items, series, authors)
+      // Uses SQLite cache if valid (<30 days), only fetches from server if expired
+      useLibraryCache.getState().loadCache(defaultLibraryId),
     ];
 
     await Promise.allSettled(prefetches);

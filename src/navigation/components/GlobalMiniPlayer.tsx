@@ -2,7 +2,7 @@
  * src/navigation/components/GlobalMiniPlayer.tsx
  *
  * Secret Library Mini Player
- * Clean editorial design with scrubber, time display, book info, and controls.
+ * Clean editorial design with dark background and pill-shaped controls.
  * Positioned at the bottom of the screen above the tab bar.
  */
 
@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  Dimensions,
   Platform,
   ActivityIndicator,
 } from 'react-native';
@@ -26,16 +25,13 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { scale, hp, useSecretLibraryColors } from '@/shared/theme';
+import { scale } from '@/shared/theme';
 import { useShallow } from 'zustand/react/shallow';
-import { usePlayerStore, useCurrentChapterIndex } from '@/features/player/stores/playerStore';
-import { useSeekingStore } from '@/features/player/stores/seekingStore';
+import { usePlayerStore, useCurrentChapterIndex, useSeekingStore } from '@/features/player/stores';
 import { useNormalizedChapters } from '@/shared/hooks';
 import { getTitle } from '@/shared/utils/metadata';
 import { haptics } from '@/core/native/haptics';
-import {
-  secretLibraryColors as staticColors,
-} from '@/shared/theme/secretLibrary';
+import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import {
   RewindIcon,
   FastForwardIcon,
@@ -47,12 +43,11 @@ import {
 // CONSTANTS
 // =============================================================================
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const NAV_BAR_HEIGHT = hp(7);
-const SWIPE_THRESHOLD = -50;
-const SCRUBBER_HEIGHT = 20;
-const HANDLE_SIZE = 16;
-const TRACK_HEIGHT = 3;
+const SWIPE_UP_THRESHOLD = -50;
+const SWIPE_DOWN_THRESHOLD = 50;
+
+// Dark background color - matches library screen (secretLibraryColors.black)
+const MINI_PLAYER_BG = '#0f0f0f';
 
 // =============================================================================
 // MAIN COMPONENT
@@ -62,9 +57,6 @@ export function GlobalMiniPlayer() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [currentRouteName, setCurrentRouteName] = useState('');
-
-  // Theme-aware colors
-  const colors = useSecretLibraryColors();
 
   // Track current route for hiding on modal screens
   useEffect(() => {
@@ -79,7 +71,6 @@ export function GlobalMiniPlayer() {
   }, [navigation]);
 
   // Player state - PERF: batch subscriptions with useShallow to reduce re-renders
-  // Note: seekTo is handled via useSeekingStore directly for proper position tracking
   const {
     currentBook,
     isPlaying,
@@ -92,6 +83,7 @@ export function GlobalMiniPlayer() {
     play,
     pause,
     togglePlayer,
+    cleanup,
   } = usePlayerStore(
     useShallow((s) => ({
       currentBook: s.currentBook,
@@ -105,6 +97,7 @@ export function GlobalMiniPlayer() {
       play: s.play,
       pause: s.pause,
       togglePlayer: s.togglePlayer,
+      cleanup: s.cleanup,
     }))
   );
 
@@ -114,18 +107,18 @@ export function GlobalMiniPlayer() {
     bookTitle: getTitle(currentBook),
   });
   const currentChapter = normalizedChapters[currentChapterIndex];
-  const chapterName = currentChapter?.displayTitle || `Chapter ${currentChapterIndex + 1}`;
+  const chapterName = currentChapter?.displayTitle || `Part ${currentChapterIndex + 1}`;
 
   // Swipe gesture state
   const translateY = useSharedValue(0);
 
   // Handlers
-  const handlePlayPause = useCallback(async () => {
+  const handlePlayPause = useCallback(() => {
     haptics.selection();
     if (isPlaying) {
-      await pause();
+      pause();
     } else {
-      await play();
+      play();
     }
   }, [isPlaying, pause, play]);
 
@@ -135,14 +128,12 @@ export function GlobalMiniPlayer() {
   const handleSkipBack = useCallback(() => {
     haptics.selection();
     const newPosition = Math.max(0, position - 15);
-    // Use seeking store for proper position tracking
     useSeekingStore.getState().seekTo(newPosition, duration, bookId);
   }, [position, duration, bookId]);
 
   const handleSkipForward = useCallback(() => {
     haptics.selection();
     const newPosition = Math.min(duration, position + 30);
-    // Use seeking store for proper position tracking
     useSeekingStore.getState().seekTo(newPosition, duration, bookId);
   }, [position, duration, bookId]);
 
@@ -151,36 +142,39 @@ export function GlobalMiniPlayer() {
     togglePlayer?.();
   }, [togglePlayer]);
 
-  // Swipe up gesture to open full player
+  const handleCloseMiniPlayer = useCallback(() => {
+    haptics.selection();
+    cleanup();
+  }, [cleanup]);
+
+  // Swipe gestures: up to open full player, down to close and save progress
   const panGesture = Gesture.Pan()
     .onUpdate((event) => {
       'worklet';
-      if (event.translationY < 0) {
-        translateY.value = event.translationY;
-      }
+      translateY.value = event.translationY;
     })
     .onEnd((event) => {
       'worklet';
-      if (event.translationY < SWIPE_THRESHOLD) {
+      if (event.translationY < SWIPE_UP_THRESHOLD) {
         runOnJS(handleOpenPlayer)();
+      } else if (event.translationY > SWIPE_DOWN_THRESHOLD) {
+        runOnJS(handleCloseMiniPlayer)();
       }
       translateY.value = withTiming(0, { duration: 150 });
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: Math.min(0, translateY.value * 0.3) }],
+    transform: [{ translateY: translateY.value < 0
+      ? Math.min(0, translateY.value * 0.3)
+      : Math.min(translateY.value * 0.5, 30) }],
   }));
 
   // Determine if mini player should be hidden
-  // Note: We ALWAYS render the full structure to prevent Android SafeAreaProvider crash
-  // Just hide it visually when needed using opacity and pointerEvents
-  const hiddenRoutes = ['ReadingHistoryWizard', 'MoodDiscovery', 'MoodResults', 'PreferencesOnboarding'];
+  const hiddenRoutes = ['ReadingHistoryWizard', 'MoodDiscovery', 'MoodResults', 'PreferencesOnboarding', 'SpinePlayground'];
   const shouldHide = !currentBook || isPlayerVisible || hiddenRoutes.includes(currentRouteName);
 
   const title = currentBook ? getTitle(currentBook) : '';
 
-  // Always render full structure to prevent Android SafeAreaProvider crash
-  // Hide visually when shouldHide is true
   return (
     <View
       style={[styles.wrapper, shouldHide && styles.hidden]}
@@ -190,95 +184,69 @@ export function GlobalMiniPlayer() {
         <Animated.View
           style={[
             styles.container,
-            {
-              paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
-              backgroundColor: colors.white,
-              borderTopColor: colors.grayLine,
-            },
+            { paddingBottom: insets.bottom > 0 ? insets.bottom : scale(12) },
             animatedStyle,
           ]}
         >
-        {/* Scrubber */}
-        <View style={styles.scrubberContainer}>
-          {/* Track */}
-          <View style={[styles.scrubberTrack, { backgroundColor: colors.grayLine }]}>
-            {/* Fill */}
-            <Animated.View
-              style={[
-                styles.scrubberFill,
-                { backgroundColor: colors.black, width: `${duration > 0 ? Math.min(1, Math.max(0, position / duration)) * 100 : 0}%` as any }
-              ]}
-            />
+          {/* Controls Row */}
+          <View style={styles.controlsRow}>
+            {/* Book Info - tap to open player */}
+            <Pressable style={styles.infoContainer} onPress={handleOpenPlayer}>
+              <Text style={styles.bookTitle} numberOfLines={1}>{title}</Text>
+              <Text style={styles.chapterName} numberOfLines={1}>{chapterName}</Text>
+            </Pressable>
+
+            {/* Buttons */}
+            <View style={styles.buttonsContainer}>
+              {/* Skip Back 15s */}
+              <TouchableOpacity
+                style={styles.skipButton}
+                onPress={handleSkipBack}
+              >
+                <RewindIcon color={secretLibraryColors.white} size={16} />
+              </TouchableOpacity>
+
+              {/* Skip Forward 30s */}
+              <TouchableOpacity
+                style={styles.skipButton}
+                onPress={handleSkipForward}
+              >
+                <FastForwardIcon color={secretLibraryColors.white} size={16} />
+              </TouchableOpacity>
+
+              {/* Play/Pause */}
+              <TouchableOpacity
+                style={styles.playButton}
+                onPress={handlePlayPause}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size={18} color={secretLibraryColors.black} />
+                ) : isBuffering ? (
+                  <View style={styles.bufferingContainer}>
+                    <ActivityIndicator size={32} color={secretLibraryColors.black} style={styles.bufferingSpinner} />
+                    {isPlaying ? (
+                      <PauseIcon color={secretLibraryColors.black} size={12} />
+                    ) : (
+                      <PlayIcon color={secretLibraryColors.black} size={12} />
+                    )}
+                  </View>
+                ) : isPlaying ? (
+                  <PauseIcon color={secretLibraryColors.black} size={18} />
+                ) : (
+                  <PlayIcon color={secretLibraryColors.black} size={18} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-          {/* Handle */}
-          <Animated.View
-            style={[
-              styles.scrubberHandle,
-              { backgroundColor: colors.black, left: `${duration > 0 ? Math.min(1, Math.max(0, position / duration)) * 100 : 0}%` as any }
-            ]}
-          />
-        </View>
-
-        {/* Controls Row */}
-        <View style={styles.controlsRow}>
-          {/* Book Info - tap to open player */}
-          <Pressable style={styles.infoContainer} onPress={handleOpenPlayer}>
-            <Text style={[styles.bookTitle, { color: colors.black }]} numberOfLines={1}>{title}</Text>
-            <Text style={[styles.chapterName, { color: colors.gray }]} numberOfLines={1}>{chapterName}</Text>
-          </Pressable>
-
-          {/* Buttons */}
-          <View style={styles.buttonsContainer}>
-            {/* Skip Back 15s */}
-            <TouchableOpacity
-              style={[styles.skipButton, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
-              onPress={handleSkipBack}
-            >
-              <RewindIcon color={colors.black} size={14} />
-            </TouchableOpacity>
-
-            {/* Skip Forward 30s */}
-            <TouchableOpacity
-              style={[styles.skipButton, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
-              onPress={handleSkipForward}
-            >
-              <FastForwardIcon color={colors.black} size={14} />
-            </TouchableOpacity>
-
-            {/* Play/Pause */}
-            <TouchableOpacity
-              style={[styles.playButton, { backgroundColor: colors.black }]}
-              onPress={handlePlayPause}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator size={14} color={colors.white} />
-              ) : isBuffering ? (
-                // Buffering: show spinner with small icon
-                <View style={styles.bufferingContainer}>
-                  <ActivityIndicator size={28} color={colors.white} style={styles.bufferingSpinner} />
-                  {isPlaying ? (
-                    <PauseIcon color={colors.white} size={10} />
-                  ) : (
-                    <PlayIcon color={colors.white} size={10} />
-                  )}
-                </View>
-              ) : isPlaying ? (
-                <PauseIcon color={colors.white} size={14} />
-              ) : (
-                <PlayIcon color={colors.white} size={14} />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Animated.View>
-    </GestureDetector>
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
 
-/** Height of the mini player for layout calculations */
-export const GLOBAL_MINI_PLAYER_HEIGHT = scale(130);
+/** Height of the mini player for layout calculations (includes safe area estimate) */
+export const GLOBAL_MINI_PLAYER_HEIGHT = scale(110);
 
 // =============================================================================
 // STYLES
@@ -298,41 +266,9 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   container: {
-    backgroundColor: staticColors.grayLight,
-    borderTopWidth: 1,
-    borderTopColor: staticColors.grayLine,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-
-  // Scrubber
-  scrubberContainer: {
-    height: SCRUBBER_HEIGHT,
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  scrubberTrack: {
-    width: '100%',
-    height: TRACK_HEIGHT,
-    backgroundColor: staticColors.grayLine,
-    borderRadius: TRACK_HEIGHT / 2,
-  },
-  scrubberFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: TRACK_HEIGHT,
-    backgroundColor: staticColors.black,
-    borderRadius: TRACK_HEIGHT / 2,
-  },
-  scrubberHandle: {
-    position: 'absolute',
-    top: (SCRUBBER_HEIGHT - HANDLE_SIZE) / 2,
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-    backgroundColor: staticColors.black,
-    borderRadius: HANDLE_SIZE / 2,
-    marginLeft: -HANDLE_SIZE / 2,
+    backgroundColor: MINI_PLAYER_BG,
+    paddingHorizontal: scale(20),
+    paddingTop: scale(16),
   },
 
   // Controls Row
@@ -346,42 +282,43 @@ const styles = StyleSheet.create({
   infoContainer: {
     flex: 1,
     flexDirection: 'column',
-    gap: 2,
-    marginRight: 12,
+    gap: scale(2),
+    marginRight: scale(16),
   },
   bookTitle: {
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-    fontSize: 13,
-    fontWeight: '600',
-    color: staticColors.black,
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(18),
+    color: secretLibraryColors.white,
   },
   chapterName: {
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-    fontSize: 11,
-    color: staticColors.gray,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(13),
+    fontStyle: 'italic',
+    color: secretLibraryColors.gray,
   },
 
   // Buttons
   buttonsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: scale(8),
   },
   skipButton: {
-    width: 40,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: staticColors.grayLine,
-    backgroundColor: staticColors.grayLight,
+    height: scale(38),
+    paddingHorizontal: scale(16),
+    borderRadius: scale(19),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   playButton: {
-    width: 40,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: staticColors.black,
+    height: scale(38),
+    paddingHorizontal: scale(22),
+    borderRadius: scale(19),
+    backgroundColor: secretLibraryColors.white,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },

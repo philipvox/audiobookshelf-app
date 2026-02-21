@@ -67,21 +67,30 @@ export function useDownloadStatus(itemId: string) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     setIsLoading(true);
 
     // Get initial status
     downloadManager.getDownloadStatus(itemId).then((s) => {
-      setStatus(s);
-      setIsLoading(false);
+      if (mounted) {
+        setStatus(s);
+        setIsLoading(false);
+      }
+    }).catch(() => {
+      if (mounted) setIsLoading(false);
     });
 
     // Subscribe to updates
     const unsubscribe = downloadManager.subscribe((tasks) => {
+      if (!mounted) return;
       const task = tasks.find((t) => t.itemId === itemId);
       setStatus(task || null);
     });
 
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, [itemId]);
 
   return {
@@ -106,21 +115,26 @@ export function useDownloadProgress(itemId: string) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    let mounted = true;
+
     // Get initial progress
     downloadManager.getDownloadStatus(itemId).then((status) => {
-      if (status) {
+      if (mounted && status) {
         setProgress(status.progress);
       }
-    });
+    }).catch(() => {});
 
     // Subscribe to progress updates
     const unsubscribe = downloadManager.subscribeToProgress((id, p) => {
-      if (id === itemId) {
+      if (mounted && id === itemId) {
         setProgress(p);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, [itemId]);
 
   return progress;
@@ -134,19 +148,29 @@ export function useIsOfflineAvailable(itemId: string) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     setIsLoading(true);
+
     downloadManager.isDownloaded(itemId).then((downloaded) => {
-      setIsAvailable(downloaded);
-      setIsLoading(false);
+      if (mounted) {
+        setIsAvailable(downloaded);
+        setIsLoading(false);
+      }
+    }).catch(() => {
+      if (mounted) setIsLoading(false);
     });
 
     // Subscribe to updates
     const unsubscribe = downloadManager.subscribe((tasks) => {
+      if (!mounted) return;
       const task = tasks.find((t) => t.itemId === itemId);
       setIsAvailable(task?.status === 'complete');
     });
 
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, [itemId]);
 
   return { isAvailable, isLoading };

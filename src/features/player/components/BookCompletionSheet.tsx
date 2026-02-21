@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { BookOpen, CheckCircle, Check, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePlayerStore } from '../stores/playerStore';
+import { usePlayerStore } from '../stores';
 import { getCoverUrl } from '@/core/cache';
 import { scale, spacing, useTheme } from '@/shared/theme';
 

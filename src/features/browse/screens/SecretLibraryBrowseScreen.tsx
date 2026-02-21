@@ -13,23 +13,35 @@ import {
   ScrollView,
   RefreshControl,
   StatusBar,
+  Text,
+  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { secretLibraryColors as staticColors } from '@/shared/theme/secretLibrary';
+import { X } from 'lucide-react-native';
+import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { useSecretLibraryColors } from '@/shared/theme';
 import { useLibraryCache } from '@/core/cache';
 import { useSpineCacheStatus } from '@/features/home';
 import { logger } from '@/shared/utils/logger';
+import { scale } from '@/shared/theme';
+import { useActiveSession, useMoodSessionStore } from '@/features/mood-discovery/stores/moodSessionStore';
+import { MOODS, MOOD_FLAVORS, Mood } from '@/features/mood-discovery/types';
 
 // Components
 import { BrowseTopNav } from '../components/BrowseTopNav';
 import { TopPickHero } from '../components/TopPickHero';
 import { TasteTextList } from '../components/TasteTextList';
 import { RecentlyAddedSection } from '../components/RecentlyAddedSection';
+import { ListenAgainSection } from '../components/ListenAgainSection';
+import { BecauseYouListenedSection } from '../components/BecauseYouListenedSection';
+import { RecentSeriesSection } from '../components/RecentSeriesSection';
 import { SeriesGallery } from '../components/SeriesGallery';
+import { CollectionsSection } from '../components/CollectionsSection';
 import { AuthorsTextList } from '../components/AuthorsTextList';
 import { BrowseGrid } from '../components/BrowseGrid';
 import { BrowseFooter } from '../components/BrowseFooter';
+import { ContentFilterSheet } from '../components/ContentFilterSheet';
+import { TagFilterSheet } from '../components/TagFilterSheet';
 import { ScreenLoadingOverlay } from '@/shared/components';
 import { useNavigationWithLoading, useAutoHideLoading } from '@/shared/hooks';
 
@@ -40,8 +52,9 @@ const PERF_TAG = '[Browse Perf]';
 const MINI_PLAYER_HEIGHT = 80;
 
 export function SecretLibraryBrowseScreen() {
-  const renderStart = useRef(Date.now());
   const [mounted, setMounted] = useState(false);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [tagFilterSheetVisible, setTagFilterSheetVisible] = useState(false);
 
   const insets = useSafeAreaInsets();
   const { navigateWithLoading, navigation } = useNavigationWithLoading();
@@ -49,18 +62,26 @@ export function SecretLibraryBrowseScreen() {
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
-  const isDarkMode = colors.isDark;
 
-  // Data hooks - measure time
-  const hookStart = Date.now();
+  // Mood session hooks
+  const activeSession = useActiveSession();
+  const clearSession = useMoodSessionStore((s) => s.clearSession);
+
+  // Get mood and flavor labels for display
+  const moodLabel = activeSession?.mood
+    ? MOODS.find(m => m.id === activeSession.mood)?.label || activeSession.mood
+    : null;
+  const flavorLabel = activeSession?.mood && activeSession?.flavor
+    ? MOOD_FLAVORS[activeSession.mood as Mood]?.find(f => f.id === activeSession.flavor)?.label || activeSession.flavor
+    : null;
+
+  // Data hooks
   const { refreshCache, isLoading: cacheLoading } = useLibraryCache();
-  const { isPopulated: spineCacheReady, cacheSize: spineCacheSize } = useSpineCacheStatus();
-  const hookTime = Date.now() - hookStart;
+  const { isPopulated: spineCacheReady } = useSpineCacheStatus();
 
-  // Log mount timing
+  // Set mounted on first render
   useEffect(() => {
-    const mountTime = Date.now() - renderStart.current;
-    logger.debug(`${PERF_TAG} Screen mounted in ${mountTime}ms (hooks: ${hookTime}ms)`);
+    logger.debug(`${PERF_TAG} Screen mounted`);
     setMounted(true);
 
     return () => {
@@ -71,7 +92,17 @@ export function SecretLibraryBrowseScreen() {
   // Hide global loading when data is ready AND screen is focused
   // This is essential for tab screens that stay mounted
   const isDataReady = mounted && spineCacheReady && !cacheLoading;
-  useAutoHideLoading(isDataReady);
+  useAutoHideLoading(isDataReady, { debug: false, debugTag: 'BrowsePage' });
+
+  // Safety timeout - force hide loading after 5 seconds if something is stuck
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      import('@/shared/stores/globalLoadingStore').then(({ globalLoading }) => {
+        globalLoading.hide();
+      });
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, []);
 
   // Refresh handler
   const handleRefresh = useCallback(async () => {
@@ -115,6 +146,14 @@ export function SecretLibraryBrowseScreen() {
     navigateWithLoading('SeriesList');
   }, [navigateWithLoading]);
 
+  const handleCollectionPress = useCallback((collectionId: string) => {
+    navigation.navigate('CollectionDetail', { collectionId });
+  }, [navigation]);
+
+  const handleViewAllCollections = useCallback(() => {
+    navigateWithLoading('CollectionsList');
+  }, [navigateWithLoading]);
+
   const handleViewAllAuthors = useCallback(() => {
     navigateWithLoading('AuthorsList');
   }, [navigateWithLoading]);
@@ -139,6 +178,26 @@ export function SecretLibraryBrowseScreen() {
         break;
     }
   }, [navigateWithLoading]);
+
+  const handleClearMoodSession = useCallback(() => {
+    clearSession();
+  }, [clearSession]);
+
+  const handleKidsFilterPress = useCallback(() => {
+    setFilterSheetVisible(true);
+  }, []);
+
+  const handleCloseFilterSheet = useCallback(() => {
+    setFilterSheetVisible(false);
+  }, []);
+
+  const handleTagFilterPress = useCallback(() => {
+    setTagFilterSheetVisible(true);
+  }, []);
+
+  const handleCloseTagFilterSheet = useCallback(() => {
+    setTagFilterSheetVisible(false);
+  }, []);
 
   const isRefreshing = cacheLoading;
 
@@ -174,14 +233,44 @@ export function SecretLibraryBrowseScreen() {
           onClose={handleClose}
           onLogoPress={handleLogoPress}
           onLogoLongPress={handleLogoLongPress}
+          onKidsFilterPress={handleKidsFilterPress}
+          onTagFilterPress={handleTagFilterPress}
         />
+
+        {/* Active Mood Session Banner */}
+        {activeSession && moodLabel && (
+          <View style={styles.moodBanner}>
+            <View style={styles.moodBannerContent}>
+              <Text style={styles.moodBannerLabel}>YOUR MOOD</Text>
+              <Text style={styles.moodBannerTitle}>
+                {flavorLabel ? `${moodLabel}: ${flavorLabel}` : moodLabel}
+              </Text>
+              <Text style={styles.moodBannerSubtitle}>
+                Recommendations tuned to your mood
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.moodBannerClose}
+              onPress={handleClearMoodSession}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <X size={scale(16)} color={staticColors.gray} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Top Pick Hero */}
         <TopPickHero onBookPress={handleBookPress} />
 
-        {/* Based on Your Taste - Hero section */}
+        {/* Newest Releases */}
         <TasteTextList
           onBookPress={handleBookPress}
+        />
+
+        {/* Because You Listened To - most recent first */}
+        <BecauseYouListenedSection
+          onBookPress={handleBookPress}
+          sourceIndex={0}
         />
 
         {/* Recently Added */}
@@ -190,10 +279,37 @@ export function SecretLibraryBrowseScreen() {
           onViewAll={handleViewAllBooks}
         />
 
+        {/* Listen Again */}
+        <ListenAgainSection
+          onBookPress={handleBookPress}
+        />
+
+        {/* More Because You Listened To sections */}
+        <BecauseYouListenedSection
+          onBookPress={handleBookPress}
+          sourceIndex={1}
+        />
+        <BecauseYouListenedSection
+          onBookPress={handleBookPress}
+          sourceIndex={2}
+        />
+
+        {/* Recent Series */}
+        <RecentSeriesSection
+          onSeriesPress={handleSeriesPress}
+        />
+
         {/* Top Authors */}
         <AuthorsTextList
           onAuthorPress={handleAuthorPress}
           onViewAll={handleViewAllAuthors}
+        />
+
+        {/* Collections */}
+        <CollectionsSection
+          onCollectionPress={handleCollectionPress}
+          onBookPress={handleBookPress}
+          onViewAll={handleViewAllCollections}
         />
 
         {/* Series Gallery */}
@@ -210,6 +326,18 @@ export function SecretLibraryBrowseScreen() {
         {/* Footer */}
         <BrowseFooter />
       </ScrollView>
+
+      {/* Kids Filter Sheet */}
+      <ContentFilterSheet
+        visible={filterSheetVisible}
+        onClose={handleCloseFilterSheet}
+      />
+
+      {/* Tag Filter Sheet */}
+      <TagFilterSheet
+        visible={tagFilterSheetVisible}
+        onClose={handleCloseTagFilterSheet}
+      />
     </View>
   );
 }
@@ -227,5 +355,40 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  // Mood session banner
+  moodBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: staticColors.black,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  moodBannerContent: {
+    flex: 1,
+  },
+  moodBannerLabel: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: staticColors.gold,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  moodBannerTitle: {
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(18),
+    color: staticColors.white,
+    fontStyle: 'italic',
+  },
+  moodBannerSubtitle: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: staticColors.gray,
+    marginTop: 4,
+  },
+  moodBannerClose: {
+    padding: 8,
   },
 });

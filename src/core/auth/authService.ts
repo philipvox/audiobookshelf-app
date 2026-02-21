@@ -294,7 +294,7 @@ class AuthService {
         // Configure API client with stored credentials
         apiClient.configure({
           baseURL: serverUrl,
-          token: token
+          token: token,
         });
 
         return { user, serverUrl };

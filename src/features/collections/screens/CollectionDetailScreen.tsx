@@ -1,296 +1,412 @@
 /**
  * src/features/collections/screens/CollectionDetailScreen.tsx
  *
- * Collection detail screen with stacked covers hero, stats, and book list.
- * Matches dark theme design pattern.
+ * Collection detail screen styled after Series/Author/Narrator detail screens.
+ * Features dark TopNav header with white content area containing
+ * collection title, stats, and book list.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
+  ScrollView,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
-import { ChevronLeft, LayoutGrid, AlertCircle, BookOpen, Clock, CheckCircle } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Folder } from 'lucide-react-native';
 import { useCollectionDetails } from '../hooks/useCollectionDetails';
-import { BookCard } from '@/shared/components/BookCard';
-import { Loading } from '@/shared/components/Loading';
-import { SkullRefreshControl } from '@/shared/components';
+import { BookIcon, TopNav, TopNavSearchIcon, TopNavCloseIcon, CollapsibleSection } from '@/shared/components';
 import { apiClient } from '@/core/api';
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale, wp, useTheme } from '@/shared/theme';
+import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+import { scale, useSecretLibraryColors } from '@/shared/theme';
+import { BookSpineVerticalData, ShelfRow } from '@/shared/spine';
 
-const SCREEN_WIDTH = wp(100);
-
-
-type CollectionDetailRouteParams = {
-  CollectionDetail: {
-    collectionId: string;
-  };
-};
-
-type CollectionDetailRouteProp = RouteProp<CollectionDetailRouteParams, 'CollectionDetail'>;
-
-// Format duration helper
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
+// Type guard for book media
+function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
+  return media !== undefined && 'metadata' in media && 'duration' in media;
 }
 
-// Stacked covers component for hero section
-function StackedCovers({ coverUrls, placeholderColor }: { coverUrls: string[]; placeholderColor?: string }) {
-  const coverWidth = scale(100);
-  const coverHeight = coverWidth * 1.4;
+// Helper to get book duration safely
+function getBookDuration(item: LibraryItem | null | undefined): number {
+  if (!item || !isBookMedia(item.media)) return 0;
+  return item.media.duration || 0;
+}
 
-  if (coverUrls.length === 0) {
-    return (
-      <View style={[styles.stackedCovers, { height: coverHeight + scale(20) }]}>
-        <View style={[styles.placeholderStack, { width: coverWidth, height: coverHeight }]}>
-          <LayoutGrid size={scale(40)} color={placeholderColor || 'rgba(255,255,255,0.3)'} strokeWidth={1.5} />
-        </View>
-      </View>
-    );
+// Helper to get metadata
+const getMetadata = (item: LibraryItem): BookMetadata | undefined => {
+  if (isBookMedia(item.media)) {
+    return item.media.metadata;
   }
+  return undefined;
+};
 
-  return (
-    <View style={[styles.stackedCovers, { height: coverHeight + scale(20) }]}>
-      {coverUrls.slice(0, 4).reverse().map((url, reverseIndex) => {
-        const index = Math.min(coverUrls.length - 1, 3) - reverseIndex;
-        return (
-          <View
-            key={index}
-            style={[
-              styles.stackedCover,
-              {
-                width: coverWidth,
-                height: coverHeight,
-                left: SCREEN_WIDTH / 2 - coverWidth / 2 + index * scale(15) - scale(22),
-                zIndex: 4 - index,
-                transform: [{ rotate: `${(index - 1.5) * 4}deg` }],
-              },
-            ]}
-          >
-            <Image source={url} style={styles.coverImage} contentFit="cover" />
-          </View>
-        );
-      })}
-    </View>
-  );
+// Format duration as compact string (e.g., "10h")
+function formatDurationCompact(seconds: number): string {
+  const hours = Math.round(seconds / 3600);
+  if (hours === 0) {
+    const minutes = Math.round(seconds / 60);
+    return `${minutes}m`;
+  }
+  return `${hours}h`;
+}
+
+type CollectionDetailRouteParams = {
+  CollectionDetail: { collectionId: string };
+};
+
+type FilterTab = 'all' | 'author' | 'narrator';
+type ViewMode = 'book' | 'shelf';
+
+// Convert LibraryItem to BookSpineVerticalData
+function toSpineData(item: LibraryItem, cachedData?: { backgroundColor?: string; textColor?: string }): BookSpineVerticalData {
+  const metadata = getMetadata(item);
+  const progress = item.userMediaProgress?.progress || 0;
+
+  const base: BookSpineVerticalData = {
+    id: item.id,
+    title: metadata?.title || 'Unknown',
+    author: metadata?.authorName || 'Unknown Author',
+    progress,
+    genres: metadata?.genres || [],
+    tags: isBookMedia(item.media) ? item.media.tags || [] : [],
+    duration: getBookDuration(item),
+    seriesName: metadata?.seriesName?.replace(/\s*#[\d.]+$/, '') || metadata?.series?.[0]?.name,
+  };
+
+  if (cachedData?.backgroundColor && cachedData?.textColor) {
+    return { ...base, backgroundColor: cachedData.backgroundColor, textColor: cachedData.textColor };
+  }
+  return base;
 }
 
 export function CollectionDetailScreen() {
-  const { colors } = useTheme();
-  const ACCENT = colors.accent.primary;
-  const route = useRoute<CollectionDetailRouteProp>();
+  const route = useRoute<RouteProp<CollectionDetailRouteParams, 'CollectionDetail'>>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const colors = useSecretLibraryColors();
+
   const { collectionId } = route.params;
-  const { collection, isLoading, error, refetch } = useCollectionDetails(collectionId);
-  const BG_COLOR = colors.background.tertiary;
+  const { collection, isLoading, error } = useCollectionDetails(collectionId);
+
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('book');
 
   const books = collection?.books || [];
 
-  // Calculate stats
+  // Get unique authors
+  const authorList = useMemo(() => {
+    const authorMap = new Map<string, { name: string; books: LibraryItem[] }>();
+    books.forEach(book => {
+      const metadata = getMetadata(book);
+      const authorName = metadata?.authorName || 'Unknown Author';
+      const existing = authorMap.get(authorName);
+      if (existing) {
+        existing.books.push(book);
+      } else {
+        authorMap.set(authorName, { name: authorName, books: [book] });
+      }
+    });
+    return Array.from(authorMap.values()).sort((a, b) => b.books.length - a.books.length);
+  }, [books]);
+
+  // Get unique narrators
+  const narratorList = useMemo(() => {
+    const narratorMap = new Map<string, { name: string; books: LibraryItem[] }>();
+    books.forEach(book => {
+      const metadata = getMetadata(book);
+      let rawNarrator = metadata?.narratorName || metadata?.narrators?.[0] || '';
+      rawNarrator = rawNarrator.replace(/^Narrated by\s*/i, '').trim();
+      if (rawNarrator) {
+        const firstNarrator = rawNarrator.split(',')[0].trim();
+        const existing = narratorMap.get(firstNarrator);
+        if (existing) {
+          existing.books.push(book);
+        } else {
+          narratorMap.set(firstNarrator, { name: firstNarrator, books: [book] });
+        }
+      }
+    });
+    return Array.from(narratorMap.values()).sort((a, b) => b.books.length - a.books.length);
+  }, [books]);
+
+  // Total duration
   const totalDuration = useMemo(() => {
-    return books.reduce((sum, book) => {
-      return sum + ((book.media as any)?.duration || 0);
-    }, 0);
+    return books.reduce((sum, book) => sum + getBookDuration(book), 0);
   }, [books]);
 
-  const completedBooks = useMemo(() => {
-    return books.filter((book) => {
-      const progress = (book as any).userMediaProgress?.progress || 0;
-      return progress >= 0.95;
-    }).length;
-  }, [books]);
-
-  // Get cover URLs for stacked display
-  const coverUrls = useMemo(() => {
-    return books.slice(0, 4).map((book) => apiClient.getItemCoverUrl(book.id, { width: 400, height: 400 }));
-  }, [books]);
-
-  // First book cover for background
-  const backgroundCoverUrl = coverUrls[0];
-
-  const handleBookPress = useCallback(
-    (bookId: string) => {
-      navigation.navigate('BookDetail', { id: bookId });
-    },
-    [navigation]
-  );
-
-  const handleBack = useCallback(() => {
+  const handleBack = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
       navigation.navigate('Main');
     }
+  };
+
+  const handleLogoPress = () => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  };
+
+  const handleBookPress = useCallback((bookId: string) => {
+    navigation.navigate('BookDetail', { id: bookId });
   }, [navigation]);
 
+  const handleAuthorPress = useCallback((authorName: string) => {
+    navigation.navigate('AuthorDetail', { authorName });
+  }, [navigation]);
+
+  const handleNarratorPress = useCallback((narratorName: string) => {
+    navigation.navigate('NarratorDetail', { narratorName });
+  }, [navigation]);
+
+  const handleSearchPress = useCallback(() => {
+    navigation.navigate('Search');
+  }, [navigation]);
+
+  const handleSpinePress = useCallback((book: BookSpineVerticalData) => {
+    navigation.navigate('BookDetail', { id: book.id });
+  }, [navigation]);
+
+  // Vertical book list
+  const renderVerticalBookList = (items: LibraryItem[]) => {
+    return (
+      <View style={styles.verticalList}>
+        {items.map((book) => {
+          const metadata = getMetadata(book);
+          const title = metadata?.title || 'Unknown';
+          const author = metadata?.authorName || '';
+          const duration = getBookDuration(book);
+          const durationText = formatDurationCompact(duration);
+          const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
+
+          return (
+            <Pressable
+              key={book.id}
+              style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
+              onPress={() => handleBookPress(book.id)}
+            >
+              <Image source={{ uri: coverUrl }} style={styles.verticalCover} />
+              <View style={styles.verticalInfo}>
+                <Text style={[styles.verticalTitle, { color: colors.black }]} numberOfLines={1}>
+                  {title}
+                </Text>
+                {author && (
+                  <Text style={[styles.verticalAuthor, { color: colors.gray }]} numberOfLines={1}>
+                    {author}
+                  </Text>
+                )}
+              </View>
+              <Text style={[styles.verticalDuration, { color: colors.gray }]}>{durationText}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
   // Loading state
-  if (isLoading) {
+  if (isLoading || !collection) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG_COLOR }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <Loading text="Loading collection..." color={colors.text.primary} />
-      </View>
-    );
-  }
-
-  // Error state
-  if (error || !collection) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG_COLOR }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_COLOR} />
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <ChevronLeft size={scale(24)} color={colors.text.primary} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.errorContainer}>
-          <AlertCircle size={scale(48)} color={colors.text.tertiary} strokeWidth={1.5} />
-          <Text style={[styles.errorTitle, { color: colors.text.primary }]}>Collection not found</Text>
-          <Text style={[styles.errorSubtitle, { color: colors.text.tertiary }]}>This collection may have been removed</Text>
-          <TouchableOpacity style={[styles.retryButton, { backgroundColor: ACCENT }]} onPress={refetch}>
-            <Text style={[styles.retryButtonText, { color: colors.text.inverse }]}>Try Again</Text>
-          </TouchableOpacity>
+      <View style={[styles.container, { backgroundColor: colors.white }]}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.black} />
+        <TopNav variant="dark" showLogo={true} onLogoPress={handleLogoPress} />
+        <View style={[styles.emptyContainer, { backgroundColor: colors.white }]}>
+          <Folder size={48} color={colors.gray} />
+          <Text style={[styles.emptyTitle, { color: colors.black }]}>
+            {isLoading ? 'Loading collection...' : 'Collection not found'}
+          </Text>
         </View>
       </View>
     );
   }
 
-  const renderHeader = () => (
-    <View>
-      {/* Hero Section with Background Blur */}
-      <View style={styles.heroContainer}>
-        {backgroundCoverUrl && (
-          <>
-            <Image
-              source={backgroundCoverUrl}
-              style={styles.backgroundImage}
-              contentFit="cover"
-              blurRadius={40}
-            />
-            {/* BlurView for Android (blurRadius only works on iOS) */}
-            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-            <View style={styles.backgroundOverlay} />
-          </>
-        )}
+  return (
+    <View style={[styles.container, { backgroundColor: colors.black }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.black} />
 
-        {/* Back button */}
-        <View style={[styles.header, { paddingTop: insets.top + TOP_NAV_HEIGHT + scale(10) }]}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <BlurView intensity={40} style={styles.blurButton}>
-              <ChevronLeft size={scale(22)} color={colors.text.primary} strokeWidth={2} />
-            </BlurView>
-          </TouchableOpacity>
-        </View>
+      {/* Top Navigation - dark header */}
+      <TopNav
+        variant="dark"
+        showLogo={true}
+        onLogoPress={handleLogoPress}
+        pills={[
+          {
+            key: 'all-collections',
+            label: 'All Collections',
+            icon: <Folder size={10} color={staticColors.white} />,
+            onPress: () => navigation.navigate('CollectionsList'),
+          },
+        ]}
+        circleButtons={[
+          {
+            key: 'search',
+            icon: <TopNavSearchIcon color={staticColors.white} size={14} />,
+            onPress: handleSearchPress,
+          },
+          {
+            key: 'close',
+            icon: <TopNavCloseIcon color={staticColors.white} size={14} />,
+            onPress: handleBack,
+          },
+        ]}
+      />
 
-        {/* Stacked covers */}
-        <StackedCovers coverUrls={coverUrls} placeholderColor={colors.text.tertiary} />
-
-        {/* Collection info */}
-        <View style={styles.heroInfo}>
-          <Text style={[styles.collectionName, { color: colors.text.primary }]}>{collection.name}</Text>
+      <ScrollView
+        style={[styles.scrollView, { backgroundColor: colors.white }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Collection Title Header */}
+        <View style={styles.titleHeader}>
+          <Text style={[styles.headerName, { color: colors.black }]}>{collection.name}</Text>
           {collection.description && (
-            <Text style={[styles.description, { color: colors.text.secondary }]} numberOfLines={2}>
+            <Text style={[styles.headerDescription, { color: colors.gray }]} numberOfLines={2}>
               {collection.description}
             </Text>
           )}
+          <Text style={[styles.headerStats, { color: colors.gray }]}>
+            {books.length} {books.length === 1 ? 'book' : 'books'} · {formatDurationCompact(totalDuration)}
+          </Text>
         </View>
 
-        {/* Stats row */}
-        <View style={[styles.statsRow, { backgroundColor: colors.surface.card }]}>
-          <View style={styles.statItem}>
-            <BookOpen size={scale(18)} color={ACCENT} strokeWidth={2} />
-            <View>
-              <Text style={[styles.statValue, { color: colors.text.primary }]}>{books.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Books</Text>
-            </View>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border.default }]} />
-          <View style={styles.statItem}>
-            <Clock size={scale(18)} color={ACCENT} strokeWidth={2} />
-            <View>
-              <Text style={[styles.statValue, { color: colors.text.primary }]}>{formatDuration(totalDuration)}</Text>
-              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Total</Text>
-            </View>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border.default }]} />
-          <View style={styles.statItem}>
-            <CheckCircle size={scale(18)} color={ACCENT} strokeWidth={2} />
-            <View>
-              <Text style={[styles.statValue, { color: colors.text.primary }]}>
-                {completedBooks}/{books.length}
+        {/* Tabs Row with View Toggle */}
+        <View style={styles.tabsRow}>
+          <View style={styles.tabs}>
+            <Pressable
+              style={[
+                styles.tab,
+                { borderColor: colors.grayLine },
+                activeTab === 'all' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }],
+              ]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'all' && { color: colors.white }]}>
+                All
               </Text>
-              <Text style={[styles.statLabel, { color: colors.text.tertiary }]}>Completed</Text>
-            </View>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.tab,
+                { borderColor: colors.grayLine },
+                activeTab === 'author' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }],
+              ]}
+              onPress={() => setActiveTab('author')}
+            >
+              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'author' && { color: colors.white }]}>
+                Author
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.tab,
+                { borderColor: colors.grayLine },
+                activeTab === 'narrator' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }],
+              ]}
+              onPress={() => setActiveTab('narrator')}
+            >
+              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'narrator' && { color: colors.white }]}>
+                Narrator
+              </Text>
+            </Pressable>
           </View>
+          {/* View mode toggle */}
+          <Pressable style={styles.viewToggle} onPress={() => setViewMode(viewMode === 'book' ? 'shelf' : 'book')}>
+            <Text style={[styles.toggleText, { color: colors.black }]}>
+              {viewMode === 'book' ? 'Book' : 'Shelf'}
+            </Text>
+          </Pressable>
         </View>
 
-        {/* Bottom gradient */}
-        <LinearGradient
-          colors={['transparent', BG_COLOR]}
-          style={styles.heroGradient}
-        />
-      </View>
-
-      {/* Books section header */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>Books in Collection</Text>
-      </View>
-    </View>
-  );
-
-  return (
-    <View style={[styles.container, { backgroundColor: BG_COLOR }]}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-      {books.length > 0 ? (
-        <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
-          <FlatList
-            data={books}
-            renderItem={({ item }) => (
-              <BookCard
-                book={item}
-                onPress={() => handleBookPress(item.id)}
-                showListeningProgress={true}
-              />
-            )}
-            keyExtractor={(item) => item.id}
-            ListHeaderComponent={renderHeader}
-            contentContainerStyle={[styles.listContent, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
-            showsVerticalScrollIndicator={false}
-            removeClippedSubviews={true}
-            windowSize={5}
-            maxToRenderPerBatch={5}
-            initialNumToRender={10}
-          />
-        </SkullRefreshControl>
-      ) : (
-        <>
-          {renderHeader()}
-          <View style={styles.emptyState}>
-            <BookOpen size={scale(48)} color={colors.text.tertiary} strokeWidth={1.5} />
-            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>No books yet</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.text.tertiary }]}>
-              Add books to this collection in AudiobookShelf
-            </Text>
+        {/* Content based on tab and view mode */}
+        {activeTab === 'all' && viewMode === 'shelf' && (
+          <View style={styles.groupedList}>
+            <View style={styles.groupSection}>
+              <ShelfRow books={books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+            </View>
+            {books.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No books in collection</Text>}
           </View>
-        </>
-      )}
+        )}
+
+        {activeTab === 'all' && viewMode === 'book' && (
+          <View style={styles.verticalList}>
+            {renderVerticalBookList(books)}
+            {books.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No books in collection</Text>}
+          </View>
+        )}
+
+        {activeTab === 'author' && viewMode === 'shelf' && (
+          <View style={styles.groupedList}>
+            {authorList.map((author, index) => (
+              <CollapsibleSection
+                key={author.name}
+                title={author.name}
+                count={author.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleAuthorPress(author.name)}
+              >
+                <ShelfRow books={author.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+              </CollapsibleSection>
+            ))}
+            {authorList.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No authors found</Text>}
+          </View>
+        )}
+
+        {activeTab === 'author' && viewMode === 'book' && (
+          <View style={styles.groupedList}>
+            {authorList.map((author, index) => (
+              <CollapsibleSection
+                key={author.name}
+                title={author.name}
+                count={author.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleAuthorPress(author.name)}
+              >
+                {renderVerticalBookList(author.books)}
+              </CollapsibleSection>
+            ))}
+            {authorList.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No authors found</Text>}
+          </View>
+        )}
+
+        {activeTab === 'narrator' && viewMode === 'shelf' && (
+          <View style={styles.groupedList}>
+            {narratorList.map((narrator, index) => (
+              <CollapsibleSection
+                key={narrator.name}
+                title={narrator.name}
+                count={narrator.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleNarratorPress(narrator.name)}
+              >
+                <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+              </CollapsibleSection>
+            ))}
+            {narratorList.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No narrators found</Text>}
+          </View>
+        )}
+
+        {activeTab === 'narrator' && viewMode === 'book' && (
+          <View style={styles.groupedList}>
+            {narratorList.map((narrator, index) => (
+              <CollapsibleSection
+                key={narrator.name}
+                title={narrator.name}
+                count={narrator.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleNarratorPress(narrator.name)}
+              >
+                {renderVerticalBookList(narrator.books)}
+              </CollapsibleSection>
+            ))}
+            {narratorList.length === 0 && <Text style={[styles.emptyText, { color: colors.gray }]}>No narrators found</Text>}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -298,201 +414,144 @@ export function CollectionDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor set via themeColors in JSX
   },
-  // Loading/Error states
-  loadingContainer: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: scale(16),
   },
-  loadingText: {
+  scrollContent: {
+    flexGrow: 1,
+  },
+  // Header
+  titleHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  headerName: {
+    fontFamily: secretLibraryFonts.playfair.regular,
+    fontSize: scale(32),
+    lineHeight: scale(38),
+    marginBottom: 8,
+  },
+  headerDescription: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(12),
+    lineHeight: scale(18),
+    marginBottom: 8,
+  },
+  headerStats: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Tabs
+  tabsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  tabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  tabActive: {
+    // backgroundColor and borderColor set inline
+  },
+  tabText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  viewToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  toggleText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
+  },
+  // Content
+  groupedList: {
+    flex: 1,
+  },
+  groupSection: {
+    marginBottom: 24,
+  },
+  shelfContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  spineWrapper: {
+    marginRight: 4,
+  },
+  // Vertical list
+  verticalList: {
+    paddingHorizontal: 0,
+  },
+  verticalListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  verticalCover: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: 4,
+    backgroundColor: '#262626',
+  },
+  verticalInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 12,
+  },
+  verticalTitle: {
+    fontFamily: secretLibraryFonts.playfair.regular,
     fontSize: scale(15),
-    // color set via themeColors in JSX
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(40),
-  },
-  errorTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
-    // color set via themeColors in JSX
-    marginTop: scale(16),
-    marginBottom: scale(8),
-  },
-  errorSubtitle: {
-    fontSize: scale(14),
-    // color set via themeColors in JSX
-    textAlign: 'center',
-    marginBottom: scale(20),
-  },
-  retryButton: {
-    paddingHorizontal: scale(24),
-    paddingVertical: scale(12),
-    borderRadius: scale(20),
-    // backgroundColor set via JSX
-  },
-  retryButtonText: {
-    fontSize: scale(14),
-    fontWeight: '600',
-    // color set via themeColors in JSX (text.inverse for contrast on accent backgrounds)
-  },
-  // Hero section
-  heroContainer: {
-    position: 'relative',
-    paddingBottom: scale(20),
-  },
-  backgroundImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.4,
-  },
-  backgroundOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26,26,26,0.6)',
-  },
-  header: {
-    paddingHorizontal: scale(16),
-    paddingBottom: scale(16),
-    zIndex: 10,
-  },
-  backButton: {
-    width: scale(40),
-    height: scale(40),
-  },
-  blurButton: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    // Semi-transparent glass effect - intentionally using rgba for blur overlay
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  // Stacked covers
-  stackedCovers: {
-    position: 'relative',
-    alignItems: 'center',
-    marginBottom: scale(20),
-  },
-  stackedCover: {
-    position: 'absolute',
-    borderRadius: scale(8),
-    overflow: 'hidden',
-    // Fallback background for missing covers - dark neutral
-    backgroundColor: '#262626',
-    // shadowColor must be #000 for proper shadow rendering
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  coverImage: {
-    width: '100%',
-    height: '100%',
-  },
-  placeholderStack: {
-    borderRadius: scale(8),
-    // Fallback background for missing covers - dark neutral
-    backgroundColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroInfo: {
-    paddingHorizontal: scale(20),
-    alignItems: 'center',
-    marginBottom: scale(20),
-  },
-  collectionName: {
-    fontSize: scale(24),
-    fontWeight: '700',
-    // color set via themeColors in JSX
-    textAlign: 'center',
-    marginBottom: scale(8),
-  },
-  description: {
-    fontSize: scale(14),
-    // color set via themeColors in JSX
-    textAlign: 'center',
     lineHeight: scale(20),
   },
-  // Stats row
-  statsRow: {
-    flexDirection: 'row',
+  verticalAuthor: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    marginTop: 2,
+  },
+  verticalDuration: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+  },
+  // Empty states
+  emptyContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: scale(20),
-    paddingVertical: scale(16),
-    marginHorizontal: scale(16),
-    // backgroundColor set via themeColors in JSX (surface.card)
-    borderRadius: scale(12),
-    zIndex: 5,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(8),
-    paddingHorizontal: scale(12),
-  },
-  statValue: {
-    fontSize: scale(16),
-    fontWeight: '700',
-    // color set via themeColors in JSX
-  },
-  statLabel: {
-    fontSize: scale(11),
-    // color set via themeColors in JSX
-  },
-  statDivider: {
-    width: 1,
-    height: scale(32),
-    // backgroundColor set via themeColors in JSX
-  },
-  heroGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: scale(60),
-  },
-  // Section
-  sectionHeader: {
-    paddingHorizontal: scale(16),
-    paddingTop: scale(20),
-    paddingBottom: scale(12),
-  },
-  sectionTitle: {
-    fontSize: scale(18),
-    fontWeight: '600',
-    // color set via themeColors in JSX
-  },
-  // List
-  listContent: {
-    paddingTop: 0,
-  },
-  // Empty state
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    paddingTop: scale(40),
-    paddingHorizontal: scale(40),
+    paddingHorizontal: 40,
   },
   emptyTitle: {
+    fontFamily: secretLibraryFonts.playfair.regular,
     fontSize: scale(18),
-    fontWeight: '600',
-    // color set via themeColors in JSX
-    marginTop: scale(16),
-    marginBottom: scale(8),
-  },
-  emptySubtitle: {
-    fontSize: scale(14),
-    // color set via themeColors in JSX
+    marginTop: 16,
     textAlign: 'center',
-    lineHeight: scale(20),
+  },
+  emptyText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(12),
+    textAlign: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 24,
   },
 });

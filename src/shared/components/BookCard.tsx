@@ -232,6 +232,8 @@ export function BookCard({
 
   // Get metadata
   const coverUrl = useCoverUrl(book.id);
+  // Tiny placeholder for blur-up effect (~200 bytes loads instantly)
+  const coverPlaceholderUrl = useCoverUrl(book.id, { thumb: true });
   const metadata = getBookMetadata(book);
   const title = metadata?.title || 'Untitled';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
@@ -371,12 +373,15 @@ export function BookCard({
         <View style={styles.coverContainer}>
           <Image
             source={coverUrl}
+            placeholder={coverPlaceholderUrl ? { uri: coverPlaceholderUrl } : undefined}
+            placeholderContentFit="cover"
             style={[
               styles.cover,
               !isDownloaded && !isDownloading && styles.coverNotDownloaded,
               isUnavailableOffline && styles.coverUnavailable,
             ]}
             contentFit="cover"
+            transition={200}
           />
 
           {/* Progress bar overlay at bottom of cover */}

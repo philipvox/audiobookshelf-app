@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView, FlatList, Dimensions, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -22,9 +22,11 @@ import { BookSpineVertical, BookSpineVerticalData } from './BookSpineVertical';
 import { DiscoverMoreCard, RecommendedBook } from './DiscoverMoreCard';
 import { secretLibraryColors as staticColors } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
+import { useResponsive } from '@/shared/hooks/useResponsive';
 // MIGRATED: Now using new spine system via adapter
 import { getSpineDimensions, calculateBookDimensions, hashString, MIN_TOUCH_TARGET, isLightColor, darkenColorForDisplay } from '../utils/spine/adapter';
-import { HEIGHT_SCALE } from '../utils/spine/constants';
+import { HEIGHT_SCALE, SERVER_SPINE_BOX, PROCEDURAL_SPINE_BOX } from '../utils/spine/constants';
+import { fitToBoundingBox } from '../utils/spine/core/dimensions';
 import { useSpineCacheStore } from '../stores/spineCache';
 import { haptics } from '@/core/native/haptics';
 
@@ -40,6 +42,8 @@ interface BookshelfViewProps {
   onBookPress: (book: BookSpineVerticalData) => void;
   layoutMode?: LayoutMode;
   bottomPadding?: number;
+  /** Scale factor for spine heights (1.0 = full, 0.5 = half). Default: 1.0 */
+  heightScale?: number;
   /** Recommended books to show in "Find More" card */
   recommendations?: RecommendedBook[];
   /** Callback when "Find More" card is pressed */
@@ -60,28 +64,51 @@ interface BookInfo {
 // SCREEN & SCALING - Dynamic based on device size
 // =============================================================================
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Base spine dimensions (unscaled - HEIGHT_SCALE applied via SHELF_SCALE_FACTOR)
-const BASE_MAX_HEIGHT = 450;  // Tallest genre base (Fantasy)
-const BASE_MAX_WIDTH = 200;    // Thickest (30+ hour books)
-
-// Scale factors - HEIGHT_SCALE directly controls book height
+// Base scale factors - HEIGHT_SCALE directly controls book height
 // HEIGHT_SCALE = 1.0 → normal size, 1.5 → 50% taller, etc.
-const SHELF_SCALE_FACTOR = HEIGHT_SCALE;
-const STACK_SCALE_FACTOR = HEIGHT_SCALE * 0.45;  // Stack mode is smaller
-const THICKNESS_MULTIPLIER = 1;
+const BASE_SHELF_SCALE_FACTOR = HEIGHT_SCALE;
+const BASE_STACK_SCALE_FACTOR = HEIGHT_SCALE * 0.45;  // Stack mode is smaller
 
 // Layout constants
 const SHELF_PADDING_H = 16;
-const BOOK_GAP = Math.round(8 * SHELF_SCALE_FACTOR);
+const BASE_BOOK_GAP = 8;
 const LEAN_ANGLE = 3;
 const STACK_GAP = 8;
 
-// Safety clamps - maximum dimensions even after scaling
-const SHELF_MAX_HEIGHT = SCREEN_HEIGHT * 2;
-const STACK_MAX_HEIGHT = SCREEN_HEIGHT * 2;
-const MAX_SCALED_WIDTH = 120;
+// Duration-based scaling using smooth ease-out curve
+// Range: 0.70 (0 hours) to 1.15 (30+ hours)
+// Uses square root for natural ease-out: faster growth for short books, gradual for long
+const DURATION_SCALE_MIN = 0.70;
+const DURATION_SCALE_MAX = 1.15;
+const DURATION_MAX_HOURS = 30;
+
+/**
+ * Calculate a continuous scale factor based on book duration.
+ * Uses ease-out curve (square root) for smooth, natural distribution.
+ *
+ * Example values:
+ * - 0 hours: 0.70
+ * - 1 hour: 0.78
+ * - 5 hours: 0.88
+ * - 10 hours: 0.96
+ * - 20 hours: 1.07
+ * - 30+ hours: 1.15
+ *
+ * @param durationSeconds - Book duration in seconds
+ * @returns Scale multiplier (0.70 to 1.15)
+ */
+function getDurationScale(durationSeconds: number): number {
+  const hours = Math.max(0, durationSeconds / 3600);
+
+  // Cap at max hours
+  const clampedHours = Math.min(hours, DURATION_MAX_HOURS);
+
+  // Ease-out curve using square root
+  // sqrt(t) gives faster initial growth that gradually slows
+  const t = Math.sqrt(clampedHours / DURATION_MAX_HOURS);
+
+  return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+}
 
 // Animation timing
 const DOMINO_DELAY = 25;      // ms between each book
@@ -90,13 +117,20 @@ const ENTER_DURATION = 180;   // ms for enter animation
 // Easing
 const ENTER_EASING = Easing.out(Easing.back(1.2)); // Bounce in
 
-// Debug logging (dev only)
-if (__DEV__) {
-  console.log('[BookshelfView] Screen:', SCREEN_WIDTH, 'x', SCREEN_HEIGHT);
-  console.log('[BookshelfView] SHELF_SCALE_FACTOR:', SHELF_SCALE_FACTOR.toFixed(3));
-  console.log('[BookshelfView] STACK_SCALE_FACTOR:', STACK_SCALE_FACTOR.toFixed(3));
-  console.log('[BookshelfView] Shelf max height:', Math.round(BASE_MAX_HEIGHT * SHELF_SCALE_FACTOR));
-  console.log('[BookshelfView] Stack max height:', Math.round(BASE_MAX_HEIGHT * STACK_SCALE_FACTOR));
+/**
+ * Calculate scale factors based on device type
+ * iPad uses reduced scale to fit more books on screen
+ */
+function getScaleFactors(spineScale: number) {
+  const shelfScale = BASE_SHELF_SCALE_FACTOR * spineScale;
+  const stackScale = BASE_STACK_SCALE_FACTOR * spineScale;
+  const bookGap = Math.round(BASE_BOOK_GAP * shelfScale);
+
+  return {
+    shelfScale,
+    stackScale,
+    bookGap,
+  };
 }
 
 // =============================================================================
@@ -113,6 +147,8 @@ interface StaticStackItemProps {
   spineWidth: number;
   spineHeight: number;
   onPress: (book: BookSpineVerticalData) => void;
+  shelfScale: number;
+  stackScale: number;
 }
 
 // Minimum thickness for stack mode spines (prevents invisible thin lines)
@@ -123,10 +159,12 @@ const StaticStackItem = React.memo(function StaticStackItem({
   spineWidth,
   spineHeight,
   onPress,
+  shelfScale,
+  stackScale,
 }: StaticStackItemProps) {
   // Re-scale from shelf dimensions to stack dimensions
-  // Input dimensions are scaled with SHELF_SCALE_FACTOR, convert to STACK_SCALE_FACTOR
-  const stackToShelfRatio = STACK_SCALE_FACTOR / SHELF_SCALE_FACTOR;
+  // Input dimensions are scaled with shelfScale, convert to stackScale
+  const stackToShelfRatio = stackScale / shelfScale;
   const scaledWidth = Math.max(spineWidth * stackToShelfRatio, STACK_MIN_THICKNESS);  // Enforce minimum thickness
   const scaledHeight = spineHeight * stackToShelfRatio;
 
@@ -229,11 +267,15 @@ const AnimatedBookWrapper = React.memo(function AnimatedBookWrapper({
   }, [phase, index, totalBooks, info.leanAngle]);
 
   // Animated style - shelf mode only (upright books)
+  // Add extra horizontal margin for leaning books to prevent overlap
+  const leanMargin = Math.abs(info.leanAngle) > 0 ? Math.abs(info.leanAngle) * 1.5 : 0;
+
   const containerStyle = useAnimatedStyle(() => {
     return {
       width: info.width,
       height: info.height,
       opacity: opacity.value,
+      marginHorizontal: leanMargin,
       transform: [
         { translateY: translateY.value },
         { rotate: `${info.leanAngle}deg` },
@@ -269,6 +311,7 @@ export function BookshelfView({
   onBookPress,
   layoutMode = 'shelf',
   bottomPadding = 0,
+  heightScale: heightScaleProp = 1.0,
   recommendations = [],
   onDiscoverPress,
   onRecommendationPress,
@@ -278,6 +321,15 @@ export function BookshelfView({
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
+
+  // Responsive layout for iPad
+  const responsive = useResponsive();
+  const { shelfScale: baseShelfScale, stackScale, bookGap } = useMemo(
+    () => getScaleFactors(responsive.spineScale),
+    [responsive.spineScale]
+  );
+  // Apply optional height scale (e.g. 0.5 for half-height series sections)
+  const shelfScale = baseShelfScale * heightScaleProp;
 
   // Animation state
   const [phase, setPhase] = useState<AnimationPhase>('idle');
@@ -328,7 +380,15 @@ export function BookshelfView({
   // Subscribe to colorVersion to trigger re-render when colors are extracted
   const colorVersion = useSpineCacheStore((state) => state.colorVersion);
 
+  // Server spine settings - subscribe to lightweight version counter instead of the full
+  // dimensions object to avoid re-rendering every spine when ANY book's dimensions change
+  const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const serverDimsVersion = useSpineCacheStore((state) => state.serverSpineDimensionsVersion);
+  const isHydrated = useSpineCacheStore((state) => state.isHydrated);
+
   // Calculate book dimensions - uses cache when available
+  // Re-calculates when responsive scale changes (iPad vs phone)
+  // Server spines use fixed height for consistent shelf alignment
   const bookInfo = useMemo(() => {
     let nextLeanAt = 5;
     const totalBooks = books.length;
@@ -338,32 +398,48 @@ export function BookshelfView({
       // Try to get from cache first
       const cached = getSpineData(book.id);
 
+      // Read dimensions via getState() - version counter in deps triggers recalc
+      const allDims = useSpineCacheStore.getState().serverSpineDimensions;
+      const cachedServerDims = isHydrated ? allDims[book.id] : undefined;
+
       let dims;
       let bookHash: number;
 
-      if (cached) {
-        // Use cached dimensions with safety clamping
-        const scaledWidth = Math.min(
-          cached.baseWidth * SHELF_SCALE_FACTOR * THICKNESS_MULTIPLIER,
-          MAX_SCALED_WIDTH
-        );
-        const scaledHeight = Math.min(
-          cached.baseHeight * SHELF_SCALE_FACTOR,
-          SHELF_MAX_HEIGHT
-        );
-        const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - scaledWidth) / 2));
-        dims = {
-          width: scaledWidth,
-          height: scaledHeight,
-          touchPadding,
-        };
+      // Duration-based scaling applied to bounding box
+      const duration = book.duration || 6 * 60 * 60;
+      const durationScale = getDurationScale(duration);
+
+      // Server spines: Scale to fit within max bounds while preserving exact aspect ratio
+      // Unlike procedural spines, server spines have actual artwork that must not be distorted
+      if (useServerSpines && cachedServerDims) {
+        const { width: serverWidth, height: serverHeight } = cachedServerDims;
+        bookHash = cached?.hash ?? hashString(book.id);
+
+        const maxW = SERVER_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
+        const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const { width, height } = fitToBoundingBox(serverWidth, serverHeight, maxW, maxH);
+        const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
+
+        dims = { width, height, touchPadding };
+
+      } else if (cached) {
+        // Use cached procedural dimensions — bounding-box fit preserves aspect ratio
         bookHash = cached.hash;
+
+        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
+        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const { width, height } = fitToBoundingBox(cached.baseWidth, cached.baseHeight, maxW, maxH);
+        const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
+
+        dims = { width, height, touchPadding };
       } else {
         // Fallback: calculate on the fly
         const genres = book.genres || [];
         const tags = book.tags || [];
-        const duration = book.duration || 6 * 60 * 60;
         const hasGenreData = genres.length > 0 || tags.length > 0;
+
+        let baseWidth: number;
+        let baseHeight: number;
 
         if (hasGenreData) {
           const calculated = calculateBookDimensions({
@@ -373,28 +449,20 @@ export function BookshelfView({
             duration,
             seriesName: book.seriesName,
           });
-          const scaledWidth = Math.min(
-            calculated.width * SHELF_SCALE_FACTOR * THICKNESS_MULTIPLIER,
-            MAX_SCALED_WIDTH
-          );
-          const scaledHeight = Math.min(
-            calculated.height * SHELF_SCALE_FACTOR,
-            SHELF_MAX_HEIGHT
-          );
-          const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - scaledWidth) / 2));
-          dims = {
-            width: scaledWidth,
-            height: scaledHeight,
-            touchPadding
-          };
+          baseWidth = calculated.width;
+          baseHeight = calculated.height;
         } else {
           const baseDims = getSpineDimensions(book.id, genres, duration, book.seriesName);
-          dims = {
-            width: Math.min(baseDims.width * SHELF_SCALE_FACTOR * THICKNESS_MULTIPLIER, MAX_SCALED_WIDTH),
-            height: Math.min(baseDims.height * SHELF_SCALE_FACTOR, SHELF_MAX_HEIGHT),
-            touchPadding: baseDims.touchPadding,
-          };
+          baseWidth = baseDims.width;
+          baseHeight = baseDims.height;
         }
+
+        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
+        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const { width, height } = fitToBoundingBox(baseWidth, baseHeight, maxW, maxH);
+        const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
+
+        dims = { width, height, touchPadding };
         bookHash = hashString(book.id);
       }
 
@@ -412,7 +480,7 @@ export function BookshelfView({
 
       return { ...dims, leanAngle, shouldLean };
     });
-  }, [books, getSpineData]);
+  }, [books, getSpineData, shelfScale, useServerSpines, serverDimsVersion, isHydrated]);
 
   // Enrich books with cached colors for efficient rendering
   // Apply darkening to light colors for the grey background theme
@@ -463,62 +531,121 @@ export function BookshelfView({
 
   const isStackMode = displayMode === 'stack';
 
+  // Fast inline dimension getter for stack mode (avoids pre-computing all 200+ books)
+  const getStackItemDims = useCallback((book: BookSpineVerticalData) => {
+    const duration = book.duration || 6 * 60 * 60;
+    const durationScale = getDurationScale(duration);
+
+    // Read via getState() - version counter in deps triggers recalc
+    const allDims = useSpineCacheStore.getState().serverSpineDimensions;
+    const serverDims = allDims[book.id];
+    if (useServerSpines && serverDims) {
+      const maxW = SERVER_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
+      const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+      return fitToBoundingBox(serverDims.width, serverDims.height, maxW, maxH);
+    }
+    // Fallback to cache or default
+    const cached = getSpineData(book.id);
+    if (cached) {
+      const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
+      const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+      return fitToBoundingBox(cached.baseWidth, cached.baseHeight, maxW, maxH);
+    }
+    // Default fallback
+    return { width: 40, height: 300, scaleFactor: 1 };
+  }, [serverDimsVersion, useServerSpines, shelfScale, getSpineData]);
+
+  // Memoized render function for FlatList (stack mode) - computes dimensions inline
+  const renderStackItem = useCallback(({ item }: { item: BookSpineVerticalData }) => {
+    const dims = getStackItemDims(item);
+    return (
+      <StaticStackItem
+        book={item}
+        spineWidth={dims.width}
+        spineHeight={dims.height}
+        onPress={handlePress}
+        shelfScale={shelfScale}
+        stackScale={stackScale}
+      />
+    );
+  }, [getStackItemDims, handlePress, shelfScale, stackScale]);
+
+  const keyExtractor = useCallback((item: BookSpineVerticalData) => item.id, []);
+
+  // Estimated item height for FlatList optimization
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: 50, // Approximate stack item height
+    offset: 50 * index,
+    index,
+  }), []);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.white }, !isStackMode && { paddingBottom: bottomPadding }]}>
-      <ScrollView
-        horizontal={!isStackMode}
-        style={styles.scrollView}
-        contentContainerStyle={[
-          isStackMode ? styles.scrollContentStack : styles.scrollContentShelf,
-          !isStackMode && {
-            paddingRight: insets.right + SHELF_PADDING_H,
-            paddingBottom: insets.bottom,
-          },
-          isStackMode && {
-            paddingBottom: insets.bottom + bottomPadding + 20,
-            paddingTop: 20,
-          },
-        ]}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Shelf mode: Animated upright spines */}
-        {!isStackMode && enrichedBooks.map((book, index) => (
-          <AnimatedBookWrapper
-            key={book.id}
-            book={book}
-            info={bookInfo[index]}
-            index={index}
-            totalBooks={enrichedBooks.length}
-            phase={phase}
-            isActive={activeIndex === index}
-            onPress={handlePress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-          />
-        ))}
+      {/* Stack mode: Virtualized FlatList for performance with 200+ items */}
+      {isStackMode ? (
+        <FlatList
+          data={enrichedBooks}
+          renderItem={renderStackItem}
+          keyExtractor={keyExtractor}
+          getItemLayout={getItemLayout}
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContentStack,
+            {
+              paddingBottom: insets.bottom + bottomPadding + 20,
+              paddingTop: 20,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          // Performance optimizations for large lists
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={15}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={15}
+          windowSize={5}
+        />
+      ) : (
+        <ScrollView
+          horizontal
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContentShelf,
+            {
+              paddingRight: insets.right + SHELF_PADDING_H,
+              paddingBottom: insets.bottom,
+              gap: bookGap,
+            },
+          ]}
+          showsHorizontalScrollIndicator={false}
+          removeClippedSubviews
+        >
+          {/* Shelf mode: Animated upright spines */}
+          {enrichedBooks.map((book, index) => (
+            <AnimatedBookWrapper
+              key={book.id}
+              book={book}
+              info={bookInfo[index]}
+              index={index}
+              totalBooks={enrichedBooks.length}
+              phase={phase}
+              isActive={activeIndex === index}
+              onPress={handlePress}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+            />
+          ))}
 
-        {/* Stack mode: Static horizontal spines (DiscoverMoreCard approach) */}
-        {isStackMode && enrichedBooks.map((book, index) => (
-          <StaticStackItem
-            key={book.id}
-            book={book}
-            spineWidth={bookInfo[index]?.width || 40}
-            spineHeight={bookInfo[index]?.height || 300}
-            onPress={handlePress}
-          />
-        ))}
-
-        {/* "Find More Books" card - only in shelf mode */}
-        {!isStackMode && onDiscoverPress && recommendations.length > 0 && (
-          <DiscoverMoreCard
-            recommendations={recommendations}
-            onPress={onDiscoverPress}
-            onBookPress={onRecommendationPress}
-            height={bookInfo[0]?.height || 320}
-          />
-        )}
-      </ScrollView>
+          {/* "Find More Books" card - only in shelf mode */}
+          {onDiscoverPress && recommendations.length > 0 && (
+            <DiscoverMoreCard
+              recommendations={recommendations}
+              onPress={onDiscoverPress}
+              onBookPress={onRecommendationPress}
+              height={bookInfo[0]?.height || 320}
+            />
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -541,7 +668,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingLeft: SHELF_PADDING_H,
     paddingBottom: scale(40),
-    gap: BOOK_GAP,
+    // gap is set dynamically via inline style for iPad responsiveness
     minHeight: '100%',
   },
   scrollContentStack: {
@@ -553,7 +680,7 @@ const styles = StyleSheet.create({
     gap: STACK_GAP,
   },
   bookContainer: {
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   // Static stack item styles (DiscoverMoreCard approach)

@@ -16,10 +16,12 @@ import {
   StatusBar,
   TextInput,
   Pressable,
+  Dimensions,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLibraryCache, getAllSeries } from '@/core/cache';
+import { Image } from 'expo-image';
+import { useLibraryCache, getAllSeries, getSpineUrl } from '@/core/cache';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { Icon } from '@/shared/components/Icon';
 import { SeriesHeartButton, SkullRefreshControl, TopNav, TopNavBackIcon, BookIcon, ScreenLoadingOverlay } from '@/shared/components';
@@ -27,17 +29,46 @@ import { globalLoading } from '@/shared/stores/globalLoadingStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useTheme } from '@/shared/theme';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-// MIGRATED: Now using new spine system via adapter
-import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { hashString, SPINE_COLOR_PALETTE } from '@/shared/spine';
+import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { fitToBoundingBox } from '@/features/home/utils/spine/core/dimensions';
 
 const PADDING = 16;
 const MAX_PROGRESS_DOTS = 8;
-const MAX_COLOR_DOTS = 8;
+const MAX_SPINES = 12;
+const MINI_SPINE_MAX_HEIGHT = scale(54);
+const MINI_SPINE_MAX_WIDTH = scale(18);
+const DEFAULT_SPINE_WIDTH = 80;
+const DEFAULT_SPINE_HEIGHT = 1200;
+const SPINE_GAP = 1;
+const MAX_SPINES_TOTAL_WIDTH = Math.round(Dimensions.get('window').width * 0.35);
 
 // Get deterministic color for a book based on its ID
 function getBookDotColor(bookId: string): string {
   const hash = hashString(bookId);
   return SPINE_COLOR_PALETTE[hash % SPINE_COLOR_PALETTE.length];
+}
+
+// Build spine items with proportional dimensions, culling when too wide
+function buildSpineItems(
+  bookIds: string[],
+  serverDims: Record<string, { width: number; height: number; cachedAt: number }>,
+) {
+  const result: { id: string; url: string; color: string; width: number; height: number }[] = [];
+  let totalWidth = 0;
+
+  for (const id of bookIds.slice(0, MAX_SPINES)) {
+    const cached = serverDims[id];
+    const srcW = cached?.width ?? DEFAULT_SPINE_WIDTH;
+    const srcH = cached?.height ?? DEFAULT_SPINE_HEIGHT;
+    const { width, height } = fitToBoundingBox(srcW, srcH, MINI_SPINE_MAX_WIDTH, MINI_SPINE_MAX_HEIGHT);
+    const nextTotal = totalWidth + width + (result.length > 0 ? SPINE_GAP : 0);
+    if (nextTotal > MAX_SPINES_TOTAL_WIDTH) break;
+    totalWidth = nextTotal;
+    result.push({ id, url: getSpineUrl(id), color: getBookDotColor(id), width, height });
+  }
+
+  return result;
 }
 
 // Progress dot component
@@ -128,6 +159,7 @@ export function SeriesListScreen() {
   const { refreshCache, isLoaded } = useLibraryCache();
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
   const hideSingleBookSeries = useMyLibraryStore((state) => state.hideSingleBookSeries);
+  const serverDims = useSpineCacheStore((s) => s.serverSpineDimensions);
 
   // Cache favorites for sorting - only update when screen is focused
   const [cachedFavorites, setCachedFavorites] = useState<string[]>(favoriteSeriesNames);
@@ -215,6 +247,10 @@ export function SeriesListScreen() {
     }
   }, [refreshCache]);
 
+  const handleLogoPress = useCallback(() => {
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
+
   if (!isLoaded) {
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
@@ -225,10 +261,6 @@ export function SeriesListScreen() {
       </View>
     );
   }
-
-  const handleLogoPress = useCallback(() => {
-    navigation.navigate('Main', { screen: 'HomeTab' });
-  }, [navigation]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
@@ -316,9 +348,9 @@ export function SeriesListScreen() {
         renderItem={({ item: series }) => {
           const isFavorite = favoriteSeriesNames.includes(series.name);
 
-          // Get color dots from book IDs
-          const bookIds = series.books.slice(0, MAX_COLOR_DOTS).map(b => b.id);
-          const colorDots = bookIds.map(getBookDotColor);
+          // Build spine items from book IDs
+          const bookIds = series.books.map(b => b.id);
+          const spineItems = buildSpineItems(bookIds, serverDims);
 
           // Calculate progress
           const progress = getSeriesProgress(series.books);
@@ -392,7 +424,7 @@ export function SeriesListScreen() {
                 )}
               </View>
 
-              {/* Right side: Color dots + complete badge */}
+              {/* Right side: Spine images + complete badge */}
               <View style={styles.seriesCardRight}>
                 {/* Complete badge */}
                 {isComplete && (
@@ -401,13 +433,20 @@ export function SeriesListScreen() {
                   </View>
                 )}
 
-                {/* Color Dots */}
-                <View style={styles.colorDotsRow}>
-                  {colorDots.map((color, index) => (
+                {/* Mini spines */}
+                <View style={styles.spinesRow}>
+                  {spineItems.map(({ id, url, color, width, height }) => (
                     <View
-                      key={`${index}-${color}`}
-                      style={[styles.colorDot, { backgroundColor: color }]}
-                    />
+                      key={id}
+                      style={[styles.spineItem, { backgroundColor: color, width, height }]}
+                    >
+                      <Image
+                        source={{ uri: url }}
+                        style={styles.spineImage}
+                        cachePolicy="memory-disk"
+                        contentFit="cover"
+                      />
+                    </View>
                   ))}
                 </View>
               </View>
@@ -417,7 +456,8 @@ export function SeriesListScreen() {
                 <SeriesHeartButton
                   seriesName={series.name}
                   size={18}
-                  showCircle
+                  activeColor="#fff"
+                  inactiveColor="rgba(255,255,255,0.4)"
                 />
               </View>
             </Pressable>
@@ -526,17 +566,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: secretLibraryColors.gray,
   },
-  colorDotsRow: {
+  spinesRow: {
     flexDirection: 'row',
-    gap: 3,
-    flexWrap: 'wrap',
-    marginTop: 8,
-    maxWidth: 100,
+    alignItems: 'flex-end',
+    gap: SPINE_GAP,
+    marginTop: 4,
   },
-  colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
+  spineItem: {
+    borderRadius: 1,
+    overflow: 'hidden',
+  },
+  spineImage: {
+    width: '100%',
+    height: '100%',
   },
   progressRow: {
     flexDirection: 'row',

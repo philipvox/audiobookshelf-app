@@ -32,9 +32,17 @@ import Slider from '@react-native-community/slider';
 
 import { useNavigation } from '@react-navigation/native';
 import { TopNav, TopNavCloseIcon } from '@/shared/components';
-import { usePlayerStore, useCurrentChapterIndex } from '../stores/playerStore';
-import { useSleepTimerStore } from '../stores/sleepTimerStore';
-import { useBookmarksStore, useBookmarks, type Bookmark } from '../stores/bookmarksStore';
+import {
+  usePlayerStore,
+  useCurrentChapterIndex,
+  useSleepTimerStore,
+  useBookmarksStore,
+  useBookmarks,
+  usePlaybackRate,
+  usePlayerSettingsStore,
+} from '../stores';
+import type { Bookmark } from '../stores/bookmarksStore';
+import { audioService } from '../services/audioService';
 import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
@@ -45,9 +53,8 @@ import {
   secretLibraryColors as staticColors,
   secretLibraryFonts as fonts,
 } from '@/shared/theme/secretLibrary';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-// MIGRATED: Now using new spine system via adapter
-import { getTypographyForGenres, getSeriesStyle } from '@/features/home/utils/spine/adapter';
+import { useResponsive } from '@/shared/hooks/useResponsive';
+import { useSpineCacheStore, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
 
 // Sheets/Panels
 import { SpeedSheet } from '../sheets/SpeedSheet';
@@ -63,8 +70,7 @@ type ActiveSheet = 'speed' | 'sleep' | 'queue' | 'chapters' | 'bookmarks' | null
 // CONSTANTS
 // =============================================================================
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const COVER_SIZE = scale(200);
+const MAX_CONTENT_WIDTH = 500; // Max width on iPad to prevent overly stretched layouts
 
 // =============================================================================
 // ICONS
@@ -93,6 +99,19 @@ const DownloadIcon = ({ color = staticColors.black, size = 12 }: IconProps) => (
     <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <Path d="M7 10l5 5 5-5" />
     <Path d="M12 15V3" />
+  </Svg>
+);
+
+const CloudStreamIcon = ({ color = '#FFFFFF', size = 14 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+  </Svg>
+);
+
+const CheckCircleIcon = ({ color = '#F3B60C', size = 14 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+    <Path d="M22 4L12 14.01l-3-3" />
   </Svg>
 );
 
@@ -156,7 +175,7 @@ const ChevronDownIcon = ({ color = staticColors.black, size = 12 }: IconProps) =
 // =============================================================================
 
 function formatTime(seconds: number): string {
-  if (!seconds || seconds < 0) return '00:00:00';
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00:00';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -164,7 +183,7 @@ function formatTime(seconds: number): string {
 }
 
 function formatTimeRemaining(seconds: number): string {
-  if (!seconds || seconds < 0) return '-00:00:00';
+  if (!Number.isFinite(seconds) || seconds <= 0) return '-00:00:00';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -172,6 +191,7 @@ function formatTimeRemaining(seconds: number): string {
 }
 
 function formatDeltaTime(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '+0s';
   const sign = seconds >= 0 ? '+' : '-';
   const absSeconds = Math.abs(Math.round(seconds));
   const mins = Math.floor(absSeconds / 60);
@@ -183,6 +203,7 @@ function formatDeltaTime(seconds: number): string {
 }
 
 function getDeltaFontSize(seconds: number): number {
+  if (!Number.isFinite(seconds)) return scale(80);
   const absSeconds = Math.abs(Math.round(seconds));
   const mins = Math.floor(absSeconds / 60);
   const secs = absSeconds % 60;
@@ -206,38 +227,6 @@ function getDeltaFontSize(seconds: number): number {
   return scale(48);
 }
 
-function splitTitle(title: string): { line1: string; line2: string } {
-  // Try to split at natural break points
-  const words = title.split(' ');
-  if (words.length <= 2) {
-    return { line1: words[0] || '', line2: words.slice(1).join(' ') || '' };
-  }
-
-  // Split roughly in half by word count
-  const midPoint = Math.ceil(words.length / 2);
-  return {
-    line1: words.slice(0, midPoint).join(' '),
-    line2: words.slice(midPoint).join(' '),
-  };
-}
-
-function formatChapterTitle(title: string): { firstLine: string; rest: string } {
-  // Add line break after every 2 words
-  const words = title.split(' ');
-  if (words.length <= 2) {
-    return { firstLine: title, rest: '' };
-  }
-
-  const lines: string[] = [];
-  for (let i = 0; i < words.length; i += 2) {
-    lines.push(words.slice(i, i + 2).join(' '));
-  }
-  return {
-    firstLine: lines[0],
-    rest: lines.slice(1).join('\n'),
-  };
-}
-
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -245,7 +234,21 @@ function formatChapterTitle(title: string): { firstLine: string; rest: string } 
 export function SecretLibraryPlayerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  // Responsive layout for iPad
+  const responsive = useResponsive();
+  const { width: screenWidth, height: screenHeight, isTablet } = responsive;
+
+  // Content width constraint for iPad (center content)
+  const contentStyle = useMemo(() => {
+    if (isTablet && screenWidth > MAX_CONTENT_WIDTH) {
+      const padding = (screenWidth - MAX_CONTENT_WIDTH) / 2;
+      return { paddingHorizontal: padding };
+    }
+    return { paddingHorizontal: scale(20) };
+  }, [isTablet, screenWidth]);
+
+  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
@@ -255,10 +258,10 @@ export function SecretLibraryPlayerScreen() {
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const overlayOpacity = useRef(new Animated.Value(0)).current;  // Start hidden
-  const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;  // Start at closed position
+  const sheetTranslateY = useRef(new Animated.Value(screenHeight)).current;  // Start at closed position
 
   // Progress mode: 'book' shows full book progress, 'chapter' shows current chapter progress
-  const [progressMode, setProgressMode] = useState<'book' | 'chapter'>('book');
+  const [progressMode, setProgressMode] = useState<'book' | 'chapter'>('chapter');
 
   // Slider scrubbing state
   const [sliderValue, setSliderValue] = useState(0);
@@ -286,10 +289,7 @@ export function SecretLibraryPlayerScreen() {
     isLoading,
     isBuffering,
     duration,
-    playbackRate,
     chapters,
-    skipForwardInterval,
-    skipBackInterval,
   } = usePlayerStore(
     useShallow((s) => ({
       currentBook: s.currentBook,
@@ -298,12 +298,16 @@ export function SecretLibraryPlayerScreen() {
       isLoading: s.isLoading,
       isBuffering: s.isBuffering,
       duration: s.duration,
-      playbackRate: s.playbackRate,
       chapters: s.chapters,
-      skipForwardInterval: s.skipForwardInterval,
-      skipBackInterval: s.skipBackInterval,
     }))
   );
+
+  // Skip intervals from settings store
+  const skipForwardInterval = usePlayerSettingsStore((s) => s.skipForwardInterval);
+  const skipBackInterval = usePlayerSettingsStore((s) => s.skipBackInterval);
+
+  // Playback rate from speed store
+  const playbackRate = usePlaybackRate();
 
   // Sleep timer subscription - real-time countdown (1 sec updates)
   const sleepTimer = useSleepTimerStore((s) => s.sleepTimer);
@@ -348,7 +352,7 @@ export function SecretLibraryPlayerScreen() {
   );
 
   const chapterIndex = useCurrentChapterIndex();
-  const coverUrl = useCoverUrl(currentBook?.id || '');
+  const coverUrl = useCoverUrl(currentBook?.id || '', { width: 1024 });
   const { isDownloaded, isDownloading, isPaused, isPending, progress: downloadProgress } = useDownloadStatus(currentBook?.id || '');
   const { queueDownload } = useDownloads();
 
@@ -402,18 +406,17 @@ export function SecretLibraryPlayerScreen() {
   const currentChapter = normalizedChapters[chapterIndex];
   const chapterTitle = currentChapter?.displayTitle || `Chapter ${chapterIndex + 1}`;
 
-  // Chapter progress
+  // Chapter progress (guard against undefined start/end)
   const chapter = chapters[chapterIndex];
-  const chapterPosition = chapter ? position - chapter.start : 0;
-  const chapterDuration = chapter ? chapter.end - chapter.start : 0;
+  const chapterStart = chapter?.start ?? 0;
+  const chapterEnd = chapter?.end ?? 0;
+  const chapterPosition = chapter ? Math.max(0, position - chapterStart) : 0;
+  const chapterDuration = chapterEnd > chapterStart ? chapterEnd - chapterStart : 0;
   const chapterProgress = chapterDuration > 0 ? chapterPosition / chapterDuration : 0;
 
   // Book progress
   const bookProgress = duration > 0 ? position / duration : 0;
-  const timeRemaining = duration - position;
-
-  // Title for display (no longer splitting - just show normally)
-  // The splitTitle function was creating spine-like stacking which isn't appropriate for player
+  const timeRemaining = (duration > 0 && Number.isFinite(position)) ? duration - position : 0;
 
   // Get cached spine data for typography (same as BookDetailScreen)
   const cachedSpineData = useSpineCacheStore((s) => currentBook?.id ? s.cache.get(currentBook.id) : undefined);
@@ -446,10 +449,10 @@ export function SecretLibraryPlayerScreen() {
   }, [cachedSpineData?.typography, cachedSpineData?.seriesName, cachedSpineData?.genres, metadata?.genres, currentBook?.id]);
 
   // Extract font properties with fallbacks
-  // Extract ONLY font properties from cached typography
-  // DO NOT use spine-specific properties like stacking, transforms, or orientations
-  const titleFontFamily = spineTypography?.fontFamily || Platform.select({ ios: 'Georgia', android: 'serif' });
-  const titleFontWeight = spineTypography?.titleWeight || spineTypography?.fontWeight || '400';
+  // ALWAYS use Georgia for player title - matches book detail page
+  // Spine typography is only for book spines on home screen
+  const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
+  const titleFontWeight = '400';
 
   // Display title as-is (no uppercase transform - that's for spines only)
   const displayTitle = title;
@@ -465,12 +468,12 @@ export function SecretLibraryPlayerScreen() {
       }).start();
     } else {
       Animated.timing(slideAnim, {
-        toValue: SCREEN_HEIGHT,
+        toValue: screenHeight,
         duration: 250,
         useNativeDriver: true,
       }).start();
     }
-  }, [isPlayerVisible, slideAnim]);
+  }, [isPlayerVisible, slideAnim, screenHeight]);
 
   // Back handler
   useEffect(() => {
@@ -484,31 +487,43 @@ export function SecretLibraryPlayerScreen() {
     return () => backHandler.remove();
   }, [isPlayerVisible, closePlayer]);
 
-  // Pan responder for swipe down
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return gestureState.dy > 30 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          slideAnim.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > SCREEN_HEIGHT * 0.3 || gestureState.vy > 0.5) {
-          closePlayer();
-        } else {
-          Animated.spring(slideAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 65,
-            friction: 11,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  // Fix 6: Cleanup delta timer on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (deltaHideTimer.current) {
+        clearTimeout(deltaHideTimer.current);
+        deltaHideTimer.current = null;
+      }
+    };
+  }, []);
+
+  // Pan responder for swipe down - needs to be memoized with screenHeight
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          return gestureState.dy > 30 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5;
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (gestureState.dy > 0) {
+            slideAnim.setValue(gestureState.dy);
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dy > screenHeight * 0.3 || gestureState.vy > 0.5) {
+            closePlayer();
+          } else {
+            Animated.spring(slideAnim, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 65,
+              friction: 11,
+            }).start();
+          }
+        },
+      }),
+    [screenHeight, slideAnim, closePlayer]
+  );
 
   // Update slider value when position changes (but not while scrubbing)
   useEffect(() => {
@@ -526,12 +541,12 @@ export function SecretLibraryPlayerScreen() {
       setActiveSheet(null);
       setSheetVisible(false);
       overlayOpacity.setValue(0);
-      sheetTranslateY.setValue(SCREEN_HEIGHT);
+      sheetTranslateY.setValue(screenHeight);
     }
     // Also reset bookmark edit state
     setBookmarkModalMode(null);
     setEditingBookmark(null);
-  }, [bookId]); // Only depend on bookId to avoid closing on other state changes
+  }, [bookId, screenHeight]); // Only depend on bookId to avoid closing on other state changes
 
   // Delta popup helpers
   const animateDeltaFontSize = useCallback((delta: number) => {
@@ -588,6 +603,8 @@ export function SecretLibraryPlayerScreen() {
   // Slider handlers
   const handleSliderStart = useCallback(() => {
     setIsScrubbing(true);
+    // Fix 2: Sync scrubbing state to audioService to prevent track switch spam
+    audioService.setScrubbing(true);
     // Store starting position for delta calculation
     deltaStartPosition.current = position;
     // Show delta immediately (will update as user scrubs)
@@ -598,33 +615,37 @@ export function SecretLibraryPlayerScreen() {
     setSliderValue(value);
     // Calculate current position based on slider value
     let currentPos: number;
+    const safeDuration = duration > 0 ? duration : 0;
     if (progressMode === 'book') {
-      currentPos = value * duration;
+      currentPos = value * safeDuration;
     } else {
       const chapterStart = chapters[chapterIndex]?.start || 0;
-      const chapterEnd = chapters[chapterIndex]?.end || duration;
+      const chapterEnd = chapters[chapterIndex]?.end || safeDuration;
       const chapterLen = chapterEnd - chapterStart;
       currentPos = chapterStart + value * chapterLen;
     }
     // Update delta and animate font size
-    const delta = currentPos - deltaStartPosition.current;
+    const delta = Number.isFinite(currentPos) ? currentPos - deltaStartPosition.current : 0;
     setTimeDelta(delta);
     animateDeltaFontSize(delta);
   }, [progressMode, duration, chapters, chapterIndex, animateDeltaFontSize]);
 
   const handleSliderComplete = useCallback((value: number) => {
     setIsScrubbing(false);
+    // Fix 2: Clear scrubbing state in audioService
+    audioService.setScrubbing(false);
     haptics.selection();
 
     let newPosition: number;
     if (progressMode === 'book') {
-      newPosition = value * duration;
+      // Fix 9: Round to 0.1s to avoid floating point precision issues
+      newPosition = Math.round(value * duration * 10) / 10;
     } else {
       // Chapter mode - calculate position within the chapter
       const chapterStart = chapters[chapterIndex]?.start || 0;
       const chapterEnd = chapters[chapterIndex]?.end || duration;
       const chapterLen = chapterEnd - chapterStart;
-      newPosition = chapterStart + value * chapterLen;
+      newPosition = Math.round((chapterStart + value * chapterLen) * 10) / 10;
     }
     seekTo(newPosition);
 
@@ -656,6 +677,17 @@ export function SecretLibraryPlayerScreen() {
       }, 300);
     }
   }, [authorId, author, closePlayer, navigation]);
+
+  // Navigate to narrator detail
+  const handleNarratorPress = useCallback(() => {
+    if (narratorName) {
+      haptics.selection();
+      closePlayer();
+      setTimeout(() => {
+        navigation.navigate('NarratorDetail', { narratorName });
+      }, 300);
+    }
+  }, [narratorName, closePlayer, navigation]);
 
   // Navigate to book detail
   const handleTitlePress = useCallback(() => {
@@ -798,7 +830,7 @@ export function SecretLibraryPlayerScreen() {
         useNativeDriver: true,
       }),
       Animated.timing(sheetTranslateY, {
-        toValue: SCREEN_HEIGHT,
+        toValue: screenHeight,
         duration: 250,
         useNativeDriver: true,
       }),
@@ -806,7 +838,7 @@ export function SecretLibraryPlayerScreen() {
       setActiveSheet(null);
       setSheetVisible(false);
     });
-  }, [overlayOpacity, sheetTranslateY]);
+  }, [overlayOpacity, sheetTranslateY, screenHeight]);
 
   // Chapter selection handler
   const handleChapterSelect = useCallback((start: number) => {
@@ -884,9 +916,6 @@ export function SecretLibraryPlayerScreen() {
     return Platform.OS === 'android' ? <View /> : null;
   }
 
-  // Chapter number formatted (01, 02, etc.)
-  const chapterNumber = String(chapterIndex + 1).padStart(2, '0');
-
   return (
     <Animated.View
       style={[
@@ -905,45 +934,28 @@ export function SecretLibraryPlayerScreen() {
         variant={isDarkMode ? 'dark' : 'light'}
         showLogo={true}
         onLogoPress={handleLogoPress}
-        style={{ backgroundColor: 'transparent', marginBottom: scale(16) }}
+        logoAccessory={
+          isDownloaded
+            ? <CheckCircleIcon color="#F3B60C" size={16} />
+            : <CloudStreamIcon color={colors.gray} size={16} />
+        }
+        style={{ backgroundColor: 'transparent', marginBottom: scale(8) }}
         includeSafeArea={false}
         pills={[
           {
-            key: 'download',
-            label: isDownloaded
-              ? 'Saved'
-              : isPaused
-              ? 'Paused'
-              : isPending
-              ? 'Queued'
-              : isDownloading
-              ? `${Math.round(downloadProgress * 100)}%`
-              : 'Save',
-            icon: <DownloadIcon color={isDownloaded || isDownloading || isPaused ? colors.white : colors.black} size={12} />,
-            active: isDownloaded || isDownloading || isPaused,
-            onPress: handleDownload,
-          },
-          {
-            key: 'speed',
-            label: `${playbackRate.toFixed(1)}×`,
-            active: activeSheet === 'speed',
-            onPress: () => openSheet('speed'),
-          },
-          {
-            key: 'sleep',
-            label: sleepTimer !== null
-              ? (sleepTimer >= 60 ? `${Math.floor(sleepTimer / 60)}m` : `${sleepTimer}s`)
-              : '',
-            icon: <ClockIcon color={sleepTimer !== null || activeSheet === 'sleep' ? colors.white : colors.black} size={14} />,
-            active: sleepTimer !== null || activeSheet === 'sleep',
-            onPress: () => openSheet('sleep'),
-          },
-          {
             key: 'queue',
-            label: '',
+            label: 'Queue',
             icon: <ListIcon color={activeSheet === 'queue' ? colors.white : colors.black} size={14} />,
             active: activeSheet === 'queue',
             onPress: () => openSheet('queue'),
+          },
+          {
+            key: 'bookmark',
+            label: 'Bookmark',
+            icon: <BookmarkIcon color={bookmarks.length > 0 ? colors.orange : (activeSheet === 'bookmarks' ? colors.white : colors.black)} size={14} />,
+            active: activeSheet === 'bookmarks',
+            onPress: handleBookmark,
+            onLongPress: () => openSheet('bookmarks'),
           },
         ]}
         circleButtons={[
@@ -955,102 +967,29 @@ export function SecretLibraryPlayerScreen() {
         ]}
       />
 
-      <View style={styles.screen}>
-        {/* Main Content */}
+      <View style={[styles.screen, contentStyle]}>
+        {/* Main Content - New Layout */}
         <View style={styles.mainContent}>
-          {/* Series Name - Above title (clickable) */}
-          {seriesName && (
-            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
-              <Text style={[styles.seriesLabel, { color: colors.gray }]}>
-                {seriesName.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Title Block */}
-          <View style={styles.titleBlock}>
-            {/* Title and Author - flowing text with genre-based typography */}
-            {/* adjustsFontSizeToFit scales down long titles to fit the container */}
-            <Text
-              style={styles.titleFlow}
-              adjustsFontSizeToFit
-              numberOfLines={3}
-              minimumFontScale={0.5}
-            >
-              {/* Title - displayed normally (no spine-like stacking) */}
-              <Text
-                style={[
-                  styles.titleLine,
-                  { fontFamily: titleFontFamily, fontWeight: titleFontWeight as any, color: colors.black }
-                ]}
-                onPress={handleTitlePress}
-                suppressHighlighting
-              >
-                {displayTitle}{' '}
-              </Text>
-              {/* Author - inline with title */}
-              <Text
-                style={[
-                  styles.titleLine,
-                  styles.authorInline,
-                  {
-                    fontFamily: titleFontFamily,
-                    fontStyle: 'italic',
-                    color: colors.gray,
-                  }
-                ]}
-                onPress={authorId ? handleAuthorPress : undefined}
-                suppressHighlighting
-              >
-                {author}
-              </Text>
-            </Text>
-
-            {/* Bookmark Button - Tap to add, Long-press to view all */}
-            <TouchableOpacity
-              style={styles.bookmarkBtn}
-              onPress={handleBookmark}
-              onLongPress={() => openSheet('bookmarks')}
-              delayLongPress={300}
-            >
-              <BookmarkIcon color={bookmarks.length > 0 ? colors.orange : colors.black} size={32} />
-              {bookmarks.length > 0 && (
-                <View style={styles.bookmarkBadge}>
-                  <Text style={styles.bookmarkBadgeText}>{bookmarks.length}</Text>
+          {/* 1. Cover Image - Full width, larger */}
+          {/* Dims to 60% opacity when scrubbing time is displayed over it */}
+          <View style={styles.coverWrapper}>
+            <View style={[styles.coverContainer, showDelta && { opacity: 0.6 }]}>
+              {coverUrl ? (
+                <Image
+                  source={{ uri: coverUrl }}
+                  style={styles.cover}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={[styles.cover, styles.coverPlaceholder]}>
+                  <Text style={styles.coverPlaceholderText}>
+                    {title.substring(0, 3).toUpperCase()}
+                  </Text>
                 </View>
               )}
-            </TouchableOpacity>
-
-          </View>
-
-          {/* Cover Wrapper */}
-          <View style={styles.coverWrapper}>
-            {/* Cover and Narrator container */}
-            <View style={styles.coverAndNarrator}>
-              {/* Cover Image */}
-              <View style={styles.coverContainer}>
-                {coverUrl ? (
-                  <Image
-                    source={{ uri: coverUrl }}
-                    style={styles.cover}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={[styles.cover, styles.coverPlaceholder]}>
-                    <Text style={styles.coverPlaceholderText}>
-                      {title.substring(0, 3).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Narrator - under cover, left aligned */}
-              <Text style={[styles.narratorText, { color: colors.gray }]}>
-                {narratorName ? `Read by ${narratorName}` : ''}
-              </Text>
             </View>
 
-            {/* Time Delta Popup */}
+            {/* Time Delta Popup - overlays cover */}
             {showDelta && (
               <Animated.View style={[styles.deltaPopup, { opacity: deltaOpacity }]}>
                 <Animated.Text style={[styles.deltaText, { fontSize: deltaFontSize, color: colors.black }]}>
@@ -1059,48 +998,64 @@ export function SecretLibraryPlayerScreen() {
               </Animated.View>
             )}
           </View>
-        </View>
 
-        {/* Bottom Info */}
-        <View style={[styles.bottomInfo, { paddingBottom: insets.bottom + scale(20) }]}>
-          {/* Chapter Title with Navigation */}
-          <View style={styles.chapterNavContainer}>
-            {/* Navigation buttons row */}
-            <View style={styles.chapterNavRow}>
+          {/* 2. Byline - By Author (left) · Narrated by Narrator (right) - justified to cover width */}
+          <View style={styles.byline}>
+            {/* Left side: By Author */}
+            <View style={styles.bylineLeft}>
+              <Text style={[styles.bylineText, { color: colors.gray }]}>By </Text>
               <TouchableOpacity
-                style={styles.chapterNavBtn}
-                onPress={handlePrev}
-                activeOpacity={0.6}
+                onPress={authorId ? handleAuthorPress : undefined}
+                activeOpacity={authorId ? 0.7 : 1}
               >
-                <SkipPrevIcon color={colors.black} size={20} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.chapterNavBtn}
-                onPress={handleNext}
-                activeOpacity={0.6}
-              >
-                <SkipNextIcon color={colors.black} size={20} />
+                <Text style={[styles.bylineLink, { color: colors.black }]}>{author}</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Chapter title */}
-            <TouchableOpacity
-              style={styles.chapterTitleLarge}
-              onPress={() => openSheet('chapters')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.chapterLargeFirst, { color: colors.black }]}>
-                {formatChapterTitle(chapterTitle).firstLine}
-              </Text>
-              {formatChapterTitle(chapterTitle).rest ? (
-                <Text style={[styles.chapterLarge, { color: colors.black }]} numberOfLines={2}>
-                  {formatChapterTitle(chapterTitle).rest}
-                </Text>
-              ) : null}
-            </TouchableOpacity>
+            {/* Right side: Narrated by Narrator */}
+            {narratorName && (
+              <View style={styles.bylineRight}>
+                <Text style={[styles.bylineText, { color: colors.gray }]}>Narrated by </Text>
+                <TouchableOpacity onPress={handleNarratorPress} activeOpacity={0.7}>
+                  <Text style={[styles.bylineLink, { color: colors.black }]}>{narratorName}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
+          {/* 3. Title/Chapter Row */}
+          <View style={styles.titleChapterRow}>
+            {/* Left: Book Title */}
+            <TouchableOpacity
+              style={styles.titleContainer}
+              onPress={handleTitlePress}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.bookTitle,
+                  { fontFamily: titleFontFamily, fontWeight: titleFontWeight as any, color: colors.black }
+                ]}
+                numberOfLines={3}
+              >
+                {displayTitle}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Right: Chapter name */}
+            <TouchableOpacity
+              onPress={() => openSheet('chapters')}
+              activeOpacity={0.7}
+              style={styles.chapterTextContainer}
+            >
+              <Text style={[styles.chapterText, { color: colors.black }]} numberOfLines={3}>
+                {chapterTitle}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Bottom Controls Section */}
+        <View style={[styles.bottomInfo, { paddingBottom: insets.bottom + scale(20) }]}>
           {/* Progress Bar - Slider with Bookmark Markers */}
           <View style={styles.progressBarContainer}>
             {/* Bookmark Markers (below slider, clickable) */}
@@ -1153,93 +1108,151 @@ export function SecretLibraryPlayerScreen() {
 
           {/* Time Labels */}
           <View style={styles.progressTimes}>
-            <Text style={[styles.timeText, { color: colors.gray }, isScrubbing && { color: colors.black, fontWeight: '600' }]}>
-              {formatTime(
-                isScrubbing
-                  ? (progressMode === 'book' ? sliderValue * duration : sliderValue * chapterDuration + (chapter?.start || 0))
-                  : (progressMode === 'book' ? position : chapterPosition)
-              )}
-            </Text>
-            <Text style={[styles.timeText, { color: colors.gray }]}>
-              {formatTimeRemaining(
-                isScrubbing
-                  ? (progressMode === 'book' ? duration - sliderValue * duration : chapterDuration - sliderValue * chapterDuration)
-                  : (progressMode === 'book' ? timeRemaining : chapterDuration - chapterPosition)
-              )}
-            </Text>
-          </View>
-
-          {/* Controls Row - Toggle on left, Buttons on right */}
-          <View style={styles.controlsRow}>
-            {/* Progress Mode Toggle */}
             <TouchableOpacity
-              style={styles.progressModeToggle}
               onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.progressModeText, { color: colors.black }]}>
+              <Text style={[styles.timeText, { color: colors.gray }, isScrubbing && { color: colors.black, fontWeight: '600' }]}>
+                {formatTime(
+                  isScrubbing
+                    ? (progressMode === 'book' ? sliderValue * duration : sliderValue * chapterDuration + (chapter?.start || 0))
+                    : (progressMode === 'book' ? position : chapterPosition)
+                )}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.timeText, { color: colors.gray }]}>
+                {formatTimeRemaining(
+                  isScrubbing
+                    ? (progressMode === 'book' ? duration - sliderValue * duration : chapterDuration - sliderValue * chapterDuration)
+                    : (progressMode === 'book' ? timeRemaining : chapterDuration - chapterPosition)
+                )}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 5-Button Controls Row: |< ⏪ ▶ ⏩ >| */}
+          <View style={styles.controlsRow}>
+            {/* Previous Chapter - no border */}
+            <TouchableOpacity
+              style={styles.skipChapterBtn}
+              onPress={handlePrev}
+              activeOpacity={0.6}
+            >
+              <SkipPrevIcon color={colors.black} size={28} />
+            </TouchableOpacity>
+
+            {/* Skip Back - with thin circle border */}
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkipBack}
+              activeOpacity={0.6}
+            >
+              <RewindIcon color={colors.black} size={24} />
+            </TouchableOpacity>
+
+            {/* Play/Pause - Large white rounded pill */}
+            <TouchableOpacity
+              style={styles.playBtn}
+              onPress={handlePlayPause}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <ActivityIndicator size={28} color="#000000" />
+              ) : isBuffering ? (
+                <View style={styles.bufferingContainer}>
+                  <ActivityIndicator size={48} color="#000000" style={styles.bufferingSpinner} />
+                  {isPlaying ? (
+                    <PauseIcon color="#000000" size={20} />
+                  ) : (
+                    <PlayIcon color="#000000" size={20} />
+                  )}
+                </View>
+              ) : isPlaying ? (
+                <PauseIcon color="#000000" size={36} />
+              ) : (
+                <PlayIcon color="#000000" size={36} />
+              )}
+            </TouchableOpacity>
+
+            {/* Skip Forward - with thin circle border */}
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkipForward}
+              activeOpacity={0.6}
+            >
+              <FastForwardIcon color={colors.black} size={24} />
+            </TouchableOpacity>
+
+            {/* Next Chapter - no border */}
+            <TouchableOpacity
+              style={styles.skipChapterBtn}
+              onPress={handleNext}
+              activeOpacity={0.6}
+            >
+              <SkipNextIcon color={colors.black} size={28} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Settings Row - Progress Mode toggle on left, Speed & Sleep on right */}
+          <View style={styles.settingsRow}>
+            {/* Progress Mode Toggle - Left side */}
+            <TouchableOpacity
+              style={styles.settingPill}
+              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.settingPillText, { color: colors.black }]}>
                 {progressMode === 'book' ? 'Book' : 'Chapter'}
               </Text>
             </TouchableOpacity>
 
-            {/* Controls - Pill Style */}
-            <View style={styles.controls}>
-              {/* Sleep Timer Countdown */}
+            {/* Spacer */}
+            <View style={{ flex: 1 }} />
+
+            {/* Speed */}
+            <TouchableOpacity
+              style={[styles.settingPill, activeSheet === 'speed' && { backgroundColor: colors.black }]}
+              onPress={() => openSheet('speed')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.settingPillText, { color: activeSheet === 'speed' ? colors.white : colors.black }]}>
+                {playbackRate.toFixed(1)}×
+              </Text>
+            </TouchableOpacity>
+
+            {/* Sleep Timer */}
+            <TouchableOpacity
+              style={[
+                styles.settingPill,
+                (sleepTimer !== null || activeSheet === 'sleep') && { backgroundColor: colors.black }
+              ]}
+              onPress={() => openSheet('sleep')}
+              activeOpacity={0.7}
+            >
+              <ClockIcon
+                color={(sleepTimer !== null || activeSheet === 'sleep') ? colors.white : colors.black}
+                size={14}
+              />
               {sleepTimer !== null && (
-                <TouchableOpacity
-                  style={styles.sleepTimerCountdown}
-                  onPress={() => openSheet('sleep')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.sleepTimerCountdownText, { color: colors.orange }]}>
-                    {sleepTimer >= 3600
-                      ? `${Math.floor(sleepTimer / 3600)}:${String(Math.floor((sleepTimer % 3600) / 60)).padStart(2, '0')}:${String(sleepTimer % 60).padStart(2, '0')}`
-                      : `${Math.floor(sleepTimer / 60)}:${String(sleepTimer % 60).padStart(2, '0')}`
-                    }
-                  </Text>
-                </TouchableOpacity>
+                <Text style={[styles.settingPillText, { color: colors.white, marginLeft: scale(4) }]}>
+                  {sleepTimer >= 3600
+                    ? `${Math.floor(sleepTimer / 3600)}:${String(Math.floor((sleepTimer % 3600) / 60)).padStart(2, '0')}`
+                    : sleepTimer >= 60
+                      ? `${Math.floor(sleepTimer / 60)}m`
+                      : `${sleepTimer}s`
+                  }
+                </Text>
               )}
-
-              {/* Skip Back */}
-              <TouchableOpacity style={[styles.ctrlPill, { borderColor: colors.black }]} onPress={handleSkipBack}>
-                <RewindIcon color={colors.black} size={14} />
-                <Text style={[styles.ctrlPillText, { color: colors.black }]}>{skipBackInterval}</Text>
-              </TouchableOpacity>
-
-              {/* Skip Forward */}
-              <TouchableOpacity style={[styles.ctrlPill, { borderColor: colors.black }]} onPress={handleSkipForward}>
-                <FastForwardIcon color={colors.black} size={14} />
-                <Text style={[styles.ctrlPillText, { color: colors.black }]}>{skipForwardInterval}</Text>
-              </TouchableOpacity>
-
-              {/* Play/Pause - Filled (on right) */}
-              <TouchableOpacity
-                style={[styles.ctrlPill, styles.ctrlPillFilled, { backgroundColor: colors.black }]}
-                onPress={handlePlayPause}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size={16} color={colors.white} />
-                ) : isBuffering ? (
-                  <View style={styles.bufferingContainer}>
-                    <ActivityIndicator size={28} color={colors.white} style={styles.bufferingSpinner} />
-                    {isPlaying ? (
-                      <PauseIcon color={colors.white} size={12} />
-                    ) : (
-                      <PlayIcon color={colors.white} size={12} />
-                    )}
-                  </View>
-                ) : isPlaying ? (
-                  <PauseIcon color={colors.white} size={16} />
-                ) : (
-                  <PlayIcon color={colors.white} size={16} />
-                )}
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      {/* Sheet Overlay - Fade in backdrop, slide up panel */}
+      {/* Sheet Overlay - Centered popup */}
       {sheetVisible && (
         <View style={styles.sheetOverlay} pointerEvents="box-none">
           {/* Backdrop - fades in */}
@@ -1250,12 +1263,16 @@ export function SecretLibraryPlayerScreen() {
               onPress={closeSheet}
             />
           </Animated.View>
-          {/* Sheet - slides up */}
+          {/* Sheet - centered popup */}
           <Animated.View
             style={[
               styles.sheetContainer,
-              { paddingBottom: insets.bottom, backgroundColor: colors.white, transform: [{ translateY: sheetTranslateY }] },
-              (activeSheet === 'queue' || activeSheet === 'chapters') && styles.sheetContainerTall,
+              {
+                backgroundColor: colors.white,
+                opacity: overlayOpacity,
+                maxHeight: screenHeight * 0.80,
+              },
+              (activeSheet === 'queue' || activeSheet === 'chapters') && { maxHeight: screenHeight * 0.85 },
             ]}
           >
             {activeSheet === 'speed' && (
@@ -1436,102 +1453,26 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    paddingHorizontal: scale(28),
+    // paddingHorizontal is set dynamically via contentStyle for iPad support
   },
 
   // Main Content
   mainContent: {
     flex: 1,
-    paddingTop: scale(12),
   },
 
-  // Series Label - Above title
-  seriesLabel: {
-    fontSize: scale(9),
-    letterSpacing: 2,
-    color: staticColors.gray,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    marginTop: scale(-24),
-    marginBottom: scale(8),
-  },
-
-  // Title Block
-  titleBlock: {
-    position: 'relative',
-    marginBottom: scale(8),
-    paddingRight: scale(40), // Space for bookmark button
-  },
-  titleFlow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  titleLine: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(48),
-    fontWeight: '400',
-    letterSpacing: -1,
-    color: staticColors.black,
-    lineHeight: scale(48) * 0.95,
-  },
-  titleItalic: {
-    fontStyle: 'italic',
-  },
-  authorInline: {
-    color: staticColors.gray,
-  },
-  bookmarkBtn: {
-    position: 'absolute',
-    right: 0,
-    top: scale(4),
-    padding: scale(2),
-  },
-  bookmarkBadge: {
-    position: 'absolute',
-    top: -scale(2),
-    right: -scale(6),
-    minWidth: scale(18),
-    height: scale(18),
-    borderRadius: scale(9),
-    backgroundColor: staticColors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: scale(4),
-  },
-  bookmarkBadgeText: {
-    fontSize: scale(10),
-    fontWeight: '700',
-    color: staticColors.white,
-  },
-
-  // Cover
+  // Cover - Full width, larger
   coverWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: scale(12),
+    width: '100%',
+    aspectRatio: 1,
     position: 'relative',
-  },
-
-  // Time Delta Popup
-  deltaPopup: {
-    position: 'absolute',
-    top: COVER_SIZE + scale(60),
-    left: 0,
-    alignItems: 'flex-start',
-  },
-  deltaText: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontWeight: '400',
-    color: staticColors.black,
-    letterSpacing: -2,
-  },
-
-  coverAndNarrator: {
-    width: COVER_SIZE,
-    alignItems: 'flex-start',
+    marginBottom: scale(16),
   },
   coverContainer: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
+    width: '100%',
+    height: '100%',
+    borderRadius: scale(8),
+    overflow: 'hidden',
   },
   cover: {
     width: '100%',
@@ -1543,83 +1484,93 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   coverPlaceholderText: {
-    fontSize: scale(48),
+    fontSize: scale(64),
     fontWeight: '800',
     color: 'rgba(255,255,255,0.12)',
     letterSpacing: -2,
   },
 
-  // Chapter Title with Navigation - above progress bar
-  chapterNavContainer: {
-    alignItems: 'flex-end',
-    marginBottom: scale(16),
-  },
-  chapterNavRow: {
-    flexDirection: 'row',
+  // Time Delta Popup - overlays cover
+  deltaPopup: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    gap: scale(24),
-    marginBottom: scale(4),
+    transform: [{ translateY: -scale(40) }],
   },
-  chapterNavBtn: {
-    padding: scale(10),
-  },
-  chapterTitleLarge: {
-    alignItems: 'flex-end',
-  },
-  chapterLargeFirst: {
+  deltaText: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(28),
     fontWeight: '400',
     color: staticColors.black,
-    textAlign: 'right',
-    lineHeight: scale(26),
-  },
-  chapterLarge: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(28),
-    fontWeight: '400',
-    fontStyle: 'italic',
-    color: staticColors.black,
-    textAlign: 'right',
-    lineHeight: scale(26),
+    letterSpacing: -2,
+    textShadowColor: 'rgba(255,255,255,0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
 
-  // Narrator - under cover, left aligned
-  narratorText: {
-    marginTop: scale(8),
-    fontSize: scale(11),
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    color: staticColors.gray,
-    minHeight: scale(14),
-  },
-
-  // Bottom Info
-  bottomInfo: {
-    marginTop: 'auto',
-  },
-  controlsRow: {
+  // Byline - By Author (left) · Narrated by Narrator (right) - justified to cover width
+  byline: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: scale(12),
   },
-  progressModeToggle: {
+  bylineLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  progressModeText: {
+  bylineRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bylineText: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(11),
+    color: staticColors.gray,
+  },
+  bylineLink: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(11),
     color: staticColors.black,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     textDecorationLine: 'underline',
   },
-  progressModeActive: {
-    color: staticColors.black,
-    fontWeight: '600',
+
+  // Title/Chapter Row
+  titleChapterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: scale(20),
+    gap: scale(16),
   },
-  progressModeSeparator: {
-    fontSize: scale(12),
-    color: staticColors.grayLine,
-    marginHorizontal: scale(2),
+  titleContainer: {
+    flex: 1,
+  },
+  bookTitle: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(32),
+    fontWeight: '400',
+    letterSpacing: -0.5,
+    color: staticColors.black,
+    lineHeight: scale(36),
+  },
+  chapterTextContainer: {
+    maxWidth: scale(100),
+    alignItems: 'flex-end',
+  },
+  chapterText: {
+    fontSize: scale(16),
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontWeight: '400',
+    color: staticColors.black,
+    textAlign: 'right',
+    lineHeight: scale(20),
+  },
+
+  // Bottom Controls
+  bottomInfo: {
+    marginTop: 'auto',
   },
   progressBarContainer: {
     height: scale(40),
@@ -1629,7 +1580,7 @@ const styles = StyleSheet.create({
   },
   bookmarkMarkersContainer: {
     position: 'absolute',
-    left: scale(8), // Account for slider padding
+    left: scale(8),
     right: scale(8),
     top: 0,
     bottom: 0,
@@ -1638,10 +1589,10 @@ const styles = StyleSheet.create({
   },
   bookmarkMarker: {
     position: 'absolute',
-    bottom: scale(22), // Bottom of line aligns with progress bar track
+    bottom: scale(22),
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginLeft: scale(-1), // Align line with position
+    marginLeft: scale(-1),
   },
   bookmarkFlag: {
     width: 0,
@@ -1665,55 +1616,52 @@ const styles = StyleSheet.create({
   progressTimes: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: scale(20),
+    marginBottom: scale(24),
   },
   timeText: {
-    fontSize: scale(11),
+    fontSize: scale(13),
     color: staticColors.gray,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
-  timeTextActive: {
-    color: staticColors.black,
-    fontWeight: '600',
-  },
-  // Sleep timer countdown - in controls row
-  sleepTimerCountdown: {
-    paddingHorizontal: scale(8),
-    justifyContent: 'center',
-  },
-  sleepTimerCountdownText: {
-    fontSize: scale(11),
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontWeight: '600',
-  },
 
-  // Controls - Pill Style, Right Aligned
-  controls: {
+  // 5-Button Controls Row
+  controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: scale(6),
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(4),
   },
-  ctrlPill: {
-    height: scale(36),
-    paddingHorizontal: scale(14),
-    borderRadius: scale(18),
-    borderWidth: 1,
-    borderColor: staticColors.black,
-    flexDirection: 'row',
+  // Chapter skip buttons - no border, just icon
+  skipChapterBtn: {
+    width: scale(44),
+    height: scale(44),
     alignItems: 'center',
     justifyContent: 'center',
-    gap: scale(4),
   },
-  ctrlPillFilled: {
-    backgroundColor: staticColors.black,
-    paddingHorizontal: scale(18),
+  // Skip back/forward buttons - with thin circle border (matching header style)
+  skipBtn: {
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  ctrlPillText: {
-    fontSize: scale(12),
-    fontWeight: '500',
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    color: staticColors.black,
+  // Play button - large white rounded pill (always white regardless of theme)
+  playBtn: {
+    width: scale(100),
+    height: scale(72),
+    borderRadius: scale(36),
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Shadow for depth
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
   },
   bufferingContainer: {
     justifyContent: 'center',
@@ -1723,24 +1671,50 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
 
+  // Settings Row - Speed, Sleep, Progress Mode
+  settingsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: scale(8),
+    marginTop: scale(20),
+  },
+  settingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(8),
+    paddingHorizontal: scale(14),
+    borderRadius: scale(20),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  settingPillText: {
+    fontSize: scale(12),
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontWeight: '500',
+  },
+
   // Sheet Overlay
   sheetOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
+    alignItems: 'center',
     zIndex: 200,
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sheetContainer: {
     backgroundColor: staticColors.creamGray,
-    borderTopLeftRadius: scale(24),
-    borderTopRightRadius: scale(24),
-    maxHeight: SCREEN_HEIGHT * 0.85,
+    borderRadius: scale(16),
+    width: '94%',
+    overflow: 'hidden',
+    marginBottom: scale(80),
   },
   sheetContainerTall: {
-    maxHeight: SCREEN_HEIGHT * 0.92,
+    // maxHeight is set dynamically based on screenHeight
   },
 
   // Bookmark Edit Modal

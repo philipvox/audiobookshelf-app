@@ -246,18 +246,21 @@ class SQLiteCache {
   private db: SQLite.SQLiteDatabase | null = null;
   private isInitialized = false;
   private initPromise: Promise<void> | null = null;
+  // Transaction lock using promise chain - ensures sequential execution
   private transactionLock: Promise<void> = Promise.resolve();
 
   /**
    * Execute a function with a transaction lock to prevent concurrent transactions
+   * Uses promise chaining to ensure sequential execution
    */
   private async withTransactionLock<T>(fn: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
     const db = await this.ensureReady();
 
-    // Wait for any pending transaction to complete, then run ours
-    const previousLock = this.transactionLock;
+    // Chain onto existing lock - each caller waits for previous to complete
     let resolve: () => void;
-    this.transactionLock = new Promise<void>((r) => { resolve = r; });
+    const nextLock = new Promise<void>((r) => { resolve = r; });
+    const previousLock = this.transactionLock;
+    this.transactionLock = nextLock;
 
     try {
       await previousLock;
@@ -707,22 +710,23 @@ class SQLiteCache {
   }
 
   async setLibraryItems(libraryId: string, items: LibraryItem[]): Promise<void> {
-    const db = await this.ensureReady();
     const now = Date.now();
 
     try {
-      await db.withTransactionAsync(async () => {
-        // Clear existing items for this library
-        await db.runAsync('DELETE FROM library_items WHERE library_id = ?', [libraryId]);
+      await this.withTransactionLock(async (db) => {
+        await db.withTransactionAsync(async () => {
+          // Clear existing items for this library
+          await db.runAsync('DELETE FROM library_items WHERE library_id = ?', [libraryId]);
 
-        // Batch insert for 50-70% speedup (was N+1 individual inserts)
-        const rows = items.map(item => [
-          item.id,
-          libraryId,
-          JSON.stringify(item),
-          item.updatedAt || now
-        ]);
-        await this.batchInsert(db, 'library_items', ['id', 'library_id', 'data', 'updated_at'], rows);
+          // Batch insert for 50-70% speedup (was N+1 individual inserts)
+          const rows = items.map(item => [
+            item.id,
+            libraryId,
+            JSON.stringify(item),
+            item.updatedAt || now
+          ]);
+          await this.batchInsert(db, 'library_items', ['id', 'library_id', 'data', 'updated_at'], rows);
+        });
       });
 
       // Update last sync time
@@ -731,6 +735,64 @@ class SQLiteCache {
     } catch (err) {
       log.error('setLibraryItems error:', err);
     }
+  }
+
+  /**
+   * Bulk upsert book IDs into user_books with is_in_library = 1.
+   * Uses transaction lock to prevent concurrent transaction errors.
+   */
+  async bulkSetLibraryBooks(bookIds: string[], inLibrary: boolean): Promise<void> {
+    const now = new Date().toISOString();
+    await this.withTransactionLock(async (db) => {
+      await db.withTransactionAsync(async () => {
+        if (inLibrary) {
+          for (const bookId of bookIds) {
+            await db.runAsync(
+              `INSERT INTO user_books (book_id, is_in_library, added_to_library_at, local_updated_at)
+               VALUES (?, 1, ?, ?)
+               ON CONFLICT(book_id) DO UPDATE SET
+                 is_in_library = 1,
+                 added_to_library_at = COALESCE(user_books.added_to_library_at, excluded.added_to_library_at),
+                 local_updated_at = excluded.local_updated_at`,
+              [bookId, now, now]
+            );
+          }
+        } else {
+          for (const bookId of bookIds) {
+            await db.runAsync(
+              `UPDATE user_books SET is_in_library = 0, local_updated_at = ? WHERE book_id = ?`,
+              [now, bookId]
+            );
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Reset library: clear all is_in_library flags, then set only the given book IDs.
+   * Uses transaction lock to prevent concurrent transaction errors.
+   */
+  async resetLibraryBooks(bookIds: string[]): Promise<void> {
+    const now = new Date().toISOString();
+    await this.withTransactionLock(async (db) => {
+      await db.withTransactionAsync(async () => {
+        // Clear all
+        await db.runAsync(`UPDATE user_books SET is_in_library = 0, local_updated_at = ?`, [now]);
+        // Set the ones from server
+        for (const bookId of bookIds) {
+          await db.runAsync(
+            `INSERT INTO user_books (book_id, is_in_library, added_to_library_at, local_updated_at)
+             VALUES (?, 1, ?, ?)
+             ON CONFLICT(book_id) DO UPDATE SET
+               is_in_library = 1,
+               added_to_library_at = COALESCE(user_books.added_to_library_at, excluded.added_to_library_at),
+               local_updated_at = excluded.local_updated_at`,
+            [bookId, now, now]
+          );
+        }
+      });
+    });
   }
 
   async getLibraryItem(itemId: string): Promise<LibraryItem | null> {
@@ -1759,7 +1821,10 @@ class SQLiteCache {
         ]
       );
     } catch (err) {
-      log.warn('setDownload error:', err);
+      // Fix 6: Critical operation - throw to notify caller
+      const message = `Critical error saving download state for ${record.itemId}: ${err instanceof Error ? err.message : String(err)}`;
+      log.error(message);
+      throw new Error(message);
     }
   }
 
@@ -1774,7 +1839,7 @@ class SQLiteCache {
         [resumableState, itemId]
       );
     } catch (err) {
-      log.warn('updateDownloadResumableState error:', err);
+      log.error('updateDownloadResumableState error:', err);
     }
   }
 
@@ -1788,7 +1853,7 @@ class SQLiteCache {
         [progress, itemId]
       );
     } catch (err) {
-      log.warn('updateDownloadProgress error:', err);
+      log.error('updateDownloadProgress error:', err);
     }
   }
 
@@ -1801,7 +1866,10 @@ class SQLiteCache {
         [filePath, fileSize, new Date().toISOString(), itemId]
       );
     } catch (err) {
-      log.warn('completeDownload error:', err);
+      // Fix 6: Critical operation - throw to notify caller
+      const message = `Critical error completing download for ${itemId}: ${err instanceof Error ? err.message : String(err)}`;
+      log.error(message);
+      throw new Error(message);
     }
   }
 
@@ -1813,7 +1881,7 @@ class SQLiteCache {
         itemId,
       ]);
     } catch (err) {
-      log.warn('failDownload error:', err);
+      log.error('failDownload error:', err);
     }
   }
 
@@ -3901,6 +3969,10 @@ class SQLiteCache {
     }
   }
 
+  // Guard to prevent concurrent clearAllUserData calls
+  private clearingUserData = false;
+  private clearUserDataPromise: Promise<void> | null = null;
+
   /**
    * Clear ALL user data on logout (P0 Critical - Privacy)
    *
@@ -3910,42 +3982,64 @@ class SQLiteCache {
    *
    * NOTE: Downloads are intentionally NOT cleared here.
    * Downloaded files should be cleared separately if needed.
+   *
+   * Uses a guard to prevent concurrent calls which would cause
+   * "cannot start a transaction within a transaction" errors.
    */
   async clearAllUserData(): Promise<void> {
-    const db = await this.ensureReady();
-    try {
-      await db.withTransactionAsync(async () => {
-        // Library data
-        await db.runAsync('DELETE FROM library_items');
-        await db.runAsync('DELETE FROM authors');
-        await db.runAsync('DELETE FROM series');
-        await db.runAsync('DELETE FROM narrators');
-        await db.runAsync('DELETE FROM collections');
-
-        // User-specific data
-        await db.runAsync('DELETE FROM user_books');
-        await db.runAsync('DELETE FROM playback_progress');
-        await db.runAsync('DELETE FROM read_history');
-        await db.runAsync('DELETE FROM favorites');
-        await db.runAsync('DELETE FROM bookmarks');
-        await db.runAsync('DELETE FROM listening_sessions');
-        await db.runAsync('DELETE FROM daily_stats');
-        await db.runAsync('DELETE FROM marked_complete');
-        await db.runAsync('DELETE FROM playback_queue');
-
-        // Sync data (user-specific)
-        await db.runAsync('DELETE FROM sync_queue');
-        await db.runAsync('DELETE FROM sync_log');
-        await db.runAsync('DELETE FROM sync_metadata');
-
-        // Image cache (contains user's covers)
-        await db.runAsync('DELETE FROM image_cache');
-      });
-      log.info('Cleared all user data from SQLite (logout)');
-    } catch (err) {
-      log.error('clearAllUserData error:', err);
-      throw err; // Re-throw so caller knows it failed
+    // If already clearing, wait for that operation to complete
+    if (this.clearingUserData && this.clearUserDataPromise) {
+      log.debug('clearAllUserData already in progress, waiting...');
+      return this.clearUserDataPromise;
     }
+
+    this.clearingUserData = true;
+    this.clearUserDataPromise = this._doClearAllUserData();
+
+    try {
+      await this.clearUserDataPromise;
+    } finally {
+      this.clearingUserData = false;
+      this.clearUserDataPromise = null;
+    }
+  }
+
+  private async _doClearAllUserData(): Promise<void> {
+    return this.withTransactionLock(async (db) => {
+      try {
+        await db.withTransactionAsync(async () => {
+          // Library data
+          await db.runAsync('DELETE FROM library_items');
+          await db.runAsync('DELETE FROM authors');
+          await db.runAsync('DELETE FROM series');
+          await db.runAsync('DELETE FROM narrators');
+          await db.runAsync('DELETE FROM collections');
+
+          // User-specific data
+          await db.runAsync('DELETE FROM user_books');
+          await db.runAsync('DELETE FROM playback_progress');
+          await db.runAsync('DELETE FROM read_history');
+          await db.runAsync('DELETE FROM favorites');
+          await db.runAsync('DELETE FROM bookmarks');
+          await db.runAsync('DELETE FROM listening_sessions');
+          await db.runAsync('DELETE FROM daily_stats');
+          await db.runAsync('DELETE FROM marked_complete');
+          await db.runAsync('DELETE FROM playback_queue');
+
+          // Sync data (user-specific)
+          await db.runAsync('DELETE FROM sync_queue');
+          await db.runAsync('DELETE FROM sync_log');
+          await db.runAsync('DELETE FROM sync_metadata');
+
+          // Image cache (contains user's covers)
+          await db.runAsync('DELETE FROM image_cache');
+        });
+        log.info('Cleared all user data from SQLite (logout)');
+      } catch (err) {
+        log.error('clearAllUserData error:', err);
+        throw err; // Re-throw so caller knows it failed
+      }
+    });
   }
 
   // ============================================================================

@@ -12,9 +12,7 @@ import { Image } from 'expo-image';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { apiClient } from '@/core/api';
 import { scale } from '@/shared/theme';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-// MIGRATED: Now using new spine system via adapter
-import { SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { useSpineCacheStore, SPINE_COLOR_PALETTE } from '@/shared/spine';
 
 interface CollectionThumbProps {
   bookId: string;

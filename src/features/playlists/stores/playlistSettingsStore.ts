@@ -1,0 +1,119 @@
+/**
+ * src/features/playlists/stores/playlistSettingsStore.ts
+ *
+ * Zustand store for playlist display preferences in the Library screen.
+ * Persisted to AsyncStorage.
+ */
+
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Default view type - 'library', 'lastPlayed', 'finished', or playlist ID prefixed with 'playlist:'
+export type DefaultViewType = 'library' | 'lastPlayed' | 'finished' | string;
+
+interface PlaylistSettingsState {
+  // Which playlists to show in VIEW dropdown (by ID)
+  visiblePlaylistIds: string[];
+  // Order of playlists in dropdown (subset of visiblePlaylistIds)
+  playlistOrder: string[];
+  // Default view when opening Library screen
+  defaultView: DefaultViewType;
+
+  // Actions
+  setVisiblePlaylists: (ids: string[]) => void;
+  togglePlaylistVisibility: (playlistId: string) => void;
+  setPlaylistOrder: (order: string[]) => void;
+  setDefaultView: (view: DefaultViewType) => void;
+  movePlaylist: (fromIndex: number, toIndex: number) => void;
+
+  // Sync visible playlists with available playlists (removes deleted ones)
+  syncWithAvailablePlaylists: (availableIds: string[]) => void;
+}
+
+export const usePlaylistSettingsStore = create<PlaylistSettingsState>()(
+  persist(
+    (set, get) => ({
+      visiblePlaylistIds: [],
+      playlistOrder: [],
+      defaultView: 'library',
+
+      setVisiblePlaylists: (ids) => {
+        set({
+          visiblePlaylistIds: ids,
+          // Keep order in sync - remove any that are no longer visible
+          playlistOrder: get().playlistOrder.filter(id => ids.includes(id)),
+        });
+      },
+
+      togglePlaylistVisibility: (playlistId) => {
+        const { visiblePlaylistIds, playlistOrder } = get();
+        const isVisible = visiblePlaylistIds.includes(playlistId);
+
+        if (isVisible) {
+          // Remove from visible and order
+          set({
+            visiblePlaylistIds: visiblePlaylistIds.filter(id => id !== playlistId),
+            playlistOrder: playlistOrder.filter(id => id !== playlistId),
+          });
+        } else {
+          // Add to visible and order (at the end)
+          set({
+            visiblePlaylistIds: [...visiblePlaylistIds, playlistId],
+            playlistOrder: [...playlistOrder, playlistId],
+          });
+        }
+      },
+
+      setPlaylistOrder: (order) => set({ playlistOrder: order }),
+
+      setDefaultView: (view) => set({ defaultView: view }),
+
+      movePlaylist: (fromIndex, toIndex) => {
+        const { playlistOrder } = get();
+        const newOrder = [...playlistOrder];
+        const [removed] = newOrder.splice(fromIndex, 1);
+        newOrder.splice(toIndex, 0, removed);
+        set({ playlistOrder: newOrder });
+      },
+
+      syncWithAvailablePlaylists: (availableIds) => {
+        const { visiblePlaylistIds, playlistOrder, defaultView } = get();
+        const availableSet = new Set(availableIds);
+
+        // Remove deleted playlists from visible and order
+        const newVisibleIds = visiblePlaylistIds.filter(id => availableSet.has(id));
+        const newOrder = playlistOrder.filter(id => availableSet.has(id));
+
+        // Reset default view if it was a deleted playlist
+        let newDefaultView = defaultView;
+        if (defaultView.startsWith('playlist:')) {
+          const playlistId = defaultView.replace('playlist:', '');
+          if (!availableSet.has(playlistId)) {
+            newDefaultView = 'library';
+          }
+        }
+
+        set({
+          visiblePlaylistIds: newVisibleIds,
+          playlistOrder: newOrder,
+          defaultView: newDefaultView,
+        });
+      },
+    }),
+    {
+      name: 'playlist-settings-store',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
+
+// Selector hooks for specific state
+export const useVisiblePlaylistIds = () =>
+  usePlaylistSettingsStore((s) => s.visiblePlaylistIds);
+
+export const usePlaylistOrder = () =>
+  usePlaylistSettingsStore((s) => s.playlistOrder);
+
+export const useDefaultView = () =>
+  usePlaylistSettingsStore((s) => s.defaultView);

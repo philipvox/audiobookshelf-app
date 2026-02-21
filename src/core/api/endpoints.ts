@@ -45,10 +45,16 @@ export const endpoints = {
   items: {
     get: (itemId: string) => `/api/items/${itemId}`,
     cover: (itemId: string) => `/api/items/${itemId}/cover`,
+    spine: (itemId: string) => `/api/items/${itemId}/spine`,
     download: (itemId: string) => `/api/items/${itemId}/download`,
     play: (itemId: string) => `/api/items/${itemId}/play`,
-    playEpisode: (itemId: string, episodeId: string) => 
+    playEpisode: (itemId: string, episodeId: string) =>
       `/api/items/${itemId}/play/${episodeId}`,
+  },
+
+  // Spines (image cache)
+  spines: {
+    manifest: '/api/spines/manifest',
   },
 
   // Playback
@@ -76,6 +82,8 @@ export const endpoints = {
     create: '/api/collections',
     update: (collectionId: string) => `/api/collections/${collectionId}`,
     delete: (collectionId: string) => `/api/collections/${collectionId}`,
+    batchAdd: (collectionId: string) => `/api/collections/${collectionId}/batch/add`,
+    batchRemove: (collectionId: string) => `/api/collections/${collectionId}/batch/remove`,
   },
 
   // Playlists
@@ -85,6 +93,8 @@ export const endpoints = {
     create: '/api/playlists',
     update: (playlistId: string) => `/api/playlists/${playlistId}`,
     delete: (playlistId: string) => `/api/playlists/${playlistId}`,
+    batchAdd: (playlistId: string) => `/api/playlists/${playlistId}/batch/add`,
+    batchRemove: (playlistId: string) => `/api/playlists/${playlistId}/batch/remove`,
   },
 
   // Podcasts

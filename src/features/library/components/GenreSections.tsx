@@ -25,8 +25,7 @@ import {
 import { MetaCategory, GenreWithData } from '../constants/genreCategories';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale } from '@/shared/theme';
-// MIGRATED: Now using new spine system via adapter
-import { hashString, SPINE_COLOR_PALETTE } from '@/features/home/utils/spine/adapter';
+import { hashString, SPINE_COLOR_PALETTE } from '@/shared/spine';
 import { useTheme } from '@/shared/theme';
 
 

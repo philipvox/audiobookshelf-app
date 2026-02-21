@@ -72,7 +72,7 @@ interface CacheEntry<T> {
 
 class ResponseCache {
   private cache = new Map<string, CacheEntry<any>>();
-  private readonly defaultTTL = 30000; // 30 seconds default TTL
+  private readonly defaultTTL = 60000; // 60 seconds default TTL (improved caching)
   private readonly maxSize = 100; // Max cache entries
 
   /**
@@ -270,7 +270,7 @@ interface QueuedRequest<T> {
 class RequestQueue {
   private queue: QueuedRequest<any>[] = [];
   private activeCount = 0;
-  private readonly maxConcurrent = 6; // Browser typically allows 6 concurrent requests per domain
+  private readonly maxConcurrent = 10; // Increased for faster parallel loading
   private requestId = 0;
 
   /**
