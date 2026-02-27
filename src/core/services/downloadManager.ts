@@ -216,15 +216,21 @@ class DownloadManager {
    * Pause all active downloads due to network change
    */
   private async pauseAllForNetwork(): Promise<void> {
+    const pausedIds: string[] = [];
     for (const [itemId, download] of this.activeDownloads) {
       try {
         await download.pauseAsync();
         log(`Paused download for network: ${itemId}`);
+        pausedIds.push(itemId);
       } catch (err) {
         logWarn(`Failed to pause download ${itemId}:`, err);
+        pausedIds.push(itemId); // Still remove — download object is likely in bad state
       }
     }
-    this.activeDownloads.clear();
+    // Only clear successfully handled downloads
+    for (const id of pausedIds) {
+      this.activeDownloads.delete(id);
+    }
 
     // Update all downloading items to waiting_wifi status
     const downloading = await sqliteCache.getDownloadsByStatus('downloading');
@@ -539,6 +545,7 @@ class DownloadManager {
    */
   async deleteDownload(itemId: string): Promise<void> {
     log(`Deleting download: ${itemId}`);
+    this.progressInfo.delete(itemId); // Clean up in-memory progress
     await sqliteCache.deleteDownload(itemId);
     await this.deleteFiles(itemId);
     this.notifyListeners();
@@ -724,14 +731,18 @@ class DownloadManager {
       const completeDownloads = await sqliteCache.getDownloadsByStatus('complete');
       const completeIds = new Set(completeDownloads.map(d => d.itemId));
 
-      // Get all in-progress downloads (don't delete these)
+      // Get all in-progress/resumable downloads (don't delete these)
       const downloadingItems = await sqliteCache.getDownloadsByStatus('downloading');
       const pendingItems = await sqliteCache.getDownloadsByStatus('pending');
       const pausedItems = await sqliteCache.getDownloadsByStatus('paused');
+      const errorItems = await sqliteCache.getDownloadsByStatus('error');
+      const waitingWifiItems = await sqliteCache.getDownloadsByStatus('waiting_wifi');
       const activeIds = new Set([
         ...downloadingItems.map(d => d.itemId),
         ...pendingItems.map(d => d.itemId),
         ...pausedItems.map(d => d.itemId),
+        ...errorItems.map(d => d.itemId),
+        ...waitingWifiItems.map(d => d.itemId),
       ]);
 
       let orphansRemoved = 0;
@@ -864,7 +875,6 @@ class DownloadManager {
       const nextItemId = await sqliteCache.getNextDownload();
       if (!nextItemId) {
         log('Queue empty - nothing to download');
-        this.isProcessingQueue = false;
         return;
       }
 
@@ -897,8 +907,8 @@ class DownloadManager {
         await sqliteCache.removeFromDownloadQueue(nextItemId);
         await sqliteCache.failDownload(nextItemId, 'Item metadata not found');
         this.notifyListeners();
-        this.isProcessingQueue = false;
         // Continue processing queue in case there are more items
+        this.isProcessingQueue = false;
         setTimeout(() => this.processQueue(), 100);
         return;
       }
@@ -917,6 +927,8 @@ class DownloadManager {
       await this.startDownload(item);
     } catch (error) {
       logError('Error processing queue:', error);
+    } finally {
+      // Always release lock — prevents queue from getting permanently stuck
       this.isProcessingQueue = false;
     }
   }
@@ -1044,8 +1056,6 @@ class DownloadManager {
 
         return result;
       } catch (error) {
-        if (waitingInterval) clearInterval(waitingInterval);
-
         lastError = error instanceof Error ? error : new Error('Download failed');
 
         // If download was paused, don't retry - exit immediately
@@ -1060,6 +1070,12 @@ class DownloadManager {
           const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
           log(`Waiting ${delay / 1000}s before retry...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      } finally {
+        // Always clear the waiting interval to prevent leaks
+        if (waitingInterval) {
+          clearInterval(waitingInterval);
+          waitingInterval = undefined;
         }
       }
     }

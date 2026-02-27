@@ -3,6 +3,9 @@
 dist/
 web-build/
 
+# Maestro test output
+.maestro/screenshots/
+
 # Dependencies
 node_modules/
 npm-debug.log*

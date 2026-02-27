@@ -8,6 +8,7 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { SectionHeader } from '@/shared/components/SectionHeader';
+import { useBookContextMenu } from '@/shared/components';
 import { ContinueListeningHero } from '../ContinueListeningHero';
 import { LibraryEmptyState } from '../LibraryEmptyState';
 import { BookRow } from '../BookRow';
@@ -65,6 +66,8 @@ export function AllBooksTab({
   hasPaused,
   onBrowse,
 }: AllBooksTabProps) {
+  const { showMenu } = useBookContextMenu();
+
   const hasContent = books.length > 0 || activeDownloads.length > 0 ||
     favoriteSeriesData.length > 0 || favoriteAuthorData.length > 0 ||
     favoriteNarratorData.length > 0;
@@ -123,6 +126,7 @@ export function AllBooksTab({
               key={book.id}
               book={book}
               onPress={() => onBookPress(book.id)}
+              onLongPress={() => showMenu(book.item)}
               onPlay={() => onBookPlay(book)}
               isMarkedFinished={isMarkedFinished(book.id)}
             />

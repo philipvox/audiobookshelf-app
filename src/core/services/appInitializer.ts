@@ -434,8 +434,18 @@ class AppInitializer {
 
         if (Array.isArray(legacyMarkedBooks) && legacyMarkedBooks.length > 0) {
           // Convert array format back to Map for migration
+          // Zustand persist serializes Maps as [[key, value], ...] tuples OR [{bookId, ...}, ...]
           type MarkedBookEntry = { bookId: string; markedAt: number; source: string; synced: boolean };
-          const markedBooksMap = new Map<string, MarkedBookEntry>(legacyMarkedBooks);
+          const markedBooksMap = new Map<string, MarkedBookEntry>();
+          for (const entry of legacyMarkedBooks) {
+            if (Array.isArray(entry) && entry.length === 2) {
+              // Tuple format: [bookId, {bookId, markedAt, ...}]
+              markedBooksMap.set(entry[0], entry[1]);
+            } else if (entry && typeof entry === 'object' && entry.bookId) {
+              // Object format: {bookId, markedAt, ...}
+              markedBooksMap.set(entry.bookId, entry);
+            }
+          }
           log.info(`Migrating ${markedBooksMap.size} books from legacy galleryStore...`);
           const result = await sqliteCache.migrateGalleryStoreToUserBooks(markedBooksMap);
           log.info(`Gallery migration: ${result.migrated} migrated, ${result.skipped} skipped`);
@@ -504,14 +514,14 @@ class AppInitializer {
         priority: TaskPriority.CRITICAL,
         timeoutMs: 3000,
         execute: async () => {
-          const progressStore = useProgressStore.getState();
-          const unsyncedBooks = progressStore.getUnsyncedBooks();
+          const { sqliteCache } = await import('@/core/services/sqliteCache');
+          const unsynced = await sqliteCache.getUnsyncedProgress();
 
-          if (unsyncedBooks.length === 0) return;
+          if (unsynced.length === 0) return;
 
-          // Import sync service and sync unsynced progress
+          // Full sync handles both importing server state and pushing local changes
           const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
-          await finishedBooksSync.syncUnsyncedProgress();
+          await finishedBooksSync.fullSync();
         },
       });
 
@@ -580,20 +590,16 @@ class AppInitializer {
       const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
 
       // Preload most recent book into player store (shows correct progress on UI)
-      await finishedBooksSync.preloadMostRecentBook();
+      // Note: importRecentProgress already runs during init (syncRecentProgress) — skip duplicate call
 
-      // Quick sync: only import progress for recently played books
-      // This is much faster than fullSync which processes all library items
-      const imported = await finishedBooksSync.importRecentProgress();
-      if (imported > 0) {
-        log.info(`Quick sync: ${imported} recent books synced`);
-      }
-
-      // Sync any unsynced local changes to server (also fast - only unsynced items)
+      // Sync any unsynced local changes to server (fast - only unsynced items)
       const { synced, failed } = await finishedBooksSync.syncToServer();
       if (synced > 0 || failed > 0) {
         log.info(`Synced ${synced} local changes to server (${failed} failed)`);
       }
+
+      // Preload most recent book (reuses cached items-in-progress from importRecentProgress)
+      await finishedBooksSync.preloadMostRecentBook();
 
       // BACKGROUND: Full import from server (includes finished books)
       // This runs after quick sync so UI is responsive, but finished books show up soon

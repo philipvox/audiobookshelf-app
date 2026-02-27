@@ -4,19 +4,31 @@
  * React Query hook for fetching user playlists.
  */
 
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { playlistsApi } from '@/core/api/endpoints/playlists';
 import { Playlist } from '@/core/types/library';
+import { usePlaylistSettingsStore } from '@/features/playlists/stores/playlistSettingsStore';
 
 /**
  * Fetch all playlists for the current user
  */
 export function usePlaylists() {
-  return useQuery<Playlist[], Error>({
+  const query = useQuery<Playlist[], Error>({
     queryKey: ['playlists'],
     queryFn: () => playlistsApi.getAll(),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+
+  // Sync playlist settings when playlists change (removes deleted playlists from settings)
+  useEffect(() => {
+    if (query.data) {
+      const availableIds = query.data.map((p) => p.id);
+      usePlaylistSettingsStore.getState().syncWithAvailablePlaylists(availableIds);
+    }
+  }, [query.data]);
+
+  return query;
 }
 
 /**

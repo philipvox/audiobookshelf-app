@@ -286,6 +286,9 @@ class SQLiteCache {
       log.info('Initializing database...');
       this.db = await SQLite.openDatabaseAsync('abs_cache.db');
 
+      // Enable WAL mode for better concurrent read/write performance
+      await this.db.execAsync('PRAGMA journal_mode = WAL;');
+
       // Create tables
       await this.db.execAsync(`
         -- Library items (stores full JSON for flexibility)
@@ -858,11 +861,10 @@ class SQLiteCache {
    * Uses batch insert for performance (50-70% faster than individual inserts).
    */
   async setSpineCache(libraryId: string, cache: Map<string, any>): Promise<void> {
-    const db = await this.ensureReady();
     const now = Date.now();
 
     try {
-      await db.withTransactionAsync(async () => {
+      await this.withTransactionLock(async (db) => {
         // Clear existing spine cache for this library
         await db.runAsync('DELETE FROM spine_cache WHERE library_id = ?', [libraryId]);
 
@@ -1071,15 +1073,16 @@ class SQLiteCache {
     duration: number,
     synced = false
   ): Promise<void> {
-    const db = await this.ensureReady();
     const now = Date.now();
 
     try {
-      await db.runAsync(
-        `INSERT OR REPLACE INTO playback_progress (item_id, position, duration, updated_at, synced)
-         VALUES (?, ?, ?, ?, ?)`,
-        [itemId, position, duration, now, synced ? 1 : 0]
-      );
+      await this.withTransactionLock(async (db) => {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO playback_progress (item_id, position, duration, updated_at, synced)
+           VALUES (?, ?, ?, ?, ?)`,
+          [itemId, position, duration, now, synced ? 1 : 0]
+        );
+      });
     } catch (err) {
       log.warn('setPlaybackProgress error:', err);
     }
@@ -1097,12 +1100,13 @@ class SQLiteCache {
   }
 
   async markProgressSynced(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
     try {
-      await db.runAsync(
-        'UPDATE playback_progress SET synced = 1 WHERE item_id = ?',
-        [itemId]
-      );
+      await this.withTransactionLock(async (db) => {
+        await db.runAsync(
+          'UPDATE playback_progress SET synced = 1 WHERE item_id = ?',
+          [itemId]
+        );
+      });
     } catch (err) {
       log.warn('markProgressSynced error:', err);
     }
@@ -1187,30 +1191,32 @@ class SQLiteCache {
   }
 
   async addToReadHistory(entry: Omit<ReadHistoryEntry, 'completedAt' | 'timesRead'>): Promise<void> {
-    const db = await this.ensureReady();
     const now = Date.now();
 
     try {
-      // Check if already exists
-      const existing = await db.getFirstAsync<{ times_read: number }>(
-        'SELECT times_read FROM read_history WHERE item_id = ?',
-        [entry.itemId]
-      );
+      // Use transaction lock: this is a read-then-write operation
+      await this.withTransactionLock(async (db) => {
+        // Check if already exists
+        const existing = await db.getFirstAsync<{ times_read: number }>(
+          'SELECT times_read FROM read_history WHERE item_id = ?',
+          [entry.itemId]
+        );
 
-      if (existing) {
-        // Increment times_read
-        await db.runAsync(
-          'UPDATE read_history SET times_read = ?, completed_at = ?, rating = COALESCE(?, rating) WHERE item_id = ?',
-          [existing.times_read + 1, now, entry.rating || null, entry.itemId]
-        );
-      } else {
-        // Insert new entry
-        await db.runAsync(
-          `INSERT INTO read_history (item_id, title, author_name, narrator_name, genres, completed_at, times_read, rating)
-           VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
-          [entry.itemId, entry.title, entry.authorName, entry.narratorName || null, JSON.stringify(entry.genres), now, entry.rating || null]
-        );
-      }
+        if (existing) {
+          // Increment times_read
+          await db.runAsync(
+            'UPDATE read_history SET times_read = ?, completed_at = ?, rating = COALESCE(?, rating) WHERE item_id = ?',
+            [existing.times_read + 1, now, entry.rating || null, entry.itemId]
+          );
+        } else {
+          // Insert new entry
+          await db.runAsync(
+            `INSERT INTO read_history (item_id, title, author_name, narrator_name, genres, completed_at, times_read, rating)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+            [entry.itemId, entry.title, entry.authorName, entry.narratorName || null, JSON.stringify(entry.genres), now, entry.rating || null]
+          );
+        }
+      });
       log.debug(`Added to read history: ${entry.title}`);
     } catch (err) {
       log.error('addToReadHistory error:', err);
@@ -1803,8 +1809,7 @@ class SQLiteCache {
   }
 
   async setDownload(record: DownloadRecord): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync(
         `INSERT OR REPLACE INTO downloads (item_id, status, progress, file_path, file_size, downloaded_at, error, user_paused, resumable_state)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1820,91 +1825,65 @@ class SQLiteCache {
           record.resumableState ?? null,
         ]
       );
-    } catch (err) {
-      // Fix 6: Critical operation - throw to notify caller
-      const message = `Critical error saving download state for ${record.itemId}: ${err instanceof Error ? err.message : String(err)}`;
-      log.error(message);
-      throw new Error(message);
-    }
+    });
   }
 
   /**
    * Update the resumable state for a download (for byte-level resume)
    */
   async updateDownloadResumableState(itemId: string, resumableState: string | null): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync(
         'UPDATE downloads SET resumable_state = ? WHERE item_id = ?',
         [resumableState, itemId]
       );
-    } catch (err) {
-      log.error('updateDownloadResumableState error:', err);
-    }
+    });
   }
 
   async updateDownloadProgress(itemId: string, progress: number): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       // Only update status to 'downloading' if NOT paused
       // This prevents race condition where progress update overwrites pause
       await db.runAsync(
         `UPDATE downloads SET progress = ?, status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'downloading' END WHERE item_id = ?`,
         [progress, itemId]
       );
-    } catch (err) {
-      log.error('updateDownloadProgress error:', err);
-    }
+    });
   }
 
   async completeDownload(itemId: string, filePath: string, fileSize: number): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync(
         `UPDATE downloads SET status = 'complete', progress = 1, file_path = ?, file_size = ?, downloaded_at = ?, error = NULL, resumable_state = NULL
          WHERE item_id = ?`,
         [filePath, fileSize, new Date().toISOString(), itemId]
       );
-    } catch (err) {
-      // Fix 6: Critical operation - throw to notify caller
-      const message = `Critical error completing download for ${itemId}: ${err instanceof Error ? err.message : String(err)}`;
-      log.error(message);
-      throw new Error(message);
-    }
+    });
   }
 
   async failDownload(itemId: string, error: string): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync("UPDATE downloads SET status = 'error', error = ? WHERE item_id = ?", [
         error,
         itemId,
       ]);
-    } catch (err) {
-      log.error('failDownload error:', err);
-    }
+    });
   }
 
   async updateDownloadLastPlayed(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync('UPDATE downloads SET last_played_at = ? WHERE item_id = ?', [
         new Date().toISOString(),
         itemId,
       ]);
-    } catch (err) {
-      log.warn('updateDownloadLastPlayed error:', err);
-    }
+    });
   }
 
   async deleteDownload(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync('DELETE FROM downloads WHERE item_id = ?', [itemId]);
       await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
-    } catch (err) {
-      log.warn('deleteDownload error:', err);
-    }
+    });
   }
 
   async isDownloaded(itemId: string): Promise<boolean> {
@@ -1914,15 +1893,12 @@ class SQLiteCache {
 
   // Download Queue
   async addToDownloadQueue(itemId: string, priority = 0): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync(
         'INSERT OR REPLACE INTO download_queue (item_id, priority, added_at) VALUES (?, ?, ?)',
         [itemId, priority, new Date().toISOString()]
       );
-    } catch (err) {
-      log.warn('addToDownloadQueue error:', err);
-    }
+    });
   }
 
   async getNextDownload(): Promise<string | null> {
@@ -1938,12 +1914,9 @@ class SQLiteCache {
   }
 
   async removeFromDownloadQueue(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
-    try {
+    return this.withTransactionLock(async (db) => {
       await db.runAsync('DELETE FROM download_queue WHERE item_id = ?', [itemId]);
-    } catch (err) {
-      log.warn('removeFromDownloadQueue error:', err);
-    }
+    });
   }
 
   async getDownloadQueueCount(): Promise<number> {
@@ -3005,12 +2978,14 @@ class SQLiteCache {
    * Upsert a user book record (insert or update)
    */
   async setUserBook(book: Partial<UserBook> & { bookId: string }): Promise<void> {
-    const db = await this.ensureReady();
     const now = new Date().toISOString();
 
-    try {
+    return this.withTransactionLock(async (db) => {
       // Check if exists
-      const existing = await this.getUserBook(book.bookId);
+      const existing = await db.getFirstAsync<any>(
+        'SELECT book_id FROM user_books WHERE book_id = ?',
+        [book.bookId]
+      );
 
       if (existing) {
         // Update only provided fields
@@ -3172,9 +3147,7 @@ class SQLiteCache {
           ]
         );
       }
-    } catch (err) {
-      log.warn('setUserBook error:', err);
-    }
+    });
   }
 
   /**
@@ -3326,7 +3299,7 @@ class SQLiteCache {
       progress,
       currentTrackIndex,
       lastPlayedAt: now,
-      startedAt: currentTime > 0 ? now : undefined, // Set startedAt on first progress
+      startedAt: currentTime > 0 && !existing?.startedAt ? now : undefined, // Only set startedAt on first progress
       progressSynced: false,
       // Auto-finish logic
       ...(shouldAutoFinish && {
@@ -3386,28 +3359,25 @@ class SQLiteCache {
   ): Promise<void> {
     if (bookIds.length === 0) return;
 
-    const db = await this.ensureReady();
     const now = new Date().toISOString();
 
     try {
-      // Use transaction for atomicity
-      await db.withTransactionAsync(async () => {
-        for (const bookId of bookIds) {
-          const existing = await this.getUserBook(bookId);
+      // Use withTransactionLock to avoid deadlocking with setUserBook's internal lock
+      for (const bookId of bookIds) {
+        const existing = await this.getUserBook(bookId);
 
-          // Skip if already in desired state
-          if (existing?.isFinished === isFinished) continue;
+        // Skip if already in desired state
+        if (existing?.isFinished === isFinished) continue;
 
-          await this.setUserBook({
-            bookId,
-            isFinished,
-            finishSource: isFinished ? source : null,
-            finishedAt: isFinished ? now : null,
-            finishedSynced: false,
-            timesCompleted: isFinished ? (existing?.timesCompleted ?? 0) + 1 : existing?.timesCompleted,
-          });
-        }
-      });
+        await this.setUserBook({
+          bookId,
+          isFinished,
+          finishSource: isFinished ? source : null,
+          finishedAt: isFinished ? now : null,
+          finishedSynced: false,
+          timesCompleted: isFinished ? (existing?.timesCompleted ?? 0) + 1 : existing?.timesCompleted,
+        });
+      }
     } catch (err) {
       log.warn('markUserBooksFinished error:', err);
       throw err;

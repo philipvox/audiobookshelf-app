@@ -40,6 +40,7 @@ type AnimationPhase = 'idle' | 'switching' | 'entering';
 interface BookshelfViewProps {
   books: BookSpineVerticalData[];
   onBookPress: (book: BookSpineVerticalData) => void;
+  onBookLongPress?: (book: BookSpineVerticalData) => void;
   layoutMode?: LayoutMode;
   bottomPadding?: number;
   /** Scale factor for spine heights (1.0 = full, 0.5 = half). Default: 1.0 */
@@ -76,38 +77,44 @@ const LEAN_ANGLE = 3;
 const STACK_GAP = 8;
 
 // Duration-based scaling using smooth ease-out curve
-// Range: 0.70 (0 hours) to 1.15 (30+ hours)
-// Uses square root for natural ease-out: faster growth for short books, gradual for long
+// Range: 0.70 (0 hours) to 1.15 (30 hours), then linear ramp to 1.40 (60+ hours)
 const DURATION_SCALE_MIN = 0.70;
 const DURATION_SCALE_MAX = 1.15;
 const DURATION_MAX_HOURS = 30;
+// Books longer than 30 hours continue scaling up to this cap
+const DURATION_SCALE_LONG_MAX = 1.40;
+const DURATION_LONG_CAP_HOURS = 60;
 
 /**
  * Calculate a continuous scale factor based on book duration.
  * Uses ease-out curve (square root) for smooth, natural distribution.
+ * Books over 30 hours continue scaling linearly up to 1.40 at 60+ hours.
  *
  * Example values:
  * - 0 hours: 0.70
- * - 1 hour: 0.78
  * - 5 hours: 0.88
  * - 10 hours: 0.96
  * - 20 hours: 1.07
- * - 30+ hours: 1.15
+ * - 30 hours: 1.15
+ * - 50 hours: 1.32
+ * - 60+ hours: 1.40
  *
  * @param durationSeconds - Book duration in seconds
- * @returns Scale multiplier (0.70 to 1.15)
+ * @returns Scale multiplier (0.70 to 1.40)
  */
 function getDurationScale(durationSeconds: number): number {
   const hours = Math.max(0, durationSeconds / 3600);
 
-  // Cap at max hours
-  const clampedHours = Math.min(hours, DURATION_MAX_HOURS);
+  if (hours <= DURATION_MAX_HOURS) {
+    // Ease-out curve using square root
+    const t = Math.sqrt(hours / DURATION_MAX_HOURS);
+    return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+  }
 
-  // Ease-out curve using square root
-  // sqrt(t) gives faster initial growth that gradually slows
-  const t = Math.sqrt(clampedHours / DURATION_MAX_HOURS);
-
-  return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+  // Linear ramp from 1.15 to 1.40 for 30-60hr books, capped at 60hr
+  const extraHours = Math.min(hours, DURATION_LONG_CAP_HOURS) - DURATION_MAX_HOURS;
+  const extraRange = DURATION_LONG_CAP_HOURS - DURATION_MAX_HOURS;
+  return DURATION_SCALE_MAX + (DURATION_SCALE_LONG_MAX - DURATION_SCALE_MAX) * (extraHours / extraRange);
 }
 
 // Animation timing
@@ -147,6 +154,7 @@ interface StaticStackItemProps {
   spineWidth: number;
   spineHeight: number;
   onPress: (book: BookSpineVerticalData) => void;
+  onLongPress?: (book: BookSpineVerticalData) => void;
   shelfScale: number;
   stackScale: number;
 }
@@ -159,6 +167,7 @@ const StaticStackItem = React.memo(function StaticStackItem({
   spineWidth,
   spineHeight,
   onPress,
+  onLongPress,
   shelfScale,
   stackScale,
 }: StaticStackItemProps) {
@@ -176,6 +185,10 @@ const StaticStackItem = React.memo(function StaticStackItem({
     haptics.selection();
     onPress(book);
   }, [book, onPress]);
+
+  const handleLongPress = useCallback(() => {
+    onLongPress?.(book);
+  }, [book, onLongPress]);
 
   return (
     <View style={[styles.stackItemContainer, { width: containerWidth, height: containerHeight }]}>
@@ -199,6 +212,7 @@ const StaticStackItem = React.memo(function StaticStackItem({
           isActive={false}
           showShadow={false}
           onPress={handlePress}
+          onLongPress={onLongPress ? handleLongPress : undefined}
           isHorizontalDisplay={true}
         />
       </View>
@@ -218,6 +232,7 @@ interface AnimatedBookWrapperProps {
   phase: AnimationPhase;
   isActive: boolean;
   onPress: (book: BookSpineVerticalData) => void;
+  onLongPress?: (book: BookSpineVerticalData) => void;
   onPressIn: (index: number) => void;
   onPressOut: () => void;
 }
@@ -230,6 +245,7 @@ const AnimatedBookWrapper = React.memo(function AnimatedBookWrapper({
   phase,
   isActive,
   onPress,
+  onLongPress,
   onPressIn,
   onPressOut,
 }: AnimatedBookWrapperProps) {
@@ -294,6 +310,7 @@ const AnimatedBookWrapper = React.memo(function AnimatedBookWrapper({
         isPushedLeft={false}
         isPushedRight={false}
         onPress={onPress}
+        onLongPress={onLongPress}
         onPressIn={handlePressIn}
         onPressOut={onPressOut}
         showShadow={false}
@@ -309,6 +326,7 @@ const AnimatedBookWrapper = React.memo(function AnimatedBookWrapper({
 export function BookshelfView({
   books,
   onBookPress,
+  onBookLongPress,
   layoutMode = 'shelf',
   bottomPadding = 0,
   heightScale: heightScaleProp = 1.0,
@@ -318,6 +336,11 @@ export function BookshelfView({
 }: BookshelfViewProps) {
   const insets = useSafeAreaInsets();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  const handleContainerLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+    setContainerHeight(e.nativeEvent.layout.height);
+  }, []);
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
@@ -330,6 +353,20 @@ export function BookshelfView({
   );
   // Apply optional height scale (e.g. 0.5 for half-height series sections)
   const shelfScale = baseShelfScale * heightScaleProp;
+
+  // Compute fillScale to make tallest possible spine fill available height.
+  // Only applies for full-screen shelf (heightScale=1.0). Series rows (heightScale=0.5)
+  // are inside a ScrollView where container height depends on content — using fillScale
+  // there would create a layout feedback loop.
+  const fillScale = useMemo(() => {
+    if (heightScaleProp !== 1.0) return 1;
+    if (containerHeight <= 0) return 1;
+    const availableHeight = containerHeight - bottomPadding - insets.bottom;
+    if (availableHeight <= 0) return 1;
+    const maxBoundingBoxHeight = Math.max(SERVER_SPINE_BOX.MAX_HEIGHT, PROCEDURAL_SPINE_BOX.MAX_HEIGHT);
+    const maxPossibleHeight = maxBoundingBoxHeight * shelfScale * DURATION_SCALE_LONG_MAX;
+    return availableHeight / maxPossibleHeight;
+  }, [containerHeight, bottomPadding, insets.bottom, shelfScale, heightScaleProp]);
 
   // Animation state
   const [phase, setPhase] = useState<AnimationPhase>('idle');
@@ -345,7 +382,11 @@ export function BookshelfView({
       return;
     }
 
-    if (layoutMode === displayMode) return;
+    if (layoutMode === displayMode) {
+      // Ensure phase is reset to idle if we re-enter with same mode (e.g., books.length changed)
+      if (phase !== 'idle') setPhase('idle');
+      return;
+    }
 
     // Stack mode is instant (static), shelf mode has domino animation
     if (layoutMode === 'stack') {
@@ -377,8 +418,6 @@ export function BookshelfView({
 
   // Get spine cache for fast lookups
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
-  // Subscribe to colorVersion to trigger re-render when colors are extracted
-  const colorVersion = useSpineCacheStore((state) => state.colorVersion);
 
   // Server spine settings - subscribe to lightweight version counter instead of the full
   // dimensions object to avoid re-rendering every spine when ANY book's dimensions change
@@ -415,8 +454,8 @@ export function BookshelfView({
         const { width: serverWidth, height: serverHeight } = cachedServerDims;
         bookHash = cached?.hash ?? hashString(book.id);
 
-        const maxW = SERVER_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
-        const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const maxW = SERVER_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale * fillScale;
+        const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale * fillScale;
         const { width, height } = fitToBoundingBox(serverWidth, serverHeight, maxW, maxH);
         const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
 
@@ -426,8 +465,8 @@ export function BookshelfView({
         // Use cached procedural dimensions — bounding-box fit preserves aspect ratio
         bookHash = cached.hash;
 
-        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
-        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale * fillScale;
+        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale * fillScale;
         const { width, height } = fitToBoundingBox(cached.baseWidth, cached.baseHeight, maxW, maxH);
         const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
 
@@ -457,8 +496,8 @@ export function BookshelfView({
           baseHeight = baseDims.height;
         }
 
-        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
-        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
+        const maxW = PROCEDURAL_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale * fillScale;
+        const maxH = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale * fillScale;
         const { width, height } = fitToBoundingBox(baseWidth, baseHeight, maxW, maxH);
         const touchPadding = Math.max(0, Math.ceil((MIN_TOUCH_TARGET - width) / 2));
 
@@ -480,7 +519,7 @@ export function BookshelfView({
 
       return { ...dims, leanAngle, shouldLean };
     });
-  }, [books, getSpineData, shelfScale, useServerSpines, serverDimsVersion, isHydrated]);
+  }, [books, getSpineData, shelfScale, fillScale, useServerSpines, serverDimsVersion, isHydrated]);
 
   // Enrich books with cached colors for efficient rendering
   // Apply darkening to light colors for the grey background theme
@@ -520,7 +559,7 @@ export function BookshelfView({
       }
       return book;
     });
-  }, [books, getSpineData, colorVersion]);
+  }, [books, getSpineData]);
 
   const handlePressIn = useCallback((index: number) => setActiveIndex(index), []);
   const handlePressOut = useCallback(() => setActiveIndex(null), []);
@@ -528,6 +567,11 @@ export function BookshelfView({
     setActiveIndex(null);
     onBookPress(book);
   }, [onBookPress]);
+
+  const handleLongPress = useCallback((book: BookSpineVerticalData) => {
+    setActiveIndex(null);
+    onBookLongPress?.(book);
+  }, [onBookLongPress]);
 
   const isStackMode = displayMode === 'stack';
 
@@ -564,30 +608,23 @@ export function BookshelfView({
         spineWidth={dims.width}
         spineHeight={dims.height}
         onPress={handlePress}
+        onLongPress={onBookLongPress ? handleLongPress : undefined}
         shelfScale={shelfScale}
         stackScale={stackScale}
       />
     );
-  }, [getStackItemDims, handlePress, shelfScale, stackScale]);
+  }, [getStackItemDims, handlePress, handleLongPress, onBookLongPress, shelfScale, stackScale]);
 
   const keyExtractor = useCallback((item: BookSpineVerticalData) => item.id, []);
 
-  // Estimated item height for FlatList optimization
-  const getItemLayout = useCallback((_: any, index: number) => ({
-    length: 50, // Approximate stack item height
-    offset: 50 * index,
-    index,
-  }), []);
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.white }, !isStackMode && { paddingBottom: bottomPadding }]}>
+    <View style={[styles.container, { backgroundColor: colors.white }, !isStackMode && { paddingBottom: bottomPadding }]} onLayout={handleContainerLayout}>
       {/* Stack mode: Virtualized FlatList for performance with 200+ items */}
       {isStackMode ? (
         <FlatList
           data={enrichedBooks}
           renderItem={renderStackItem}
           keyExtractor={keyExtractor}
-          getItemLayout={getItemLayout}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContentStack,
@@ -612,7 +649,7 @@ export function BookshelfView({
             styles.scrollContentShelf,
             {
               paddingRight: insets.right + SHELF_PADDING_H,
-              paddingBottom: insets.bottom,
+              paddingBottom: 0,
               gap: bookGap,
             },
           ]}
@@ -630,6 +667,7 @@ export function BookshelfView({
               phase={phase}
               isActive={activeIndex === index}
               onPress={handlePress}
+              onLongPress={onBookLongPress ? handleLongPress : undefined}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
             />

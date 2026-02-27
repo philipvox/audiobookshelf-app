@@ -401,10 +401,11 @@ export function SecretLibraryBookDetailScreen() {
     if (isThisBookLoaded) {
       if (isPlaying) {
         pause();
+        // Don't open player when pausing — user wants to stay on detail screen
       } else {
         play();
+        togglePlayer(); // Open player only when starting playback
       }
-      togglePlayer(); // Open player
     } else if (book) {
       // loadBook will show player by default (showPlayer: true)
       await loadBook(book);
@@ -900,6 +901,16 @@ export function SecretLibraryBookDetailScreen() {
     );
   }
 
+  // Null guard — transient state during refetch
+  if (!book) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.white }]}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+        <Loading size={80} color={colors.black} />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.white }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
@@ -944,7 +955,7 @@ export function SecretLibraryBookDetailScreen() {
         ]}
       />
 
-      <SeriesSwipeContainer book={book!}>
+      <SeriesSwipeContainer book={book}>
         <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
           <ScrollView
             ref={scrollViewRef}
@@ -1071,7 +1082,7 @@ export function SecretLibraryBookDetailScreen() {
         <View style={styles.actionRow}>
           {/* Play Button - 30% width */}
           <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} onPress={handlePlay} activeOpacity={0.8}>
-            <PlayIcon color={colors.white} size={16} />
+            {isThisBookPlaying ? <PauseIcon color={colors.white} size={16} /> : <PlayIcon color={colors.white} size={16} />}
             <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>
               {isThisBookPlaying ? 'Pause' : 'Play'}
             </Text>

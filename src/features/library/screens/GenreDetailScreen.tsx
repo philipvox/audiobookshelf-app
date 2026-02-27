@@ -21,11 +21,11 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TopNav, TopNavBackIcon, SkullRefreshControl, CollapsibleSection } from '@/shared/components';
+import { TopNav, TopNavBackIcon, SkullRefreshControl, CollapsibleSection, useBookContextMenu } from '@/shared/components';
 import { Music } from 'lucide-react-native';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
@@ -74,8 +74,9 @@ function formatDurationCompact(seconds: number): string {
 
 // Extract series sequence number from metadata
 function getSeriesSequence(metadata: any): number | undefined {
-  if (metadata?.series?.sequence) {
-    return parseFloat(metadata.series.sequence);
+  // series is an array of SeriesSequence objects — access first element
+  if (Array.isArray(metadata?.series) && metadata.series[0]?.sequence) {
+    return parseFloat(metadata.series[0].sequence);
   }
   const match = metadata?.seriesName?.match(/#([\d.]+)$/);
   if (match) {
@@ -116,9 +117,10 @@ function toSpineData(item: LibraryItem, cachedData?: any): BookSpineVerticalData
 interface ShelfViewProps {
   books: LibraryItem[];
   onPress: (book: BookSpineVerticalData) => void;
+  onLongPress?: (book: BookSpineVerticalData) => void;
 }
 
-function ShelfView({ books, onPress }: ShelfViewProps) {
+function ShelfView({ books, onPress, onLongPress }: ShelfViewProps) {
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
   // Convert books to spine data with cached colors
@@ -148,6 +150,7 @@ function ShelfView({ books, onPress }: ShelfViewProps) {
             height={layout.height}
             leanAngle={layout.leanAngle}
             onPress={onPress}
+            onLongPress={onLongPress}
           />
         </View>
       ))}
@@ -173,6 +176,8 @@ export function GenreDetailScreen() {
   const insets = useSafeAreaInsets();
   const colors = useSecretLibraryColors();
   const isDarkMode = colors.isDark;
+
+  const { showMenu } = useBookContextMenu();
 
   const genreName = route.params?.genreName || '';
 
@@ -334,6 +339,11 @@ export function GenreDetailScreen() {
     navigation.navigate('BookDetail', { id: book.id });
   }, [navigation]);
 
+  const handleSpineLongPress = useCallback((book: BookSpineVerticalData) => {
+    const item = allBooks.find(b => b.id === book.id);
+    if (item) showMenu(item);
+  }, [allBooks, showMenu]);
+
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -362,6 +372,7 @@ export function GenreDetailScreen() {
               key={book.id}
               style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
               onPress={() => handleBookPress(book.id)}
+              onLongPress={() => showMenu(book)}
             >
               <Image
                 source={{ uri: coverUrl }}
@@ -506,7 +517,7 @@ export function GenreDetailScreen() {
                   onTitlePress={group.name !== 'Standalone' ? () => handleSeriesPress(group.name) : undefined}
                   isStandalone={group.name === 'Standalone'}
                 >
-                  <ShelfView books={group.books} onPress={handleSpinePress} />
+                  <ShelfView books={group.books} onPress={handleSpinePress} onLongPress={handleSpineLongPress} />
                 </CollapsibleSection>
               ))}
               {allBooksBySeries.length === 0 && (
@@ -534,7 +545,7 @@ export function GenreDetailScreen() {
                   defaultExpanded={index === 0}
                   onTitlePress={() => handleAuthorPress(author.name)}
                 >
-                  <ShelfView books={author.books} onPress={handleSpinePress} />
+                  <ShelfView books={author.books} onPress={handleSpinePress} onLongPress={handleSpineLongPress} />
                 </CollapsibleSection>
               ))}
               {authorList.length === 0 && (
@@ -572,7 +583,7 @@ export function GenreDetailScreen() {
                   defaultExpanded={index === 0}
                   onTitlePress={() => handleSeriesPress(series.name)}
                 >
-                  <ShelfView books={series.books} onPress={handleSpinePress} />
+                  <ShelfView books={series.books} onPress={handleSpinePress} onLongPress={handleSpineLongPress} />
                 </CollapsibleSection>
               ))}
               {seriesList.length === 0 && (
@@ -610,7 +621,7 @@ export function GenreDetailScreen() {
                   defaultExpanded={index === 0}
                   onTitlePress={() => handleNarratorPress(narrator.name)}
                 >
-                  <ShelfView books={narrator.books} onPress={handleSpinePress} />
+                  <ShelfView books={narrator.books} onPress={handleSpinePress} onLongPress={handleSpineLongPress} />
                 </CollapsibleSection>
               ))}
               {narratorList.length === 0 && (

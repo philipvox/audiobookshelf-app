@@ -46,6 +46,7 @@ export {
 export type { AudienceFilter, AgeRecommendation, AgeRating, ContentFilterState } from './stores/contentFilterStore';
 
 // Hooks
+export { useBrowseLibrary } from './hooks/useBrowseLibrary';
 export { useLibraryStats, formatLibraryStats } from './hooks/useLibraryStats';
 export { useTopAuthors, getAuthorLastName } from './hooks/useTopAuthors';
 export { useBrowseCounts, DURATION_RANGES } from './hooks/useBrowseCounts';

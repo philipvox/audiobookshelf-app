@@ -85,8 +85,37 @@ export const finishedBooksSync = {
 
         const duration = getBookDuration(item);
 
+        // Validate progress data from server
+        if (typeof serverProgress.currentTime !== 'number' || !isFinite(serverProgress.currentTime) || serverProgress.currentTime < 0) {
+          log.warn(`Skipping item ${item.id}: invalid currentTime ${serverProgress.currentTime}`);
+          continue;
+        }
+        if (typeof serverProgress.progress !== 'number' || !isFinite(serverProgress.progress) || serverProgress.progress < 0 || serverProgress.progress > 1) {
+          log.warn(`Skipping item ${item.id}: invalid progress ${serverProgress.progress}`);
+          continue;
+        }
+
         if (serverProgress.currentTime > 0) {
-          // Write to playback_progress table (what the player reads from)
+          // Check if local progress is more recent by timestamp — don't overwrite newer local data
+          // Using timestamps (not position values) so intentional rewinds aren't overwritten
+          const existingPlayback = await sqliteCache.getPlaybackProgress(item.id);
+          const localUpdatedAt = existingPlayback?.updatedAt ? new Date(existingPlayback.updatedAt).getTime() : 0;
+          const serverUpdatedAt = serverProgress.lastUpdate || 0;
+
+          if (existingPlayback && localUpdatedAt > serverUpdatedAt) {
+            // Local progress is more recent, skip writing but still cache in memory
+            const existingTime = existingPlayback.position || 0;
+            playbackCache.setProgress(item.id, {
+              currentTime: existingTime,
+              duration,
+              progress: existingTime / (duration || 1),
+              updatedAt: Date.now(),
+            });
+            useSpineCacheStore.getState().updateProgress(item.id, existingTime / (duration || 1));
+            continue;
+          }
+
+          // Server has more recent progress — write to playback_progress table
           await sqliteCache.setPlaybackProgress(
             item.id,
             serverProgress.currentTime,
@@ -186,11 +215,12 @@ export const finishedBooksSync = {
 
           // Check existing playback_progress (what the player reads from)
           const existingPlayback = await sqliteCache.getPlaybackProgress(item.id);
-          const existingTime = existingPlayback?.position || 0;
+          const localUpdatedAt = existingPlayback?.updatedAt ? new Date(existingPlayback.updatedAt).getTime() : 0;
+          const serverUpdatedAt = serverProgress.lastUpdate || 0;
 
-          // Only write to SQLite if server has more recent progress
-          // This avoids overwriting local progress with stale server data
-          if (serverProgress.currentTime > existingTime) {
+          // Only write to SQLite if server has more recent progress (by timestamp, not position)
+          // This avoids overwriting intentional local rewinds with stale server data
+          if (!existingPlayback || serverUpdatedAt > localUpdatedAt) {
             // Write to playback_progress table (what the player reads from)
             await sqliteCache.setPlaybackProgress(
               item.id,
@@ -219,8 +249,10 @@ export const finishedBooksSync = {
         if (serverProgress.isFinished || serverProgress.progress >= 0.95) {
           const existing = await sqliteCache.getUserBook(item.id);
 
-          // Only import if not already finished locally
-          if (!existing?.isFinished) {
+          // Only import if not already finished locally AND not recently un-finished
+          // If local progress is 0 and not synced, user intentionally reset — don't overwrite
+          const wasLocallyReset = existing && !existing.isFinished && existing.progress === 0 && !existing.progressSynced;
+          if (!existing?.isFinished && !wasLocallyReset) {
             await sqliteCache.markUserBookFinished(item.id, true, 'progress');
             await sqliteCache.markUserBookSynced(item.id, { finished: true });
             imported++;

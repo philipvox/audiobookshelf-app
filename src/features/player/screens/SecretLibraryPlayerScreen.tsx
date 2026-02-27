@@ -566,11 +566,13 @@ export function SecretLibraryPlayerScreen() {
       deltaHideTimer.current = null;
     }
 
-    setTimeDelta(delta);
+    // Accumulate delta when popup is already showing (rapid taps)
+    setTimeDelta(prev => {
+      const newDelta = (showDelta && autoHide) ? prev + delta : delta;
+      animateDeltaFontSize(newDelta);
+      return newDelta;
+    });
     setShowDelta(true);
-
-    // Animate font size
-    animateDeltaFontSize(delta);
 
     // Fade in
     Animated.timing(deltaOpacity, {
@@ -585,7 +587,7 @@ export function SecretLibraryPlayerScreen() {
         hideDeltaPopup();
       }, 1200);
     }
-  }, [deltaOpacity, animateDeltaFontSize]);
+  }, [deltaOpacity, animateDeltaFontSize, showDelta]);
 
   const hideDeltaPopup = useCallback(() => {
     Animated.timing(deltaOpacity, {

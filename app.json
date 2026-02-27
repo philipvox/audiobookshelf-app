@@ -69,6 +69,7 @@
       "tsconfigPaths": true
     },
     "plugins": [
+      "./plugins/android-auto/withAndroidAuto",
       "expo-splash-screen",
       [
         "expo-audio",

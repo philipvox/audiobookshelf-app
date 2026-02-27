@@ -371,11 +371,6 @@ function scoreFlavorMatch(
 
   const isFlavorMatch = matchedTags.length > 0;
 
-  // DEBUG: Log result if there was a match
-  if (isFlavorMatch) {
-    console.warn(`🎯 [Flavor Scoring] MATCH! Score=${score}, matchedTags=[${matchedTags.join(', ')}]`);
-  }
-
   return { score, isFlavorMatch, matchedTags };
 }
 
@@ -917,12 +912,6 @@ function calculateMoodScore(
   const baseTotal = moodScore + paceScore + weightScore + worldScore + lengthScore + tagResult.score + dnaScore + flavorScore;
   const total = Math.round(baseTotal * penaltyMultiplier);
 
-  // DEBUG: Log final score breakdown for books with decent scores
-  const bookTitle = (bookData.metadata as BookMetadata)?.title || 'Unknown';
-  if (total > 30 || flavorScore > 0) {
-    console.log(`📊 [MoodScore] "${bookTitle}" FINAL: total=${total}, mood=${moodScore}, flavor=${flavorScore}, dna=${dnaScore}, penalty=${penaltyMultiplier}`);
-  }
-
   return {
     total,
     moodScore,
@@ -1031,35 +1020,7 @@ function runMoodScoring(params: RunMoodScoringParams): RunMoodScoringResult {
     minMatchPercent,
   } = params;
 
-  // DEBUG: Log the session to verify flavor is being passed
-  // Using logger and console.warn for visibility
-  const sessionDebug = {
-    mood: session.mood,
-    flavor: session.flavor,
-    seedBookId: session.seedBookId,
-    pace: session.pace,
-    weight: session.weight,
-    world: session.world,
-  };
-  console.warn(`🎬 [MoodScoring] Starting scoring with session:`, JSON.stringify(sessionDebug));
-  console.warn(`🎬 [MoodScoring] Scoring ${items.length} items`);
-  logger.warn(`[MoodScoring] Session: mood=${session.mood}, flavor=${session.flavor}, items=${items.length}`);
-
-  // DEBUG: Log flavor config once at start
-  if (session.flavor && session.mood) {
-    const flavorsForMood = MOOD_FLAVORS[session.mood];
-    const flavorConfig = flavorsForMood?.find(f => f.id === session.flavor);
-    console.warn(`🎯 [Flavor] Looking for flavor="${session.flavor}" in mood="${session.mood}"`);
-    console.warn(`🎯 [Flavor] Found config: ${flavorConfig ? flavorConfig.label : 'NULL!'}`);
-    logger.warn(`[Flavor] Looking for flavor="${session.flavor}" in mood="${session.mood}", found=${flavorConfig?.label || 'NULL'}`);
-    if (flavorConfig) {
-      console.warn(`🎯 [Flavor] MatchTags: [${flavorConfig.matchTags.join(', ')}]`);
-      logger.warn(`[Flavor] MatchTags: [${flavorConfig.matchTags.join(', ')}]`);
-    }
-  } else {
-    console.warn(`🎯 [Flavor] No flavor selected (session.flavor=${session.flavor})`);
-    logger.warn(`[Flavor] No flavor selected (session.flavor=${session.flavor})`);
-  }
+  logger.debug(`[MoodScoring] Session: mood=${session.mood}, flavor=${session.flavor}, items=${items.length}`);
 
   const scored: ScoredBook[] = [];
   const unscored: LibraryItem[] = [];
@@ -1234,6 +1195,8 @@ interface UseMoodRecommendationsOptions {
    * - 'mixed': Mix all books by score only
    */
   dnaFilterMode?: DNAFilterMode;
+  /** Pre-filtered items to score (e.g. audience-filtered). Skips internal useLibraryCache read. */
+  preFilteredItems?: LibraryItem[];
 }
 
 interface UseMoodRecommendationsResult {
@@ -1272,8 +1235,10 @@ export function useMoodRecommendations(
 
   const activeSession = useActiveSession();
   const session = options.session ?? activeSession;
-  const items = useLibraryCache((s) => s.items);
-  const isLoaded = useLibraryCache((s) => s.isLoaded);
+  const cacheItems = useLibraryCache((s) => s.items);
+  const cacheIsLoaded = useLibraryCache((s) => s.isLoaded);
+  const items = options.preFilteredItems ?? cacheItems;
+  const isLoaded = options.preFilteredItems ? items.length > 0 : cacheIsLoaded;
 
   // Get reading history for filtering and boosts
   const { isFinished, hasBeenStarted, getPreferenceBoost, hasHistory } = useReadingHistory();

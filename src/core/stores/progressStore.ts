@@ -252,7 +252,7 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
       ) => {
         const progress = duration > 0 ? currentTime / duration : 0;
         const lastPlayedAt = Date.now();
-        const isFinished = progress >= 0.99;
+        const isFinished = progress >= 0.95;
 
         // Preserve existing library membership
         const existing = get().progressMap.get(bookId);
@@ -331,10 +331,22 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
       },
 
       markNotStarted: async (bookId: string) => {
-        // Remove from in-memory state
+        // Reset progress but preserve library membership
         set((state) => {
           const newMap = new Map(state.progressMap);
-          newMap.delete(bookId);
+          const existing = newMap.get(bookId);
+          if (existing) {
+            newMap.set(bookId, {
+              ...existing,
+              currentTime: 0,
+              duration: existing.duration,
+              progress: 0,
+              isFinished: false,
+              lastPlayedAt: existing.lastPlayedAt,
+            });
+          } else {
+            newMap.delete(bookId);
+          }
           return {
             progressMap: newMap,
             version: state.version + 1,
@@ -491,6 +503,11 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
             // Re-queue failed writes
             pendingWrites.set(bookId, data);
           }
+        }
+        // If any writes failed and were re-queued, schedule another flush
+        if (pendingWrites.size > 0) {
+          log.warn(`${pendingWrites.size} writes failed, scheduling retry`);
+          scheduledFlush();
         }
       },
 

@@ -27,9 +27,10 @@ import { spacing, radius, scale, useTheme } from '@/shared/theme';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { useFinishedBooks } from '@/core/hooks/useUserBooks';
+import { usePlaylists } from '@/features/playlists';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
-import { Mood } from '../types';
+import { Mood, MOOD_COLORS } from '../types';
 
 interface SeedBookPickerProps {
   /** Currently selected book ID */
@@ -50,11 +51,13 @@ const BookRowItem = React.memo(function BookRowItem({
   selected,
   onSelect,
   colors,
+  moodColor,
 }: {
   item: LibraryItem;
   selected: boolean;
   onSelect: () => void;
   colors: any;
+  moodColor?: { primary: string; cardBg: string };
 }) {
   const title = item.media?.metadata?.title || 'Unknown';
   const author = item.media?.metadata?.authorName || 'Unknown Author';
@@ -77,8 +80,8 @@ const BookRowItem = React.memo(function BookRowItem({
           transition={200}
         />
         {selected && (
-          <View style={styles.selectedBadge}>
-            <Icon name="Check" size={14} color="#000000" />
+          <View style={[styles.selectedBadge, moodColor && { backgroundColor: moodColor.primary }]}>
+            <Icon name="Check" size={14} color="#FFFFFF" />
           </View>
         )}
       </View>
@@ -102,8 +105,8 @@ const BookRowItem = React.memo(function BookRowItem({
       {/* Selection indicator */}
       <View style={[
         styles.radioOuter,
-        { borderColor: selected ? '#FFFFFF' : 'rgba(255,255,255,0.3)' },
-        selected && styles.radioOuterSelected,
+        { borderColor: selected ? (moodColor?.primary || '#FFFFFF') : 'rgba(255,255,255,0.3)' },
+        selected && [styles.radioOuterSelected, moodColor && { borderColor: moodColor.primary, backgroundColor: moodColor.primary }],
       ]}>
         {selected && <View style={styles.radioInner} />}
       </View>
@@ -123,63 +126,86 @@ export function SeedBookPicker({
   // Get library items
   const items = useLibraryCache((s) => s.items);
 
-  // Get finished books with loading state
+  // Get playlists and finished books
+  const { data: playlists = [], isLoading: isLoadingPlaylists } = usePlaylists();
   const { data: finishedBooksData = [], isLoading: isLoadingFinished } = useFinishedBooks();
 
-  // Build set of finished book IDs
-  const finishedBookIds = useMemo(() => {
-    const finished = new Set<string>();
+  // Get books from all playlists (deduplicated)
+  const playlistBookIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const playlist of playlists) {
+      for (const item of playlist.items) {
+        ids.add(item.libraryItemId);
+      }
+    }
+    return ids;
+  }, [playlists]);
 
-    // Add books marked finished in SQLite
+  // Get last 3 finished book IDs (sorted by most recently finished)
+  const recentFinishedIds = useMemo(() => {
+    // finishedBooksData is already sorted by finishedAt DESC from SQLite
+    const ids: string[] = [];
     for (const book of finishedBooksData) {
-      finished.add(book.bookId);
+      if (ids.length >= 3) break;
+      ids.push(book.bookId);
     }
 
-    // Also check server progress for books with >= 95% progress
-    for (const item of items) {
-      const progress = item.userMediaProgress?.progress || 0;
-      if (progress >= 0.95) {
-        finished.add(item.id);
+    // Also check server progress for >= 95% (sorted by lastUpdate)
+    if (ids.length < 3) {
+      const serverFinished = items
+        .filter((item) => (item.userMediaProgress?.progress || 0) >= 0.95 && !ids.includes(item.id))
+        .sort((a, b) => (b.userMediaProgress?.lastUpdate || 0) - (a.userMediaProgress?.lastUpdate || 0));
+      for (const item of serverFinished) {
+        if (ids.length >= 3) break;
+        ids.push(item.id);
       }
     }
 
-    return finished;
+    return new Set(ids);
   }, [finishedBooksData, items]);
 
-  // Check if a book is finished
-  const isFinished = useCallback((itemId: string) => {
-    return finishedBookIds.has(itemId);
-  }, [finishedBookIds]);
-
   // Filter and sort books
-  // Default: show finished books only
+  // Default: show playlist books + last 3 finished
   // When searching: search ALL books
   const filteredBooks = useMemo(() => {
     let books = items.filter((item) => item.mediaType === 'book');
 
     if (searchQuery.trim()) {
-      // When searching, search ALL books (not just finished)
+      // When searching, search ALL books
       const query = searchQuery.toLowerCase();
       books = books.filter((item) => {
         const title = item.media?.metadata?.title?.toLowerCase() || '';
         const author = item.media?.metadata?.authorName?.toLowerCase() || '';
         return title.includes(query) || author.includes(query);
       });
+      // Sort search results by title
+      books.sort((a, b) => {
+        const titleA = a.media?.metadata?.title || '';
+        const titleB = b.media?.metadata?.title || '';
+        return titleA.localeCompare(titleB);
+      });
     } else {
-      // Default: only show finished books
-      books = books.filter((item) => isFinished(item.id));
+      // Default: playlist books + last 3 finished (deduplicated)
+      const candidateIds = new Set<string>();
+      for (const id of playlistBookIds) candidateIds.add(id);
+      for (const id of recentFinishedIds) candidateIds.add(id);
+
+      books = books.filter((item) => candidateIds.has(item.id));
+
+      // Sort: recently finished first, then playlist books by title
+      books.sort((a, b) => {
+        const aFinished = recentFinishedIds.has(a.id);
+        const bFinished = recentFinishedIds.has(b.id);
+        if (aFinished && !bFinished) return -1;
+        if (!aFinished && bFinished) return 1;
+        const titleA = a.media?.metadata?.title || '';
+        const titleB = b.media?.metadata?.title || '';
+        return titleA.localeCompare(titleB);
+      });
     }
 
-    // Sort by title
-    books.sort((a, b) => {
-      const titleA = a.media?.metadata?.title || '';
-      const titleB = b.media?.metadata?.title || '';
-      return titleA.localeCompare(titleB);
-    });
-
-    // Limit to prevent performance issues
     return books.slice(0, 100);
-  }, [items, searchQuery, isFinished]);
+  }, [items, searchQuery, playlistBookIds, recentFinishedIds]);
 
   const handleSelectBook = useCallback(
     (bookId: string) => {
@@ -193,6 +219,8 @@ export function SeedBookPicker({
     [selectedBookId, onSelectBook]
   );
 
+  const moodColorObj = mood ? MOOD_COLORS[mood] : undefined;
+
   const renderItem = useCallback(
     ({ item }: { item: LibraryItem }) => (
       <BookRowItem
@@ -200,13 +228,14 @@ export function SeedBookPicker({
         selected={item.id === selectedBookId}
         onSelect={() => handleSelectBook(item.id)}
         colors={colors}
+        moodColor={moodColorObj}
       />
     ),
-    [selectedBookId, handleSelectBook, colors]
+    [selectedBookId, handleSelectBook, colors, moodColorObj]
   );
 
-  // Show loading while fetching finished books
-  if (isLoadingFinished && !searchQuery) {
+  // Show loading while fetching data
+  if ((isLoadingPlaylists || isLoadingFinished) && !searchQuery) {
     return (
       <View style={styles.container}>
         {/* Search bar */}
@@ -275,7 +304,7 @@ export function SeedBookPicker({
         <View style={styles.emptyState}>
           <Icon name="BookOpen" size={48} color={colors.text.tertiary} />
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>
-            {searchQuery ? 'No books match your search' : 'No finished books yet'}
+            {searchQuery ? 'No books match your search' : 'No playlist or finished books found'}
           </Text>
           {!searchQuery && (
             <Text style={[styles.emptySubtext, { color: colors.text.tertiary }]}>

@@ -12,6 +12,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Default view type - 'library', 'lastPlayed', 'finished', or playlist ID prefixed with 'playlist:'
 export type DefaultViewType = 'library' | 'lastPlayed' | 'finished' | string;
 
+// Built-in view keys that can be hidden/reordered
+export type BuiltInViewKey = 'library' | 'mySeries' | 'lastPlayed' | 'finished';
+const ALL_BUILT_IN_KEYS: BuiltInViewKey[] = ['library', 'mySeries', 'lastPlayed', 'finished'];
+
 interface PlaylistSettingsState {
   // Which playlists to show in VIEW dropdown (by ID)
   visiblePlaylistIds: string[];
@@ -19,13 +23,21 @@ interface PlaylistSettingsState {
   playlistOrder: string[];
   // Default view when opening Library screen
   defaultView: DefaultViewType;
+  // Built-in views that are hidden (empty = all visible)
+  hiddenBuiltInViews: BuiltInViewKey[];
+  // Order of all items: built-in keys + playlist IDs interleaved
+  // e.g. ['library', 'mySeries', 'playlist-abc', 'lastPlayed', 'finished']
+  allItemOrder: string[];
 
   // Actions
   setVisiblePlaylists: (ids: string[]) => void;
   togglePlaylistVisibility: (playlistId: string) => void;
+  toggleBuiltInVisibility: (key: BuiltInViewKey) => void;
   setPlaylistOrder: (order: string[]) => void;
+  setAllItemOrder: (order: string[]) => void;
   setDefaultView: (view: DefaultViewType) => void;
   movePlaylist: (fromIndex: number, toIndex: number) => void;
+  isBuiltInVisible: (key: BuiltInViewKey) => boolean;
 
   // Sync visible playlists with available playlists (removes deleted ones)
   syncWithAvailablePlaylists: (availableIds: string[]) => void;
@@ -37,6 +49,8 @@ export const usePlaylistSettingsStore = create<PlaylistSettingsState>()(
       visiblePlaylistIds: [],
       playlistOrder: [],
       defaultView: 'library',
+      hiddenBuiltInViews: [],
+      allItemOrder: [],
 
       setVisiblePlaylists: (ids) => {
         set({
@@ -51,13 +65,11 @@ export const usePlaylistSettingsStore = create<PlaylistSettingsState>()(
         const isVisible = visiblePlaylistIds.includes(playlistId);
 
         if (isVisible) {
-          // Remove from visible and order
           set({
             visiblePlaylistIds: visiblePlaylistIds.filter(id => id !== playlistId),
             playlistOrder: playlistOrder.filter(id => id !== playlistId),
           });
         } else {
-          // Add to visible and order (at the end)
           set({
             visiblePlaylistIds: [...visiblePlaylistIds, playlistId],
             playlistOrder: [...playlistOrder, playlistId],
@@ -65,27 +77,77 @@ export const usePlaylistSettingsStore = create<PlaylistSettingsState>()(
         }
       },
 
+      toggleBuiltInVisibility: (key) => {
+        const { hiddenBuiltInViews, defaultView } = get();
+        const isHidden = hiddenBuiltInViews.includes(key);
+
+        if (isHidden) {
+          // Show it
+          set({ hiddenBuiltInViews: hiddenBuiltInViews.filter(k => k !== key) });
+        } else {
+          // Hide it — reset default view if this was the default
+          const newHidden = [...hiddenBuiltInViews, key];
+          let newDefault = defaultView;
+          if (defaultView === key) {
+            // Pick first visible built-in, or 'library'
+            const firstVisible = ALL_BUILT_IN_KEYS.find(k => !newHidden.includes(k));
+            newDefault = firstVisible || 'library';
+          }
+          set({ hiddenBuiltInViews: newHidden, defaultView: newDefault });
+        }
+      },
+
+      isBuiltInVisible: (key) => {
+        return !get().hiddenBuiltInViews.includes(key);
+      },
+
       setPlaylistOrder: (order) => set({ playlistOrder: order }),
+
+      setAllItemOrder: (order) => set({ allItemOrder: order }),
 
       setDefaultView: (view) => set({ defaultView: view }),
 
       movePlaylist: (fromIndex, toIndex) => {
-        const { playlistOrder } = get();
+        const { playlistOrder, allItemOrder } = get();
         const newOrder = [...playlistOrder];
         const [removed] = newOrder.splice(fromIndex, 1);
         newOrder.splice(toIndex, 0, removed);
-        set({ playlistOrder: newOrder });
+
+        // Also update allItemOrder if the moved playlist is in it
+        if (allItemOrder.length > 0 && allItemOrder.includes(removed)) {
+          const newAllOrder = [...allItemOrder];
+          const allIdx = newAllOrder.indexOf(removed);
+          newAllOrder.splice(allIdx, 1);
+
+          // Find target position: look at the playlist BEFORE the target in newOrder
+          // and find its position in allItemOrder, then insert after it
+          if (toIndex === 0) {
+            // Moving to first position — find the first playlist in allItemOrder and insert before it
+            const firstPlaylistIdx = newAllOrder.findIndex(id => newOrder.includes(id));
+            newAllOrder.splice(firstPlaylistIdx >= 0 ? firstPlaylistIdx : 0, 0, removed);
+          } else {
+            const prevPlaylist = newOrder[toIndex - 1];
+            const prevAllIdx = prevPlaylist ? newAllOrder.indexOf(prevPlaylist) : -1;
+            newAllOrder.splice(prevAllIdx >= 0 ? prevAllIdx + 1 : newAllOrder.length, 0, removed);
+          }
+          set({ playlistOrder: newOrder, allItemOrder: newAllOrder });
+        } else {
+          set({ playlistOrder: newOrder });
+        }
       },
 
       syncWithAvailablePlaylists: (availableIds) => {
-        const { visiblePlaylistIds, playlistOrder, defaultView } = get();
+        const { visiblePlaylistIds, playlistOrder, allItemOrder, defaultView } = get();
         const availableSet = new Set(availableIds);
 
-        // Remove deleted playlists from visible and order
         const newVisibleIds = visiblePlaylistIds.filter(id => availableSet.has(id));
         const newOrder = playlistOrder.filter(id => availableSet.has(id));
+        const newAllOrder = allItemOrder.filter(id =>
+          ALL_BUILT_IN_KEYS.includes(id as BuiltInViewKey) ||
+          ALL_BUILT_IN_KEYS.includes(id.replace('__', '') as BuiltInViewKey) ||
+          availableSet.has(id)
+        );
 
-        // Reset default view if it was a deleted playlist
         let newDefaultView = defaultView;
         if (defaultView.startsWith('playlist:')) {
           const playlistId = defaultView.replace('playlist:', '');
@@ -97,6 +159,7 @@ export const usePlaylistSettingsStore = create<PlaylistSettingsState>()(
         set({
           visiblePlaylistIds: newVisibleIds,
           playlistOrder: newOrder,
+          allItemOrder: newAllOrder,
           defaultView: newDefaultView,
         });
       },

@@ -161,9 +161,18 @@ class SyncQueue {
           throw new Error(`[SyncQueue] remove_from_playlist missing required fields: playlistId=${playlistId}, itemId=${itemId}`);
         }
         logger.debug(`[SyncQueue] playlist batch/remove: ${itemId} from ${playlistId}`);
-        const { playlistsApi } = await import('@/core/api/endpoints/playlists');
-        await playlistsApi.batchRemove(playlistId, [itemId]);
-        logger.debug(`[SyncQueue] playlist batch/remove complete`);
+        try {
+          const { playlistsApi } = await import('@/core/api/endpoints/playlists');
+          await playlistsApi.batchRemove(playlistId, [itemId]);
+          logger.debug(`[SyncQueue] playlist batch/remove complete`);
+        } catch (err: any) {
+          // 404 means playlist or item already gone — removal succeeded
+          if (err?.response?.status === 404 || err?.status === 404 || err?.message === 'Resource not found') {
+            logger.debug(`[SyncQueue] playlist/item already deleted (404), treating as success`);
+          } else {
+            throw err;
+          }
+        }
         break;
       }
 
@@ -191,7 +200,15 @@ class SyncQueue {
         const collectionId = data.collectionId as string;
         const itemId = data.itemId as string;
         if (!collectionId || !itemId) break;
-        await apiClient.batchRemoveFromCollection(collectionId, [itemId]);
+        try {
+          await apiClient.batchRemoveFromCollection(collectionId, [itemId]);
+        } catch (err: any) {
+          if (err?.response?.status === 404 || err?.status === 404 || err?.message === 'Resource not found') {
+            logger.debug(`[SyncQueue] collection/item already deleted (404), treating as success`);
+          } else {
+            throw err;
+          }
+        }
         break;
       }
 

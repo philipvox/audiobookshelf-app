@@ -40,9 +40,11 @@ import { Icon } from '@/shared/components/Icon';
 import { haptics } from '@/core/native/haptics';
 import { spacing, radius, scale, useTheme } from '@/shared/theme';
 import { secretLibraryFonts, secretLibraryColors } from '@/shared/theme/secretLibrary';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   MOODS,
   MOOD_FLAVORS,
+  MOOD_COLORS,
   TOTAL_QUIZ_STEPS,
   Mood,
   FlavorConfig,
@@ -111,22 +113,27 @@ interface MoodCardProps<T> {
   config: { id: T; label: string; icon: string; iconSet: string; description: string; isDefault?: boolean };
   selected: boolean;
   onSelect: () => void;
+  /** Mood color override — used by flavor cards to inherit parent mood's colors */
+  moodColorOverride?: Mood;
 }
 
-function MoodCard<T>({ config, selected, onSelect }: MoodCardProps<T>) {
-  const { colors } = useTheme();
+function MoodCard<T>({ config, selected, onSelect, moodColorOverride }: MoodCardProps<T>) {
   const cardScale = useSharedValue(1);
+
+  // Resolve mood colors: use override if provided, otherwise try config.id as Mood
+  const moodId = moodColorOverride || (config.id as unknown as Mood);
+  const moodColor = MOOD_COLORS[moodId] || MOOD_COLORS.comfort;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: cardScale.value }],
   }));
 
   const handlePressIn = () => {
-    cardScale.value = withSpring(0.97, { damping: 45 });
+    cardScale.value = withSpring(0.95, { damping: 40 });
   };
 
   const handlePressOut = () => {
-    cardScale.value = withSpring(1, { damping: 45 });
+    cardScale.value = withSpring(1, { damping: 40 });
   };
 
   const handlePress = () => {
@@ -141,25 +148,52 @@ function MoodCard<T>({ config, selected, onSelect }: MoodCardProps<T>) {
       onPressOut={handlePressOut}
       style={[
         styles.moodCard,
-        { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.1)' },
-        selected && styles.moodCardSelected,
+        {
+          backgroundColor: moodColor.cardBg,
+          borderColor: moodColor.cardBorder,
+          overflow: 'hidden',
+        },
+        selected && {
+          borderColor: 'transparent',
+          shadowColor: moodColor.glow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 1,
+          shadowRadius: 16,
+          elevation: 8,
+        },
         animatedStyle,
       ]}
     >
-      <Text style={[
-        styles.moodCardTitle,
-        { color: '#FFFFFF' },
-        selected && { color: '#000000' },
-      ]}>
-        {config.label}
-      </Text>
-      <Text style={[
-        styles.moodCardDesc,
-        { color: 'rgba(255,255,255,0.45)' },
-        selected && { color: 'rgba(0,0,0,0.5)' },
-      ]}>
-        {config.description}
-      </Text>
+      {/* Gradient fill when selected */}
+      {selected && (
+        <LinearGradient
+          colors={[moodColor.gradientStart, moodColor.gradientEnd]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <View style={styles.moodCardContent}>
+        <View style={styles.moodCardRow}>
+          <Icon
+            name={config.icon}
+            size={18}
+            color={selected ? '#FFFFFF' : moodColor.primary}
+          />
+          <Text style={[
+            styles.moodCardTitle,
+            { color: selected ? '#FFFFFF' : '#FFFFFF' },
+          ]}>
+            {config.label}
+          </Text>
+        </View>
+        <Text style={[
+          styles.moodCardDesc,
+          { color: selected ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.45)' },
+        ]}>
+          {config.description}
+        </Text>
+      </View>
     </AnimatedPressable>
   );
 }
@@ -175,15 +209,17 @@ interface MoodChipProps {
 
 function MoodChip({ mood, onClear }: MoodChipProps) {
   const moodConfig = MOODS.find((m) => m.id === mood);
+  const moodColor = MOOD_COLORS[mood];
   if (!moodConfig) return null;
 
   return (
-    <View style={styles.moodChip}>
-      <Text style={styles.moodChipText}>
+    <View style={[styles.moodChip, { backgroundColor: moodColor.cardBg, borderColor: moodColor.cardBorder, borderWidth: 1 }]}>
+      <Icon name={moodConfig.icon} size={14} color={moodColor.primary} />
+      <Text style={[styles.moodChipText, { color: moodColor.primary }]}>
         {moodConfig.label.toUpperCase()}
       </Text>
       <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Text style={styles.moodChipRemove}>×</Text>
+        <Text style={[styles.moodChipRemove, { color: moodColor.primary }]}>×</Text>
       </TouchableOpacity>
     </View>
   );
@@ -193,7 +229,8 @@ function MoodChip({ mood, onClear }: MoodChipProps) {
 // PROGRESS INDICATOR
 // ============================================================================
 
-function ProgressIndicator({ current, total }: { current: number; total: number }) {
+function ProgressIndicator({ current, total, mood }: { current: number; total: number; mood?: Mood | null }) {
+  const activeColor = mood ? MOOD_COLORS[mood].primary : '#FFFFFF';
   return (
     <View style={styles.progressContainer}>
       {Array.from({ length: total }, (_, i) => (
@@ -202,7 +239,7 @@ function ProgressIndicator({ current, total }: { current: number; total: number 
           style={[
             styles.progressDot,
             { backgroundColor: 'rgba(255,255,255,0.2)' },
-            i + 1 <= current && { backgroundColor: '#FFFFFF' },
+            i + 1 <= current && { backgroundColor: activeColor },
           ]}
         />
       ))}
@@ -430,6 +467,7 @@ export function MoodDiscoveryScreen() {
               onPress={handleSurpriseMe}
               activeOpacity={0.7}
             >
+              <Icon name="Shuffle" size={16} color="rgba(255,255,255,0.5)" />
               <Text style={styles.surpriseButtonText}>
                 Surprise me — any mood
               </Text>
@@ -437,12 +475,12 @@ export function MoodDiscoveryScreen() {
 
             {/* 2x2 Mood Grid */}
             <Container {...animProps} style={styles.cardGrid}>
-              {MOODS.map((mood) => (
+              {MOODS.map((moodConfig) => (
                 <MoodCard
-                  key={mood.id}
-                  config={mood}
-                  selected={draft.mood === mood.id}
-                  onSelect={() => handleMoodSelect(mood.id)}
+                  key={moodConfig.id}
+                  config={moodConfig}
+                  selected={draft.mood === moodConfig.id}
+                  onSelect={() => handleMoodSelect(moodConfig.id)}
                 />
               ))}
             </Container>
@@ -469,25 +507,36 @@ export function MoodDiscoveryScreen() {
           </View>
         );
 
-      // Step 2: Flavor drill-down - 2x2 grid
-      case 2:
+      // Step 2: Flavor drill-down - 2x2 grid with mood colors
+      case 2: {
+        const parentMoodColor = draft.mood ? MOOD_COLORS[draft.mood] : MOOD_COLORS.comfort;
         return (
           <View>
             {/* Surprise me button */}
             <TouchableOpacity
-              style={[styles.surpriseButton, !draft.flavor && styles.surpriseButtonSelected]}
+              style={[
+                styles.surpriseButton,
+                !draft.flavor && {
+                  backgroundColor: parentMoodColor.cardBg,
+                  borderColor: parentMoodColor.primary,
+                },
+              ]}
               onPress={() => {
                 haptics.impact('light');
                 setFlavor(null);
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.surpriseButtonText, !draft.flavor && styles.surpriseButtonTextSelected]}>
+              <Icon name="Shuffle" size={16} color={!draft.flavor ? parentMoodColor.primary : 'rgba(255,255,255,0.5)'} />
+              <Text style={[
+                styles.surpriseButtonText,
+                !draft.flavor && { color: parentMoodColor.primary },
+              ]}>
                 Surprise me — any flavor
               </Text>
             </TouchableOpacity>
 
-            {/* 2x2 Flavor Grid */}
+            {/* 2x2 Flavor Grid — inherits parent mood color */}
             <Container {...animProps} style={styles.cardGrid}>
               {flavorOptions.map((flavor) => (
                 <MoodCard
@@ -495,11 +544,13 @@ export function MoodDiscoveryScreen() {
                   config={flavor}
                   selected={draft.flavor === flavor.id}
                   onSelect={() => handleFlavorSelect(flavor.id)}
+                  moodColorOverride={draft.mood || undefined}
                 />
               ))}
             </Container>
           </View>
         );
+      }
 
       // Step 3 is handled separately outside ScrollView to avoid VirtualizedList nesting
       default:
@@ -510,6 +561,14 @@ export function MoodDiscoveryScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top - 10, 0), backgroundColor: colors.background.primary }]}>
+      {/* Mood color background tint */}
+      {draft.mood && (
+        <LinearGradient
+          colors={[`${MOOD_COLORS[draft.mood].primary}1F`, 'transparent']}
+          style={styles.backgroundTint}
+        />
+      )}
+
       {/* Initial load overlay */}
       <ScreenLoadingOverlay visible={!mounted} />
 
@@ -526,7 +585,7 @@ export function MoodDiscoveryScreen() {
           <Icon name="X" size={24} color={colors.text.primary} />
         </TouchableOpacity>
 
-        <ProgressIndicator current={draft.currentStep} total={TOTAL_QUIZ_STEPS} />
+        <ProgressIndicator current={draft.currentStep} total={TOTAL_QUIZ_STEPS} mood={draft.mood} />
 
         {draft.currentStep > 1 && draft.mood ? (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
@@ -590,22 +649,31 @@ export function MoodDiscoveryScreen() {
               disabled={!draft.seedBookId}
               style={[
                 styles.findBooksButton,
-                { backgroundColor: '#FFFFFF' },
-                !draft.seedBookId && { backgroundColor: 'rgba(255,255,255,0.1)' },
+                { overflow: 'hidden' as const },
+                draft.seedBookId && draft.mood
+                  ? { backgroundColor: 'transparent' }
+                  : { backgroundColor: draft.seedBookId ? '#FFFFFF' : 'rgba(255,255,255,0.1)' },
                 buttonAnimatedStyle,
               ]}
             >
+              {draft.seedBookId && draft.mood && (
+                <LinearGradient
+                  colors={[MOOD_COLORS[draft.mood].gradientStart, MOOD_COLORS[draft.mood].gradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              )}
               <Text style={[
                 styles.findBooksText,
-                { color: '#000000' },
-                !draft.seedBookId && { color: 'rgba(255,255,255,0.3)' },
+                { color: draft.seedBookId ? '#FFFFFF' : 'rgba(255,255,255,0.3)' },
               ]}>
                 FIND BOOKS
               </Text>
               <Icon
                 name="Sparkles"
                 size={18}
-                color={draft.seedBookId ? '#000000' : 'rgba(255,255,255,0.3)'}
+                color={draft.seedBookId ? '#FFFFFF' : 'rgba(255,255,255,0.3)'}
               />
             </AnimatedPressable>
 
@@ -666,19 +734,29 @@ export function MoodDiscoveryScreen() {
                 disabled={!canProceed}
                 style={[
                   styles.nextButton,
-                  { backgroundColor: '#FFFFFF' },
-                  !canProceed && { backgroundColor: 'rgba(255,255,255,0.1)' },
+                  { overflow: 'hidden' as const },
+                  canProceed && draft.mood
+                    ? { backgroundColor: 'transparent' }
+                    : { backgroundColor: canProceed ? '#FFFFFF' : 'rgba(255,255,255,0.1)' },
                   draft.currentStep === 1 && styles.nextButtonFull,
                   buttonAnimatedStyle,
                 ]}
               >
-                <Text style={[styles.nextText, { color: '#000000' }, !canProceed && { color: 'rgba(255,255,255,0.3)' }]}>
+                {canProceed && draft.mood && (
+                  <LinearGradient
+                    colors={[MOOD_COLORS[draft.mood].gradientStart, MOOD_COLORS[draft.mood].gradientEnd]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                )}
+                <Text style={[styles.nextText, { color: canProceed ? '#FFFFFF' : 'rgba(255,255,255,0.3)' }]}>
                   {draft.currentStep === TOTAL_QUIZ_STEPS ? 'FIND BOOKS' : 'NEXT'}
                 </Text>
                 <Icon
                   name={draft.currentStep === TOTAL_QUIZ_STEPS ? 'Sparkles' : 'ArrowRight'}
                   size={18}
-                  color={canProceed ? '#000000' : 'rgba(255,255,255,0.3)'}
+                  color={canProceed ? '#FFFFFF' : 'rgba(255,255,255,0.3)'}
                 />
               </AnimatedPressable>
             </View>
@@ -701,6 +779,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     // backgroundColor set dynamically via colors.background.primary
+  },
+  backgroundTint: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 350,
+    zIndex: 0,
   },
 
   // Header
@@ -736,9 +822,9 @@ const styles = StyleSheet.create({
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     marginTop: 'auto',
-    paddingTop: 24,
+    paddingTop: 12,
   },
   progressDot: {
     width: 6,
@@ -780,25 +866,24 @@ const styles = StyleSheet.create({
   // Step
   stepIndicator: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(10),
+    fontSize: scale(9),
     color: 'rgba(255,255,255,0.35)',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
-    marginBottom: 12,
+    marginBottom: 6,
   },
   question: {
-    fontFamily: secretLibraryFonts.playfair.regularItalic, // Italic serif as requested
-    fontSize: scale(32),
+    fontFamily: secretLibraryFonts.playfair.regularItalic,
+    fontSize: scale(22),
     color: '#FFFFFF',
-    marginBottom: 12,
-    lineHeight: scale(32) * 1.15,
-    letterSpacing: -0.5,
+    marginBottom: 8,
+    lineHeight: scale(22) * 1.15,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(10),
-    // color set dynamically via colors.text.tertiary (gray)
-    marginBottom: 40,
+    fontSize: scale(9),
+    marginBottom: 20,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -807,7 +892,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 24,
+    marginBottom: 16,
   },
 
   // Mood chip header
@@ -841,13 +926,17 @@ const styles = StyleSheet.create({
   // Surprise me button
   surpriseButton: {
     width: '100%',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    marginBottom: 16,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   surpriseButtonSelected: {
     backgroundColor: '#FFFFFF',
@@ -855,7 +944,7 @@ const styles = StyleSheet.create({
   },
   surpriseButtonText: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(14),
+    fontSize: scale(11),
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
     letterSpacing: 0.3,
@@ -868,17 +957,28 @@ const styles = StyleSheet.create({
   cardGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 40,
+    gap: 10,
+    marginBottom: 20,
   },
 
   // Mood Card (2x2 grid item)
   moodCard: {
     width: '47.5%',
-    paddingVertical: 28,
-    paddingHorizontal: 20,
-    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
+  },
+  moodCardContent: {
+    alignItems: 'flex-start' as const,
+    gap: 6,
+    position: 'relative' as const,
+    zIndex: 1,
+  },
+  moodCardRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
   },
   moodCardSelected: {
     backgroundColor: '#FFFFFF',
@@ -886,15 +986,14 @@ const styles = StyleSheet.create({
   },
   moodCardTitle: {
     fontFamily: secretLibraryFonts.playfair.regular,
-    fontSize: scale(17),
+    fontSize: scale(15),
     fontWeight: '500',
-    marginBottom: 8,
     letterSpacing: -0.2,
   },
   moodCardDesc: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(12),
-    lineHeight: scale(16),
+    fontSize: scale(10),
+    lineHeight: scale(13),
   },
 
   // Toggle Row
@@ -902,37 +1001,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   toggleTextContainer: {
     flex: 1,
   },
   toggleLabel: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(14),
+    fontSize: scale(12),
     color: 'rgba(255,255,255,0.6)',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   toggleSublabel: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(12),
+    fontSize: scale(10),
     color: 'rgba(255,255,255,0.3)',
   },
   toggle: {
-    width: 52,
-    height: 32,
+    width: 44,
+    height: 26,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 16,
+    borderRadius: 13,
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 2,
   },
   toggleActive: {
     backgroundColor: '#FFFFFF',
   },
   toggleThumb: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: 'rgba(255,255,255,0.4)',
   },
   toggleThumbActive: {
@@ -942,7 +1041,7 @@ const styles = StyleSheet.create({
 
   // Footer
   footer: {
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
   },
   footerButtons: {
     flexDirection: 'row',

@@ -158,7 +158,7 @@ export const useCompletionSheetStore = create<CompletionState & CompletionAction
         });
 
         // Update local progress to 100%
-        if (currentBook?.id === bookId && duration > 0) {
+        if (duration > 0) {
           await sqliteCache.setPlaybackProgress(bookId, duration, duration, false);
         }
 
@@ -177,7 +177,7 @@ export const useCompletionSheetStore = create<CompletionState & CompletionAction
           }
         }
 
-        // Remove from queue if present
+        // Remove from queue if present, then auto-advance to next queued book
         try {
           const { useQueueStore } = await import('@/features/queue/stores/queueStore');
           const queueStore = useQueueStore.getState();
@@ -185,16 +185,31 @@ export const useCompletionSheetStore = create<CompletionState & CompletionAction
             await queueStore.removeFromQueue(bookId);
             log.debug('Removed from queue');
           }
+
+          // Auto-advance: play next book in queue (only if user hasn't started a different book)
+          const nextBook = await queueStore.playNext();
+          if (nextBook) {
+            const { usePlayerStore } = await import('@/features/player/stores');
+            const currentlyPlaying = usePlayerStore.getState().currentBook;
+            if (!currentlyPlaying || currentlyPlaying.id === bookId) {
+              log.debug('Auto-advancing to next queued book:', nextBook.id);
+              usePlayerStore.getState().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+            } else {
+              log.debug('Skipping auto-advance — user is already playing a different book');
+            }
+          }
         } catch (err) {
-          log.debug('Queue removal failed:', err);
+          log.debug('Queue advance failed:', err);
         }
 
-        // Dismiss the completion sheet
+        // Dismiss the completion sheet only after all critical operations succeed
         set({ showCompletionSheet: false, completionSheetBook: null });
 
         log.debug('Book marked as finished successfully');
       } catch (err) {
         log.error('Failed to mark book as finished:', err);
+        // Dismiss sheet but keep book reference so user can retry from UI
+        set({ showCompletionSheet: false });
       }
     },
 

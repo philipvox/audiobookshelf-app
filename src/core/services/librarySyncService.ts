@@ -55,7 +55,8 @@ function bidirectionalMerge(
   localIds: string[],
   serverIds: string[],
   tombstones: Tombstone[],
-  lastSyncAt: number | null
+  lastSyncAt: number | null,
+  getAddedAtFn: (id: string) => number | null = getLocalAddedAt
 ): MergeResult {
   const serverSet = new Set(serverIds);
   const tombstoneMap = new Map(tombstones.map(t => [t.id, t.removedAt]));
@@ -78,8 +79,13 @@ function bidirectionalMerge(
       // Local has it but server doesn't.
       // Check if it was added locally after the last sync — if so, it's a local add.
       // Otherwise, the server removed it — drop locally.
-      const addedAt = getLocalAddedAt(id);
-      if (addedAt && addedAt > lastSyncAt) {
+      const addedAt = getAddedAtFn(id);
+      if (!addedAt) {
+        // No timestamp — book predates tracking or was never stamped.
+        // Preserve it to avoid accidental data loss.
+        final.add(id);
+        toAddToServer.push(id);
+      } else if (addedAt > lastSyncAt) {
         // Added locally after last sync — push to server
         final.add(id);
         toAddToServer.push(id);
@@ -179,7 +185,10 @@ class LibrarySyncService {
     const result = bidirectionalMerge(localIds, serverBookIds, syncStore.bookTombstones, syncStore.lastSyncAt);
 
     if (result.removedLocally.length > 0) {
-      log.info(`Server-side removals detected: ${result.removedLocally.length} books removed locally`);
+      log.info(`Server-side removals detected: ${result.removedLocally.length} books removed locally`, result.removedLocally);
+    }
+    if (result.toAddToServer.length > 0) {
+      log.info(`Local additions to push: ${result.toAddToServer.length} books`);
     }
 
     // Update local store with merged result
@@ -202,17 +211,27 @@ class LibrarySyncService {
       });
       log.info(`Progress store librarySet updated: ${currentLibrarySet.size} -> ${finalSet.size}`);
 
-      // Bulk upsert to SQLite in background
-      this.bulkAddToSQLiteLibrary(result.finalIds).catch(err => {
-        log.warn('Failed to bulk update SQLite library:', err);
-      });
+      // Persist to SQLite — await to prevent state divergence on failure
+      try {
+        await this.bulkAddToSQLiteLibrary(result.finalIds);
+      } catch (err) {
+        log.warn('Failed to bulk update SQLite library, reverting in-memory state:', err);
+        // Revert to previous state so restart won't lose books
+        useProgressStore.setState({
+          librarySet: currentLibrarySet,
+          version: useProgressStore.getState().version + 1,
+        });
+        useMyLibraryStore.setState({ libraryIds: localIds });
+      }
     }
 
     // Remove server-deleted books from SQLite (outside the if block — always run)
     if (result.removedLocally.length > 0) {
-      this.bulkRemoveFromSQLiteLibrary(result.removedLocally).catch(err => {
+      try {
+        await this.bulkRemoveFromSQLiteLibrary(result.removedLocally);
+      } catch (err) {
         log.warn('Failed to remove from SQLite library:', err);
-      });
+      }
     }
 
     // Use batch endpoints to push deltas to server
@@ -304,7 +323,15 @@ class LibrarySyncService {
     const localNames = libraryStore.favoriteSeriesNames;
     const tombstones = syncStore.seriesTombstones;
 
-    const result = bidirectionalMerge(localNames, serverSeriesNames, tombstones, syncStore.lastSyncAt);
+    // For series, getLocalAddedAt (which uses progressMap keyed by book UUIDs) doesn't work
+    // since series IDs are names not UUIDs. Default to "keep local" when addedAt is unknown
+    // to prevent silently deleting locally-favorited series.
+    const seriesAddedAt = (_id: string): number | null => {
+      // Return current time so the "added after lastSync" check always passes,
+      // preserving local series favorites when we can't determine when they were added
+      return Date.now();
+    };
+    const result = bidirectionalMerge(localNames, serverSeriesNames, tombstones, syncStore.lastSyncAt, seriesAddedAt);
 
     // Update local store
     if (result.finalIds.length !== localNames.length ||

@@ -4,6 +4,11 @@
  * Global toast display component.
  * Add this to your root navigator to render toasts from useToast().
  *
+ * Features:
+ * - Slide-in animation from top
+ * - Swipe-to-dismiss (horizontal pan gesture)
+ * - Optional "Undo" button (golden orange) when toast.onUndo is set
+ *
  * Usage in AppNavigator:
  *   import { ToastContainer } from '@/shared/components/ToastContainer';
  *
@@ -14,17 +19,18 @@
  *   </>
  */
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSequence,
-  FadeIn,
+  withSpring,
+  runOnJS,
   FadeOut,
   SlideInUp,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react-native';
 import { useToastStore, Toast, ToastType } from '@/shared/hooks/useToast';
@@ -41,8 +47,8 @@ const TOAST_ICONS: Record<ToastType, typeof CheckCircle> = {
   info: Info,
 };
 
-// Toast colors are defined inline using theme colors from useTheme()
-// These are semantic colors that map to the theme's semantic color palette
+const SWIPE_THRESHOLD = 80;
+const UNDO_COLOR = '#E8A020';
 
 // ============================================================================
 // TOAST ITEM COMPONENT
@@ -56,6 +62,7 @@ interface ToastItemProps {
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   const { colors } = useTheme();
   const Icon = TOAST_ICONS[toast.type];
+  const translateX = useSharedValue(0);
 
   // Map toast types to theme semantic colors
   const toastColorMap: Record<ToastType, string> = {
@@ -66,24 +73,68 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   };
   const iconColor = toastColorMap[toast.type];
 
+  const handleDismiss = () => onDismiss();
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      if (Math.abs(e.translationX) > SWIPE_THRESHOLD) {
+        // Swipe off screen in the direction of the gesture
+        const direction = e.translationX > 0 ? 1 : -1;
+        translateX.value = withTiming(direction * 400, { duration: 200 }, () => {
+          runOnJS(handleDismiss)();
+        });
+      } else {
+        // Snap back
+        translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: 1 - Math.min(Math.abs(translateX.value) / 200, 0.5),
+  }));
+
+  const handleUndo = () => {
+    toast.onUndo?.();
+    onDismiss();
+  };
+
   return (
-    <Animated.View
-      entering={SlideInUp.duration(250)}
-      exiting={FadeOut.duration(200)}
-      style={[styles.toast, { borderLeftColor: iconColor, backgroundColor: colors.background.secondary }]}
-    >
-      <Icon size={scale(20)} color={iconColor} />
-      <Text style={[styles.message, { color: colors.text.primary }]} numberOfLines={3}>
-        {toast.message}
-      </Text>
-      <TouchableOpacity
-        onPress={onDismiss}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={styles.dismissButton}
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        entering={SlideInUp.duration(250)}
+        exiting={FadeOut.duration(200)}
+        style={[
+          styles.toast,
+          { borderLeftColor: iconColor, backgroundColor: colors.background.secondary },
+          animatedStyle,
+        ]}
       >
-        <X size={scale(16)} color={colors.text.secondary} />
-      </TouchableOpacity>
-    </Animated.View>
+        <Icon size={scale(20)} color={iconColor} />
+        <Text style={[styles.message, { color: colors.text.primary }]} numberOfLines={3}>
+          {toast.message}
+        </Text>
+        {toast.onUndo && (
+          <TouchableOpacity
+            onPress={handleUndo}
+            style={styles.undoButton}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          >
+            <Text style={styles.undoText}>Undo</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={onDismiss}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.dismissButton}
+        >
+          <X size={scale(16)} color={colors.text.secondary} />
+        </TouchableOpacity>
+      </Animated.View>
+    </GestureDetector>
   );
 };
 
@@ -130,7 +181,6 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    // backgroundColor set via themeColors in JSX
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
@@ -146,8 +196,16 @@ const styles = StyleSheet.create({
   message: {
     flex: 1,
     fontSize: scale(14),
-    // color set via themeColors in JSX
     lineHeight: scale(20),
+  },
+  undoButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  undoText: {
+    color: UNDO_COLOR,
+    fontSize: scale(14),
+    fontWeight: '700',
   },
   dismissButton: {
     padding: spacing.xs,

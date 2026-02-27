@@ -14,4 +14,5 @@ export {
   usePlaylistOrder,
   useDefaultView,
   type DefaultViewType,
+  type BuiltInViewKey,
 } from './stores/playlistSettingsStore';

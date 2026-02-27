@@ -541,12 +541,13 @@ class AudioService {
       log('🔸 handleTrackEnd called but not loaded - ignoring');
       return;
     }
+    // Capture load ID to detect if a new book loads while we're handling track end
+    const trackEndLoadId = this.loadId;
 
     const currentPlayerPos = this.player?.currentTime || 0;
     const playerDuration = this.player?.duration || 0;
     log(`🔸 handleTrackEnd ENTRY: tracks=${this.tracks.length}, currentIndex=${this.currentTrackIndex}, playerPos=${currentPlayerPos.toFixed(1)}s, playerDur=${playerDuration.toFixed(1)}s, totalDur=${this.totalDuration.toFixed(1)}s`);
-    // DIAGNOSTIC: Always log track end to debug 2-chapter issue
-    console.error(`[AUDIO_DIAGNOSTIC] handleTrackEnd: track ${this.currentTrackIndex + 1}/${this.tracks.length}, playerPos=${currentPlayerPos.toFixed(1)}s, playerDur=${playerDuration.toFixed(1)}s`);
+    log(`handleTrackEnd: track ${this.currentTrackIndex + 1}/${this.tracks.length}, playerPos=${currentPlayerPos.toFixed(1)}s, playerDur=${playerDuration.toFixed(1)}s`);
 
     // GUARD: Ignore spurious didJustFinish from pre-buffered tracks
     // Pre-buffered tracks can report didJustFinish=true with duration=0 or position=0
@@ -558,6 +559,11 @@ class AudioService {
 
     // Check if there are more tracks in the queue
     if (this.tracks.length > 0 && this.currentTrackIndex < this.tracks.length - 1) {
+      // Bail if a new book was loaded while we were handling track end
+      if (this.loadId !== trackEndLoadId) {
+        log('🔸 handleTrackEnd: loadId changed during processing, aborting');
+        return;
+      }
       // CRITICAL: Set flag BEFORE changing track index to prevent race conditions
       // This ensures getGlobalPositionSync() returns cached position during transition
       this.trackSwitchInProgress = true;
@@ -579,8 +585,7 @@ class AudioService {
       }
 
       log(`Auto-advancing to track ${this.currentTrackIndex}: ${nextTrack.title}`);
-      // DIAGNOSTIC: Log track advance to help debug 2-chapter issue
-      console.error(`[AUDIO_DIAGNOSTIC] Auto-advancing to track ${this.currentTrackIndex + 1}/${this.tracks.length}: ${nextTrack.title}`);
+      log(`Auto-advancing to track ${this.currentTrackIndex + 1}/${this.tracks.length}: ${nextTrack.title}`);
 
       // Use preloaded player if available for seamless transition
       if (this.preloadedTrackIndex === this.currentTrackIndex && this.preloadPlayer) {
@@ -702,8 +707,7 @@ class AudioService {
       // Last track in multi-track mode finished
       this.hasReachedEnd = true;
       log(`Last track (${this.currentTrackIndex + 1}/${this.tracks.length}) finished - book complete`);
-      // DIAGNOSTIC: Always log when book is marked complete to debug 2-chapter issue
-      console.error(`[AUDIO_DIAGNOSTIC] BOOK MARKED COMPLETE: track ${this.currentTrackIndex + 1}/${this.tracks.length}, totalDuration=${this.totalDuration.toFixed(1)}s`);
+      log(`BOOK MARKED COMPLETE: track ${this.currentTrackIndex + 1}/${this.tracks.length}, totalDuration=${this.totalDuration.toFixed(1)}s`);
       this.statusCallback?.({
         isPlaying: false,
         position: this.totalDuration,
@@ -740,12 +744,7 @@ class AudioService {
     const positionDelta = Math.abs(position - this.lastKnownGoodPosition);
     if (position > 0) {
       if (this.lastKnownGoodPosition > 0 && positionDelta > 30) {
-        console.warn(`[POSITION_CHANGE] Large change (${positionDelta.toFixed(1)}s):`, {
-          from: this.lastKnownGoodPosition.toFixed(1),
-          to: position.toFixed(1),
-          trackIndex: this.currentTrackIndex,
-          playerCurrentTime: this.player?.currentTime?.toFixed(1),
-        });
+        log(`[POSITION_CHANGE] Large change (${positionDelta.toFixed(1)}s): from=${this.lastKnownGoodPosition.toFixed(1)} to=${position.toFixed(1)} track=${this.currentTrackIndex}`);
       }
       this.lastKnownGoodPosition = position;
     }
@@ -1079,17 +1078,23 @@ class AudioService {
       this.currentUrl = url;
       this.isLoaded = true;
 
-      // Skip waiting if we have known duration - start playback immediately!
+      // Wait for player to parse file header (moov atom) before seeking
+      // Without this, seekTo() on remote streams fails silently because
+      // the player doesn't yet know the file structure
       if (!knownDuration) {
-        // Only wait if we don't know the duration (rare case)
-        await this.waitForDuration(2000); // Reduced from 5s to 2s
+        await this.waitForDuration(2000);
         this.totalDuration = this.player?.duration || 0;
+      } else if (startPositionSec > 0) {
+        // Even with known duration, must wait for player to be seekable
+        // The player needs to parse the moov atom to resolve seek positions
+        await this.waitForDuration(2000);
       }
 
-      // Seek and play in parallel with duration detection
+      // Seek to resume position
       if (startPositionSec > 0) {
         log(`Seeking to ${formatDuration(startPositionSec)}`);
         timing('Seeking');
+        this.lastKnownGoodPosition = startPositionSec;
         this.player?.seekTo(startPositionSec);
         timing('Seek done');
       }
@@ -1111,11 +1116,15 @@ class AudioService {
         log('Priming player (silent play-pause trick)');
         if (this.player) {
           this.player.volume = 0;
-          this.player.play();
-          // Wait for playback to initialize - 500ms gives time for network buffering
-          await new Promise(resolve => setTimeout(resolve, 500));
-          this.player.pause();
-          this.player.volume = 1;
+          try {
+            this.player.play();
+            // Wait for playback to initialize - 500ms gives time for network buffering
+            await new Promise(resolve => setTimeout(resolve, 500));
+            this.player.pause();
+          } finally {
+            // Always restore volume even if priming fails
+            if (this.player) this.player.volume = 1;
+          }
         }
         log('Ready (paused, primed for playback)');
       }
@@ -1162,6 +1171,13 @@ class AudioService {
       await this.updateMediaControlPlaybackState(autoPlay, startPositionSec);
     } catch (error) {
       if (this.loadId === thisLoadId) {
+        // Clean up duration polling interval on load failure
+        if (this.durationUpdateTimeout) {
+          clearInterval(this.durationUpdateTimeout as unknown as ReturnType<typeof setInterval>);
+          clearTimeout(this.durationUpdateTimeout);
+          this.durationUpdateTimeout = null;
+        }
+
         const errorMsg = getErrorMessage(error);
         audioLog.error('Load failed:', errorMsg);
         audioLog.error('Stack:', (error instanceof Error ? error.stack : undefined));
@@ -1203,8 +1219,7 @@ class AudioService {
   private async loadUrlWithRetry(url: string): Promise<void> {
     let lastError: Error | null = null;
 
-    // DIAGNOSTIC: Log the full URL for debugging "plays but no audio" issue
-    console.error('[AUDIO_DIAGNOSTIC] Loading URL:', url);
+    log('Loading URL:', url.substring(0, 80) + '...');
 
     for (let attempt = 0; attempt < this.MAX_LOAD_RETRIES; attempt++) {
       try {
@@ -1213,8 +1228,7 @@ class AudioService {
           // Wait briefly to detect immediate load failures
           await new Promise(resolve => setTimeout(resolve, 200));
 
-          // DIAGNOSTIC: Log player state after replace
-          console.error('[AUDIO_DIAGNOSTIC] After replace - duration:', this.player.duration, 'playing:', this.player.playing, 'isBuffering:', this.player.isBuffering);
+          log('After replace - duration:', this.player.duration, 'playing:', this.player.playing, 'isBuffering:', this.player.isBuffering);
 
           // Check if player is in error state (heuristic: duration is 0 or NaN after load)
           // Note: expo-audio may not throw on HTTP errors, they manifest as playback failures
@@ -1293,8 +1307,7 @@ class AudioService {
     log(`Start position: ${formatDuration(startPositionSec)} (${startPositionSec.toFixed(1)}s)`);
     log('AutoPlay:', autoPlay);
 
-    // DIAGNOSTIC: Always log track count to help debug 2-chapter issue
-    console.error(`[AUDIO_DIAGNOSTIC] Loading ${tracks.length} audio tracks, total duration: ${knownTotalDuration || 'calculating'}s`);
+    log(`Loading ${tracks.length} audio tracks, total duration: ${knownTotalDuration || 'calculating'}s`);
 
     // Log track details (only first and last to save time)
     if (tracks.length <= 3) {
@@ -1373,8 +1386,12 @@ class AudioService {
 
       // Seek within track if needed
       if (positionInTrack > 0) {
+        // Wait for player to parse file header before seeking
+        // Without this, seekTo() on remote streams fails silently
+        await this.waitForDuration(2000);
         log(`Seeking within track to ${formatDuration(positionInTrack)}`);
         timing('Seeking');
+        this.lastKnownGoodPosition = startPositionSec;
         this.player?.seekTo(positionInTrack);
         timing('Seek done');
       }
@@ -1392,11 +1409,15 @@ class AudioService {
         log('Priming player (silent play-pause trick)');
         if (this.player) {
           this.player.volume = 0;
-          this.player.play();
-          // Wait for playback to initialize - 500ms gives time for network buffering
-          await new Promise(resolve => setTimeout(resolve, 500));
-          this.player.pause();
-          this.player.volume = 1;
+          try {
+            this.player.play();
+            // Wait for playback to initialize - 500ms gives time for network buffering
+            await new Promise(resolve => setTimeout(resolve, 500));
+            this.player.pause();
+          } finally {
+            // Always restore volume even if priming fails
+            if (this.player) this.player.volume = 1;
+          }
         }
         log('Ready (paused, primed for playback)');
       }
@@ -1876,17 +1897,23 @@ class AudioService {
   }
 
   async setPlaybackRate(rate: number): Promise<void> {
-    log(`Speed: ${rate}x`);
     if (!this.player) return;
+
+    // Clamp rate to safe range (0.25x - 4.0x)
+    const clampedRate = Math.max(0.25, Math.min(4.0, rate));
+    if (clampedRate !== rate) {
+      audioLog.warn(`[setPlaybackRate] Clamped invalid rate ${rate}x to ${clampedRate}x`);
+    }
+    log(`Speed: ${clampedRate}x`);
 
     // Android needs pitch correction enabled separately
     // IMPORTANT: Must await for immediate effect
     if (Platform.OS === 'android') {
       this.player.shouldCorrectPitch = true;
-      await this.player.setPlaybackRate(rate);
+      await this.player.setPlaybackRate(clampedRate);
     } else {
       // iOS supports pitch correction quality parameter
-      await this.player.setPlaybackRate(rate, 'high');
+      await this.player.setPlaybackRate(clampedRate, 'high');
     }
   }
 

@@ -10,11 +10,10 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { Image } from 'expo-image';
 import { ChevronRight } from 'lucide-react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { useLibraryCache, useCoverUrl } from '@/core/cache';
+import { useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
-import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 import { useReadingHistory } from '@/features/reading-history-wizard';
 
 // Carousel layout constants
@@ -30,7 +29,9 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 }
 
 interface ListenAgainSectionProps {
+  items: LibraryItem[];
   onBookPress?: (bookId: string) => void;
+  onBookLongPress?: (bookId: string) => void;
   onViewAll?: () => void;
   limit?: number;
 }
@@ -38,18 +39,19 @@ interface ListenAgainSectionProps {
 interface CardProps {
   item: LibraryItem;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
 const colors = secretLibraryColors;
 
-const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }: CardProps) {
+const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, onLongPress }: CardProps) {
   const coverUrl = useCoverUrl(item.id, { width: 200 });
   const metadata = getMetadata(item);
   const title = metadata.title || 'Untitled';
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -73,48 +75,41 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }:
 });
 
 export function ListenAgainSection({
+  items,
   onBookPress,
+  onBookLongPress,
   onViewAll,
   limit = 12
 }: ListenAgainSectionProps) {
-  const { items: libraryItems, isLoaded } = useLibraryCache();
   const { isFinished } = useReadingHistory();
-
-  // Content filter
-  const audience = useContentFilterStore((s) => s.audience);
-  const selectedAges = useContentFilterStore((s) => s.selectedAges);
-  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
-  const selectedTags = useContentFilterStore((s) => s.selectedTags);
-  const lengthRange = useContentFilterStore((s) => s.lengthRange);
 
   // Get books with listening progress (finished books)
   const listenAgainBooks = useMemo(() => {
-    if (!libraryItems?.length) return [];
+    if (!items?.length) return [];
 
-    // Apply content filter first
-    const filteredItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
-
-    return filteredItems
+    return items
       .filter(item => {
         if (item.mediaType !== 'book') return false;
-        // Include finished books or books with significant progress
         const progress = item.userMediaProgress?.progress || 0;
-        return isFinished(item.id) || progress >= 0.9;
+        return isFinished(item.id) || progress >= 0.95;
       })
       .sort((a, b) => {
-        // Sort by last update time (most recent first)
         const aTime = a.userMediaProgress?.lastUpdate || 0;
         const bTime = b.userMediaProgress?.lastUpdate || 0;
         return bTime - aTime;
       })
       .slice(0, limit);
-  }, [libraryItems, limit, audience, selectedAges, selectedRatings, selectedTags, lengthRange, isFinished]);
+  }, [items, limit, isFinished]);
 
   const handleBookPress = useCallback((bookId: string) => {
     onBookPress?.(bookId);
   }, [onBookPress]);
 
-  if (!isLoaded || listenAgainBooks.length === 0) {
+  const handleBookLongPress = useCallback((bookId: string) => {
+    onBookLongPress?.(bookId);
+  }, [onBookLongPress]);
+
+  if (listenAgainBooks.length === 0) {
     return null;
   }
 
@@ -144,6 +139,7 @@ export function ListenAgainSection({
             key={item.id}
             item={item}
             onPress={() => handleBookPress(item.id)}
+            onLongPress={() => handleBookLongPress(item.id)}
           />
         ))}
       </ScrollView>

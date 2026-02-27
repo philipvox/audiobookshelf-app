@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Dimensions, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BookSpineVertical, BookSpineVerticalData } from '@/features/home/components/BookSpineVertical';
 import { useBookRowLayout, UseBookRowLayoutOptions } from '@/features/home/hooks/useBookRowLayout';
 import { useSpineCacheStore } from '@/features/home/stores/spineCache';
@@ -18,8 +18,6 @@ import { LibraryItem } from '@/core/types';
 // Screen-responsive scale factor for detail screens
 // Base: 0.75 at 402pt (iPhone design canvas). Scales proportionally for other screen widths.
 const DESIGN_WIDTH = 402;
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const DETAIL_SCALE_FACTOR = 0.75 * (SCREEN_WIDTH / DESIGN_WIDTH);
 
 // =============================================================================
 // TYPES
@@ -32,6 +30,8 @@ interface ShelfRowProps {
   toSpineData: (item: LibraryItem, cachedColors?: { backgroundColor?: string; textColor?: string }) => BookSpineVerticalData;
   /** Called when a spine is pressed */
   onSpinePress: (book: BookSpineVerticalData) => void;
+  /** Called when a spine is long-pressed */
+  onSpineLongPress?: (book: BookSpineVerticalData) => void;
   /** Layout options passed to useBookRowLayout */
   layoutOptions?: UseBookRowLayoutOptions;
 }
@@ -44,8 +44,15 @@ export const ShelfRow = React.memo(function ShelfRow({
   books,
   toSpineData,
   onSpinePress,
-  layoutOptions = { scaleFactor: DETAIL_SCALE_FACTOR, enableLeaning: true },
+  onSpineLongPress,
+  layoutOptions,
 }: ShelfRowProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const defaultScaleFactor = React.useMemo(() => 0.75 * (screenWidth / DESIGN_WIDTH), [screenWidth]);
+  const resolvedOptions = React.useMemo(
+    () => layoutOptions ?? { scaleFactor: defaultScaleFactor, enableLeaning: true },
+    [layoutOptions, defaultScaleFactor]
+  );
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
   const spineDataList = React.useMemo(() => {
@@ -55,7 +62,7 @@ export const ShelfRow = React.memo(function ShelfRow({
     });
   }, [books, getSpineData, toSpineData]);
 
-  const layouts = useBookRowLayout(spineDataList, layoutOptions);
+  const layouts = useBookRowLayout(spineDataList, resolvedOptions);
 
   return (
     <ScrollView
@@ -71,6 +78,7 @@ export const ShelfRow = React.memo(function ShelfRow({
             height={layout.height}
             leanAngle={layout.leanAngle}
             onPress={onSpinePress}
+            onLongPress={onSpineLongPress}
           />
         </View>
       ))}

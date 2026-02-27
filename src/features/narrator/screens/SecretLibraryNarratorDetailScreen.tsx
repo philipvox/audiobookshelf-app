@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TopNav, TopNavBackIcon, MicIcon, CollapsibleSection } from '@/shared/components';
+import { TopNav, TopNavBackIcon, MicIcon, CollapsibleSection, useBookContextMenu } from '@/shared/components';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
@@ -122,6 +122,7 @@ export function SecretLibraryNarratorDetailScreen() {
   const insets = useSafeAreaInsets();
   const colors = useSecretLibraryColors();
   const isDarkMode = colors.isDark;
+  const { showMenu } = useBookContextMenu();
 
   // Handle both param formats
   const narratorName = route.params.narratorName || route.params.name || '';
@@ -337,6 +338,8 @@ export function SecretLibraryNarratorDetailScreen() {
               key={book.id}
               style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
               onPress={() => handleBookPress(book.id)}
+              onLongPress={() => showMenu(book)}
+              delayLongPress={400}
             >
               <Image
                 source={{ uri: coverUrl }}
@@ -506,7 +509,7 @@ export function SecretLibraryNarratorDetailScreen() {
                 onTitlePress={group.name !== 'Standalone' ? () => handleSeriesPress(group.name) : undefined}
                 isStandalone={group.name === 'Standalone'}
               >
-                <ShelfRow books={group.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={group.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {allBooksBySeries.length === 0 && (
@@ -534,7 +537,7 @@ export function SecretLibraryNarratorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleAuthorPress(author.name)}
               >
-                <ShelfRow books={author.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={author.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {authorList.length === 0 && (
@@ -572,7 +575,7 @@ export function SecretLibraryNarratorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleSeriesPress(series.name)}
               >
-                <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {seriesList.length === 0 && (
@@ -610,7 +613,7 @@ export function SecretLibraryNarratorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleGenrePress(genre.name)}
               >
-                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {genreList.length === 0 && (

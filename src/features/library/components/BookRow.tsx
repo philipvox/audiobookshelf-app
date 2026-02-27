@@ -17,6 +17,7 @@ interface BookRowProps {
   book: EnrichedBook;
   onPress: () => void;
   onPlay: () => void;
+  onLongPress?: () => void;
   isMarkedFinished?: boolean;
 }
 
@@ -24,6 +25,7 @@ export const BookRow = React.memo(function BookRow({
   book,
   onPress,
   onPlay,
+  onLongPress,
   isMarkedFinished = false,
 }: BookRowProps) {
   const { colors } = useTheme();
@@ -47,6 +49,8 @@ export const BookRow = React.memo(function BookRow({
     <TouchableOpacity
       style={styles.bookRow}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
       activeOpacity={0.7}
       accessibilityLabel={`${book.title} by ${book.author}${progressText}`}
       accessibilityRole="button"
