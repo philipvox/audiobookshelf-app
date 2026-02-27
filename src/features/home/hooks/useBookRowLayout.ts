@@ -63,9 +63,13 @@ const DURATION_MAX_HOURS = 30;
 
 function getDurationScale(durationSeconds: number): number {
   const hours = Math.max(0, durationSeconds / 3600);
-  const clampedHours = Math.min(hours, DURATION_MAX_HOURS);
-  const t = Math.sqrt(clampedHours / DURATION_MAX_HOURS);
-  return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+  if (hours <= DURATION_MAX_HOURS) {
+    const t = Math.sqrt(hours / DURATION_MAX_HOURS);
+    return DURATION_SCALE_MIN + (DURATION_SCALE_MAX - DURATION_SCALE_MIN) * t;
+  }
+  // Extended ramp for 30-60hr books (consistent with BookshelfView)
+  const extraHours = Math.min(hours, 60) - 30;
+  return 1.15 + (1.40 - 1.15) * (extraHours / 30);
 }
 
 // =============================================================================

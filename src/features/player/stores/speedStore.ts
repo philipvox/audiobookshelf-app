@@ -169,12 +169,10 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
       const bookSpeed = get().getBookSpeed(bookId);
       set({ playbackRate: bookSpeed });
 
-      if (bookSpeed !== 1.0) {
-        await audioService.setPlaybackRate(bookSpeed).catch((err) => {
-          // Log but don't throw - speed change failure shouldn't block playback
-          console.warn('[SpeedStore] Failed to apply playback rate:', bookSpeed, err);
-        });
-      }
+      // Always set playback rate (including 1.0x) to ensure previous book's speed is reset
+      await audioService.setPlaybackRate(bookSpeed).catch((err) => {
+        log.warn('[SpeedStore] Failed to apply playback rate:', bookSpeed, err);
+      });
 
       return bookSpeed;
     },

@@ -11,11 +11,10 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { Image } from 'expo-image';
 import { ChevronRight } from 'lucide-react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { useLibraryCache, useCoverUrl } from '@/core/cache';
+import { useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
-import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 import { useReadingHistory } from '@/features/reading-history-wizard';
 
 // Carousel layout constants
@@ -31,7 +30,9 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 }
 
 interface BecauseYouListenedSectionProps {
+  items: LibraryItem[];
   onBookPress?: (bookId: string) => void;
+  onBookLongPress?: (bookId: string) => void;
   onViewAll?: () => void;
   limit?: number;
   /** Which source book index to use (0 = most recent, 1 = second most recent, etc.) */
@@ -41,18 +42,19 @@ interface BecauseYouListenedSectionProps {
 interface CardProps {
   item: LibraryItem;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
 const colors = secretLibraryColors;
 
-const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }: CardProps) {
+const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, onLongPress }: CardProps) {
   const coverUrl = useCoverUrl(item.id, { width: 200 });
   const metadata = getMetadata(item);
   const title = metadata.title || 'Untitled';
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -76,30 +78,21 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }:
 });
 
 export function BecauseYouListenedSection({
+  items,
   onBookPress,
+  onBookLongPress,
   onViewAll,
   limit = 12,
   sourceIndex = 0
 }: BecauseYouListenedSectionProps) {
-  const { items: libraryItems, isLoaded } = useLibraryCache();
   const { isFinished, hasBeenStarted } = useReadingHistory();
-
-  // Content filter
-  const audience = useContentFilterStore((s) => s.audience);
-  const selectedAges = useContentFilterStore((s) => s.selectedAges);
-  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
-  const selectedTags = useContentFilterStore((s) => s.selectedTags);
-  const lengthRange = useContentFilterStore((s) => s.lengthRange);
 
   // Find a recently listened book to base recommendations on
   const { sourceBook, recommendations } = useMemo(() => {
-    if (!libraryItems?.length) return { sourceBook: null, recommendations: [] };
-
-    // Apply content filter
-    const filteredItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
+    if (!items?.length) return { sourceBook: null, recommendations: [] };
 
     // Find recently listened books with progress
-    const recentlyListened = filteredItems
+    const recentlyListened = items
       .filter(item => {
         if (item.mediaType !== 'book') return false;
         const progress = item.userMediaProgress?.progress || 0;
@@ -124,7 +117,7 @@ export function BecauseYouListenedSection({
     const usedSourceIds = new Set(recentlyListened.slice(0, sourceIndex + 1).map(b => b.id));
 
     // Find similar books (same author, genre, or series)
-    const similar = filteredItems
+    const similar = items
       .filter(item => {
         if (item.mediaType !== 'book') return false;
         if (usedSourceIds.has(item.id)) return false;
@@ -152,13 +145,17 @@ export function BecauseYouListenedSection({
       .slice(0, limit);
 
     return { sourceBook: source, recommendations: similar };
-  }, [libraryItems, limit, audience, selectedAges, selectedRatings, selectedTags, lengthRange, isFinished, hasBeenStarted, sourceIndex]);
+  }, [items, limit, isFinished, hasBeenStarted, sourceIndex]);
 
   const handleBookPress = useCallback((bookId: string) => {
     onBookPress?.(bookId);
   }, [onBookPress]);
 
-  if (!isLoaded || !sourceBook || recommendations.length === 0) {
+  const handleBookLongPress = useCallback((bookId: string) => {
+    onBookLongPress?.(bookId);
+  }, [onBookLongPress]);
+
+  if (!sourceBook || recommendations.length === 0) {
     return null;
   }
 
@@ -196,6 +193,7 @@ export function BecauseYouListenedSection({
             key={item.id}
             item={item}
             onPress={() => handleBookPress(item.id)}
+            onLongPress={() => handleBookLongPress(item.id)}
           />
         ))}
       </ScrollView>

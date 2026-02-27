@@ -8,7 +8,7 @@
  * JetBrains Mono metadata, and a cream/black color scheme.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,9 @@ import {
   Pressable,
   Modal,
   ScrollView,
+  FlatList,
+  GestureResponderEvent,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 // Note: Safe area is handled by TopNav component
@@ -32,7 +35,7 @@ import { haptics } from '@/core/native/haptics';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache } from '@/core/cache';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { TopNav, TopNavSearchIcon, SkullRefreshControl, SkeletonBox } from '@/shared/components';
+import { TopNav, TopNavSearchIcon, SkullRefreshControl, SkeletonBox, useBookContextMenu } from '@/shared/components';
 import { useNavigationWithLoading } from '@/shared/hooks';
 import {
   secretLibraryColors as staticColors,
@@ -72,6 +75,7 @@ import { useProgressStore } from '@/core/stores/progressStore';
 import { usePlayerStore } from '@/features/player/stores';
 import { GLOBAL_MINI_PLAYER_HEIGHT } from '@/navigation/components/GlobalMiniPlayer';
 import { useAppReadyStore } from '@/core/stores/appReadyStore';
+import { useSpineCacheStore } from '../stores/spineCache';
 import { usePlaylists, usePlaylistSettingsStore } from '@/features/playlists';
 
 // =============================================================================
@@ -79,8 +83,9 @@ import { usePlaylists, usePlaylistSettingsStore } from '@/features/playlists';
 // =============================================================================
 
 // SHELF MODE (upright spines, horizontal scroll)
-const SHELF_PADDING_WITH_MINI_PLAYER = GLOBAL_MINI_PLAYER_HEIGHT - 30;
-const SHELF_PADDING_NO_MINI_PLAYER = 0;
+// Minimal gap — spines sit just above the mini player
+const SHELF_PADDING_WITH_MINI_PLAYER = GLOBAL_MINI_PLAYER_HEIGHT + 4;
+const SHELF_PADDING_NO_MINI_PLAYER = 40;
 
 // LIST MODE (vertical list with covers)
 const LIST_PADDING_WITH_MINI_PLAYER = GLOBAL_MINI_PLAYER_HEIGHT + 20;
@@ -131,6 +136,7 @@ interface LibraryBook {
   progress: number;
   coverUrl?: string;
   lastPlayedAt?: number; // Unix timestamp in milliseconds
+  addedAt?: number; // When added to server library (fallback for recent sort)
   isDownloaded: boolean;
   seriesName?: string;
   seriesSequence?: number;
@@ -229,6 +235,7 @@ function transformToLibraryBook(item: LibraryItem, downloadedIds: Set<string>): 
     progress,
     coverUrl: apiClient.getItemCoverUrl(item.id, { width: 400, height: 400 }),
     lastPlayedAt,
+    addedAt: item.addedAt,
     isDownloaded: downloadedIds.has(item.id),
     seriesName: seriesInfo.name,
     seriesSequence: seriesInfo.sequence,
@@ -277,16 +284,14 @@ function transformToSpineData(
   const metadata = getBookMetadata(item);
   const duration = getBookDuration(item);
   const genres: string[] = metadata?.genres || [];
-  const tags: string[] = metadata?.tags || []; // Tags for dimension modifiers (cozy, epic-fantasy, etc.)
-
-  // Extract series info properly
-  const seriesInfo = extractSeriesInfo(metadata);
+  const tags: string[] = metadata?.tags || [];
 
   // Convert timestamp to ISO string only when showing last played
   const lastPlayedAt = showLastPlayed && book.lastPlayedAt
     ? new Date(book.lastPlayedAt).toISOString()
     : undefined;
 
+  // PERF: Use series info already extracted on LibraryBook (avoids redundant regex)
   return {
     id: book.id,
     title: book.title,
@@ -295,12 +300,232 @@ function transformToSpineData(
     genres,
     tags,
     duration,
-    seriesName: seriesInfo.name,
-    seriesSequence: seriesInfo.sequence,
+    seriesName: book.seriesName,
+    seriesSequence: book.seriesSequence,
     lastPlayedAt,
     isDownloaded: book.isDownloaded,
   };
 }
+
+// =============================================================================
+// VIEW MODE PICKER — single button, long-press reveals overlapping capsule
+// The capsule appears on top of the button with the current mode aligned.
+// A sliding circle indicator animates smoothly as the user drags.
+// =============================================================================
+
+const VIEW_MODES: ViewMode[] = ['shelf', 'grid', 'list'];
+const BUTTON_SIZE = 32;
+const INDICATOR_SIZE = 30;
+const CAPSULE_PADDING = 4;
+const CELL_SIZE = INDICATOR_SIZE + 4;
+const CAPSULE_WIDTH = INDICATOR_SIZE + CAPSULE_PADDING * 2;
+const CAPSULE_HEIGHT = CELL_SIZE * VIEW_MODES.length + CAPSULE_PADDING * 2;
+const CAPSULE_RADIUS = CAPSULE_WIDTH / 2;
+const CAPSULE_GAP = 4; // gap between button and capsule
+// Base top offset for indicator within capsule (index 0 position)
+const INDICATOR_BASE_TOP = CAPSULE_PADDING + (CELL_SIZE - INDICATOR_SIZE) / 2;
+
+interface ViewModePickerProps {
+  mode: ViewMode;
+  onModeChange: (mode: ViewMode) => void;
+  iconColor: string;         // icon color on button (collapsed state)
+  activeIconColor: string;   // icon color on white indicator (dark on white)
+  inactiveIconColor: string; // icon color for non-selected options in capsule
+  borderColor: string;       // button & capsule border
+  indicatorColor: string;    // sliding circle fill (white)
+  capsuleBg: string;         // capsule background (dark)
+}
+
+function ViewModePicker({ mode, onModeChange, iconColor, activeIconColor, inactiveIconColor, borderColor, indicatorColor, capsuleBg }: ViewModePickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<View>(null);
+  const containerLayout = useRef({ y: 0 });
+  const didOpen = useRef(false);
+  const highlightedRef = useRef(-1);
+
+  // Animated translateY for indicator (uses native driver for smooth animation)
+  const indicatorTranslateY = useRef(new Animated.Value(0)).current;
+
+  const getModeIcon = (m: ViewMode, color: string) => {
+    switch (m) {
+      case 'shelf': return <ShelfIcon color={color} />;
+      case 'grid': return <GridIcon color={color} />;
+      case 'list': return <ListIcon color={color} />;
+    }
+  };
+
+  // Map pageY to capsule option index (capsule is fixed below button)
+  const getOptionIndex = (pageY: number) => {
+    const capsuleAbsTop = containerLayout.current.y + BUTTON_SIZE + CAPSULE_GAP;
+    const relativeY = pageY - capsuleAbsTop - CAPSULE_PADDING;
+    const index = Math.floor(relativeY / CELL_SIZE);
+    return index >= 0 && index < VIEW_MODES.length ? index : -1;
+  };
+
+  const animateIndicator = useCallback((toIndex: number) => {
+    Animated.spring(indicatorTranslateY, {
+      toValue: toIndex * CELL_SIZE,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 20,
+    }).start();
+  }, [indicatorTranslateY]);
+
+  // Clean up longPressTimer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+      }
+    };
+  }, []);
+
+  const handlePressIn = useCallback((e: GestureResponderEvent) => {
+    didOpen.current = false;
+    containerRef.current?.measureInWindow((_x, y) => {
+      containerLayout.current = { y };
+    });
+    longPressTimer.current = setTimeout(() => {
+      didOpen.current = true;
+      const modeIdx = VIEW_MODES.indexOf(mode);
+      // Set indicator to current mode position (no animation)
+      indicatorTranslateY.setValue(modeIdx * CELL_SIZE);
+      highlightedRef.current = modeIdx;
+      setHighlightedIndex(modeIdx);
+      setIsOpen(true);
+      haptics.selection();
+    }, 300);
+  }, [mode, indicatorTranslateY]);
+
+  const handleMove = useCallback((e: GestureResponderEvent) => {
+    if (!didOpen.current) return;
+    const newIndex = getOptionIndex(e.nativeEvent.pageY);
+    if (newIndex >= 0 && newIndex !== highlightedRef.current) {
+      highlightedRef.current = newIndex;
+      haptics.selection();
+      animateIndicator(newIndex);
+      setHighlightedIndex(newIndex);
+    }
+  }, [animateIndicator]);
+
+  const handlePressOut = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+
+    if (!didOpen.current) {
+      // Short tap — cycle to next mode
+      const currentIndex = VIEW_MODES.indexOf(mode);
+      const nextMode = VIEW_MODES[(currentIndex + 1) % VIEW_MODES.length];
+      onModeChange(nextMode);
+      return;
+    }
+
+    // Long press release — select highlighted
+    const idx = highlightedRef.current;
+    if (idx >= 0) {
+      const selectedMode = VIEW_MODES[idx];
+      if (selectedMode !== mode) {
+        onModeChange(selectedMode);
+      }
+    }
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+    highlightedRef.current = -1;
+    didOpen.current = false;
+  }, [mode, onModeChange]);
+
+  return (
+    <View
+      ref={containerRef}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={handlePressIn}
+      onResponderMove={handleMove}
+      onResponderRelease={handlePressOut}
+      onResponderTerminate={handlePressOut}
+      style={viewPickerStyles.wrapper}
+    >
+      {/* Button (always rendered to maintain layout size) */}
+      <View style={[viewPickerStyles.button, { borderColor, opacity: isOpen ? 0 : 1 }]}>
+        {getModeIcon(mode, iconColor)}
+      </View>
+
+      {/* Capsule overlapping button — current mode aligned with button center */}
+      {isOpen && (
+        <View style={[viewPickerStyles.capsule, {
+          backgroundColor: capsuleBg,
+          borderColor,
+        }]}>
+          {/* Animated sliding indicator */}
+          <Animated.View style={[
+            viewPickerStyles.indicator,
+            {
+              backgroundColor: indicatorColor,
+              transform: [{ translateY: indicatorTranslateY }],
+            },
+          ]} />
+          {VIEW_MODES.map((m) => {
+            const isActive = (highlightedIndex >= 0 ? VIEW_MODES[highlightedIndex] : mode) === m;
+            return (
+              <View key={m} style={viewPickerStyles.cell}>
+                {getModeIcon(m, isActive ? activeIconColor : inactiveIconColor)}
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const viewPickerStyles = StyleSheet.create({
+  wrapper: {
+    position: 'relative',
+    zIndex: 100,
+  },
+  button: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  capsule: {
+    position: 'absolute',
+    top: BUTTON_SIZE + CAPSULE_GAP,
+    right: 0,
+    width: CAPSULE_WIDTH,
+    height: CAPSULE_HEIGHT,
+    borderRadius: CAPSULE_RADIUS,
+    borderWidth: 1,
+    padding: CAPSULE_PADDING,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  indicator: {
+    position: 'absolute',
+    top: INDICATOR_BASE_TOP,
+    width: INDICATOR_SIZE,
+    height: INDICATOR_SIZE,
+    borderRadius: INDICATOR_SIZE / 2,
+  },
+  cell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 // =============================================================================
 // MAIN COMPONENT
@@ -309,6 +534,9 @@ function transformToSpineData(
 export function LibraryScreen() {
   const { navigateWithLoading, jumpToTabWithLoading, navigation } = useNavigationWithLoading();
   // Note: Safe area is handled by TopNav component (includeSafeArea={true} by default)
+
+  // Book context menu (long-press actions)
+  const { showMenu } = useBookContextMenu();
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
@@ -327,9 +555,28 @@ export function LibraryScreen() {
   const defaultView = usePlaylistSettingsStore((s) => s.defaultView);
   const visiblePlaylistIds = usePlaylistSettingsStore((s) => s.visiblePlaylistIds);
   const playlistOrder = usePlaylistSettingsStore((s) => s.playlistOrder);
+  const hiddenBuiltInViews = usePlaylistSettingsStore((s) => s.hiddenBuiltInViews);
+  const allItemOrder = usePlaylistSettingsStore((s) => s.allItemOrder);
 
   // Initialize content mode from default view setting
   const [contentMode, setContentMode] = useState<ContentMode>(defaultView || 'library');
+
+  // Sync contentMode when defaultView changes (e.g., user changes setting and returns to this tab)
+  useEffect(() => {
+    if (defaultView) {
+      setContentMode(defaultView as ContentMode);
+    }
+  }, [defaultView]);
+
+  // Close dropdown modals when navigating away to prevent flash on return
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      setShowSortDropdown(false);
+      setShowContentDropdown(false);
+      setShowDownloadDropdown(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Favorite series names (for My Series view reactivity)
   const favoriteSeriesNames = useMyLibraryStore((s) => s.favoriteSeriesNames);
@@ -493,29 +740,84 @@ export function LibraryScreen() {
     return items;
   }, [finishedBooks, cacheItemsById]);
 
-  // Build dynamic content options including playlists
+  // Build dynamic content options respecting visibility and order settings
   const contentOptions = useMemo(() => {
-    const options = [...BASE_CONTENT_OPTIONS];
+    // Map of all possible items by their order key (__library, __mySeries, etc. or playlist ID)
+    const builtInMap: Record<string, { key: ContentMode; label: string }> = {
+      '__library': { key: 'library', label: 'My Library' },
+      '__mySeries': { key: 'mySeries', label: 'My Series' },
+      '__lastPlayed': { key: 'lastPlayed', label: 'Last Played' },
+      '__finished': { key: 'finished', label: 'Finished' },
+    };
+
+    // Build playlist map
+    const playlistMap = new Map<string, { key: ContentMode; label: string }>();
+    for (const p of playlists) {
+      if (!p.name.startsWith('__sl_') && visiblePlaylistIds.includes(p.id)) {
+        playlistMap.set(p.id, { key: `playlist:${p.id}`, label: p.name });
+      }
+    }
+
+    // Hidden built-in keys as a set for quick lookup
+    const hiddenSet = new Set(hiddenBuiltInViews);
+
+    // If allItemOrder is set, use it for ordering
+    if (allItemOrder.length > 0) {
+      const options: { key: ContentMode; label: string }[] = [];
+      const addedKeys = new Set<string>();
+
+      for (const id of allItemOrder) {
+        if (id in builtInMap) {
+          // Built-in view — check if hidden
+          const builtInKey = id.replace('__', '') as string;
+          if (!hiddenSet.has(builtInKey as any)) {
+            options.push(builtInMap[id]);
+            addedKeys.add(id);
+          }
+        } else if (playlistMap.has(id)) {
+          options.push(playlistMap.get(id)!);
+          addedKeys.add(id);
+        }
+      }
+
+      // Add any items not in the stored order (newly added)
+      for (const [key, item] of Object.entries(builtInMap)) {
+        const builtInKey = key.replace('__', '') as string;
+        if (!addedKeys.has(key) && !hiddenSet.has(builtInKey as any)) {
+          options.push(item);
+        }
+      }
+      for (const [id, item] of playlistMap) {
+        if (!addedKeys.has(id)) {
+          options.push(item);
+        }
+      }
+
+      return options;
+    }
+
+    // Fallback: no allItemOrder stored yet — use old logic
+    const options: { key: ContentMode; label: string }[] = [];
+
+    // Add visible built-in views
+    for (const opt of BASE_CONTENT_OPTIONS) {
+      if (!hiddenSet.has(opt.key as any)) {
+        options.push(opt);
+      }
+    }
 
     // Add visible playlists in order
     const orderedPlaylistIds = playlistOrder.filter(id => visiblePlaylistIds.includes(id));
-    // Add any visible playlists not in order (newly added)
     const remainingVisibleIds = visiblePlaylistIds.filter(id => !playlistOrder.includes(id));
-    const allOrderedIds = [...orderedPlaylistIds, ...remainingVisibleIds];
-
-    for (const playlistId of allOrderedIds) {
+    for (const playlistId of [...orderedPlaylistIds, ...remainingVisibleIds]) {
       const playlist = playlists.find(p => p.id === playlistId);
-      // Skip internal __sl_ playlists (handled as built-in views)
       if (playlist && !playlist.name.startsWith('__sl_')) {
-        options.push({
-          key: `playlist:${playlist.id}`,
-          label: playlist.name,
-        });
+        options.push({ key: `playlist:${playlist.id}`, label: playlist.name });
       }
     }
 
     return options;
-  }, [playlists, visiblePlaylistIds, playlistOrder]);
+  }, [playlists, visiblePlaylistIds, playlistOrder, hiddenBuiltInViews, allItemOrder]);
 
   // Get downloaded books
   const { downloads, isLoading: isDownloadsLoading } = useDownloads();
@@ -673,7 +975,12 @@ export function LibraryScreen() {
       case 'recent':
       default:
         // Sort by last played timestamp (most recent first)
-        sorted.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+        // Never-played books use addedAt so they appear by add date, not buried at bottom
+        sorted.sort((a, b) => {
+          const aTime = a.lastPlayedAt || a.addedAt || 0;
+          const bTime = b.lastPlayedAt || b.addedAt || 0;
+          return bTime - aTime;
+        });
         break;
     }
     return sorted;
@@ -684,6 +991,16 @@ export function LibraryScreen() {
     haptics.buttonPress();
     navigation.navigate('BookDetail', { id: book.id });
   }, [navigation]);
+
+  // Extract active playlist ID when in playlist content mode
+  const activePlaylistId = contentMode.startsWith('playlist:')
+    ? contentMode.replace('playlist:', '')
+    : undefined;
+
+  const handleBookLongPress = useCallback((book: LibraryBook | BookSpineVerticalData) => {
+    const item = cacheItemsById.get(book.id);
+    if (item) showMenu(item, activePlaylistId ? { playlistId: activePlaylistId } : undefined);
+  }, [cacheItemsById, showMenu, activePlaylistId]);
 
   const handleSearchPress = useCallback(() => {
     haptics.selection();
@@ -704,8 +1021,14 @@ export function LibraryScreen() {
     haptics.selection();
     setIsSyncing(true);
     try {
+      // 1. Cloud sync — upload/download library changes
       await librarySyncService.fullSync();
+      // 2. Reload spine manifest from server
+      await useLibraryCache.getState().loadSpineManifest();
+      // 3. Reload library from server (re-download book list & covers)
       await refreshCache();
+      // 4. Clear cached spine dimensions so fresh images load
+      useSpineCacheStore.getState().clearServerSpineDimensions();
     } finally {
       setIsSyncing(false);
     }
@@ -774,125 +1097,120 @@ export function LibraryScreen() {
   const currentContentLabel = contentOptions.find(opt => opt.key === contentMode)?.label || 'Library';
   const currentDownloadLabel = DOWNLOAD_OPTIONS.find(opt => opt.key === downloadFilter)?.label || 'All';
 
-  // Render list view (vertical list with covers)
+  // PERF: Memoized row renderer for list view FlatList
+  const renderListItem = useCallback(({ item: book }: { item: LibraryBook }) => {
+    const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
+    const durationText = formatDurationCompact(book.durationSeconds);
+
+    return (
+      <Pressable
+        style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
+        onPress={() => handleBookPress(book)}
+        onLongPress={() => handleBookLongPress(book)}
+      >
+        <Image
+          source={{ uri: coverUrl }}
+          style={styles.verticalCover}
+        />
+        <View style={styles.verticalInfo}>
+          <Text style={[styles.verticalTitle, { color: colors.black }]} numberOfLines={1}>{book.title}</Text>
+          {book.seriesName && (
+            <Text style={[styles.verticalSeries, { color: colors.gray }]} numberOfLines={1}>
+              {book.seriesName}{book.seriesSequence ? ` #${book.seriesSequence}` : ''}
+            </Text>
+          )}
+        </View>
+        <Text style={[styles.verticalDuration, { color: colors.gray }]}>{durationText}</Text>
+      </Pressable>
+    );
+  }, [colors, handleBookPress, handleBookLongPress]);
+
+  const listKeyExtractor = useCallback((item: LibraryBook) => item.id, []);
+
+  // Render list view (virtualized FlatList)
   const renderListView = () => {
     return (
-      <SkullRefreshControl
+      <FlatList
+        key="list-view"
+        data={allBooks}
+        renderItem={renderListItem}
+        keyExtractor={listKeyExtractor}
+        style={styles.listScrollView}
+        contentContainerStyle={{ paddingBottom: getBottomPadding('list') }}
+        showsVerticalScrollIndicator={false}
         refreshing={isCacheLoading || isRefreshing}
         onRefresh={handleRefreshPress}
-      >
-        <ScrollView
-          style={styles.listScrollView}
-          contentContainerStyle={{ paddingBottom: getBottomPadding('list') }}
-          showsVerticalScrollIndicator={false}
-        >
-        <View style={styles.verticalList}>
-          {allBooks.map((book) => {
-            const item = libraryItemsMap.get(book.id);
-            const metadata = item ? getBookMetadata(item) : null;
-            const seriesInfo = extractSeriesInfo(metadata);
-            const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
-            const durationText = formatDurationCompact(book.durationSeconds);
-
-            return (
-              <Pressable
-                key={book.id}
-                style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
-                onPress={() => handleBookPress(book)}
-              >
-                <Image
-                  source={{ uri: coverUrl }}
-                  style={styles.verticalCover}
-                />
-                <View style={styles.verticalInfo}>
-                  <Text style={[styles.verticalTitle, { color: colors.black }]} numberOfLines={1}>{book.title}</Text>
-                  {seriesInfo.name && (
-                    <Text style={[styles.verticalSeries, { color: colors.gray }]} numberOfLines={1}>
-                      {seriesInfo.name}{seriesInfo.sequence ? ` #${seriesInfo.sequence}` : ''}
-                    </Text>
-                  )}
-                </View>
-                <Text style={[styles.verticalDuration, { color: colors.gray }]}>{durationText}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        </ScrollView>
-      </SkullRefreshControl>
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews
+      />
     );
   };
 
-  // Render grid view (2-column cards with covers)
-  const renderGridView = () => {
-    // Split books into rows of 2
-    const rows: LibraryBook[][] = [];
-    for (let i = 0; i < allBooks.length; i += 2) {
-      rows.push(allBooks.slice(i, i + 2));
-    }
+  // PERF: Memoized row renderer for grid view FlatList
+  const renderGridItem = useCallback(({ item: book }: { item: LibraryBook }) => {
+    const item = libraryItemsMap.get(book.id);
+    const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 300, height: 300 });
+    const narrator = item ? getNarratorName(item) : '';
+    const durationText = formatDurationCompact(book.durationSeconds);
 
     return (
-      <SkullRefreshControl
+      <Pressable
+        style={styles.gridCard}
+        onPress={() => handleBookPress(book)}
+        onLongPress={() => handleBookLongPress(book)}
+      >
+        <Image
+          source={{ uri: coverUrl }}
+          style={styles.gridCover}
+          contentFit="cover"
+        />
+        <View style={styles.gridInfo}>
+          <Text style={[styles.gridTitle, { color: colors.black }]} numberOfLines={2}>
+            {book.title}
+          </Text>
+          <Text style={[styles.gridAuthor, { color: colors.gray }]} numberOfLines={1}>
+            {book.author}
+          </Text>
+          {book.seriesName && (
+            <Text style={[styles.gridMeta, { color: colors.gray }]} numberOfLines={1}>
+              {book.seriesName}{book.seriesSequence ? ` #${book.seriesSequence}` : ''}
+            </Text>
+          )}
+          {narrator && (
+            <Text style={[styles.gridMeta, { color: colors.gray }]} numberOfLines={1}>
+              {narrator}
+            </Text>
+          )}
+          <Text style={[styles.gridMeta, { color: colors.gray }]}>
+            {durationText}
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }, [colors, libraryItemsMap, handleBookPress, handleBookLongPress]);
+
+  // Render grid view (virtualized 2-column FlatList)
+  const renderGridView = () => {
+    return (
+      <FlatList
+        key="grid-view"
+        data={allBooks}
+        renderItem={renderGridItem}
+        keyExtractor={listKeyExtractor}
+        style={styles.gridScrollView}
+        contentContainerStyle={{ paddingBottom: getBottomPadding('grid'), paddingHorizontal: spacing.screenPaddingH, paddingTop: 8 }}
+        showsVerticalScrollIndicator={false}
         refreshing={isCacheLoading || isRefreshing}
         onRefresh={handleRefreshPress}
-      >
-        <ScrollView
-          style={styles.gridScrollView}
-          contentContainerStyle={{ paddingBottom: getBottomPadding('grid') }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.gridContainer}>
-            {rows.map((row, rowIndex) => (
-              <View key={rowIndex} style={styles.gridRow}>
-                {row.map((book) => {
-                  const item = libraryItemsMap.get(book.id);
-                  const metadata = item ? getBookMetadata(item) : null;
-                  const seriesInfo = extractSeriesInfo(metadata);
-                  const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 300, height: 300 });
-                  const narrator = item ? getNarratorName(item) : '';
-                  const durationText = formatDurationCompact(book.durationSeconds);
-
-                  return (
-                    <Pressable
-                      key={book.id}
-                      style={styles.gridCard}
-                      onPress={() => handleBookPress(book)}
-                    >
-                      <Image
-                        source={{ uri: coverUrl }}
-                        style={styles.gridCover}
-                        contentFit="cover"
-                      />
-                      <View style={styles.gridInfo}>
-                        <Text style={[styles.gridTitle, { color: colors.black }]} numberOfLines={2}>
-                          {book.title}
-                        </Text>
-                        <Text style={[styles.gridAuthor, { color: colors.gray }]} numberOfLines={1}>
-                          {book.author}
-                        </Text>
-                        {seriesInfo.name && (
-                          <Text style={[styles.gridMeta, { color: colors.gray }]} numberOfLines={1}>
-                            {seriesInfo.name}{seriesInfo.sequence ? ` #${seriesInfo.sequence}` : ''}
-                          </Text>
-                        )}
-                        {narrator && (
-                          <Text style={[styles.gridMeta, { color: colors.gray }]} numberOfLines={1}>
-                            {narrator}
-                          </Text>
-                        )}
-                        <Text style={[styles.gridMeta, { color: colors.gray }]}>
-                          {durationText}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-                {/* Empty spacer if odd number of books */}
-                {row.length === 1 && <View style={styles.gridCard} />}
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-      </SkullRefreshControl>
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews
+      />
     );
   };
 
@@ -972,21 +1290,32 @@ export function LibraryScreen() {
   };
 
   // Group books by series for series-sorted shelf view
+  // PERF: Pre-fetch all unique series counts in one pass, then build groups
   const seriesGroups = useMemo(() => {
     if (sortMode !== 'series') return [];
 
+    // 1. Collect unique series names and pre-fetch counts (single cache access)
+    const seriesNames = new Set<string>();
+    for (const book of allBooks) {
+      seriesNames.add(book.seriesName || 'No Series');
+    }
+    const cacheState = useLibraryCache.getState();
+    const seriesTotalMap = new Map<string, number>();
+    for (const name of seriesNames) {
+      seriesTotalMap.set(name, cacheState.getSeries(name)?.bookCount || 0);
+    }
+
+    // 2. Build groups in one pass (allBooks is already sorted by series)
     const groups: { name: string; inLibrary: number; total: number; books: BookSpineVerticalData[] }[] = [];
     let currentGroup: typeof groups[0] | null = null;
 
     for (const book of allBooks) {
       const seriesName = book.seriesName || 'No Series';
       if (!currentGroup || currentGroup.name !== seriesName) {
-        // Look up total book count from library cache
-        const seriesInfo = useLibraryCache.getState().getSeries(seriesName);
         currentGroup = {
           name: seriesName,
           inLibrary: 0,
-          total: seriesInfo?.bookCount || 0,
+          total: seriesTotalMap.get(seriesName) || 0,
           books: [],
         };
         groups.push(currentGroup);
@@ -1054,6 +1383,7 @@ export function LibraryScreen() {
               <BookshelfView
                 books={group.books}
                 onBookPress={(book) => handleBookPress(book)}
+                onBookLongPress={(book) => handleBookLongPress(book)}
                 layoutMode="shelf"
                 heightScale={0.5}
                 bottomPadding={0}
@@ -1076,6 +1406,7 @@ export function LibraryScreen() {
       <BookshelfView
         books={spineData}
         onBookPress={(book) => handleBookPress(book)}
+        onBookLongPress={(book) => handleBookLongPress(book)}
         layoutMode={viewMode}
         bottomPadding={getBottomPadding(viewMode)}
         recommendations={discoverRecommendations}
@@ -1109,22 +1440,20 @@ export function LibraryScreen() {
         ] : []}
         circleButtons={[
           {
-            key: 'shelf',
-            icon: <ShelfIcon color={viewMode === 'shelf' ? colors.white : buttonInactiveTextColor} />,
-            active: viewMode === 'shelf',
-            onPress: () => handleViewModeChange('shelf'),
-          },
-          {
-            key: 'grid',
-            icon: <GridIcon color={viewMode === 'grid' ? colors.white : buttonInactiveTextColor} />,
-            active: viewMode === 'grid',
-            onPress: () => handleViewModeChange('grid'),
-          },
-          {
-            key: 'list',
-            icon: <ListIcon color={viewMode === 'list' ? colors.white : buttonInactiveTextColor} />,
-            active: viewMode === 'list',
-            onPress: () => handleViewModeChange('list'),
+            key: 'viewMode',
+            customRender: true,
+            icon: (
+              <ViewModePicker
+                mode={viewMode}
+                onModeChange={handleViewModeChange}
+                iconColor={buttonInactiveTextColor}
+                activeIconColor={colors.white}
+                inactiveIconColor={colors.gray}
+                borderColor={colors.grayLine}
+                indicatorColor={colors.black}
+                capsuleBg={colors.grayLight}
+              />
+            ),
           },
           {
             key: 'search',

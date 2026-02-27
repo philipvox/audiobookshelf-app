@@ -115,27 +115,35 @@ export function GlobalMiniPlayer() {
   // Handlers
   const handlePlayPause = useCallback(() => {
     haptics.selection();
-    if (isPlaying) {
-      pause();
+    // Read state at call time to avoid stale closure during rapid taps
+    const state = usePlayerStore.getState();
+    if (state.isPlaying) {
+      state.pause();
     } else {
-      play();
+      state.play();
     }
-  }, [isPlaying, pause, play]);
+  }, []);
 
   // Get bookId for progress saving
   const bookId = currentBook?.id;
 
   const handleSkipBack = useCallback(() => {
     haptics.selection();
-    const newPosition = Math.max(0, position - 15);
-    useSeekingStore.getState().seekTo(newPosition, duration, bookId);
-  }, [position, duration, bookId]);
+    // Read position at call time to avoid stale closure during rapid taps
+    const currentPos = usePlayerStore.getState().position;
+    const currentDur = usePlayerStore.getState().duration;
+    const newPosition = Math.max(0, currentPos - 15);
+    useSeekingStore.getState().seekTo(newPosition, currentDur, bookId);
+  }, [bookId]);
 
   const handleSkipForward = useCallback(() => {
     haptics.selection();
-    const newPosition = Math.min(duration, position + 30);
-    useSeekingStore.getState().seekTo(newPosition, duration, bookId);
-  }, [position, duration, bookId]);
+    // Read position at call time to avoid stale closure during rapid taps
+    const currentPos = usePlayerStore.getState().position;
+    const currentDur = usePlayerStore.getState().duration;
+    const newPosition = Math.min(currentDur, currentPos + 30);
+    useSeekingStore.getState().seekTo(newPosition, currentDur, bookId);
+  }, [bookId]);
 
   const handleOpenPlayer = useCallback(() => {
     haptics.selection();
@@ -269,6 +277,8 @@ const styles = StyleSheet.create({
     backgroundColor: MINI_PLAYER_BG,
     paddingHorizontal: scale(20),
     paddingTop: scale(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.15)',
   },
 
   // Controls Row
@@ -304,9 +314,9 @@ const styles = StyleSheet.create({
     gap: scale(8),
   },
   skipButton: {
-    height: scale(38),
+    height: scale(44),
     paddingHorizontal: scale(16),
-    borderRadius: scale(19),
+    borderRadius: scale(22),
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.4)',
     flexDirection: 'row',
@@ -314,9 +324,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   playButton: {
-    height: scale(38),
+    height: scale(44),
     paddingHorizontal: scale(22),
-    borderRadius: scale(19),
+    borderRadius: scale(22),
     backgroundColor: secretLibraryColors.white,
     flexDirection: 'row',
     alignItems: 'center',

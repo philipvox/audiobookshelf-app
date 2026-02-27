@@ -3625,8 +3625,14 @@ export function calculateBookDimensions(book: BookDimensionInput): CalculatedDim
   let finalWidth = baseWidth;  // Don't use modified.width - keep duration-based
   let finalHeight = modified.height;
 
+  // Step 4b: Books longer than 30 hours get max height
+  const LONG_BOOK_THRESHOLD = 30 * 3600; // 30 hours in seconds
+  if (book.duration && book.duration >= LONG_BOOK_THRESHOLD) {
+    finalHeight = MAX_HEIGHT;
+  }
+
   // Step 5: Enforce height constraints only (width is locked to duration)
-  finalHeight = clamp(finalHeight, 180, 500);
+  finalHeight = clamp(finalHeight, 180, MAX_HEIGHT);
 
   // Step 7: Register series if applicable
   if (book.seriesName) {

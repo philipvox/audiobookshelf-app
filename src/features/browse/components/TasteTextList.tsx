@@ -11,14 +11,13 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { Image } from 'expo-image';
 import { ChevronRight } from 'lucide-react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { useLibraryCache, useCoverUrl } from '@/core/cache';
+import { useCoverUrl } from '@/core/cache';
 import { useReadingHistory } from '@/features/reading-history-wizard';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 
 // Carousel layout constants
 const PADDING = 16;
@@ -33,25 +32,28 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 }
 
 interface TasteTextListProps {
+  items: LibraryItem[];
   onBookPress?: (bookId: string) => void;
+  onBookLongPress?: (bookId: string) => void;
   onViewAll?: () => void;
 }
 
 interface CardProps {
   item: LibraryItem;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
 const colors = secretLibraryColors;
 
-const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }: CardProps) {
+const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, onLongPress }: CardProps) {
   const coverUrl = useCoverUrl(item.id, { width: 200 });
   const metadata = getMetadata(item);
   const title = metadata.title || 'Untitled';
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -74,33 +76,22 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress }:
   );
 });
 
-export function TasteTextList({ onBookPress, onViewAll }: TasteTextListProps) {
-  // Data hooks
-  const { items: libraryItems, isLoaded } = useLibraryCache();
+export function TasteTextList({ items, onBookPress, onBookLongPress, onViewAll }: TasteTextListProps) {
   const { isFinished } = useReadingHistory();
-
-  // Content filter
-  const audience = useContentFilterStore((s) => s.audience);
-  const selectedAges = useContentFilterStore((s) => s.selectedAges);
-  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
-  const selectedTags = useContentFilterStore((s) => s.selectedTags);
-  const lengthRange = useContentFilterStore((s) => s.lengthRange);
 
   // Library and download state
   const librarySet = useProgressStore((state) => state.librarySet);
   const { downloads } = useDownloads();
 
-  // Get set of downloaded book IDs
+  // Get set of downloaded book IDs — recompute when completed downloads change
+  const completedDownloads = useMemo(() => downloads.filter(d => d.status === 'complete'), [downloads]);
   const downloadedIds = useMemo(() => {
-    return new Set(downloads.filter(d => d.status === 'complete').map(d => d.itemId));
-  }, [downloads]);
+    return new Set(completedDownloads.map(d => d.itemId));
+  }, [completedDownloads]);
 
   // Get newest releases sorted by publication date
   const newestReleases = useMemo(() => {
-    if (!libraryItems?.length) return [];
-
-    // Apply content filter first
-    const filteredItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
+    if (!items?.length) return [];
 
     // Helper to check if book should be excluded
     const shouldExclude = (bookId: string, item: LibraryItem): boolean => {
@@ -121,7 +112,7 @@ export function TasteTextList({ onBookPress, onViewAll }: TasteTextListProps) {
     };
 
     // Filter eligible books
-    const eligibleItems = filteredItems.filter((item) => {
+    const eligibleItems = items.filter((item) => {
       if (item.mediaType !== 'book') return false;
       if (shouldExclude(item.id, item)) return false;
 
@@ -152,13 +143,17 @@ export function TasteTextList({ onBookPress, onViewAll }: TasteTextListProps) {
     });
 
     return sortedByPublishDate.slice(0, 15);
-  }, [libraryItems, librarySet, downloadedIds, isFinished, audience, selectedAges, selectedRatings, selectedTags, lengthRange]);
+  }, [items, librarySet, downloadedIds, isFinished]);
 
   const handleBookPress = useCallback((bookId: string) => {
     onBookPress?.(bookId);
   }, [onBookPress]);
 
-  if (!isLoaded || newestReleases.length === 0) {
+  const handleBookLongPress = useCallback((bookId: string) => {
+    onBookLongPress?.(bookId);
+  }, [onBookLongPress]);
+
+  if (newestReleases.length === 0) {
     return null;
   }
 
@@ -188,6 +183,7 @@ export function TasteTextList({ onBookPress, onViewAll }: TasteTextListProps) {
             key={item.id}
             item={item}
             onPress={() => handleBookPress(item.id)}
+            onLongPress={() => handleBookLongPress(item.id)}
           />
         ))}
       </ScrollView>

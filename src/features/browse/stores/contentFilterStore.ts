@@ -448,7 +448,7 @@ export function filterByAudience(
     }
 
     if (audience === 'adults') {
-      return isAdultOnlyContent(item);
+      return isAdultOnlyContent(item) || isTeenContent(item);
     }
 
     // 'all' audience - apply filters if set

@@ -29,7 +29,7 @@ import { useMoodRecommendations } from '@/features/mood-discovery/hooks/useMoodR
 import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 import { CompleteBadgeOverlay } from '@/features/completion';
-import { SkullRefreshControl, TopNav, TopNavBackIcon, AlphabetScrubber } from '@/shared/components';
+import { SkullRefreshControl, TopNav, TopNavBackIcon, AlphabetScrubber, useBookContextMenu } from '@/shared/components';
 import { Icon } from '@/shared/components/Icon';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useTheme } from '@/shared/theme';
@@ -96,10 +96,11 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 interface ListItemProps {
   item: LibraryItem;
   onPress: () => void;
+  onLongPress?: () => void;
   isDark: boolean;
 }
 
-const ListBookItem = React.memo(function ListBookItem({ item, onPress, isDark }: ListItemProps) {
+const ListBookItem = React.memo(function ListBookItem({ item, onPress, onLongPress, isDark }: ListItemProps) {
   const coverUrl = useCoverUrl(item.id);
   const metadata = getMetadata(item);
   const title = metadata.title || 'Untitled';
@@ -114,6 +115,7 @@ const ListBookItem = React.memo(function ListBookItem({ item, onPress, isDark }:
         isDark ? styles.cardDark : styles.cardLight,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
     >
       {/* Cover */}
       <View style={styles.coverContainer}>
@@ -155,6 +157,7 @@ export function FilteredBooksScreen() {
   const { colors, isDark } = useTheme();
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const { showMenu } = useBookContextMenu();
 
   const {
     title: paramTitle,
@@ -448,9 +451,10 @@ export function FilteredBooksScreen() {
     <ListBookItem
       item={item}
       onPress={() => handleBookPress(item.id)}
+      onLongPress={() => showMenu(item)}
       isDark={isDark}
     />
-  ), [handleBookPress, isDark]);
+  ), [handleBookPress, showMenu, isDark]);
 
   const keyExtractor = useCallback((item: LibraryItem) => item.id, []);
 

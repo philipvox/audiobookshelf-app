@@ -63,7 +63,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
           useLibrarySyncStore.getState().clearBookTombstone(bookId);
           import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
             librarySyncService.pushBookChange(bookId, 'add');
-          });
+          }).catch(err => console.warn('Failed to sync library add:', err));
         }
       },
 
@@ -77,7 +77,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         useLibrarySyncStore.getState().addBookTombstone(bookId);
         import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
           librarySyncService.pushBookChange(bookId, 'remove');
-        });
+        }).catch(err => console.warn('Failed to sync library remove:', err));
       },
 
       removeMultiple: (bookIds: string[]) => {
@@ -96,7 +96,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
           for (const bookId of bookIds) {
             librarySyncService.pushBookChange(bookId, 'remove');
           }
-        });
+        }).catch(err => console.warn('Failed to sync library bulk remove:', err));
       },
 
       isInLibrary: (bookId: string) => {
@@ -112,7 +112,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
           useLibrarySyncStore.getState().clearSeriesTombstone(seriesName);
           import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
             librarySyncService.pushSeriesChange(seriesName, 'add');
-          });
+          }).catch(err => console.warn('Failed to sync series add:', err));
         }
       },
 
@@ -123,7 +123,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         useLibrarySyncStore.getState().addSeriesTombstone(seriesName);
         import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
           librarySyncService.pushSeriesChange(seriesName, 'remove');
-        });
+        }).catch(err => console.warn('Failed to sync series remove:', err));
       },
 
       isSeriesFavorite: (seriesName: string) => {
@@ -137,16 +137,22 @@ export const useMyLibraryStore = create<MyLibraryState>()(
 
       clearAll: () => {
         const { libraryIds } = get();
-        // Clear tombstones so sync doesn't block future re-adds
-        useLibrarySyncStore.setState({ bookTombstones: [], seriesTombstones: [] });
-        // Batch remove from server playlist
+        // Batch remove from server playlist FIRST, then clear tombstones on success
+        // If we clear tombstones before the server remove completes, a sync could
+        // re-add books from the server before the remove finishes
         const playlistId = useLibrarySyncStore.getState().libraryPlaylistId;
         if (playlistId && libraryIds.length > 0) {
           import('@/core/api/endpoints/playlists').then(({ playlistsApi }) => {
-            playlistsApi.batchRemove(playlistId, libraryIds).catch((err: any) =>
+            playlistsApi.batchRemove(playlistId, libraryIds).then(() => {
+              // Only clear tombstones after server confirms removal
+              useLibrarySyncStore.setState({ bookTombstones: [], seriesTombstones: [] });
+            }).catch((err: any) =>
               console.warn('Failed to clear server playlist:', err)
             );
-          });
+          }).catch(err => console.warn('Failed to import playlists API:', err));
+        } else {
+          // No server playlist — safe to clear tombstones immediately
+          useLibrarySyncStore.setState({ bookTombstones: [], seriesTombstones: [] });
         }
         set({
           libraryIds: [],

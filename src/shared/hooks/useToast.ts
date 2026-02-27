@@ -25,6 +25,7 @@ export interface Toast {
   type: ToastType;
   message: string;
   duration: number;
+  onUndo?: () => void;
 }
 
 interface ToastState {
@@ -34,9 +35,18 @@ interface ToastState {
   clearToasts: () => void;
 }
 
+export interface ShowUndoOptions {
+  message: string;
+  onUndo: () => void;
+  duration?: number;
+}
+
 // ============================================================================
 // STORE
 // ============================================================================
+
+// Track auto-remove timers so they can be cancelled on manual removal
+const toastTimers = new Map<string, NodeJS.Timeout>();
 
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
@@ -51,7 +61,8 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
     // Auto-remove after duration
     if (duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        toastTimers.delete(id);
         const currentToasts = get().toasts;
         if (currentToasts.some((t) => t.id === id)) {
           set((state) => ({
@@ -59,17 +70,30 @@ export const useToastStore = create<ToastState>((set, get) => ({
           }));
         }
       }, duration);
+      toastTimers.set(id, timer);
     }
 
     return id;
   },
 
-  removeToast: (id) =>
+  removeToast: (id) => {
+    // Cancel auto-remove timer if pending
+    const timer = toastTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.delete(id);
+    }
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),
-    })),
+    }));
+  },
 
-  clearToasts: () => set({ toasts: [] }),
+  clearToasts: () => {
+    // Cancel all pending auto-remove timers
+    toastTimers.forEach((timer) => clearTimeout(timer));
+    toastTimers.clear();
+    set({ toasts: [] });
+  },
 }));
 
 // ============================================================================
@@ -121,6 +145,12 @@ export function useToast() {
     [showToast]
   );
 
+  const showUndo = useCallback(
+    (message: string, undoCallback: () => void, duration = 10000) =>
+      addToast({ type: 'success', message, duration, onUndo: undoCallback }),
+    [addToast]
+  );
+
   return {
     // Core
     showToast,
@@ -132,5 +162,6 @@ export function useToast() {
     showError,
     showWarning,
     showInfo,
+    showUndo,
   };
 }

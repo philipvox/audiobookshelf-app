@@ -118,6 +118,9 @@ const log = createLogger('SeekingStore');
 let seekInterval: NodeJS.Timeout | null = null;
 // Fix MEDIUM: Track if an interval callback is in progress to prevent overlapping
 let seekIntervalInProgress = false;
+// Safety timeout: auto-reset isSeeking if stuck for more than 10 seconds
+let seekingSafetyTimeout: NodeJS.Timeout | null = null;
+const MAX_SEEKING_DURATION_MS = 10000;
 
 // =============================================================================
 // STORE
@@ -141,6 +144,17 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
     startSeeking: (position: number, direction?: SeekDirection) => {
       log.debug(`startSeeking: position=${position.toFixed(1)}, direction=${direction || 'none'}`);
+
+      // Safety: auto-reset if seeking gets stuck (prevents blocking all position updates)
+      if (seekingSafetyTimeout) clearTimeout(seekingSafetyTimeout);
+      seekingSafetyTimeout = setTimeout(() => {
+        if (get().isSeeking) {
+          log.warn('Seeking stuck for >10s — auto-resetting');
+          get().resetSeekingState();
+        }
+        seekingSafetyTimeout = null;
+      }, MAX_SEEKING_DURATION_MS);
+
       set({
         isSeeking: true,
         seekPosition: position,
@@ -174,6 +188,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       log.debug(`commitSeek: finalPosition=${seekPosition.toFixed(1)}`);
 
+      // Clear safety timeout
+      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
+
       // Ensure audio is at final position - audioService owns position
       await audioService.seekTo(seekPosition);
 
@@ -194,6 +211,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       }
 
       log.debug(`cancelSeek: returning to ${seekStartPosition.toFixed(1)}`);
+
+      // Clear safety timeout
+      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
 
       // Return to original position - audioService owns position
       await audioService.seekTo(seekStartPosition);
@@ -313,7 +333,7 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
               seekInterval = null;
             }
             set({ isSeeking: false, seekDirection: null, lastSeekTime: Date.now() });
-            throw err; // Re-throw to skip the position update below
+            return; // Skip the position update below
           });
           set({ seekPosition: newPosition });
         } finally {
@@ -352,6 +372,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       }
       // Fix MEDIUM: Reset in-progress flag
       seekIntervalInProgress = false;
+      // Clear safety timeout
+      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
 
       set({
         isSeeking: false,

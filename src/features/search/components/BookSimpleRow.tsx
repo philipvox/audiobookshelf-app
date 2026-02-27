@@ -24,6 +24,8 @@ export interface BookSimpleRowProps {
   showSeparator?: boolean;
   /** Called when row is pressed */
   onPress?: () => void;
+  /** Called when row is long-pressed */
+  onLongPress?: () => void;
 }
 
 // Format duration in hours
@@ -40,6 +42,7 @@ export function BookSimpleRow({
   duration,
   showSeparator = true,
   onPress,
+  onLongPress,
 }: BookSimpleRowProps) {
   const colors = useSecretLibraryColors();
   const coverUrl = apiClient.getItemCoverUrl(id, { width: 120, height: 120 });
@@ -48,6 +51,8 @@ export function BookSimpleRow({
     <Pressable
       style={[styles.container, { backgroundColor: colors.white }]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
     >
       <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.grayLight }]} />
       <View style={styles.info}>

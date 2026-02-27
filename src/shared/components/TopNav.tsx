@@ -55,6 +55,8 @@ export interface TopNavCircleButton {
   active?: boolean;
   /** Called when button is pressed */
   onPress?: () => void;
+  /** When true, render icon directly without Pressable wrapper (component handles its own touch) */
+  customRender?: boolean;
 }
 
 export interface TopNavSearchConfig {
@@ -350,21 +352,25 @@ export function TopNav({
           })}
 
           {/* Circle buttons */}
-          {circleButtons.map((button) => (
-            <Pressable
-              key={button.key}
-              style={[
-                styles.circleButton,
-                {
-                  borderColor: button.active ? pillActiveBorder : pillBorderColor,
-                  backgroundColor: button.active ? pillActiveBg : 'transparent',
-                },
-              ]}
-              onPress={button.onPress}
-            >
-              {button.icon}
-            </Pressable>
-          ))}
+          {circleButtons.map((button) =>
+            button.customRender ? (
+              <View key={button.key}>{button.icon}</View>
+            ) : (
+              <Pressable
+                key={button.key}
+                style={[
+                  styles.circleButton,
+                  {
+                    borderColor: button.active ? pillActiveBorder : pillBorderColor,
+                    backgroundColor: button.active ? pillActiveBg : 'transparent',
+                  },
+                ]}
+                onPress={button.onPress}
+              >
+                {button.icon}
+              </Pressable>
+            )
+          )}
         </View>
       </View>
     </View>

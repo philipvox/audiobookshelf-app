@@ -205,6 +205,7 @@ export type { SnackbarProps } from './Snackbar';
 // CONTEXT MENUS
 // =============================================================================
 export { BookContextMenu } from './BookContextMenu';
+export { BookContextMenuProvider, useBookContextMenu } from './BookContextMenuProvider';
 
 // =============================================================================
 // GLOBAL TOAST

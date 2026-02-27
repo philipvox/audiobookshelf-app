@@ -64,6 +64,52 @@ export const MOODS: MoodConfig[] = [
 ];
 
 // ============================================================================
+// MOOD COLORS — Each mood gets its own color world
+// ============================================================================
+
+export const MOOD_COLORS: Record<Mood, {
+  primary: string;
+  gradientStart: string;
+  gradientEnd: string;
+  cardBg: string;
+  cardBorder: string;
+  glow: string;
+}> = {
+  comfort: {
+    primary: '#E8976B',
+    gradientStart: '#F4A97B',
+    gradientEnd: '#D4784A',
+    cardBg: 'rgba(228,151,107,0.08)',
+    cardBorder: 'rgba(228,151,107,0.18)',
+    glow: 'rgba(228,151,107,0.4)',
+  },
+  thrills: {
+    primary: '#E05555',
+    gradientStart: '#EF6B6B',
+    gradientEnd: '#C73B3B',
+    cardBg: 'rgba(224,85,85,0.08)',
+    cardBorder: 'rgba(224,85,85,0.18)',
+    glow: 'rgba(224,85,85,0.4)',
+  },
+  escape: {
+    primary: '#8B6BDB',
+    gradientStart: '#A78BEF',
+    gradientEnd: '#6B4BC7',
+    cardBg: 'rgba(139,107,219,0.08)',
+    cardBorder: 'rgba(139,107,219,0.18)',
+    glow: 'rgba(139,107,219,0.4)',
+  },
+  feels: {
+    primary: '#D76BA0',
+    gradientStart: '#E88BBF',
+    gradientEnd: '#C04D82',
+    cardBg: 'rgba(215,107,160,0.08)',
+    cardBorder: 'rgba(215,107,160,0.18)',
+    glow: 'rgba(215,107,160,0.4)',
+  },
+};
+
+// ============================================================================
 // STEP 2: PACE (Optional)
 // ============================================================================
 

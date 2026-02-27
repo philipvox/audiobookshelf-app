@@ -17,7 +17,7 @@ export const WAVEFORM_HEIGHT = 35;
 export const NUM_POINTS = 10;
 
 export const REWIND_STEP = 2; // seconds per tick
-export const REWIND_INTERVAL = 80; // ms between ticks
+export const REWIND_INTERVAL = 150; // ms between ticks (allows seek to complete before next tick)
 export const FF_STEP = 5; // seconds per tick for fast forward
 
 export { SCREEN_WIDTH, SCREEN_HEIGHT };

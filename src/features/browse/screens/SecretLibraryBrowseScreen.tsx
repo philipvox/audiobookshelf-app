@@ -27,6 +27,9 @@ import { scale } from '@/shared/theme';
 import { useActiveSession, useMoodSessionStore } from '@/features/mood-discovery/stores/moodSessionStore';
 import { MOODS, MOOD_FLAVORS, Mood } from '@/features/mood-discovery/types';
 
+// Central filter hook — filters library once, sections receive pre-filtered items
+import { useBrowseLibrary } from '../hooks/useBrowseLibrary';
+
 // Components
 import { BrowseTopNav } from '../components/BrowseTopNav';
 import { TopPickHero } from '../components/TopPickHero';
@@ -42,7 +45,7 @@ import { BrowseGrid } from '../components/BrowseGrid';
 import { BrowseFooter } from '../components/BrowseFooter';
 import { ContentFilterSheet } from '../components/ContentFilterSheet';
 import { TagFilterSheet } from '../components/TagFilterSheet';
-import { ScreenLoadingOverlay } from '@/shared/components';
+import { ScreenLoadingOverlay, useBookContextMenu } from '@/shared/components';
 import { useNavigationWithLoading, useAutoHideLoading } from '@/shared/hooks';
 
 // Performance timing
@@ -60,6 +63,9 @@ export function SecretLibraryBrowseScreen() {
   const { navigateWithLoading, navigation } = useNavigationWithLoading();
   const scrollRef = useRef<ScrollView>(null);
 
+  // Book context menu
+  const { showMenu } = useBookContextMenu();
+
   // Theme-aware colors
   const colors = useSecretLibraryColors();
 
@@ -75,8 +81,9 @@ export function SecretLibraryBrowseScreen() {
     ? MOOD_FLAVORS[activeSession.mood as Mood]?.find(f => f.id === activeSession.flavor)?.label || activeSession.flavor
     : null;
 
-  // Data hooks
-  const { refreshCache, isLoading: cacheLoading } = useLibraryCache();
+  // Data hooks — filter library once, pass to sections as props
+  const { refreshCache, isLoading: cacheLoading, getItem } = useLibraryCache();
+  const { filteredItems } = useBrowseLibrary();
   const { isPopulated: spineCacheReady } = useSpineCacheStatus();
 
   // Set mounted on first render
@@ -133,6 +140,11 @@ export function SecretLibraryBrowseScreen() {
   const handleBookPress = useCallback((bookId: string) => {
     navigation.navigate('BookDetail', { id: bookId });
   }, [navigation]);
+
+  const handleBookLongPress = useCallback((bookId: string) => {
+    const item = getItem(bookId);
+    if (item) showMenu(item);
+  }, [getItem, showMenu]);
 
   const handleSeriesPress = useCallback((seriesName: string) => {
     navigation.navigate('SeriesDetail', { seriesName });
@@ -260,37 +272,49 @@ export function SecretLibraryBrowseScreen() {
         )}
 
         {/* Top Pick Hero */}
-        <TopPickHero onBookPress={handleBookPress} />
+        <TopPickHero items={filteredItems} onBookPress={handleBookPress} onBookLongPress={handleBookLongPress} />
 
         {/* Newest Releases */}
         <TasteTextList
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
         />
 
         {/* Because You Listened To - most recent first */}
         <BecauseYouListenedSection
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
           sourceIndex={0}
         />
 
         {/* Recently Added */}
         <RecentlyAddedSection
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
           onViewAll={handleViewAllBooks}
         />
 
         {/* Listen Again */}
         <ListenAgainSection
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
         />
 
         {/* More Because You Listened To sections */}
         <BecauseYouListenedSection
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
           sourceIndex={1}
         />
         <BecauseYouListenedSection
+          items={filteredItems}
           onBookPress={handleBookPress}
+          onBookLongPress={handleBookLongPress}
           sourceIndex={2}
         />
 

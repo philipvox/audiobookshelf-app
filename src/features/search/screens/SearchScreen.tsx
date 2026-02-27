@@ -31,7 +31,7 @@ import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
-import { HeartButton, SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon } from '@/shared/components';
+import { HeartButton, SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon, useBookContextMenu } from '@/shared/components';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 
 // Type guard for book media
@@ -104,7 +104,11 @@ export function SearchScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ Search: SearchScreenParams }, 'Search'>>();
   const inputRef = useRef<TextInput>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { loadBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
+
+  // Book context menu
+  const { showMenu } = useBookContextMenu();
 
   // Theme-aware colors (Secret Library design system)
   const colors = useSecretLibraryColors();
@@ -587,8 +591,18 @@ export function SearchScreen() {
 
   const handleInputBlur = () => {
     // Small delay to allow taps on autocomplete items
-    setTimeout(() => setIsInputFocused(false), 150);
+    blurTimerRef.current = setTimeout(() => {
+      blurTimerRef.current = null;
+      setIsInputFocused(false);
+    }, 150);
   };
+
+  // Clean up blur timer on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    };
+  }, []);
 
   const dismissAutocomplete = () => {
     setIsInputFocused(false);
@@ -966,7 +980,7 @@ export function SearchScreen() {
               {/* Big Browse Button */}
               <TouchableOpacity
                 style={[styles.bigBrowseButton, { backgroundColor: colors.black }]}
-                onPress={() => { console.log('[SearchScreen] BROWSE ALL BOOKS pressed'); globalLoading.show(); setTimeout(() => { console.log('[SearchScreen] Navigating to BrowsePage...'); navigation.navigate('BrowsePage'); }, 150); }}
+                onPress={() => { navigation.navigate('BrowsePage'); }}
               >
                 <Icon name="Globe" size={20} color={colors.white} strokeWidth={1.5} />
                 <Text style={[styles.bigBrowseButtonText, { color: colors.white }]}>Browse All Books</Text>
@@ -1035,7 +1049,7 @@ export function SearchScreen() {
               {/* Big Browse Button */}
               <TouchableOpacity
                 style={[styles.bigBrowseButton, { backgroundColor: colors.black }]}
-                onPress={() => { console.log('[SearchScreen] BROWSE ALL BOOKS pressed'); globalLoading.show(); setTimeout(() => { console.log('[SearchScreen] Navigating to BrowsePage...'); navigation.navigate('BrowsePage'); }, 150); }}
+                onPress={() => { navigation.navigate('BrowsePage'); }}
               >
                 <Icon name="Globe" size={20} color={colors.white} strokeWidth={1.5} />
                 <Text style={[styles.bigBrowseButtonText, { color: colors.white }]}>Browse All Books</Text>
@@ -1077,6 +1091,7 @@ export function SearchScreen() {
                     duration={duration}
                     showSeparator={index < bookResults.slice(0, 10).length - 1}
                     onPress={() => handleBookPress(book)}
+                    onLongPress={() => showMenu(book)}
                   />
                 );
               })}
@@ -1129,7 +1144,7 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Authors</Text>
               {authorResults.length > 2 && (
-                <TouchableOpacity onPress={() => navigation.navigate('AuthorList')}>
+                <TouchableOpacity onPress={() => navigation.navigate('AuthorsList')}>
                   <Text style={styles.viewAllText}>View All</Text>
                 </TouchableOpacity>
               )}
@@ -1173,7 +1188,7 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Narrators</Text>
               {narratorResults.length > 2 && (
-                <TouchableOpacity onPress={() => navigation.navigate('NarratorList')}>
+                <TouchableOpacity onPress={() => navigation.navigate('NarratorsList')}>
                   <Text style={styles.viewAllText}>View All</Text>
                 </TouchableOpacity>
               )}

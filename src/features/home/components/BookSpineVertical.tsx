@@ -94,6 +94,7 @@ interface BookSpineVerticalProps {
   isPushedLeft?: boolean;
   isPushedRight?: boolean;
   onPress?: (book: BookSpineVerticalData) => void;
+  onLongPress?: (book: BookSpineVerticalData) => void;
   onPressIn?: () => void;
   onPressOut?: () => void;
   /** Show drop shadow (default: false - disabled for clean stroke design) */
@@ -686,16 +687,16 @@ function processAuthorText(author: string, treatment: string): string {
       return parts[parts.length - 1] || author;
     }
     case 'initials': {
-      const parts = author.split(' ');
+      const parts = author.split(' ').filter(Boolean);
       return parts.map(p => p[0]).join('.') + '.';
     }
     case 'first-initial-last': {
-      const parts = author.split(' ');
+      const parts = author.split(' ').filter(Boolean);
       if (parts.length < 2) return author;
       return `${parts[0][0]}. ${parts[parts.length - 1]}`;
     }
     case 'abbreviated': {
-      const parts = author.split(' ');
+      const parts = author.split(' ').filter(Boolean);
       if (parts.length < 2) return author;
       return `${parts[0][0]}. ${parts.slice(1).map(p => p[0]).join('.')}`;
     }
@@ -863,6 +864,7 @@ export function BookSpineVertical({
   isPushedLeft = false,
   isPushedRight = false,
   onPress,
+  onLongPress,
   onPressIn,
   onPressOut,
   showShadow = false,
@@ -1702,6 +1704,10 @@ export function BookSpineVertical({
     onPress?.(book);
   }, [book, onPress]);
 
+  const handleLongPress = useCallback(() => {
+    onLongPress?.(book);
+  }, [book, onLongPress]);
+
   // Animated styles - selective lean for some books
   const animatedStyle = useAnimatedStyle(() => {
     const translateY = interpolate(
@@ -1778,6 +1784,8 @@ export function BookSpineVertical({
     <AnimatedPressable
       style={[showShadow && styles.shadow, animatedStyle]}
       onPress={handlePress}
+      onLongPress={onLongPress ? handleLongPress : undefined}
+      delayLongPress={400}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       hitSlop={hitSlop}

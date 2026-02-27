@@ -316,10 +316,23 @@ function DownloadedRow({ download, onPress, onDelete, colors }: DownloadedRowPro
   const downloadDate = download.completedAt ? new Date(download.completedAt) : new Date();
 
   const handleDelete = useCallback(() => {
-    haptics.warning();
     swipeableRef.current?.close();
-    onDelete();
-  }, [onDelete]);
+    Alert.alert(
+      'Delete Download',
+      `Remove "${title}" from downloads? You can re-download it anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            haptics.warning();
+            onDelete();
+          },
+        },
+      ]
+    );
+  }, [onDelete, title]);
 
   const renderRightActions = () => (
     <TouchableOpacity style={styles.swipeDeleteButton} onPress={handleDelete} activeOpacity={0.8}>
@@ -471,18 +484,13 @@ export function DownloadsScreen() {
     downloading.forEach(d => pauseDownload(d.itemId));
   }, [downloading, pauseDownload]);
 
-  // Execute pending deletion (called after undo timeout)
-  const executePendingDeletion = useCallback(async () => {
-    if (!pendingDeletion) return;
-
-    // Actually delete the items
-    for (const item of pendingDeletion.items) {
+  // Execute deletion of specific items (avoids stale closure by taking items directly)
+  const executeDeleteItems = useCallback(async (items: typeof downloads) => {
+    for (const item of items) {
       await deleteDownload(item.itemId);
     }
-
-    // Clear pending state
     setPendingDeletion(null);
-  }, [pendingDeletion, deleteDownload]);
+  }, [deleteDownload]);
 
   // Undo pending deletion
   const handleUndoDeletion = useCallback(() => {
@@ -510,12 +518,12 @@ export function DownloadsScreen() {
           onPress: () => {
             haptics.destructiveConfirm();
 
-            // Store items for potential undo (5 second window)
+            // Capture items NOW to avoid stale closure
             const itemsToDelete = [...completed];
 
-            // Set up delayed deletion
+            // Set up delayed deletion — pass items directly, don't read from state
             const timeoutId = setTimeout(() => {
-              executePendingDeletion();
+              executeDeleteItems(itemsToDelete);
             }, 5500); // Slightly longer than snackbar duration
 
             setPendingDeletion({
@@ -526,14 +534,18 @@ export function DownloadsScreen() {
             // Show undo snackbar
             showUndo(
               `Deleted ${itemCount} download${itemCount !== 1 ? 's' : ''}`,
-              handleUndoDeletion,
+              () => {
+                clearTimeout(timeoutId);
+                setPendingDeletion(null);
+                haptics.success();
+              },
               5000
             );
           },
         },
       ]
     );
-  }, [completed, executePendingDeletion, showUndo, handleUndoDeletion]);
+  }, [completed, executeDeleteItems, showUndo]);
 
   const handleBrowse = useCallback(() => {
     navigation.navigate('Main', { screen: 'DiscoverTab' });

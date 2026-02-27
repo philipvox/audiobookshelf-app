@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TopNav, TopNavBackIcon, UserIcon, BellIcon, BellOffIcon, CollapsibleSection } from '@/shared/components';
+import { TopNav, TopNavBackIcon, UserIcon, BellIcon, BellOffIcon, CollapsibleSection, useBookContextMenu } from '@/shared/components';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
@@ -128,6 +128,7 @@ export function SecretLibraryAuthorDetailScreen() {
   const insets = useSafeAreaInsets();
   const colors = useSecretLibraryColors();
   const isDarkMode = colors.isDark;
+  const { showMenu } = useBookContextMenu();
 
   // Handle both param formats
   const authorName = route.params.authorName || route.params.name || '';
@@ -160,19 +161,24 @@ export function SecretLibraryAuthorDetailScreen() {
 
   // Fetch author books from API
   useEffect(() => {
+    let cancelled = false;
     const fetchAuthorBooks = async () => {
       if (!authorInfo?.id) return;
       try {
         const authorData = await apiClient.getAuthor(authorInfo.id, { include: 'items' });
+        if (cancelled) return; // Prevent stale data from overwriting
         const authorWithItems = authorData as { libraryItems?: LibraryItem[] };
         if (authorWithItems?.libraryItems) {
           setAuthorBooks(authorWithItems.libraryItems);
         }
       } catch (error) {
-        logger.warn('[AuthorDetail] Failed to fetch author books:', error);
+        if (!cancelled) {
+          logger.warn('[AuthorDetail] Failed to fetch author books:', error);
+        }
       }
     };
     fetchAuthorBooks();
+    return () => { cancelled = true; };
   }, [authorInfo?.id]);
 
   // All books (sorted by title)
@@ -374,6 +380,8 @@ export function SecretLibraryAuthorDetailScreen() {
               key={book.id}
               style={[styles.verticalListItem, { borderBottomColor: colors.borderLight }]}
               onPress={() => handleBookPress(book.id)}
+              onLongPress={() => showMenu(book)}
+              delayLongPress={400}
             >
               <Image
                 source={{ uri: coverUrl }}
@@ -555,7 +563,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 onTitlePress={group.name !== 'Standalone' ? () => handleSeriesPress(group.name) : undefined}
                 isStandalone={group.name === 'Standalone'}
               >
-                <ShelfRow books={group.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={group.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {allBooksBySeries.length === 0 && (
@@ -583,7 +591,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleSeriesPress(series.name)}
               >
-                <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {seriesList.length === 0 && (
@@ -621,7 +629,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleNarratorPress(narrator.name)}
               >
-                <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {narratorList.length === 0 && (
@@ -659,7 +667,7 @@ export function SecretLibraryAuthorDetailScreen() {
                 defaultExpanded={index === 0}
                 onTitlePress={() => handleGenrePress(genre.name)}
               >
-                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} />
+                <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
             {genreList.length === 0 && (

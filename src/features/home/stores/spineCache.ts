@@ -131,6 +131,11 @@ export interface SpineCacheState {
   /** Version counter for serverSpineDimensions - increments on any change.
    *  Subscribe to this instead of the full object to avoid mass re-renders. */
   serverSpineDimensionsVersion: number;
+  /** Version counter for color changes - increments when spine colors are updated */
+  colorVersion: number;
+  /** Persisted spine manifest book IDs — provides instant server spine lookup on app restart
+   *  without waiting for the network manifest fetch */
+  cachedManifestBookIds: string[];
 }
 
 export interface SpineCacheActions {
@@ -158,6 +163,10 @@ export interface SpineCacheActions {
   setServerSpineDimensions: (bookId: string, width: number, height: number) => void;
   /** Clear all cached server spine dimensions (call when refreshing spines) */
   clearServerSpineDimensions: () => void;
+  /** Persist the spine manifest book IDs for instant lookup on next launch */
+  setCachedManifestBookIds: (bookIds: string[]) => void;
+  /** Get the persisted manifest book IDs */
+  getCachedManifestBookIds: () => string[];
 }
 
 // =============================================================================
@@ -295,6 +304,8 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       isHydrated: false, // Set to true once AsyncStorage hydration completes
       imageCacheCleared: false, // Set to true once expo-image disk cache is cleared
       serverSpineDimensionsVersion: 0,
+      colorVersion: 0,
+      cachedManifestBookIds: [],
 
       // Actions
 
@@ -396,6 +407,7 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
           cache: newCache,
           isPopulated: true,
           lastPopulatedAt: Date.now(),
+          colorVersion: get().colorVersion + 1,
         });
 
         const elapsed = Date.now() - startTime;
@@ -490,6 +502,14 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       console.log('[SpineCache] Cleared all server spine dimensions');
     },
 
+    setCachedManifestBookIds: (bookIds: string[]) => {
+      set({ cachedManifestBookIds: bookIds });
+    },
+
+    getCachedManifestBookIds: () => {
+      return get().cachedManifestBookIds;
+    },
+
     saveToSQLite: async (libraryId: string) => {
       // Skip saving procedural spine data if server spines are enabled
       // (no need to persist calculations we won't use)
@@ -512,19 +532,20 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
   }),
     {
       name: 'spine-settings',
-      version: 5, // Increment to trigger migration for TTL-based cache
+      version: 6, // v6: Persist spine manifest book IDs for instant server spine lookup
       storage: createJSONStorage(() => AsyncStorage),
-      // Persist settings AND serverSpineDimensions with TTL
-      // Dimensions have 24h TTL to handle server-side image changes
+      // Persist settings, serverSpineDimensions, and manifest book IDs
       partialize: (state) => ({
         useColoredSpines: state.useColoredSpines,
         useServerSpines: state.useServerSpines,
         serverSpineDimensions: state.serverSpineDimensions,
+        cachedManifestBookIds: state.cachedManifestBookIds,
       }),
       // Migration: v1 -> v2: Enable colored spines for light mode theme
       // Migration: v2 -> v3: Add server spines setting (default off)
       // Migration: v3 -> v4: Persist serverSpineDimensions to eliminate flash
       // Migration: v4 -> v5: Add cachedAt timestamp for 24h TTL expiry
+      // Migration: v5 -> v6: Persist spine manifest book IDs for instant lookup
       migrate: (persistedState: any, version: number) => {
         if (version < 2) {
           // Enable colored spines for new light mode theme
@@ -568,18 +589,38 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
             serverSpineDimensions: newDimensions,
           };
         }
+        if (version < 6) {
+          // Add cachedManifestBookIds (empty — will be populated on next manifest fetch)
+          return {
+            ...persistedState,
+            cachedManifestBookIds: [],
+          };
+        }
         return persistedState;
       },
       onRehydrateStorage: () => (state) => {
         // Called when hydration from AsyncStorage completes
         if (state) {
           const dimCount = Object.keys(state.serverSpineDimensions || {}).length;
-          console.log(`[SpineCache] Hydrated from AsyncStorage: ${dimCount} server spine dimensions`);
+          const manifestCount = state.cachedManifestBookIds?.length || 0;
+          console.log(`[SpineCache] Hydrated from AsyncStorage: ${dimCount} server spine dimensions, ${manifestCount} manifest entries`);
           // Mark as hydrated so components know persisted data is available
           useSpineCacheStore.setState({ isHydrated: true, imageCacheCleared: true });
-          // NOTE: We no longer clear expo-image caches on app start.
-          // URL timestamps now handle cache busting, and we want to preserve
-          // the full library image cache for instant loading.
+
+          // Pre-populate libraryCache with persisted manifest for instant server spine lookup.
+          // This runs BEFORE components render, eliminating the flash of generative spines.
+          if (manifestCount > 0) {
+            // Lazy import to avoid circular dependency (libraryCache imports spineCache)
+            const { useLibraryCache } = require('@/core/cache/libraryCache');
+            const current = useLibraryCache.getState().booksWithServerSpines;
+            // Only populate if libraryCache hasn't already loaded from network
+            if (current.size === 0) {
+              useLibraryCache.setState({
+                booksWithServerSpines: new Set(state.cachedManifestBookIds),
+              });
+              console.log(`[SpineCache] Pre-populated libraryCache with ${manifestCount} manifest entries`);
+            }
+          }
         }
       },
     }

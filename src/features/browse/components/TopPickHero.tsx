@@ -20,7 +20,6 @@ import { PlayIcon, PauseIcon } from '@/features/player/components/PlayerIcons';
 import { useNavigation } from '@react-navigation/native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale } from '@/shared/theme';
-import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { haptics } from '@/core/native/haptics';
 import { usePlayerStore } from '@/features/player';
@@ -32,7 +31,6 @@ import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { useSpineCacheStore, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
 import { useActiveSession } from '@/features/mood-discovery/stores/moodSessionStore';
-import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
 import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
 
 // Extended metadata interface with narrator
@@ -131,10 +129,12 @@ function splitTitle(title: string): { line1: string; line2: string } {
 // =============================================================================
 
 interface TopPickHeroProps {
+  items: LibraryItem[];
   onBookPress?: (bookId: string) => void;
+  onBookLongPress?: (bookId: string) => void;
 }
 
-export function TopPickHero({ onBookPress }: TopPickHeroProps) {
+export function TopPickHero({ items, onBookPress, onBookLongPress }: TopPickHeroProps) {
   const renderStart = useRef(Date.now());
   const navigation = useNavigation<any>();
 
@@ -142,16 +142,8 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
   const activeSession = useActiveSession();
   const hasMoodSession = !!activeSession?.mood;
 
-  // Content filter
-  const audience = useContentFilterStore((s) => s.audience);
-  const selectedAges = useContentFilterStore((s) => s.selectedAges);
-  const selectedRatings = useContentFilterStore((s) => s.selectedRatings);
-  const selectedTags = useContentFilterStore((s) => s.selectedTags);
-  const lengthRange = useContentFilterStore((s) => s.lengthRange);
-
   // Library data
   const cacheStart = Date.now();
-  const { items: libraryItems, isLoaded } = useLibraryCache();
   const { isFinished, hasBeenStarted, hasHistory } = useReadingHistory();
   const cacheTime = Date.now() - cacheStart;
 
@@ -164,9 +156,9 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
 
   // Series filter for personalized content
   const isSeriesAppropriate = useMemo(() => {
-    if (!libraryItems.length) return () => true;
-    return createSeriesFilter({ allItems: libraryItems, isFinished, hasStarted: hasBeenStarted });
-  }, [libraryItems, isFinished, hasBeenStarted]);
+    if (!items.length) return () => true;
+    return createSeriesFilter({ allItems: items, isFinished, hasStarted: hasBeenStarted });
+  }, [items, isFinished, hasBeenStarted]);
 
   // Convert to book summary (simplified)
   const convertToBookSummary = useCallback((item: LibraryItem) => {
@@ -186,8 +178,8 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
   // Get personalized recommendations - same source as "Your Taste" section
   const personalizedStart = Date.now();
   const { recommendationRows } = usePersonalizedContent({
-    libraryItems,
-    isLoaded,
+    libraryItems: items,
+    isLoaded: items.length > 0,
     convertToBookSummary,
     isFinished,
     isSeriesAppropriate,
@@ -203,13 +195,10 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
 
   // Get the top pick book from personalized recommendations (same as "Your Taste")
   const topPickData = useMemo(() => {
-    // Apply content filter to library items
-    const filteredLibraryItems = filterByAudience(libraryItems, audience, selectedAges, selectedRatings, selectedTags, lengthRange);
-
     // Find first valid book from recommendation rows
     for (const row of recommendationRows) {
       for (const book of row.items) {
-        const fullItem = filteredLibraryItems.find((i) => i.id === book.id);
+        const fullItem = items.find((i) => i.id === book.id);
         if (!fullItem) continue;
 
         // Skip if has listening progress or finished
@@ -230,7 +219,7 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     }
 
     // Fallback: Newest unfinished book by publication date
-    const unfinishedItems = filteredLibraryItems.filter((item) => {
+    const unfinishedItems = items.filter((item) => {
       const progress = item.userMediaProgress?.progress || 0;
       return !isFinished(item.id) && progress < 0.95;
     });
@@ -259,7 +248,7 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     }
 
     return null;
-  }, [recommendationRows, libraryItems, isFinished, audience, selectedAges, selectedRatings, selectedTags, lengthRange]);
+  }, [recommendationRows, items, isFinished]);
 
   // Get book details
   const book = topPickData?.item;
@@ -344,6 +333,12 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
     haptics.selection();
     onBookPress?.(book.id);
   }, [book, onBookPress]);
+
+  // Handle cover long press
+  const handleCoverLongPress = useCallback(() => {
+    if (!book) return;
+    onBookLongPress?.(book.id);
+  }, [book, onBookLongPress]);
 
   // Handle author press
   const handleAuthorPress = useCallback(() => {
@@ -441,7 +436,7 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
   }, [book, isInLibrary, addToLibrary, removeFromLibrary]);
 
   // Don't render if no book
-  if (!isLoaded || !book || !metadata) {
+  if (!book || !metadata) {
     return null;
   }
 
@@ -457,7 +452,7 @@ export function TopPickHero({ onBookPress }: TopPickHeroProps) {
       {/* Hero Section - Centered like book detail */}
       <View style={styles.hero}>
         {/* Centered Cover */}
-        <TouchableOpacity style={styles.heroCover} onPress={handleCoverPress} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.heroCover} onPress={handleCoverPress} onLongPress={handleCoverLongPress} activeOpacity={0.9}>
           <Image source={{ uri: coverUrl }} style={styles.coverImage} contentFit="cover" />
         </TouchableOpacity>
 

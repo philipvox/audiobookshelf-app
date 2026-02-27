@@ -407,9 +407,7 @@ export function getSessionDisplayLabel(session: MoodSession): string {
     comfort: 'Comfort',
     thrills: 'Thrills',
     escape: 'Escape',
-    laughs: 'Laughs',
     feels: 'Feels',
-    thinking: 'Thinking',
   };
   parts.push(moodLabels[session.mood]);
 

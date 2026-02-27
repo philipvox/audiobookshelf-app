@@ -2,11 +2,9 @@
  * src/features/profile/screens/PlaylistSettingsScreen.tsx
  *
  * Homepage Settings screen for managing Library screen views.
- * - Toggle which views appear in dropdown
- * - Reorder visible views
+ * - Toggle which views appear in dropdown (including built-in views)
+ * - Reorder all views via drag-and-drop
  * - Set default view when opening Library screen
- *
- * All controls are unified in a single section per view item.
  */
 
 import React, { useCallback, useEffect, useMemo } from 'react';
@@ -47,6 +45,7 @@ import {
   usePlaylists,
   usePlaylistSettingsStore,
   type DefaultViewType,
+  type BuiltInViewKey,
 } from '@/features/playlists';
 
 // =============================================================================
@@ -58,6 +57,7 @@ interface ViewItem {
   key: DefaultViewType;
   label: string;
   isBuiltIn: boolean;
+  builtInKey?: BuiltInViewKey;
   icon: 'library' | 'clock' | 'finished' | 'heart' | 'playlist';
 }
 
@@ -69,7 +69,6 @@ interface UnifiedViewRowProps {
   item: ViewItem;
   isVisible: boolean;
   isDefault: boolean;
-  isDraggable: boolean;
   onToggleVisibility: () => void;
   onSetDefault: () => void;
   drag: () => void;
@@ -80,7 +79,6 @@ function UnifiedViewRow({
   item,
   isVisible,
   isDefault,
-  isDraggable,
   onToggleVisibility,
   onSetDefault,
   drag,
@@ -95,7 +93,7 @@ function UnifiedViewRow({
   );
 
   const handleSetDefault = useCallback(() => {
-    if (!isVisible) return; // Can't set as default if not visible
+    if (!isVisible) return;
     haptics.selection();
     onSetDefault();
   }, [isVisible, onSetDefault]);
@@ -113,16 +111,15 @@ function UnifiedViewRow({
       !isVisible && styles.unifiedRowDisabled,
       isActive && styles.unifiedRowActive,
     ]}>
-      {/* Drag Handle */}
+      {/* Drag Handle — all items are draggable */}
       <TouchableOpacity
-        style={[styles.dragHandle, !isDraggable && styles.dragHandleDisabled]}
-        onLongPress={isDraggable ? drag : undefined}
-        disabled={!isDraggable}
+        style={styles.dragHandle}
+        onLongPress={drag}
         delayLongPress={100}
       >
         <GripVertical
           size={scale(16)}
-          color={isDraggable ? colors.gray : 'transparent'}
+          color={colors.gray}
           strokeWidth={1.5}
         />
       </TouchableOpacity>
@@ -195,12 +192,14 @@ export function PlaylistSettingsScreen() {
 
   // Store state
   const visiblePlaylistIds = usePlaylistSettingsStore((s) => s.visiblePlaylistIds);
-  const playlistOrder = usePlaylistSettingsStore((s) => s.playlistOrder);
+  const hiddenBuiltInViews = usePlaylistSettingsStore((s) => s.hiddenBuiltInViews);
+  const allItemOrder = usePlaylistSettingsStore((s) => s.allItemOrder);
   const defaultView = usePlaylistSettingsStore((s) => s.defaultView);
 
   // Store actions
   const togglePlaylistVisibility = usePlaylistSettingsStore((s) => s.togglePlaylistVisibility);
-  const movePlaylist = usePlaylistSettingsStore((s) => s.movePlaylist);
+  const toggleBuiltInVisibility = usePlaylistSettingsStore((s) => s.toggleBuiltInVisibility);
+  const setAllItemOrder = usePlaylistSettingsStore((s) => s.setAllItemOrder);
   const setDefaultView = usePlaylistSettingsStore((s) => s.setDefaultView);
   const syncWithAvailablePlaylists = usePlaylistSettingsStore((s) => s.syncWithAvailablePlaylists);
 
@@ -212,15 +211,15 @@ export function PlaylistSettingsScreen() {
     }
   }, [playlists, syncWithAvailablePlaylists]);
 
-  // Built-in views that are always available
+  // Built-in view items
   const builtInViews: ViewItem[] = useMemo(() => [
-    { id: '__library', key: 'library', label: 'My Library', isBuiltIn: true, icon: 'library' },
-    { id: '__mySeries', key: 'mySeries', label: 'My Series', isBuiltIn: true, icon: 'heart' },
-    { id: '__lastPlayed', key: 'lastPlayed', label: 'Last Played', isBuiltIn: true, icon: 'clock' },
-    { id: '__finished', key: 'finished', label: 'Finished', isBuiltIn: true, icon: 'finished' },
+    { id: '__library', key: 'library', label: 'My Library', isBuiltIn: true, builtInKey: 'library', icon: 'library' },
+    { id: '__mySeries', key: 'mySeries', label: 'My Series', isBuiltIn: true, builtInKey: 'mySeries', icon: 'heart' },
+    { id: '__lastPlayed', key: 'lastPlayed', label: 'Last Played', isBuiltIn: true, builtInKey: 'lastPlayed', icon: 'clock' },
+    { id: '__finished', key: 'finished', label: 'Finished', isBuiltIn: true, builtInKey: 'finished', icon: 'finished' },
   ], []);
 
-  // Convert playlists to ViewItems
+  // Convert playlists to ViewItems (exclude __sl_ system playlists)
   const playlistViews: ViewItem[] = useMemo(() => {
     return playlists
       .filter(p => !p.name.startsWith('__sl_'))
@@ -233,68 +232,80 @@ export function PlaylistSettingsScreen() {
       }));
   }, [playlists]);
 
-  // All view items combined and ordered
+  // All items indexed by ID for quick lookup
+  const allItemsById = useMemo(() => {
+    const map = new Map<string, ViewItem>();
+    for (const v of builtInViews) map.set(v.id, v);
+    for (const v of playlistViews) map.set(v.id, v);
+    return map;
+  }, [builtInViews, playlistViews]);
+
+  // Combine and order all items using allItemOrder
   const allViewItems = useMemo(() => {
-    // Start with built-in views
-    const result: ViewItem[] = [...builtInViews];
+    const result: ViewItem[] = [];
+    const addedIds = new Set<string>();
 
-    // Add playlists in the stored order
-    const addedPlaylistIds = new Set<string>();
-
-    // First add playlists in stored order
-    for (const id of playlistOrder) {
-      const playlist = playlistViews.find(p => p.id === id);
-      if (playlist) {
-        result.push(playlist);
-        addedPlaylistIds.add(id);
+    // First, add items in stored order
+    for (const id of allItemOrder) {
+      const item = allItemsById.get(id);
+      if (item) {
+        result.push(item);
+        addedIds.add(id);
       }
     }
 
-    // Then add any remaining playlists not in order
-    for (const playlist of playlistViews) {
-      if (!addedPlaylistIds.has(playlist.id)) {
-        result.push(playlist);
+    // Then add any remaining items not in the stored order (new items)
+    // Built-in views first, then playlists
+    for (const item of builtInViews) {
+      if (!addedIds.has(item.id)) {
+        result.push(item);
+        addedIds.add(item.id);
+      }
+    }
+    for (const item of playlistViews) {
+      if (!addedIds.has(item.id)) {
+        result.push(item);
+        addedIds.add(item.id);
       }
     }
 
     return result;
-  }, [builtInViews, playlistViews, playlistOrder]);
+  }, [allItemOrder, allItemsById, builtInViews, playlistViews]);
 
-  // Get visible items for order calculation
-  const visibleItems = useMemo(() => {
-    return allViewItems.filter(item => {
-      if (item.isBuiltIn) return true; // Built-in views are always "visible"
-      return visiblePlaylistIds.includes(item.id);
-    });
-  }, [allViewItems, visiblePlaylistIds]);
+  // Check if item is visible
+  const isItemVisible = useCallback((item: ViewItem): boolean => {
+    if (item.isBuiltIn && item.builtInKey) {
+      return !hiddenBuiltInViews.includes(item.builtInKey);
+    }
+    return visiblePlaylistIds.includes(item.id);
+  }, [visiblePlaylistIds, hiddenBuiltInViews]);
 
   // Handlers
   const handleToggleVisibility = useCallback((item: ViewItem) => {
-    if (item.isBuiltIn) return; // Can't toggle built-in views
-    togglePlaylistVisibility(item.id);
-  }, [togglePlaylistVisibility]);
+    if (item.isBuiltIn && item.builtInKey) {
+      toggleBuiltInVisibility(item.builtInKey);
+    } else {
+      togglePlaylistVisibility(item.id);
+    }
+  }, [togglePlaylistVisibility, toggleBuiltInVisibility]);
 
   const handleSetDefault = useCallback((item: ViewItem) => {
     setDefaultView(item.key);
   }, [setDefaultView]);
 
-  // Handle drag end - reorder the list
+  // Handle drag end - save the full order
   const handleDragEnd = useCallback(({ data }: { data: ViewItem[] }) => {
     haptics.selection();
-    // Extract the new order of playlist IDs (excluding built-in views)
+    // Save the complete ordering of all items (built-in + playlists)
+    const newOrder = data.map(item => item.id);
+    setAllItemOrder(newOrder);
+
+    // Also update playlistOrder for backwards compat with LibraryScreen
     const newPlaylistOrder = data
       .filter(item => !item.isBuiltIn)
       .map(item => item.id);
-
-    // Update the store with the new order
     usePlaylistSettingsStore.getState().setPlaylistOrder(newPlaylistOrder);
-  }, []);
-
-  // Check if item is visible
-  const isItemVisible = useCallback((item: ViewItem): boolean => {
-    if (item.isBuiltIn) return true;
-    return visiblePlaylistIds.includes(item.id);
-  }, [visiblePlaylistIds]);
+  }, [setAllItemOrder]);
 
   // Render item for DraggableFlatList
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<ViewItem>) => {
@@ -304,7 +315,6 @@ export function PlaylistSettingsScreen() {
           item={item}
           isVisible={isItemVisible(item)}
           isDefault={defaultView === item.key}
-          isDraggable={!item.isBuiltIn && isItemVisible(item)}
           onToggleVisibility={() => handleToggleVisibility(item)}
           onSetDefault={() => handleSetDefault(item)}
           drag={drag}
@@ -372,7 +382,7 @@ export function PlaylistSettingsScreen() {
         <Info size={scale(16)} color={colors.gray} strokeWidth={1.5} />
         <Text style={styles.infoText}>
           <Text style={styles.infoBold}>Default:</Text> The view shown when opening Library.{'\n'}
-          <Text style={styles.infoBold}>Drag:</Text> Long press and drag to reorder playlists.{'\n'}
+          <Text style={styles.infoBold}>Drag:</Text> Long press and drag to reorder.{'\n'}
           <Text style={styles.infoBold}>Show:</Text> Toggle visibility in the dropdown.
         </Text>
       </View>
@@ -495,9 +505,6 @@ const styles = StyleSheet.create({
     height: scale(44),
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  dragHandleDisabled: {
-    opacity: 0,
   },
   rowLeft: {
     flexDirection: 'row',

@@ -191,8 +191,8 @@ export function calculateTagMoodScore(
 }
 
 /**
- * Find a tag in a mapping, supporting partial matches.
- * Tries exact match first, then substring matching.
+ * Find a tag in a mapping using exact match with hyphen/space normalization.
+ * No substring matching — "war" must not match "heartwarming".
  */
 function findMapMatch<T>(
   tag: string,
@@ -203,12 +203,11 @@ function findMapMatch<T>(
     return map[tag];
   }
 
-  // Check if tag contains any map key (or vice versa)
-  for (const [key, values] of Object.entries(map)) {
-    if (tag.includes(key) || key.includes(tag)) {
-      return values;
-    }
-  }
+  // Normalize: hyphens ↔ spaces
+  const hyphenated = tag.replace(/\s+/g, '-');
+  if (map[hyphenated]) return map[hyphenated];
+  const spaced = tag.replace(/-/g, ' ');
+  if (map[spaced]) return map[spaced];
 
   return null;
 }

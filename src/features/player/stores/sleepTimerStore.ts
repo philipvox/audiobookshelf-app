@@ -128,73 +128,83 @@ export const useSleepTimerStore = create<SleepTimerState & SleepTimerActions>()(
       // IMPORTANT: Use state-based countdown, not fixed endTime
       // This allows extendSleepTimer to work correctly by updating state
       const interval = setInterval(async () => {
-        // Fix HIGH: Check if this timer is still the active one (prevents race condition)
-        if (timerId !== currentTimerId) {
-          clearInterval(interval);
-          log.debug(`[SleepTimer] Timer ${timerId} superseded by ${currentTimerId}, stopping`);
-          return;
-        }
-
-        // Read current timer value from state (allows extensions to work)
-        const currentTimer = get().sleepTimer;
-        if (currentTimer === null) {
-          clearInterval(interval);
-          return;
-        }
-
-        // Decrement by 1 second
-        const remaining = Math.max(0, currentTimer - 1);
-
-        if (remaining <= 0) {
-          clearInterval(interval);
-
-          // Fix HIGH: Double-check timer ID before expiration actions (race condition guard)
+        try {
+          // Fix HIGH: Check if this timer is still the active one (prevents race condition)
           if (timerId !== currentTimerId) {
-            log.debug(`[SleepTimer] Timer ${timerId} was cleared before expiration`);
+            clearInterval(interval);
+            log.debug(`[SleepTimer] Timer ${timerId} superseded by ${currentTimerId}, stopping`);
             return;
           }
 
-          log.debug('Sleep timer expired - calling onExpire callback');
-
-          // Haptic feedback for timer expiration
-          haptics.sleepTimerExpired();
-
-          // Call the onExpire callback (e.g., pause playback)
-          onExpire();
-
-          // Stop shake detection
-          try {
-            const { shakeDetector } = await import('../services/shakeDetector');
-            shakeDetector.stop();
-          } catch (err) {
-            log.warn('[SleepTimer] Shake detector stop error:', err);
+          // Read current timer value from state (allows extensions to work)
+          const currentTimer = get().sleepTimer;
+          if (currentTimer === null) {
+            clearInterval(interval);
+            return;
           }
 
-          set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
-        } else {
-          // Trigger warning haptic when crossing 60 second threshold
-          if (lastRemaining > 60 && remaining <= 60) {
-            haptics.sleepTimerWarning();
-          }
-          lastRemaining = remaining;
+          // Decrement by 1 second
+          const remaining = Math.max(0, currentTimer - 1);
 
-          set({ sleepTimer: remaining });
+          if (remaining <= 0) {
+            clearInterval(interval);
 
-          // Start shake detection when timer is low and feature is enabled
-          const { shakeToExtendEnabled: enabled, isShakeDetectionActive } = get();
-          if (enabled && remaining <= SLEEP_TIMER_SHAKE_THRESHOLD && !isShakeDetectionActive) {
+            // Fix HIGH: Double-check timer ID before expiration actions (race condition guard)
+            if (timerId !== currentTimerId) {
+              log.debug(`[SleepTimer] Timer ${timerId} was cleared before expiration`);
+              return;
+            }
+
+            log.debug('Sleep timer expired - calling onExpire callback');
+
+            // Haptic feedback for timer expiration
+            haptics.sleepTimerExpired();
+
+            // Call the onExpire callback (e.g., pause playback)
+            try {
+              onExpire();
+            } catch (err) {
+              log.warn('[SleepTimer] onExpire callback error:', err);
+            }
+
+            // Stop shake detection
             try {
               const { shakeDetector } = await import('../services/shakeDetector');
-              shakeDetector.start(() => {
-                // On shake, extend the timer
-                get().extendSleepTimer(SLEEP_TIMER_EXTEND_MINUTES);
-              });
-              set({ isShakeDetectionActive: true });
-              log.debug('Shake detection started - timer low');
+              shakeDetector.stop();
             } catch (err) {
-              log.error('Failed to start shake detection:', err);
+              log.warn('[SleepTimer] Shake detector stop error:', err);
+            }
+
+            // Always clean up timer state even if callbacks failed
+            set({ sleepTimer: null, sleepTimerInterval: null, isShakeDetectionActive: false });
+          } else {
+            // Trigger warning haptic when crossing 60 second threshold
+            if (lastRemaining > 60 && remaining <= 60) {
+              haptics.sleepTimerWarning();
+            }
+            lastRemaining = remaining;
+
+            set({ sleepTimer: remaining });
+
+            // Start shake detection when timer is low and feature is enabled
+            const { shakeToExtendEnabled: enabled, isShakeDetectionActive } = get();
+            if (enabled && remaining <= SLEEP_TIMER_SHAKE_THRESHOLD && !isShakeDetectionActive) {
+              try {
+                const { shakeDetector } = await import('../services/shakeDetector');
+                shakeDetector.start(() => {
+                  // On shake, extend the timer
+                  get().extendSleepTimer(SLEEP_TIMER_EXTEND_MINUTES);
+                });
+                set({ isShakeDetectionActive: true });
+                log.debug('Shake detection started - timer low');
+              } catch (err) {
+                log.error('Failed to start shake detection:', err);
+              }
             }
           }
+        } catch (err) {
+          // Catch-all: prevent interval from dying on any unhandled error
+          log.error('[SleepTimer] Interval error:', err);
         }
       }, 1000);
 

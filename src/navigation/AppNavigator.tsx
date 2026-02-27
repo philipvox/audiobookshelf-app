@@ -50,7 +50,7 @@ import { imageCacheService } from '@/core/services/imageCacheService';
 import { navigationMonitor } from '@/utils/runtimeMonitor';
 import { NavigationBar } from './components/NavigationBar';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
-import { NetworkStatusBar, ToastContainer, LocalStorageNoticeModal, GlobalCacheProgressBar } from '@/shared/components';
+import { NetworkStatusBar, ToastContainer, LocalStorageNoticeModal, GlobalCacheProgressBar, BookContextMenuProvider } from '@/shared/components';
 import { ErrorBoundary } from '@/core/errors/ErrorBoundary';
 import { logger } from '@/shared/utils/logger';
 import { useLocalStorageNoticeStore } from '@/core/stores/localStorageNoticeStore';
@@ -183,7 +183,8 @@ function AuthenticatedApp() {
       hasCheckedNotice.current = true;
       // Small delay to let the main UI render first
       const timer = setTimeout(() => {
-        if (shouldShowNotice()) {
+        // Don't show if cache prompt is already visible
+        if (shouldShowNotice() && !showCachePrompt) {
           setShowLocalStorageNotice(true);
         }
       }, 1500);
@@ -197,18 +198,23 @@ function AuthenticatedApp() {
     if (library?.id && checkedCachePromptForLibrary.current !== library.id) {
       checkedCachePromptForLibrary.current = library.id;
 
+      let pollTimerId: NodeJS.Timeout | null = null;
+      let cancelled = false;
+
       // Check if user has seen the cache prompt before
       const checkCachePrompt = async () => {
         try {
           const hasSeen = await imageCacheService.hasSeenCachePrompt();
           logger.debug('[AppNavigator] Cache prompt check - hasSeen:', hasSeen);
 
-          if (!hasSeen) {
+          if (!hasSeen && !cancelled) {
             // Poll for library items to be loaded (max 10 seconds)
             let attempts = 0;
             const maxAttempts = 20;
 
             const checkForItems = () => {
+              if (cancelled) return;
+
               // Use useLibraryCache - the actual zustand store that gets populated
               const items = useLibraryCache.getState().items;
               logger.debug(`[AppNavigator] Cache prompt - checking for items: ${items.length} (attempt ${attempts + 1})`);
@@ -218,7 +224,7 @@ function AuthenticatedApp() {
                 setShowCachePrompt(true);
               } else if (attempts < maxAttempts) {
                 attempts++;
-                setTimeout(checkForItems, 500);
+                pollTimerId = setTimeout(checkForItems, 500);
               } else {
                 // After 10 seconds, give up - library might be empty
                 logger.debug('[AppNavigator] Cache prompt - no items after timeout, skipping');
@@ -226,7 +232,7 @@ function AuthenticatedApp() {
             };
 
             // Start checking after initial delay
-            setTimeout(checkForItems, 2000);
+            pollTimerId = setTimeout(checkForItems, 2000);
           }
         } catch (err) {
           logger.warn('[AppNavigator] Cache prompt check failed:', err);
@@ -234,6 +240,11 @@ function AuthenticatedApp() {
       };
 
       checkCachePrompt();
+
+      return () => {
+        cancelled = true;
+        if (pollTimerId) clearTimeout(pollTimerId);
+      };
     }
   }, [library?.id]);
 
@@ -291,16 +302,18 @@ function AuthenticatedApp() {
 
   // Initialize download manager (resumes paused downloads, starts queue processing)
   useEffect(() => {
-    // Use InteractionManager + small delay to ensure network monitor is ready
+    let timer: NodeJS.Timeout | null = null;
     const task = InteractionManager.runAfterInteractions(() => {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         downloadManager.init().catch((err: any) => {
           logger.warn('[AppNavigator] Download manager init failed:', err);
         });
       }, 100);
-      return () => clearTimeout(timer);
     });
-    return () => task.cancel();
+    return () => {
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // Load cache in background - don't block UI
@@ -322,6 +335,7 @@ function AuthenticatedApp() {
         onStateChange={onNavigationStateChange}
         theme={AppTheme}
       >
+        <BookContextMenuProvider>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Search" component={SearchScreenWithBoundary} />
@@ -421,6 +435,7 @@ function AuthenticatedApp() {
           </View>
         )}
       </View>
+    </BookContextMenuProvider>
     </NavigationContainer>
     </View>
   );
