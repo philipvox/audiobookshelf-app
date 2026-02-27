@@ -9,6 +9,611 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.173] - 2026-02-27
+
+### Fixed — Smart rewind never worked on app restart
+
+- **Fix smart rewind bypassed on app restart / audio eviction** — Smart rewind code in `play()` was never reached when `loadBook()` handled autoPlay, because `play()` returned early at line 1468. Moved smart rewind logic into `loadBook()` so it applies to `resumePosition` before audio loads. Now works correctly after app restart, force quit, and iOS memory eviction. (playerStore.ts)
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` — Smart rewind in loadBook()
+- `src/constants/version.ts` — v0.9.173
+
+---
+
+## [0.9.172] - 2026-02-27
+
+### Fixed — Resume position ~2 minutes behind
+
+- **Fix stale playbackCache causing resume position drift** — The in-memory progress cache (`playbackCache.progressCache`) was populated once at startup by `finishedBooksSync` but never updated during playback. `saveProgressLocal()` and `saveProgress()` now update the memory cache alongside SQLite, so `progressService.getProgressData()` always returns the current position instead of the startup-time value. (backgroundSyncService.ts)
+
+### Files Modified
+- `src/features/player/services/backgroundSyncService.ts` — Update playbackCache in saveProgressLocal() and saveProgress()
+- `src/constants/version.ts` — v0.9.172
+
+---
+
+## [0.9.171] - 2026-02-27
+
+### Fixed — iOS "Could not get stream URL" on cold start
+
+- **Fix cached session not setting sessionService.currentSession** — When a pre-fetched session from playbackCache was used for playback, `sessionService.currentSession` was never set. This caused `getStreamUrl()` to return null for single-file books, triggering the "Could not get stream URL" error. Added `adoptSession()` method to sessionService and call it when using cached sessions. (sessionService.ts, playerStore.ts)
+- **Add fallback stream URL builder** — If `getStreamUrl()` still returns null but the session has audioTracks, build the URL directly from the track data instead of failing. Belt-and-suspenders safety net. (playerStore.ts)
+- **Add session start retry** — If the initial session request fails (cold server, transient error), retry once after 1 second before giving up. (playerStore.ts)
+- **Non-blocking spine loading (from v0.9.170)** — Spine manifest fetch and population no longer block `isLoaded`, allowing session prefetch to start sooner on cold boot. (libraryCache.ts)
+
+### Files Modified
+- `src/features/player/services/sessionService.ts` — Add `adoptSession()` method
+- `src/features/player/stores/playerStore.ts` — Adopt cached sessions, fallback URL builder, session retry
+- `src/core/cache/libraryCache.ts` — Non-blocking spine operations (carried from previous build)
+- `src/constants/version.ts` — v0.9.171
+
+---
+
+## [0.9.170] - 2026-02-26
+
+### Fixed — Audio, Spine Loading, Seed Book Picker
+
+- **Fix Android Auto audio focus conflict** — Removed double-fire of `updatePlaybackState` in play/pause handlers and removed periodic sync interval; MediaSession now only syncs on play/pause changes and position jumps >10s, preventing audio focus fights between phone and car (automotiveService.ts)
+- **Fix spine image flash on app launch** — Persisted spine manifest book IDs to AsyncStorage via spineCache store; on hydration, pre-populates `booksWithServerSpines` so server spines render immediately instead of showing generative spines first (spineCache.ts, libraryCache.ts)
+- **Seed book picker shows playlist + finished books** — Step 3 of mood quiz now shows books from user's playlists + last 3 finished books instead of all finished books; search still covers entire library (SeedBookPicker.tsx)
+- **Mood quiz spacing polish** — Iterative spacing adjustments for better visual breathing room
+
+### Files Modified
+- `src/features/automotive/automotiveService.ts` — Remove audio focus double-fire and periodic sync
+- `src/features/home/stores/spineCache.ts` — Persist spine manifest IDs, hydration pre-population
+- `src/core/cache/libraryCache.ts` — Initialize booksWithServerSpines from persisted manifest
+- `src/features/mood-discovery/components/SeedBookPicker.tsx` — Playlist + finished books data source
+- `src/features/mood-discovery/screens/MoodDiscoveryScreen.tsx` — Spacing polish
+- `src/constants/version.ts` — v0.9.170
+
+---
+
+## [0.9.160] - 2026-02-25
+
+### Changed — Mood Discovery Quiz Visual Redesign
+
+Each mood now has its own color world — selecting a mood "lights up" the entire quiz with that mood's color palette.
+
+- **Per-mood color palette** — Added `MOOD_COLORS` constant with primary, gradient, card bg/border, and glow colors for all 4 moods: Comfort (warm amber), Thrills (electric red), Escape (rich purple), Feels (rose pink) (types.ts)
+- **MoodCard redesign** — Cards show Lucide icons at size 28, mood-colored tinted bg + borders when unselected, LinearGradient fill + glow shadow when selected (MoodDiscoveryScreen.tsx)
+- **MoodChip uses mood colors** — Chip header on Steps 2-3 shows mood icon + mood accent color for bg/border/text
+- **Background mood tint** — Subtle gradient wash at screen top tracks selected mood color
+- **Gradient buttons** — Next (Steps 1-2) and FIND BOOKS (Step 3) buttons use mood gradient fill instead of plain white
+- **Progress dots** — Active progress dots use mood accent color instead of plain white
+- **Surprise me buttons** — Added Shuffle icon, Step 2 surprise button inherits parent mood color
+- **Step 2 flavor cards** — Inherit parent mood's color world via `moodColorOverride` prop
+- **SeedBookPicker mood accents** — Selected badge and radio button use mood color; imported MOOD_COLORS (SeedBookPicker.tsx)
+
+### Files Modified
+- `src/features/mood-discovery/types.ts` — Added MOOD_COLORS constant
+- `src/features/mood-discovery/screens/MoodDiscoveryScreen.tsx` — Full visual redesign
+- `src/features/mood-discovery/components/SeedBookPicker.tsx` — Mood-colored accents
+- `src/constants/version.ts` — v0.9.160
+
+---
+
+## [0.9.156] - 2026-02-25
+
+### Changed — Browse Page Filter Redesign (Phases 1-3)
+
+#### Phase 1: Centralize Browse Filtering
+- **New `useBrowseLibrary` hook** — Filters library items once at the BrowseScreen level instead of 5+ sections each independently filtering 2,700 items (useBrowseLibrary.ts)
+- **Section components accept pre-filtered `items` prop** — TopPickHero, TasteTextList, RecentlyAddedSection, ListenAgainSection, BecauseYouListenedSection no longer subscribe to `useContentFilterStore` or call `filterByAudience` internally
+- **BrowseScreen passes filtered items** — Single source of truth for audience/tag/length filtering
+
+#### Phase 2: Fix Tag Scoring Engine
+- **Fix broken substring matching** — `findMapMatch()` used `tag.includes(key)` causing "war" to match "heartwarming", "art" to match "heart"; replaced with exact match + hyphen/space normalization (tagScoring.ts)
+- **Remap thinking tags from escape to feels** — Literary/philosophical/intellectual tags (`thought-provoking`, `literary`, `cerebral`, `character study`, etc.) now score for Feels mood instead of Escape; exception: `speculative` stays as escape (tagMoodMap.ts)
+- **Remove stale mood labels** — Removed `laughs` and `thinking` from moodLabels (only 4 active moods: comfort, thrills, escape, feels) (moodSessionStore.ts)
+- **Remove debug logging** — Cleaned up console.warn/console.log calls with emoji markers from mood scoring pipeline (useMoodRecommendations.ts)
+
+#### Phase 3: Fix Audience Filter
+- **Fix teen dead zone** — Books tagged age 13-15 were invisible in Adults mode (excluded by both Kids and Adults filters); now included in Adults mode via `isTeenContent()` check (contentFilterStore.ts)
+- **Add `preFilteredItems` param to `useMoodRecommendations`** — Consumers can pass audience-filtered items so mood results respect content filter; existing callers unaffected (optional param)
+
+### Files Modified
+- `src/features/browse/hooks/useBrowseLibrary.ts` (NEW)
+- `src/features/browse/screens/SecretLibraryBrowseScreen.tsx`
+- `src/features/browse/components/TopPickHero.tsx`
+- `src/features/browse/components/TasteTextList.tsx`
+- `src/features/browse/components/ListenAgainSection.tsx`
+- `src/features/browse/components/BecauseYouListenedSection.tsx`
+- `src/features/browse/index.ts`
+- `src/features/mood-discovery/utils/tagScoring.ts`
+- `src/features/mood-discovery/constants/tagMoodMap.ts`
+- `src/features/mood-discovery/stores/moodSessionStore.ts`
+- `src/features/mood-discovery/hooks/useMoodRecommendations.ts`
+- `src/features/browse/stores/contentFilterStore.ts`
+
+---
+
+## [0.9.155] - 2026-02-25
+
+### Fixed — Logic Audit (10 issues)
+
+#### BUGS (4 fixes)
+- **Position clamp resets to 0** — When resuming near end of book (within 5s of duration), position now clamps to 30s before end instead of resetting to beginning, so user hears the ending (playerStore.ts)
+- **Finished threshold inconsistency** — progressStore used `>= 0.99` while everywhere else used `>= 0.95`; unified to 0.95 (progressStore.ts) [from v0.9.154 session]
+- **Double queue advance on completion** — `autoMarkFinished` path called both `markBookFinished` (which handles queue) AND a separate `playNext()`, causing double-advance; removed duplicate (playerStore.ts) [from v0.9.154 session]
+- **markNotStarted deletes progressMap entry** — Deleting the entry erased `isInLibrary` flag; now resets progress fields while preserving library membership (progressStore.ts) [from v0.9.154 session]
+
+#### SYNC FIXES (3 fixes)
+- **importFromServer overwrites local un-finish** — If user marked book as not-finished locally, server sync would re-mark it finished; now checks for locally-reset books before overwriting (finishedBooksSync.ts)
+- **clearAll tombstone race** — Tombstones were cleared before server confirmed removal, allowing re-sync to re-add removed books; now clears tombstones only after server batch-remove succeeds (myLibraryStore.ts)
+- **Progress sync ignores intentional rewinds** — `importRecentProgress` and `importFromServer` compared by position value (higher wins), so an intentional local rewind would be overwritten by server's higher position; now compares by timestamp (finishedBooksSync.ts)
+
+#### IMPROVEMENTS (3 fixes)
+- **"Recent" sort hides never-played books** — Books with no `lastPlayedAt` got timestamp 0, burying them at the bottom; now falls back to `addedAt` so new books appear chronologically (LibraryScreen.tsx)
+- **ListenAgain threshold mismatch** — Used `>= 0.9` while finished threshold is `0.95`; unified to 0.95 for consistency (ListenAgainSection.tsx)
+- **TasteTextList downloadedIds memo stale** — Depended on `completedDownloads.length` instead of `completedDownloads`, missing same-count swaps; fixed dependency (TasteTextList.tsx)
+
+#### Skipped (not bugs)
+- Series sync preserves local: intentional safety behavior (no server-side series favorites)
+- Remove doesn't cancel download: library and downloads are independent concerns
+- Cross-section duplicate books: standard browse UI pattern (multiple discovery contexts)
+- Queue `played` flag not persisted: session-only marker, completed items are removed from queue
+- TopPickHero dismissed items: no dismiss feature exists (false positive)
+- Delete All stale closure: already fixed in v0.9.154 session
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts` — position clamp 30s before end, remove double queue advance
+- `src/core/stores/progressStore.ts` — unified finished threshold 0.95, preserve library in markNotStarted
+- `src/core/services/finishedBooksSync.ts` — timestamp-based sync comparison, protect local un-finish
+- `src/shared/stores/myLibraryStore.ts` — clearAll tombstone race fix
+- `src/features/home/screens/LibraryScreen.tsx` — recent sort fallback to addedAt
+- `src/features/browse/components/ListenAgainSection.tsx` — threshold 0.9→0.95
+- `src/features/browse/components/TasteTextList.tsx` — downloadedIds memo dependency
+- `src/constants/version.ts` — v0.9.155
+
+---
+
+## [0.9.154] - 2026-02-25
+
+### Fixed — Re-audit (6 bugs)
+
+#### HIGH (1 bug)
+- **SQLite writes fire-and-forget in library sync** — `bulkAddToSQLiteLibrary` and `bulkRemoveFromSQLiteLibrary` now awaited; on failure, in-memory state reverts to prevent divergence on restart (librarySyncService.ts)
+
+#### MEDIUM (2 bugs)
+- **Automotive browseSyncDebounceTimer not cleared on cleanup** — timer could fire after service teardown; now cleared alongside periodicSyncInterval (automotiveService.ts)
+- **Gallery migration Map constructor wrong format** — `new Map(legacyMarkedBooks)` expected tuples but data may be objects; now handles both `[key, value]` tuple and `{bookId, ...}` object formats (appInitializer.ts)
+
+#### LOW (3 bugs)
+- **ViewModePicker longPressTimer not cleaned on unmount** — added cleanup useEffect to clear 300ms timer if component unmounts during long press (LibraryScreen.tsx)
+- **SearchScreen handleInputBlur timer leak** — 150ms setTimeout now stored in ref and cleaned up on unmount (SearchScreen.tsx)
+- **LibraryScreen dropdown modals persist on navigation** — added blur listener to close sort/content/download dropdowns when navigating away (LibraryScreen.tsx)
+
+### Files Modified
+- `src/core/services/librarySyncService.ts` — await SQLite writes, revert on failure
+- `src/features/automotive/automotiveService.ts` — clear browseSyncDebounceTimer in cleanup
+- `src/core/services/appInitializer.ts` — robust Map construction for gallery migration
+- `src/features/home/screens/LibraryScreen.tsx` — ViewModePicker cleanup, dropdown blur listener
+- `src/features/search/screens/SearchScreen.tsx` — blur timer cleanup
+- `src/constants/version.ts` — v0.9.154
+
+---
+
+## [0.9.153] - 2026-02-24
+
+### Fixed — Full App Audit Round 2 (22 bugs)
+
+#### HIGH (5 bugs)
+- **Progress lost on SQLite write failure** — `progressStore.flush()` re-queued failed writes but never rescheduled the flush timer; progress silently lost (progressStore.ts)
+- **Download interval leak in retry loop** — waiting interval not cleaned in `finally` block; 3 leaked intervals per failed file (downloadManager.ts)
+- **Duration polling not cleaned on load error** — 500ms polling interval kept firing on null player after `loadAudio()` failed (audioService.ts)
+- **H4 (false positive)** — libraryCache already cleared on logout via `authService.clearStorage()`
+- **Fire-and-forget dynamic imports** — added `.catch()` to all `import()` chains in myLibraryStore to prevent unhandled promise rejections (myLibraryStore.ts)
+
+#### MEDIUM (7 bugs)
+- **Mini player shelf padding too low** — shelf mode used `GLOBAL_MINI_PLAYER_HEIGHT - 30` causing overlap; now uses same `+20` offset as list/grid (LibraryScreen.tsx)
+- **Mini player play/pause stale closure** — `handlePlayPause` now reads state at call time via `usePlayerStore.getState()` (GlobalMiniPlayer.tsx)
+- **Download pause state corruption** — `pauseAllForNetwork()` cleared all downloads even on failure; now tracks per-item (downloadManager.ts)
+- **Continuous seek stuttering** — increased `REWIND_INTERVAL` from 80ms to 150ms so seeks complete before next tick (constants.ts)
+- **TasteTextList excessive recalculation** — `downloadedIds` memo now depends on `completedDownloads.length` not entire downloads array (TasteTextList.tsx)
+- **Playlist reorder with built-in views** — `movePlaylist` now correctly finds insertion point when built-in views are interleaved (playlistSettingsStore.ts)
+- **No error boundary on BookContextMenu** — added `MenuErrorBoundary` to prevent malformed book data from crashing the app (BookContextMenuProvider.tsx)
+
+#### LOW (6 bugs)
+- **Auto-download set never cleared** — `autoDownloadCheckedBooks` now clears book on new `loadBook()` (playerStore.ts)
+- **handleTrackEnd race on unload** — added loadId check to abort if new book loaded mid-transition (audioService.ts)
+- **Completion auto-advance interrupts current book** — now checks if user started a different book before auto-advancing (completionSheetStore.ts)
+- **Mini player buttons below touch target minimum** — skip/play buttons increased from `scale(38)` to `scale(44)` (GlobalMiniPlayer.tsx)
+- **Automotive command queue not cleared** — `cleanup()` now empties the command queue (automotiveService.ts)
+- **Modal stacking on 1.5s delay** — LocalStorageNoticeModal now checks `showCachePrompt` before showing (AppNavigator.tsx)
+
+### Files Modified
+- `src/core/stores/progressStore.ts`
+- `src/core/services/downloadManager.ts`
+- `src/features/player/services/audioService.ts`
+- `src/shared/stores/myLibraryStore.ts`
+- `src/features/home/screens/LibraryScreen.tsx`
+- `src/navigation/components/GlobalMiniPlayer.tsx`
+- `src/features/player/constants.ts`
+- `src/features/browse/components/TasteTextList.tsx`
+- `src/features/playlists/stores/playlistSettingsStore.ts`
+- `src/shared/components/BookContextMenuProvider.tsx`
+- `src/features/player/stores/playerStore.ts`
+- `src/features/player/stores/completionSheetStore.ts`
+- `src/features/automotive/automotiveService.ts`
+- `src/navigation/AppNavigator.tsx`
+- `src/constants/version.ts`
+
+---
+
+## [0.9.152] - 2026-02-24
+
+### Fixed
+- **My Library playlist wipe bug** — `bidirectionalMerge` in librarySyncService treated books with no `addedToLibraryAt` timestamp as "server removed", wiping them on sync. Now preserves books with missing timestamps instead of deleting them. This caused Keely's Throne of Glass series to be removed from her My Library playlist.
+
+### Files Modified
+- `src/core/services/librarySyncService.ts` — null `addedAt` now preserves book instead of removing
+
+---
+
+## [0.9.151] - 2026-02-24
+
+### Fixed — Full App Audit (38 bugs across 5 audit agents)
+
+#### CRITICAL
+- **Delete All undo actually works now** — undo callback captured stale closure; now captures timeoutId directly (DownloadsScreen.tsx)
+
+#### HIGH (9 bugs)
+- **log.warn() crash in playerStore** — `log` was a function not an object; fixed to use `audioLog.warn()` (playerStore.ts)
+- **Playback speed not reset when switching books** — `applyBookSpeed` skipped `setPlaybackRate(1.0x)`; now always sets rate (speedStore.ts)
+- **Android Auto speed change crashes with custom speeds** — `findIndex` returned -1 for non-preset speeds; now finds nearest preset (automotiveService.ts)
+- **Android Auto chapter selection didn't autoplay** — added `play()` after `jumpToChapter()` (automotiveService.ts)
+- **Android Auto cover art OOM** — replaced unbounded `ConcurrentHashMap` with `LruCache(50)` with bitmap recycling (AndroidAutoMediaBrowserService.kt)
+- **BookContextMenu "View Details" broken** — passed `{ bookId }` but BookDetail expects `{ id }` (BookContextMenuProvider.tsx)
+- **Playlist ordering silently destroyed** — `syncWithAvailablePlaylists` stripped `__`-prefixed built-in view IDs (playlistSettingsStore.ts)
+- **Series favorites silently deleted during sync** — `getLocalAddedAt` only worked for book UUIDs, not series names (librarySyncService.ts)
+- **Progress lost after offline listening** — `importRecentProgress` unconditionally overwrote newer local progress with older server data (finishedBooksSync.ts)
+
+#### MEDIUM (16 bugs)
+- **getCurrentChapter read from wrong store** — read phantom `isSeeking`/`seekPosition` from playerStore instead of seekingStore (playerStore.ts)
+- **URL_EXPIRED recovery bypassed store** — called `audioService.play()` directly instead of `get().play()` (playerStore.ts)
+- **Unhandled promise rejection in continuous seek** — replaced `throw err` with `return` in async setInterval callback (seekingStore.ts)
+- **Pause opens full-screen player** — only open player when starting playback, not when pausing (BookDetailScreen.tsx)
+- **Author detail race condition** — added cancellation flag to prevent stale API data overwriting current view (AuthorDetailScreen.tsx)
+- **Null book crash on detail screen** — added null guard before main render (BookDetailScreen.tsx)
+- **Swipe-to-delete bypassed confirmation** — wired confirmation Alert into swipe action (DownloadsScreen.tsx)
+- **Search "View All" buttons broken** — fixed route names `AuthorList`→`AuthorsList`, `NarratorList`→`NarratorsList` (SearchScreen.tsx)
+- **"Browse All Books" stuck loading overlay** — removed unnecessary `globalLoading.show()` with no matching hide (SearchScreen.tsx)
+- **Mini player skip buttons stale position** — read position from store at call time instead of closure (GlobalMiniPlayer.tsx)
+- **startedAt overwritten on every progress update** — now only sets on first progress update (sqliteCache.ts)
+- **markUserBooksFinished transaction deadlock** — removed raw transaction wrapping lock-protected `setUserBook` calls (sqliteCache.ts)
+- **Spine cache transaction not protected** — `setSpineCache` now uses `withTransactionLock` (sqliteCache.ts)
+- **Spine colors never update reactively** — added `colorVersion` counter to SpineCacheState (spineCache.ts, BookshelfView.tsx)
+- **Stack mode scroll jitter** — removed inaccurate hardcoded `getItemLayout` with 50px heights (BookshelfView.tsx)
+- **Series sequence extraction broken** — fixed `metadata.series.sequence` to `metadata.series[0].sequence` (GenreDetailScreen.tsx)
+
+#### LOW (11 bugs)
+- **Play/Pause icon mismatch** — button now shows PauseIcon when playing (BookDetailScreen.tsx)
+- **Download manager init cleanup leak** — properly track and clear inner setTimeout (AppNavigator.tsx)
+- **Library screen ignores defaultView changes** — added useEffect to sync contentMode with store (LibraryScreen.tsx)
+- **Author text corrupted with whitespace** — filter empty strings from `split(' ')` in processAuthorText (BookSpineVertical.tsx)
+- **Duration scale inconsistent across screens** — aligned useBookRowLayout with BookshelfView for 30+ hour books (useBookRowLayout.ts)
+- **GenreDetailScreen missing image caching** — switched from `react-native` Image to `expo-image` (GenreDetailScreen.tsx)
+- **Duplicate API calls on startup** — removed redundant `importRecentProgress` call in `syncFinishedBooks` (appInitializer.ts)
+- **Animation stuck in entering phase** — reset phase to idle when `books.length` changes mid-animation (BookshelfView.tsx)
+- **BookContextMenu stale screen height** — replaced module-level Dimensions with useWindowDimensions (BookContextMenu.tsx)
+- **ShelfRow stale screen width** — replaced module-level Dimensions with useWindowDimensions (ShelfRow.tsx)
+- **console.warn in speedStore** — replaced with logger (speedStore.ts)
+
+### Files Modified
+- src/features/downloads/screens/DownloadsScreen.tsx
+- src/features/player/stores/playerStore.ts
+- src/features/player/stores/speedStore.ts
+- src/features/player/stores/seekingStore.ts
+- src/features/automotive/automotiveService.ts
+- plugins/android-auto/src/AndroidAutoMediaBrowserService.kt
+- android/app/src/main/java/com/secretlibrary/app/automotive/AndroidAutoMediaBrowserService.kt
+- src/shared/components/BookContextMenuProvider.tsx
+- src/shared/components/BookContextMenu.tsx
+- src/features/playlists/stores/playlistSettingsStore.ts
+- src/core/services/librarySyncService.ts
+- src/core/services/finishedBooksSync.ts
+- src/core/services/sqliteCache.ts
+- src/core/services/appInitializer.ts
+- src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx
+- src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx
+- src/features/search/screens/SearchScreen.tsx
+- src/navigation/components/GlobalMiniPlayer.tsx
+- src/navigation/AppNavigator.tsx
+- src/features/home/components/BookshelfView.tsx
+- src/features/home/components/BookSpineVertical.tsx
+- src/features/home/hooks/useBookRowLayout.ts
+- src/features/home/stores/spineCache.ts
+- src/features/home/screens/LibraryScreen.tsx
+- src/features/library/screens/GenreDetailScreen.tsx
+- src/shared/spine/ShelfRow.tsx
+- src/constants/version.ts
+
+---
+
+## [0.8.150] - 2026-02-24
+
+### Fixed
+
+- **Player volume stuck at 0 after priming error**: If the silent play-pause priming trick failed (network timeout, etc.), volume was never restored from 0. Now uses try-finally to guarantee volume is always reset to 1.0. Fixed in both loadAudio and loadTracks paths.
+- **Playback rate not validated**: `setPlaybackRate()` now clamps invalid rates to 0.25x-4.0x range, preventing potential crashes from out-of-range values being sent to expo-audio.
+- **Production console.warn spam**: Replaced `console.warn` for large position changes (>30s) with proper logger output, preventing console noise in production builds.
+- **Download progress memory leak**: `deleteDownload()` now cleans up in-memory `progressInfo` map entries. Previously, deleting a download left orphan progress data in RAM.
+- **Playlist reorder not fully persisted**: `movePlaylist()` now also updates `allItemOrder` when reordering, keeping playlist order consistent between the settings screen and the library view dropdown.
+- **Invalid server progress data written to SQLite**: `importRecentProgress()` now validates `currentTime` (must be finite, non-negative) and `progress` (must be 0-1) before writing to the database. Malformed server data is skipped with a warning.
+- **Toast timer not cancelled on manual removal**: Auto-remove timers are now tracked and cancelled when a toast is manually dismissed (e.g., via undo). `clearToasts()` also cancels all pending timers.
+
+### Files Modified
+
+- `src/features/player/services/audioService.ts` — try-finally on player priming, rate validation, console.warn → logger
+- `src/core/services/downloadManager.ts` — progressInfo cleanup in deleteDownload
+- `src/features/playlists/stores/playlistSettingsStore.ts` — movePlaylist updates allItemOrder
+- `src/core/services/finishedBooksSync.ts` — Server progress data validation
+- `src/shared/hooks/useToast.ts` — Track and cancel auto-remove timers
+- `src/constants/version.ts` — Version bump to 0.8.150
+
+---
+
+## [0.8.149] - 2026-02-24
+
+### Fixed
+
+- **Orphan cleanup deletes resumable downloads**: `cleanOrphanDirectories()` now preserves downloads with 'error' and 'waiting_wifi' statuses, not just 'downloading', 'pending', and 'paused'. Previously, failed or WiFi-queued downloads had their files deleted on next app start, losing partial progress.
+- **AppNavigator timeout leak**: Cache prompt polling (`setTimeout` chain up to 20 attempts) now tracks timer IDs and cleans up on unmount. Prevents stale callbacks running after navigation changes.
+- **Playlist deletion not synced to settings**: When playlists are fetched from server, `syncWithAvailablePlaylists()` is now called to remove deleted playlists from the visible/ordered lists and reset the default view if it pointed to a deleted playlist.
+
+### Files Modified
+
+- `src/core/services/downloadManager.ts` — Add 'error' and 'waiting_wifi' to orphan cleanup keep-list
+- `src/navigation/AppNavigator.tsx` — Track and clean up setTimeout IDs in cache prompt polling
+- `src/features/playlists/hooks/usePlaylists.ts` — Call syncWithAvailablePlaylists on data change
+- `src/constants/version.ts` — Version bump to 0.8.149
+
+---
+
+## [0.8.148] - 2026-02-24
+
+### Fixed
+
+- **Book completion uses wrong duration**: If user started a new book while the completion sheet was visible, "Mark as Finished" would use the new book's duration instead of the finished book's. Now correctly uses the completed book's own duration and metadata.
+- **Completion progress update**: `setPlaybackProgress` to 100% no longer requires `currentBook.id === bookId` check, since the book reference may have changed. Always updates progress for the target book.
+- **Completion error handling**: If marking a book finished fails (SQLite error, etc.), the sheet dismisses gracefully instead of getting stuck. Error is logged for debugging.
+- **Download queue lock stuck permanently**: `processQueue()` now uses try/finally to guarantee the `isProcessingQueue` flag is always released, even on unexpected errors.
+- **Seeking state stuck forever**: Added 10-second safety timeout that auto-resets `isSeeking` if it gets stuck. Prevents all position updates from being permanently blocked.
+- **Sleep timer crashes silently**: Wrapped entire timer interval in try-catch so unhandled errors (including from `onExpire` callback) don't kill the timer. Timer state is always cleaned up on expiration.
+
+### Files Modified
+
+- `src/features/player/stores/playerStore.ts` — Use completion sheet book's duration instead of current book's
+- `src/features/player/stores/completionSheetStore.ts` — Remove stale book check on progress update, add error handling
+- `src/core/services/downloadManager.ts` — try/finally on queue processing lock
+- `src/features/player/stores/seekingStore.ts` — Safety timeout for stuck isSeeking
+- `src/features/player/stores/sleepTimerStore.ts` — try-catch in timer interval and onExpire
+- `src/constants/version.ts` — Version bump to 0.8.148
+
+---
+
+## [0.8.147] - 2026-02-24
+
+### Fixed
+
+- **Playback not resuming from saved position**: Books with server-side progress (e.g., played on ABS web) were starting from the beginning instead of the saved position. Root cause: `seekTo()` was called before the player had parsed the audio file header (moov atom), causing the seek to silently fail on remote streams. Now waits for the player to be ready before seeking.
+- **Multi-track seek same issue**: Applied the same fix to multi-file audiobooks (loadTracks)
+- **lastKnownGoodPosition not set during initial load**: The cached position wasn't updated when seeking during load, which could cause brief position display glitches
+
+### Changed
+
+- **Cleaned up diagnostic console.error logs**: Replaced leftover `console.error('[AUDIO_DIAGNOSTIC]...')` calls with proper logger output
+
+### Files Modified
+
+- `src/features/player/services/audioService.ts` — Wait for player readiness before seeking; update lastKnownGoodPosition on initial seek; clean up diagnostic logs
+- `src/constants/version.ts` — Version bump to 0.8.147
+
+---
+
+## [0.8.146] - 2026-02-21
+
+### Fixed
+
+- **SQLite "database is locked" errors**: All download and user book write operations now use `withTransactionLock()` to serialize writes, preventing concurrent write collisions during startup
+- **SQLite WAL mode**: Enabled Write-Ahead Logging for better concurrent read/write performance
+- **View mode picker position**: Capsule now appears in a fixed position below the button instead of shifting based on current selection
+
+### Files Modified
+
+- `src/core/services/sqliteCache.ts` — WAL mode, transaction locks on 10 download/userBook write methods
+- `src/features/home/screens/LibraryScreen.tsx` — Fixed capsule to drop down from button
+- `src/constants/version.ts` — Version bump to 0.8.146
+
+---
+
+## [0.8.145] - 2026-02-21
+
+### Changed
+
+- **View mode picker redesign**: Capsule now overlaps the button position (current mode aligns with button), indicator circle animates smoothly with spring physics as the user drags up/down, uses native driver for 60fps animation
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Overlapping capsule position, animated indicator with `Animated.spring` + native driver, border on indicator circle
+- `src/constants/version.ts` — Version bump to 0.8.145
+
+---
+
+## [0.8.144] - 2026-02-21
+
+### Fixed
+
+- **Android Auto cover art**: Fixed cover art never updating when switching books — the `"now_playing"` cache key was reused forever, now uses URL-based cache keys that invalidate on book change
+- **Android Auto scrubbing lag**: Added immediate position feedback to Android Auto after seek operations; reduced periodic sync from 2s to 1s for smoother position tracking
+- **Android Auto playback controls**: Added `ACTION_PLAY_FROM_MEDIA_ID` and `ACTION_PLAY_FROM_SEARCH` to supported actions; added `updateMetadataExtended` native method for chapter titles and series info in Now Playing
+- **FlatList numColumns error**: Added `key` props to list and grid FlatLists to prevent "Changing numColumns on the fly" error when switching views
+
+### Files Modified
+
+- `plugins/android-auto/src/AndroidAutoMediaBrowserService.kt` — URL-based cover cache, `updateMetadataExtended`, consolidated `SUPPORTED_ACTIONS` constant
+- `plugins/android-auto/src/AndroidAutoModule.kt` — Added `updateMetadataExtended` native method
+- `android/app/src/main/java/.../AndroidAutoMediaBrowserService.kt` — Same (build copy)
+- `android/app/src/main/java/.../AndroidAutoModule.kt` — Same (build copy)
+- `src/features/automotive/automotiveService.ts` — Immediate seek feedback, 1s periodic sync
+- `src/features/home/screens/LibraryScreen.tsx` — FlatList key props fix
+- `src/constants/version.ts` — Version bump to 0.8.144
+
+---
+
+## [0.8.143] - 2026-02-20
+
+### Changed
+
+- **View mode picker**: Consolidated 3 view mode buttons (shelf, grid, list) into a single button with long-press+drag to select. Tap cycles modes, long press (300ms) opens vertical popover, drag to highlight with haptic feedback, release to select.
+- **TopNav**: Added `customRender` option for circle buttons that handle their own touch events
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Added `ViewModePicker` component, replaced 3 circle buttons with 1
+- `src/shared/components/TopNav.tsx` — Added `customRender` to `TopNavCircleButton` interface
+- `src/constants/version.ts` — Version bump to 0.8.143
+
+---
+
+## [0.8.142] - 2026-02-20
+
+### Performance
+
+- **Series sort performance**: Eliminated redundant `extractSeriesInfo()` regex calls — was called 5400+ times per render (once per book in list, grid, AND spine transforms), now called only once per book during initial data transform
+- **List/Grid view virtualization**: Replaced `ScrollView` + `.map()` with `FlatList` for list and grid views. Previously rendered all 2700 books at once; now only renders visible items with `initialNumToRender=15`, `windowSize=5`, and `removeClippedSubviews`
+- **Series groups optimization**: Pre-fetched all series counts in a single batch instead of per-series `getSeries()` lookups inside the loop; reused `LibraryBook.seriesName`/`seriesSequence` instead of re-extracting from metadata
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — FlatList for list/grid views, eliminated redundant extractSeriesInfo calls, optimized seriesGroups memo
+- `src/constants/version.ts` — Version bump to 0.8.142
+
+---
+
+## [0.8.141] - 2026-02-20
+
+### Fixed
+
+- **Android Auto permanently fixed**: The `AndroidAutoPackage` was never registered in `MainApplication.kt`, meaning `NativeModules.AndroidAutoModule` was always `undefined` on the JS side. No commands, metadata, or cover art could reach the native Android Auto service. Added the missing `add(AndroidAutoPackage())` registration and import.
+- **Expo config plugin for Android Auto**: Created `plugins/android-auto/withAndroidAuto.js` so Android Auto survives `npx expo prebuild --clean`. The plugin copies Kotlin source files, the `automotive_app_desc.xml` resource, adds the service to AndroidManifest.xml, and registers the package in MainApplication.kt. Source of truth for native code now lives in `plugins/android-auto/`.
+
+### Files Modified
+
+- `android/app/src/main/java/com/secretlibrary/app/MainApplication.kt` — Added `import AndroidAutoPackage` + `add(AndroidAutoPackage())` in `getPackages()`
+- `plugins/android-auto/withAndroidAuto.js` — New Expo config plugin (manifest, files, package registration)
+- `plugins/android-auto/src/` — Kotlin source files (source of truth)
+- `plugins/android-auto/res/` — automotive_app_desc.xml (source of truth)
+- `app.json` — Registered `./plugins/android-auto/withAndroidAuto` plugin
+- `src/constants/version.ts` — Version bump to 0.8.141
+
+---
+
+## [0.8.140] - 2026-02-20
+
+### Changed
+
+- **SYNC button now does a full refresh**: The SYNC button on the home page now performs all three actions from Data & Storage in one tap — cloud sync, reload library from server, and refresh spines.
+
+### Files Modified
+
+- `src/features/home/screens/LibraryScreen.tsx` — Added spine manifest reload and spine dimension cache clear to `handleSyncPress`
+- `src/constants/version.ts` — Version bump to 0.8.140
+
+---
+
+## [0.8.139] - 2026-02-20
+
+### Fixed
+
+- **Android Auto cover art**: Cover images now load correctly on Android Auto. The issue was that Glide fetched cover URLs without authentication — ABS requires auth for cover endpoints. Cover URLs now include the auth token as a query parameter (`?token=xxx`).
+- **Android Auto controls**: Set initial metadata (app name) on service creation so Android Auto shows transport controls immediately upon connection, even before a book is loaded.
+
+### Files Modified
+
+- `src/features/automotive/automotiveService.ts` — Added `getAuthenticatedCoverUrl()` helper that appends auth token to cover URLs; updated all cover URL generation to use it; removed unused `apiClient` parameter from `createBrowseItem()`
+- `android/app/src/main/java/com/secretlibrary/app/automotive/AndroidAutoMediaBrowserService.kt` — Set initial metadata in `onCreate()` for controls visibility; improved cover art loading logs
+- `src/constants/version.ts` — Version bump to 0.8.139
+
+---
+
+## [0.8.138] - 2026-02-20
+
+### Fixed
+
+- **Queue auto-advance on book completion**: When a book finishes and the user taps "Mark as Finished" on the completion sheet, the next queued book now automatically starts playing. Previously the finished book was removed from the queue but the next book was never loaded.
+
+### Files Modified
+
+- `src/features/player/stores/completionSheetStore.ts` — Added `playNext()` + `loadBook()` after removing finished book from queue
+- `src/constants/version.ts` — Version bump to 0.8.138
+
+---
+
+## [0.8.137] - 2026-02-20
+
+### Changed
+
+- **BookContextMenu redesigned layout**: Split actions into list items above (Library, Playlist) and a row of 4 circular icon buttons below (Play, Queue, Download, Details) for faster access
+- **Playlist context awareness**: When long-pressing a book from a playlist view, "Remove from Playlist" replaces "Remove from Library" with undo support
+- **Filter special playlists**: Internal `__sl_*` playlists are now hidden from the playlist picker
+- **Undo toasts**: All context menu actions (Queue, Library, Playlist add/remove) now show a 10-second undo toast with swipe-to-dismiss
+- **Toast swipe-to-dismiss**: All toasts can now be swiped horizontally to dismiss
+- **Toast undo button**: Toasts with `onUndo` callback show a golden "Undo" button
+
+### Files Modified
+
+- `src/shared/components/BookContextMenu.tsx` — Redesigned layout with QuickActionRow, playlist context, undo toasts, filtered playlists
+- `src/shared/components/BookContextMenuProvider.tsx` — Added `playlistId` context to `showMenu` signature
+- `src/shared/components/ToastContainer.tsx` — Added swipe-to-dismiss gesture and Undo button
+- `src/shared/hooks/useToast.ts` — Added `onUndo` to Toast interface, `showUndo()` convenience method
+- `src/features/home/screens/LibraryScreen.tsx` — Pass playlistId context when in playlist content mode
+- `src/constants/version.ts` — Version bump to 0.8.137
+
+---
+
+## [0.8.136] - 2026-02-20
+
+### Added
+
+- **Long-press context menu on all book surfaces**: Press and hold any book across 10+ screens to get a quick action menu with Play Now, Add to Queue, Add to Library, Add to Playlist, Download, and View Details
+- **Global BookContextMenuProvider**: New provider pattern renders a single context menu instance at the app level, accessible from any screen via `useBookContextMenu()` hook
+- **Play Now for all books**: Context menu "Play Now" works for both downloaded and streaming books (previously download-only)
+- **Add to Queue for all books**: Queue action works regardless of download status
+- **Add to Library action**: Toggle library membership directly from the context menu
+- **Add to Playlist action**: Playlist picker sub-view within the context menu shows all playlists with "Create New Playlist" option
+- **onLongPress support**: Added `onLongPress` prop to `BookSpineVertical`, `ShelfRow`, `BookRow`, `BookSimpleRow`, and `BookshelfView` components
+
+### Files Modified
+
+- `src/shared/components/BookContextMenuProvider.tsx` — New global provider + `useBookContextMenu` hook
+- `src/shared/components/BookContextMenu.tsx` — Enhanced with Play Now, Queue, Library, Playlist picker, removed Wishlist
+- `src/shared/components/index.ts` — Export new provider and hook
+- `src/navigation/AppNavigator.tsx` — Wrap app with BookContextMenuProvider
+- `src/features/home/components/BookSpineVertical.tsx` — Add `onLongPress` prop
+- `src/shared/spine/ShelfRow.tsx` — Add `onSpineLongPress` prop
+- `src/features/library/components/BookRow.tsx` — Add `onLongPress` prop
+- `src/features/search/components/BookSimpleRow.tsx` — Add `onLongPress` prop
+- `src/features/home/components/BookshelfView.tsx` — Add `onBookLongPress` prop
+- `src/features/home/screens/LibraryScreen.tsx` — Wire up long-press in shelf, list, grid views
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` — Wire up long-press
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` — Wire up long-press
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` — Wire up long-press
+- `src/features/library/screens/GenreDetailScreen.tsx` — Wire up long-press
+- `src/features/library/screens/FilteredBooksScreen.tsx` — Wire up long-press
+- `src/features/search/screens/SearchScreen.tsx` — Wire up long-press
+- `src/features/browse/screens/SecretLibraryBrowseScreen.tsx` — Wire up long-press
+- `src/features/browse/components/TopPickHero.tsx` — Add `onBookLongPress` prop
+- `src/features/browse/components/TasteTextList.tsx` — Add `onBookLongPress` prop
+- `src/features/browse/components/BecauseYouListenedSection.tsx` — Add `onBookLongPress` prop
+- `src/features/browse/components/RecentlyAddedSection.tsx` — Add `onBookLongPress` prop
+- `src/features/browse/components/ListenAgainSection.tsx` — Add `onBookLongPress` prop
+- `src/features/library/components/tabs/AllBooksTab.tsx` — Wire up long-press
+- `src/constants/version.ts` — v0.8.136
+
+---
+
 ## [0.8.135] - 2026-02-19
 
 ### Fixed

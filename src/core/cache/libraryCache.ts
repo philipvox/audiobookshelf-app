@@ -280,7 +280,8 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   genres: [],
   genresWithBooks: new Map(),
   itemsById: new Map(),
-  booksWithServerSpines: new Set(),
+  // Pre-populate from persisted manifest in spineCache (avoids flash of generative spines)
+  booksWithServerSpines: new Set(useSpineCacheStore.getState().cachedManifestBookIds || []),
   spineManifestVersion: null,
 
   loadCache: async (libraryId: string, forceRefresh = false) => {
@@ -313,26 +314,36 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
               // Queue search index for lazy build (P2 Fix - defer until first search)
               searchIndex.queueBuild(cachedItems);
 
-              // Load spine manifest and populate spine cache in parallel
-              const [, spineManifest] = await Promise.all([
-                useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId),
-                apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
-              ]);
-
+              // Set library as loaded IMMEDIATELY — don't block on spine operations.
+              // booksWithServerSpines is pre-populated from persisted manifest (line 284),
+              // so server spines render correctly even before the network refresh completes.
+              // CRITICAL: Blocking here was causing a ~50% playback failure rate on iOS
+              // cold start because session prefetch and book preload couldn't run until
+              // the spine manifest network fetch + spine population completed.
               set({
                 items: cachedItems,
                 isLoaded: true,
                 isLoading: false,
                 lastUpdated: lastSyncTime,
                 currentLibraryId: libraryId,
-                booksWithServerSpines: new Set(spineManifest.items),
-                spineManifestVersion: spineManifest.version,
                 ...indexes,
               });
 
-              if (spineManifest.items.length > 0) {
-                log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
-              }
+              // BACKGROUND: Spine operations (fire-and-forget, don't block startup)
+              Promise.all([
+                useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId),
+                apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
+              ]).then(([, spineManifest]) => {
+                if (spineManifest.items.length > 0) {
+                  set({
+                    booksWithServerSpines: new Set(spineManifest.items),
+                    spineManifestVersion: spineManifest.version,
+                  });
+                  useSpineCacheStore.getState().setCachedManifestBookIds(spineManifest.items);
+                  log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
+                }
+              }).catch(err => log.warn('Background spine operations failed:', err));
+
               return;
             }
           }
@@ -354,6 +365,8 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
           booksWithServerSpines: new Set(spineManifest.items),
           spineManifestVersion: spineManifest.version,
         });
+        // Persist manifest for instant lookup on next app launch
+        useSpineCacheStore.getState().setCachedManifestBookIds(spineManifest.items);
         log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
       }
       const items = itemsResponse?.results || [];
@@ -394,9 +407,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       // Queue search index for lazy build (P2 Fix - defer until first search)
       searchIndex.queueBuild(items);
 
-      // Populate spine cache for book visualizations (loads from SQLite first, saves computed items)
-      await useSpineCacheStore.getState().populateFromLibrary(items, libraryId);
-
+      // Set library as loaded IMMEDIATELY — spine population runs in background
       set({
         items,
         isLoaded: true,
@@ -405,6 +416,10 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         currentLibraryId: libraryId,
         ...indexes,
       });
+
+      // BACKGROUND: Populate spine cache (don't block library loading)
+      useSpineCacheStore.getState().populateFromLibrary(items, libraryId)
+        .catch(err => log.warn('Background spine population failed:', err));
     } catch (error) {
       log.error('Failed to load:', error);
       set({
@@ -658,6 +673,8 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         booksWithServerSpines: new Set(manifest.items),
         spineManifestVersion: manifest.version,
       });
+      // Persist to spineCache for instant lookup on next app launch
+      useSpineCacheStore.getState().setCachedManifestBookIds(manifest.items);
       log.debug(`Loaded spine manifest: ${manifest.count} books have server spines`);
     } catch (error) {
       log.warn('Failed to load spine manifest:', error);

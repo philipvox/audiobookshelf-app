@@ -105,6 +105,23 @@ function formatSubtitle(author: string, durationSeconds: number, progress?: numb
 const log = (...args: any[]) => audioLog.audio('[Automotive]', ...args);
 
 /**
+ * Get cover URL with auth token appended as query parameter.
+ * Native Glide doesn't have access to the Bearer token header,
+ * so we pass authentication via the URL query string instead.
+ * ABS accepts ?token=xxx as an alternative to Authorization header.
+ */
+function getAuthenticatedCoverUrl(itemId: string): string {
+  const { apiClient } = require('@/core/api');
+  const url = apiClient.getItemCoverUrl(itemId);
+  const token = apiClient.getAuthToken();
+  if (token) {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
+
+/**
  * Automotive service - manages CarPlay and Android Auto connections
  */
 class AutomotiveService {
@@ -283,9 +300,32 @@ class AutomotiveService {
    * Sync browse data to Android Auto native MediaBrowserService.
    * Serializes all browse sections as JSON and writes to file via native module.
    * The native service reads this file in onLoadChildren().
+   *
+   * Debounced: multiple rapid calls collapse into a single sync after 500ms.
    */
-  private async syncBrowseDataToAndroidAuto(): Promise<void> {
+  private browseSyncDebounceTimer: NodeJS.Timeout | null = null;
+  private browseSyncInProgress = false;
+
+  private syncBrowseDataToAndroidAuto(): void {
     if (Platform.OS !== 'android') return;
+
+    // Debounce: collapse rapid calls into one
+    if (this.browseSyncDebounceTimer) {
+      clearTimeout(this.browseSyncDebounceTimer);
+    }
+    this.browseSyncDebounceTimer = setTimeout(() => {
+      this.browseSyncDebounceTimer = null;
+      this.performBrowseSync();
+    }, 500);
+  }
+
+  private async performBrowseSync(): Promise<void> {
+    // Lock: skip if already syncing
+    if (this.browseSyncInProgress) {
+      log('Browse sync already in progress, skipping');
+      return;
+    }
+    this.browseSyncInProgress = true;
 
     try {
       const { AndroidAutoModule } = NativeModules;
@@ -315,6 +355,8 @@ class AutomotiveService {
       }
     } catch (error) {
       log('Failed to sync browse data to Android Auto:', error);
+    } finally {
+      this.browseSyncInProgress = false;
     }
   }
 
@@ -356,9 +398,9 @@ class AutomotiveService {
       await this.setupPlayerStateSync();
 
       // Sync browse data to native MediaBrowserService
-      // Try immediately, then again with delay in case library isn't loaded yet
+      // The debounce will collapse these into a single sync
       this.syncBrowseDataToAndroidAuto();
-      setTimeout(() => this.syncBrowseDataToAndroidAuto(), 1000);
+      // Retry after delay in case library isn't loaded yet
       setTimeout(() => this.syncBrowseDataToAndroidAuto(), 3000);
 
       log('Android Auto initialized successfully');
@@ -427,21 +469,30 @@ class AutomotiveService {
         {
           // PERF: Use pre-imported store (no dynamic import latency)
           const state = usePlayerStore.getState();
+
+          // Guard: Don't auto-play if no book is loaded (prevents unwanted playback
+          // when Android Auto connects and auto-triggers onPlay on the MediaSession)
+          if (!state.currentBook) {
+            log('Play command ignored — no book loaded');
+            break;
+          }
+
+          // Guard: If already playing, don't call play() again. Calling play() when
+          // already playing triggers audio focus renegotiation which causes the
+          // play-stop-play-stop stuttering on Android Auto reconnection.
+          if (state.isPlaying) {
+            log('Already playing, skipping redundant play command — syncing state instead');
+            this.forceAndroidAutoSync();
+            break;
+          }
+
           state.play();  // Fire-and-forget for instant response
           log('Play command executed');
 
-          // FIX: Immediate feedback to Android Auto (don't wait for state subscription)
-          const { AndroidAutoModule } = NativeModules;
-          if (AndroidAutoModule) {
-            const position = state.position || 0;
-            const speed = state.playbackRate || 1.0;
-            try {
-              AndroidAutoModule.updatePlaybackState(true, position, speed);
-              log('Immediate play state sent to Android Auto');
-            } catch (err) {
-              log('Failed to send immediate play state:', err);
-            }
-          }
+          // Don't send immediate updatePlaybackState here — let the syncState
+          // subscription handle it. Sending it here AND in syncState causes both
+          // MediaSessions (phone + Android Auto) to fight over audio focus,
+          // resulting in the phone losing focus and going silent.
 
           // Ensure browse data is synced after play starts (in case it was empty)
           setTimeout(() => this.syncBrowseDataToAndroidAuto(), 500);
@@ -455,18 +506,8 @@ class AutomotiveService {
           state.pause();  // Fire-and-forget for instant response
           log('Pause command executed');
 
-          // FIX: Immediate feedback to Android Auto (don't wait for state subscription)
-          const { AndroidAutoModule } = NativeModules;
-          if (AndroidAutoModule) {
-            const position = state.position || 0;
-            const speed = state.playbackRate || 1.0;
-            try {
-              AndroidAutoModule.updatePlaybackState(false, position, speed);
-              log('Immediate pause state sent to Android Auto');
-            } catch (err) {
-              log('Failed to send immediate pause state:', err);
-            }
-          }
+          // Don't send immediate updatePlaybackState here — let the syncState
+          // subscription handle it. Same audio focus conflict as play above.
         }
         break;
 
@@ -561,10 +602,25 @@ class AutomotiveService {
             // PERF: Use pre-imported store
             const state = usePlayerStore.getState();
             const wasPlaying = state.isPlaying;
-            await state.seekTo(position / 1000); // Convert ms to seconds
+            const positionSec = position / 1000; // Convert ms to seconds
+            await state.seekTo(positionSec);
             // Ensure playback continues if it was playing
             if (wasPlaying && !audioService.getIsPlaying()) {
               audioService.play();  // Fire-and-forget
+            }
+
+            // FIX: Immediate position feedback to Android Auto after seek
+            const { AndroidAutoModule } = NativeModules;
+            if (AndroidAutoModule) {
+              const newPosition = usePlayerStore.getState().position || positionSec;
+              const isPlaying = usePlayerStore.getState().isPlaying;
+              const speed = state.playbackRate || 1.0;
+              try {
+                AndroidAutoModule.updatePlaybackState(isPlaying, newPosition, speed);
+                log('Immediate seek position sent to Android Auto:', newPosition);
+              } catch (err) {
+                log('Failed to send seek position update:', err);
+              }
             }
           }
         }
@@ -598,6 +654,16 @@ class AutomotiveService {
         log('Custom action received:', event.param);
         break;
 
+      case 'connected':
+        // Android Auto client (re)connected — force full metadata + state re-sync
+        // Without this, reconnection shows stale/empty Now Playing because the JS
+        // subscription's prev values already match current state and won't re-fire.
+        log('Android Auto (re)connected, forcing full state re-sync');
+        this.forceAndroidAutoSync();
+        // Also ensure browse data is fresh
+        this.syncBrowseDataToAndroidAuto();
+        break;
+
       case 'requestBrowseData':
         // Native service is requesting browse data (likely just started or resumed)
         log('Browse data requested by native service');
@@ -622,7 +688,13 @@ class AutomotiveService {
       const currentSpeed = (bookId && speedState.bookSpeedMap[bookId]) || speedState.globalDefaultRate || 1.0;
 
       const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-      const currentIndex = speeds.findIndex(s => Math.abs(s - currentSpeed) < 0.01);
+      let currentIndex = speeds.findIndex(s => Math.abs(s - currentSpeed) < 0.01);
+
+      // If current speed isn't in the preset list, find the nearest one
+      if (currentIndex === -1) {
+        currentIndex = speeds.reduce((best, s, i) =>
+          Math.abs(s - currentSpeed) < Math.abs(speeds[best] - currentSpeed) ? i : best, 0);
+      }
 
       let newSpeed: number;
       if (direction === 'up') {
@@ -801,7 +873,6 @@ class AutomotiveService {
       let prevPosition = 0;
       let prevBookId = '';
       let prevChapterTitle: string | null = null;
-      let lastSyncTime = 0;
 
       // Helper to sync playback state to Android Auto
       const syncPlaybackState = (isPlaying: boolean, position: number, speed: number) => {
@@ -827,27 +898,27 @@ class AutomotiveService {
         const book = state.currentBook;
         const speed = state.playbackRate || 1.0;
         const duration = state.duration || 0;
-        const now = Date.now();
 
-        // FIX: ALWAYS sync on play/pause changes (regardless of position)
-        // This ensures Android Auto immediately reflects play/pause state
+        // IMPORTANT: Only sync on meaningful state changes, NOT on a timer.
+        // Every syncPlaybackState() call triggers mediaSession.setPlaybackState()
+        // on the native side, which renegotiates audio focus. Doing this frequently
+        // causes the Android Auto MediaSession to steal audio focus from expo-av,
+        // resulting in silent playback even when no car is connected.
+        //
+        // Android Auto can interpolate position using the playback speed we set
+        // in setState(), so we only need to sync on:
+        // 1. Play/pause changes
+        // 2. Significant position jumps (seeks, chapter changes)
+
+        // Sync on play/pause changes
         if (isPlaying !== prevIsPlaying) {
           log('Play/pause state changed, syncing:', isPlaying ? 'PLAYING' : 'PAUSED');
           prevIsPlaying = isPlaying;
           prevPosition = position;
-          lastSyncTime = now;
           syncPlaybackState(isPlaying, position, speed);
         }
-        // Also sync on significant position changes (seek, chapter jump)
-        else if (Math.abs(position - prevPosition) > 5) {
-          prevPosition = position;
-          lastSyncTime = now;
-          syncPlaybackState(isPlaying, position, speed);
-        }
-        // FIX: Periodic sync during playback (every 2 seconds)
-        // This ensures Android Auto position display stays accurate
-        else if (isPlaying && now - lastSyncTime > 2000) {
-          lastSyncTime = now;
+        // Sync on significant position jumps (seeks, chapter changes — >10s jump)
+        else if (Math.abs(position - prevPosition) > 10) {
           prevPosition = position;
           syncPlaybackState(isPlaying, position, speed);
         }
@@ -866,9 +937,8 @@ class AutomotiveService {
           const seriesName = metadata?.seriesName || metadata?.series?.[0]?.name || null;
           const bookProgress = book.userMediaProgress?.progress || 0;
 
-          // Get cover URL - try local first, then server
-          const { apiClient } = require('@/core/api');
-          const coverUrl = apiClient.getItemCoverUrl(book.id);
+          // Get cover URL with auth token for native Glide
+          const coverUrl = getAuthenticatedCoverUrl(book.id);
 
           // Use extended metadata if available
           // Note: Kotlin handles seconds-to-ms conversion for duration
@@ -920,16 +990,18 @@ class AutomotiveService {
       // Subscribe to player state changes
       this.playerStoreUnsubscribe = usePlayerStore.subscribe(syncState);
 
-      // FIX: Set up periodic sync interval (every 2 seconds) for position accuracy
-      // The subscription only fires on state changes, but position updates continuously
-      this.periodicSyncInterval = setInterval(() => {
-        const state = usePlayerStore.getState();
-        if (state.isPlaying && state.currentBook) {
-          syncState(state);
-        }
-      }, 2000);
+      // NOTE: No periodic interval here. Every updatePlaybackState() call triggers
+      // mediaSession.setPlaybackState() on the native side, which renegotiates audio
+      // focus via Android's MediaSession framework. Running this on a timer (even at
+      // 3s intervals) was causing the phone to lose audio focus — the Android Auto
+      // MediaSession would steal it from expo-av's player, resulting in silent playback
+      // even when no car was connected (the MediaBrowserService runs at all times).
+      //
+      // Instead, we rely solely on the subscription above which fires on actual state
+      // changes (play/pause, seeks, chapter jumps). Android Auto interpolates position
+      // between these syncs using the playback speed we provide in setState().
 
-      log('Player state sync set up for Android Auto (with 2s periodic sync)');
+      log('Player state sync set up for Android Auto (subscription only, no periodic interval)');
     } catch (error) {
       log('Failed to set up player state sync:', error);
     }
@@ -1056,9 +1128,10 @@ class AutomotiveService {
         }
       }
 
-      // Jump to the chapter
+      // Jump to the chapter and start playback
       await usePlayerStore.getState().jumpToChapter(chapterIndex);
-      log('Jumped to chapter', chapterIndex);
+      await usePlayerStore.getState().play();
+      log('Jumped to chapter', chapterIndex, 'and started playback');
     } catch (error) {
       log('Failed to play chapter:', error);
     }
@@ -1120,7 +1193,8 @@ class AutomotiveService {
 
   /**
    * Force sync current player state to Android Auto
-   * Used after playback starts to ensure correct position is shown
+   * Used after playback starts or Android Auto reconnects to ensure
+   * the Now Playing screen shows correct title, cover, and position.
    */
   private async forceAndroidAutoSync(): Promise<void> {
     if (Platform.OS !== 'android') return;
@@ -1136,19 +1210,34 @@ class AutomotiveService {
       const metadata = getBookMetadata(book);
       const title = metadata?.title || 'Unknown Title';
       const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
+      const seriesName = metadata?.seriesName || metadata?.series?.[0]?.name || null;
       const duration = state.duration || 0;
       const position = state.position || 0;
       const speed = state.playbackRate || 1.0;
       const isPlaying = state.isPlaying;
+      const bookProgress = book.userMediaProgress?.progress || 0;
+      const chapterTitle = state.currentChapter?.title || null;
 
-      const { apiClient } = require('@/core/api');
-      const coverUrl = apiClient.getItemCoverUrl(book.id);
+      const coverUrl = getAuthenticatedCoverUrl(book.id);
 
-      log('Forcing Android Auto sync:', { title, position, duration, isPlaying });
+      log('Forcing Android Auto sync:', { title, position, duration, isPlaying, chapterTitle });
 
-      // Update metadata
+      // Update metadata (use extended version for chapter/series info)
       try {
-        AndroidAutoModule.updateMetadata(title, author, duration, coverUrl);
+        if (AndroidAutoModule.updateMetadataExtended) {
+          AndroidAutoModule.updateMetadataExtended(
+            title,
+            author,
+            duration,
+            coverUrl,
+            chapterTitle,
+            seriesName,
+            speed,
+            bookProgress
+          );
+        } else {
+          AndroidAutoModule.updateMetadata(title, author, duration, coverUrl);
+        }
       } catch (err) {
         log('Failed to force metadata sync:', err);
       }
@@ -1250,7 +1339,6 @@ class AutomotiveService {
    */
   private createBrowseItem(
     item: LibraryItem,
-    apiClient: any,
     options?: {
       showProgress?: boolean;
       localCoverPath?: string;
@@ -1266,7 +1354,7 @@ class AutomotiveService {
       id: item.id,
       title: metadata?.title || 'Unknown Title',
       subtitle: formatSubtitle(author, duration, options?.showProgress ? progress : undefined),
-      imageUrl: options?.localCoverPath || apiClient.getItemCoverUrl(item.id),
+      imageUrl: options?.localCoverPath || getAuthenticatedCoverUrl(item.id),
       isPlayable: true,
       isBrowsable: false,
       progress: options?.showProgress ? progress : undefined,
@@ -1285,7 +1373,6 @@ class AutomotiveService {
 
     try {
       const { useLibraryCache } = await import('@/core/cache/libraryCache');
-      const { apiClient } = await import('@/core/api');
       // PERF: Use pre-imported player store
 
       const libraryItems = useLibraryCache.getState().items;
@@ -1295,7 +1382,7 @@ class AutomotiveService {
       // LAST PLAYED - Show the current/last book for quick resume
       // =================================================================
       if (playerState.currentBook) {
-        const lastPlayedItem = this.createBrowseItem(playerState.currentBook, apiClient, { showProgress: true });
+        const lastPlayedItem = this.createBrowseItem(playerState.currentBook, { showProgress: true });
 
         sections.push({
           id: 'last-played',
@@ -1318,7 +1405,7 @@ class AutomotiveService {
           return bTime - aTime;
         })
         .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item, apiClient, { showProgress: true }));
+        .map(item => this.createBrowseItem(item, { showProgress: true }));
 
       if (continueItems.length > 0) {
         sections.push({
@@ -1341,7 +1428,7 @@ class AutomotiveService {
         const item = libraryItems.find(i => i.id === download.itemId);
         if (item) {
           const localCoverPath = `${FileSystem.documentDirectory}audiobooks/${item.id}/cover.jpg`;
-          downloadedItems.push(this.createBrowseItem(item, apiClient, { localCoverPath }));
+          downloadedItems.push(this.createBrowseItem(item, { localCoverPath }));
         }
       }
 
@@ -1363,7 +1450,7 @@ class AutomotiveService {
           return aTitle.localeCompare(bTitle);
         })
         .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item, apiClient));
+        .map(item => this.createBrowseItem(item));
 
       if (libraryBookItems.length > 0) {
         sections.push({
@@ -1379,7 +1466,7 @@ class AutomotiveService {
       const recentlyAddedItems = [...libraryItems]
         .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
         .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item, apiClient));
+        .map(item => this.createBrowseItem(item));
 
       if (recentlyAddedItems.length > 0) {
         sections.push({
@@ -1423,7 +1510,7 @@ class AutomotiveService {
             isBrowsable: true,
             itemCount: books.length,
             children: sortedBooks.map(({ item, sequence }) => {
-              const browseItem = this.createBrowseItem(item, apiClient, { sequence });
+              const browseItem = this.createBrowseItem(item, { sequence });
               // Override subtitle to show sequence
               const metadata = getBookMetadata(item);
               browseItem.subtitle = `Book ${sequence}${metadata?.authorName ? ` • ${metadata.authorName}` : ''}`;
@@ -1474,7 +1561,7 @@ class AutomotiveService {
             isPlayable: false,
             isBrowsable: true,
             itemCount: books.length,
-            children: sortedBooks.map(item => this.createBrowseItem(item, apiClient)),
+            children: sortedBooks.map(item => this.createBrowseItem(item)),
           };
         });
 
@@ -1563,9 +1650,16 @@ class AutomotiveService {
       }
     }
 
-    // Clear template references
+    // Clear browse sync debounce timer
+    if (this.browseSyncDebounceTimer) {
+      clearTimeout(this.browseSyncDebounceTimer);
+      this.browseSyncDebounceTimer = null;
+    }
+
+    // Clear template references and command queue
     this.continueListeningTemplate = null;
     this.downloadsTemplate = null;
+    this.commandQueue = [];
 
     this.connectionState = 'disconnected';
     this.connectedPlatform = 'none';

@@ -11,6 +11,7 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { apiClient } from '@/core/api';
 import { sqliteCache } from '@/core/services/sqliteCache';
+import { playbackCache } from '@/core/services/playbackCache';
 import { sessionService } from './sessionService';
 import { audioService } from './audioService';
 import { audioLog, formatDuration, logSection } from '@/shared/utils/audioDebug';
@@ -119,6 +120,17 @@ class BackgroundSyncService {
     // SQLite write only - no network, no queue processing
     await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
 
+    // FIX: Keep playbackCache in sync during playback so progressService.getProgressData()
+    // returns current position instead of stale startup-time value. Without this,
+    // the memory cache (populated once at startup by finishedBooksSync) goes stale
+    // and loadBook() could resume 2+ minutes behind the actual position.
+    playbackCache.setProgress(itemId, {
+      currentTime: position,
+      duration,
+      progress: duration > 0 ? position / duration : 0,
+      updatedAt: Date.now(),
+    });
+
     // UNIFIED PROGRESS: Update progressStore for instant UI updates
     // This makes spine progress bars, continue listening, etc. update immediately
     try {
@@ -162,6 +174,15 @@ class BackgroundSyncService {
 
     // STEP 1: Write to SQLite immediately (fast, offline-capable)
     await sqliteCache.setPlaybackProgress(itemId, position, duration, false);
+
+    // FIX: Keep playbackCache in sync so progressService.getProgressData()
+    // returns current position on next loadBook() call
+    playbackCache.setProgress(itemId, {
+      currentTime: position,
+      duration,
+      progress: duration > 0 ? position / duration : 0,
+      updatedAt: Date.now(),
+    });
 
     // UNIFIED PROGRESS: Update progressStore for instant UI updates
     try {
