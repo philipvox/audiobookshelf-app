@@ -206,6 +206,21 @@ class SessionService {
     return url;
   }
 
+  /**
+   * Adopt a cached session as the current session.
+   * Called when using a pre-fetched session from playbackCache to ensure
+   * getStreamUrl(), syncProgress(), and other methods work correctly.
+   */
+  adoptSession(session: PlaybackSession): void {
+    log('Adopting cached session:', session.id);
+    log('  Audio tracks:', session.audioTracks?.length || 0);
+    log('  Chapters:', session.chapters?.length || 0);
+    this.currentSession = session;
+    if (session.chapters?.length) {
+      this.lastKnownChapters = session.chapters;
+    }
+  }
+
   getCurrentSession(): PlaybackSession | null {
     return this.currentSession;
   }

@@ -6,9 +6,9 @@
  * See CHANGELOG.md in project root for detailed change history.
  */
 
-export const APP_VERSION = '0.8.135';
-export const BUILD_NUMBER = 1135;
-export const VERSION_DATE = '2026-02-19';
+export const APP_VERSION = '0.9.173';
+export const BUILD_NUMBER = 1173;
+export const VERSION_DATE = '2026-02-27';
 
 // Version info for display
 export const getVersionString = () => `v${APP_VERSION} (${BUILD_NUMBER})`;

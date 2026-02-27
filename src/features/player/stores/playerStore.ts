@@ -456,6 +456,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // Fix Bug #1: Clear stuck detection timeouts from previous playback
       clearStuckDetectionTimeouts();
+      // Clear auto-download tracking for this session (allows re-check on replay)
+      autoDownloadCheckedBooks.delete(book.id);
 
       // DEBUG: Log entry point and call stack
       const debugTs = Date.now();
@@ -817,6 +819,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             session = cachedSession;
             sessionSource = 'cached';
 
+            // CRITICAL FIX: Adopt the cached session into sessionService so
+            // getStreamUrl(), syncProgress(), and auto-sync all work correctly.
+            // Without this, sessionService.currentSession is null and single-file
+            // books fail with "Could not get stream URL".
+            sessionService.adoptSession(cachedSession as PlaybackSession);
+
             // Ensure audio is ready
             if (!playbackCache.isAudioInitialized()) {
               await audioService.ensureSetup();
@@ -834,6 +842,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               audioService.ensureSetup(),
             ]);
             session = fetchedSession;
+
+            // Retry once if initial session failed (cold server, transient error)
+            if (!session) {
+              log('Session failed on first attempt, retrying after 1s...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              session = await sessionService.startSession(book.id).catch((err) => {
+                log('Session retry also failed:', err.message);
+                return null;
+              });
+            }
             sessionSource = 'fresh';
           }
           timing('Session + setup complete');
@@ -952,14 +970,41 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             logTracks(audioTrackInfos);
           } else {
             log('SINGLE-FILE AUDIOBOOK');
-            const url = sessionService.getStreamUrl();
+            let url = sessionService.getStreamUrl();
+
+            // Fallback: if sessionService has no session but we have audioTracks
+            // on the local session variable, build the URL directly
+            if (!url && session?.audioTracks?.length) {
+              log('getStreamUrl() returned null — building URL from session audioTracks directly');
+              const baseUrl = apiClient.getBaseURL().replace(/\/+$/, '');
+              const token = apiClient.getAuthToken() || '';
+              const track = session.audioTracks[0];
+              let contentUrl = track.contentUrl;
+
+              // Append /stream for moov-at-end M4B support
+              const fileUrlPattern = /^\/api\/items\/[^/]+\/file\/\d+/;
+              if (fileUrlPattern.test(contentUrl)) {
+                const [path, query] = contentUrl.split('?');
+                contentUrl = `${path}/stream${query ? '?' + query : ''}`;
+              }
+
+              if (contentUrl.includes('token=')) {
+                url = `${baseUrl}${contentUrl}`;
+              } else {
+                const separator = contentUrl.includes('?') ? '&' : '?';
+                url = `${baseUrl}${contentUrl}${separator}token=${token}`;
+              }
+              log('Fallback stream URL built successfully');
+            }
+
             if (!url) {
-              const session = sessionService.getCurrentSession();
+              const currentSession = sessionService.getCurrentSession();
               logError('No stream URL returned from session!');
-              logError('Session audio tracks:', session?.audioTracks?.length || 0);
+              logError('Session audio tracks (sessionService):', currentSession?.audioTracks?.length || 0);
+              logError('Session audio tracks (local):', session?.audioTracks?.length || 0);
               logError('Book ID:', book.id);
-              // More specific error message
-              const errorMsg = session?.audioTracks?.length === 0
+              logError('Session source:', sessionSource);
+              const errorMsg = (session?.audioTracks?.length || 0) === 0
                 ? 'This book has no audio files. Check the server.'
                 : 'Could not get stream URL from server.';
               throw new Error(errorMsg);
@@ -1004,11 +1049,44 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         });
 
         // SAFEGUARD: Clamp position to prevent loading at or near end of book
-        // If position is within 5 seconds of duration, reset to 0
-        // This prevents the stream from immediately signaling completion
+        // If position is within 5 seconds of duration, set to 30s before end
+        // so user can hear the ending rather than restarting from the beginning
         if (totalDuration > 0 && resumePosition >= totalDuration - 5) {
-          log(`[POSITION_CLAMP] Position ${resumePosition.toFixed(1)}s is near end (${totalDuration.toFixed(1)}s), resetting to 0`);
-          resumePosition = 0;
+          const clampedPosition = Math.max(0, totalDuration - 30);
+          log(`[POSITION_CLAMP] Position ${resumePosition.toFixed(1)}s is near end (${totalDuration.toFixed(1)}s), clamping to ${clampedPosition.toFixed(1)}s`);
+          resumePosition = clampedPosition;
+        }
+
+        // SMART REWIND: Apply rewind during loadBook so it works on app restart
+        // and when iOS evicts audio from memory. Previously, smart rewind only
+        // ran in play() which is never reached when loadBook handles autoPlay.
+        if (autoPlay && !startPosition && resumePosition > 0) {
+          const { smartRewindEnabled, smartRewindMaxSeconds } = usePlayerSettingsStore.getState();
+          if (smartRewindEnabled) {
+            try {
+              const { timestamp: srTimestamp, position: srPausePosition } = await restoreSmartRewindState(book.id, log);
+              if (srTimestamp) {
+                const pauseDuration = Date.now() - srTimestamp;
+                if (pauseDuration >= MIN_PAUSE_FOR_REWIND_MS) {
+                  const rewindSeconds = calculateSmartRewindSeconds(pauseDuration, smartRewindMaxSeconds);
+                  if (rewindSeconds > 0) {
+                    const basePosition = srPausePosition ?? resumePosition;
+                    const chapterStart = getChapterStartForPosition(chapters, basePosition);
+                    const rewoundPosition = Math.max(chapterStart, basePosition - rewindSeconds);
+                    if (basePosition - rewoundPosition >= 0.5) {
+                      log(`[SmartRewind] Pause: ${Math.round(pauseDuration / 1000)}s → Rewind: ${rewindSeconds}s (${basePosition.toFixed(1)}s → ${rewoundPosition.toFixed(1)}s)`);
+                      resumePosition = rewoundPosition;
+                    }
+                  }
+                }
+              }
+              // Mark as applied and clear state so play() doesn't double-apply
+              markSmartRewindApplied(book.id);
+              clearSmartRewindState().catch(() => {});
+            } catch (err) {
+              log('[SmartRewind] Error in loadBook:', err);
+            }
+          }
         }
 
         // Update state with chapters/duration
@@ -1657,7 +1735,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     seekTo: async (position: number) => {
       // Fix 10: Validate position is a finite number
       if (!Number.isFinite(position)) {
-        log.warn('[seekTo] Invalid position:', position);
+        audioLog.warn('[seekTo] Invalid position:', position);
         return;
       }
 
@@ -1706,7 +1784,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const { position, duration, isPlaying } = get();
       // Guard: don't skip if duration is not yet known
       if (!duration || duration <= 0) {
-        log.warn('[skipForward] Duration not available yet');
+        audioLog.warn('[skipForward] Duration not available yet');
         return;
       }
       const newPosition = Math.min(position + seconds, duration);
@@ -1724,7 +1802,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const { position, duration, isPlaying } = get();
       // Guard: don't skip if duration is not yet known
       if (!duration || duration <= 0) {
-        log.warn('[skipBackward] Duration not available yet');
+        audioLog.warn('[skipBackward] Duration not available yet');
         return;
       }
       const newPosition = Math.max(position - seconds, 0);
@@ -1797,12 +1875,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     },
 
     getCurrentChapter: () => {
-      const { chapters, position, isSeeking, seekPosition } = get();
+      const { chapters, position } = get();
       // Fix Medium #4: Validate chapters array before use
       if (!chapters || chapters.length === 0) {
         return null;
       }
-      const effectivePosition = isSeeking ? seekPosition : position;
+      // Read seeking state from seekingStore (single source of truth)
+      const seekState = useSeekingStore.getState();
+      const effectivePosition = seekState.isSeeking ? seekState.seekPosition : position;
       const index = findChapterIndex(chapters, effectivePosition);
       return chapters[index] || null;
     },
@@ -1979,7 +2059,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             await get().loadBook(currentBook, { startPosition: resumePosition, autoPlay: false });
 
             // Resume playing automatically since user was already listening
-            await audioService.play();
+            await get().play();
 
             set({ playbackError: null });
             playerLogger.info('[URL_EXPIRED] Session refresh successful');
@@ -2195,22 +2275,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // Don't auto-play next book - let user decide via sheet
           } else if (completionState.autoMarkFinished) {
             // Auto-mark as finished when prompt is disabled
+            // markBookFinished delegates to completionSheetStore which handles
+            // queue removal AND playNext — do NOT call playNext here too
             log('BOOK FINISHED - auto-marking as finished');
             get().markBookFinished(currentBook.id);
-            // Queue will play next if available (markBookFinished handles queue removal)
-            (async () => {
-              try {
-                const { useQueueStore } = await import('@/features/queue/stores/queueStore');
-                const queueStore = useQueueStore.getState();
-                const nextBook = await queueStore.playNext();
-                if (nextBook) {
-                  log('Loading next book from queue:', nextBook.id);
-                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
-                }
-              } catch (err) {
-                log('Queue check failed:', err);
-              }
-            })();
           } else {
             // Neither prompt nor auto-mark - just add to reading history and check queue
             const metadata = getBookMetadata(currentBook);
@@ -2293,6 +2361,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     markBookFinished: async (bookId?: string) => {
       const { currentBook, duration } = get();
+      const completionState = useCompletionSheetStore.getState();
+      const completionBook = completionState.completionSheetBook;
       const targetBookId = bookId || currentBook?.id;
 
       if (!targetBookId) {
@@ -2300,8 +2370,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         return;
       }
 
+      // Use the completion sheet's book if it matches (it's the book that finished,
+      // which may differ from currentBook if user already started a new book)
+      const bookForCompletion = completionBook?.id === targetBookId ? completionBook : currentBook;
+      const bookDuration = bookForCompletion?.media?.duration || duration;
+
       // Delegate to completionStore (single source of truth)
-      await useCompletionSheetStore.getState().markBookFinished(targetBookId, duration, currentBook);
+      await completionState.markBookFinished(targetBookId, bookDuration, bookForCompletion);
     },
 
     dismissCompletionSheet: () => {
