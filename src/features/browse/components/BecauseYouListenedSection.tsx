@@ -16,6 +16,7 @@ import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { CompleteBadgeOverlay } from '@/features/completion';
 import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useInProgressBooks } from '@/core/hooks/useUserBooks';
 
 // Carousel layout constants
 const PADDING = 16;
@@ -87,6 +88,20 @@ export function BecauseYouListenedSection({
 }: BecauseYouListenedSectionProps) {
   const { isFinished, hasBeenStarted } = useReadingHistory();
 
+  // FIX: Use SQLite lastPlayedAt for sorting instead of server's userMediaProgress.lastUpdate.
+  // Server timestamps get corrupted by bulk metadata updates (all books get same timestamp).
+  // SQLite lastPlayedAt is only set when the user actually plays a book.
+  const { data: sqliteInProgressBooks = [] } = useInProgressBooks();
+  const lastPlayedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const book of sqliteInProgressBooks) {
+      if (book.lastPlayedAt) {
+        map.set(book.bookId, new Date(book.lastPlayedAt).getTime());
+      }
+    }
+    return map;
+  }, [sqliteInProgressBooks]);
+
   // Find a recently listened book to base recommendations on
   const { sourceBook, recommendations } = useMemo(() => {
     if (!items?.length) return { sourceBook: null, recommendations: [] };
@@ -99,8 +114,9 @@ export function BecauseYouListenedSection({
         return progress > 0.1 || isFinished(item.id) || hasBeenStarted(item.id);
       })
       .sort((a, b) => {
-        const aTime = a.userMediaProgress?.lastUpdate || 0;
-        const bTime = b.userMediaProgress?.lastUpdate || 0;
+        // Prefer SQLite lastPlayedAt (real play timestamps), fall back to server lastUpdate
+        const aTime = lastPlayedMap.get(a.id) || a.userMediaProgress?.lastUpdate || 0;
+        const bTime = lastPlayedMap.get(b.id) || b.userMediaProgress?.lastUpdate || 0;
         return bTime - aTime;
       });
 
@@ -145,7 +161,7 @@ export function BecauseYouListenedSection({
       .slice(0, limit);
 
     return { sourceBook: source, recommendations: similar };
-  }, [items, limit, isFinished, hasBeenStarted, sourceIndex]);
+  }, [items, limit, isFinished, hasBeenStarted, sourceIndex, lastPlayedMap]);
 
   const handleBookPress = useCallback((bookId: string) => {
     onBookPress?.(bookId);

@@ -393,8 +393,18 @@ class BackgroundSyncService {
     const isCurrentBook = playerState.currentBook?.id === item.itemId;
 
     if (isActivelyPlaying || (isInTransition && isCurrentBook)) {
-      log(`  Skipping - user active with this book`);
-      // Don't remove from queue - will sync when user pauses
+      log(`  Skipping server sync - user active with this book`);
+      // FIX: Still save to SQLite locally so progress isn't lost if app crashes
+      // Only skip the server sync (will happen on pause)
+      await sqliteCache.setPlaybackProgress(item.itemId, item.position, item.duration, false);
+      playbackCache.setProgress(item.itemId, {
+        currentTime: item.position,
+        duration: item.duration,
+        progress: item.duration > 0 ? item.position / item.duration : 0,
+        updatedAt: Date.now(),
+      });
+      log(`  Saved locally: ${item.itemId} @ ${formatDuration(item.position)}`);
+      // Don't remove from queue - will sync to server when user pauses
       return false;
     }
 
@@ -566,7 +576,26 @@ class BackgroundSyncService {
       // Use IIFE to handle async in callback
       (async () => {
         try {
-          // Race forceSyncAll against timeout
+          // FIX: Save current playing position to SQLite FIRST (instant, guaranteed)
+          // This ensures progress is durably saved even if the 4s server timeout fires
+          try {
+            const { usePlayerStore } = require('../stores/playerStore');
+            const { currentBook, position, duration } = usePlayerStore.getState();
+            if (currentBook && position > 0) {
+              await sqliteCache.setPlaybackProgress(currentBook.id, position, duration, false);
+              playbackCache.setProgress(currentBook.id, {
+                currentTime: position,
+                duration,
+                progress: duration > 0 ? position / duration : 0,
+                updatedAt: Date.now(),
+              });
+              log(`Saved position locally before background sync: ${currentBook.id} @ ${formatDuration(position)}`);
+            }
+          } catch (localSaveError) {
+            audioLog.warn('Pre-background local save failed:', getErrorMessage(localSaveError));
+          }
+
+          // Race forceSyncAll against timeout (server sync - best effort)
           const timeoutPromise = new Promise<'timeout'>((resolve) =>
             setTimeout(() => resolve('timeout'), this.BACKGROUND_SYNC_TIMEOUT)
           );
@@ -577,7 +606,7 @@ class BackgroundSyncService {
           ]);
 
           if (result === 'timeout') {
-            audioLog.warn('Background sync timed out - some progress may not be saved');
+            audioLog.warn('Background server sync timed out - progress saved locally');
             trackEvent('background_sync_timeout', {
               queue_size: this.syncQueue.size,
               timeout_ms: this.BACKGROUND_SYNC_TIMEOUT,

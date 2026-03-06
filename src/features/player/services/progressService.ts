@@ -95,7 +95,7 @@ class ProgressService {
           currentTime: progress.position,
           duration: progress.duration,
           progress: progress.duration > 0 ? progress.position / progress.duration : 0,
-          isFinished: progress.position >= progress.duration * 0.95,
+          isFinished: progress.duration > 0 && progress.position >= progress.duration * 0.95,
           updatedAt: progress.updatedAt,
         };
         log('  Found in SQLite:');

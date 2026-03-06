@@ -410,8 +410,13 @@ export function SecretLibraryPlayerScreen() {
   const chapter = chapters[chapterIndex];
   const chapterStart = chapter?.start ?? 0;
   const chapterEnd = chapter?.end ?? 0;
-  const chapterPosition = chapter ? Math.max(0, position - chapterStart) : 0;
-  const chapterDuration = chapterEnd > chapterStart ? chapterEnd - chapterStart : 0;
+  const rawChapterPosition = chapter ? Math.max(0, position - chapterStart) : 0;
+  const rawChapterDuration = chapterEnd > chapterStart ? chapterEnd - chapterStart : 0;
+  // Fallback: when no real chapter data (0 chapters or single chapterless book),
+  // use book-level values so the time display isn't stuck at 00:00:00
+  const hasChapterData = rawChapterDuration > 0;
+  const chapterPosition = hasChapterData ? rawChapterPosition : position;
+  const chapterDuration = hasChapterData ? rawChapterDuration : duration;
   const chapterProgress = chapterDuration > 0 ? chapterPosition / chapterDuration : 0;
 
   // Book progress
@@ -1064,12 +1069,12 @@ export function SecretLibraryPlayerScreen() {
             <View style={styles.bookmarkMarkersContainer} pointerEvents="box-none">
               {bookmarks.map((bookmark) => {
                 const bmProgress = progressMode === 'book'
-                  ? bookmark.time / duration
-                  : chapter
-                    ? (bookmark.time - chapter.start) / chapterDuration
-                    : 0;
-                // Only show markers that are within the current view
-                if (bmProgress < 0 || bmProgress > 1) return null;
+                  ? (duration > 0 ? bookmark.time / duration : 0)
+                  : (chapterDuration > 0
+                    ? (bookmark.time - (chapter?.start ?? 0)) / chapterDuration
+                    : 0);
+                // Only show markers that are within the current view (also filter NaN)
+                if (!Number.isFinite(bmProgress) || bmProgress < 0 || bmProgress > 1) return null;
                 return (
                   <TouchableOpacity
                     key={bookmark.id}
