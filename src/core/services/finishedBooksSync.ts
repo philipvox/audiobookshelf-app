@@ -109,7 +109,7 @@ export const finishedBooksSync = {
               currentTime: existingTime,
               duration,
               progress: existingTime / (duration || 1),
-              updatedAt: Date.now(),
+              updatedAt: localUpdatedAt, // FIX: Use actual local timestamp, not Date.now()
             });
             useSpineCacheStore.getState().updateProgress(item.id, existingTime / (duration || 1));
             continue;
@@ -135,11 +135,14 @@ export const finishedBooksSync = {
           useSpineCacheStore.getState().updateProgress(item.id, serverProgress.progress);
 
           // Cache in memory for instant access (no SQLite read needed)
+          // FIX: Use serverProgress.lastUpdate instead of Date.now() to preserve
+          // real timestamps for conflict resolution. Using Date.now() made stale
+          // server data appear as the freshest, defeating position resolution.
           playbackCache.setProgress(item.id, {
             currentTime: serverProgress.currentTime,
             duration,
             progress: serverProgress.progress,
-            updatedAt: Date.now(),
+            updatedAt: serverUpdatedAt || Date.now(),
           });
 
           progressImported++;
@@ -206,17 +209,19 @@ export const finishedBooksSync = {
         if (serverProgress.currentTime > 0 || serverProgress.progress > 0) {
           itemsCached++;
           // ALWAYS cache in memory for instant access on book detail screens
+          // FIX: Use server timestamp instead of Date.now() to preserve real
+          // timestamps for conflict resolution during position sync
+          const serverUpdatedAt = serverProgress.lastUpdate || 0;
           playbackCache.setProgress(item.id, {
             currentTime: serverProgress.currentTime,
             duration,
             progress: serverProgress.progress,
-            updatedAt: Date.now(),
+            updatedAt: serverUpdatedAt || Date.now(),
           });
 
           // Check existing playback_progress (what the player reads from)
           const existingPlayback = await sqliteCache.getPlaybackProgress(item.id);
           const localUpdatedAt = existingPlayback?.updatedAt ? new Date(existingPlayback.updatedAt).getTime() : 0;
-          const serverUpdatedAt = serverProgress.lastUpdate || 0;
 
           // Only write to SQLite if server has more recent progress (by timestamp, not position)
           // This avoids overwriting intentional local rewinds with stale server data
@@ -399,9 +404,10 @@ export const finishedBooksSync = {
           // CRITICAL FIX: Close the session immediately after caching
           // This prevents multiple open sessions which causes progress corruption
           // (position from one book being applied to another)
+          // FIX: Don't send currentTime — closing with position bumps the server's
+          // lastUpdate timestamp, making stale data appear fresh during position resolution
           try {
             await apiClient.post(`/api/session/${session.id}/close`, {
-              currentTime: session.currentTime, // Keep current position
               timeListened: 0,
             });
             log.debug(`Closed prefetch session ${session.id} for ${item.id}`);

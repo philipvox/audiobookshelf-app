@@ -9,6 +9,64 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.176] - 2026-03-06
+
+### Fixed — Progress sync losing minutes of position
+
+- **Fix timestamp poisoning in server import** — `importRecentProgress()` and `importFromServer()` in finishedBooksSync were writing `Date.now()` as `updatedAt` when caching server progress in memory. This made stale server data appear as the freshest local data, causing position resolution to pick outdated positions. Now uses `serverProgress.lastUpdate` (the real server timestamp) so conflict resolution works correctly.
+- **Fix prefetch sessions bumping server timestamp** — `prefetchSessions()` was closing sessions with `currentTime: session.currentTime`, which bumped the server's `lastUpdate` timestamp on every app startup. This made stale server positions appear recent. Now closes sessions without sending position data.
+- **Fix background sync not saving locally before timeout** — When the app goes to background, `forceSyncAll()` races against a 4s timeout. If the timeout fires first, position is lost. Now saves current position to SQLite FIRST (instant, guaranteed), then attempts server sync as best-effort.
+- **Reduce progress save interval from 30s to 10s** — The periodic local save during playback now runs every 10 seconds instead of 30, reducing the maximum position loss window from 30s to 10s.
+- **Fix pause() not awaiting local save** — `pause()` was fire-and-forgetting both the local SQLite write and server sync. Now awaits the local `saveProgressLocal()` call before returning, ensuring position is durably saved when the user pauses.
+- **Fix active book skipping local save in sync** — `syncToServer()` was skipping the actively playing book entirely (no local save, no server sync). Now saves to SQLite locally even when skipping server sync, preventing progress loss if the app crashes during playback.
+
+### Files Modified
+- `src/core/services/finishedBooksSync.ts` — Use server timestamps, fix prefetch session close
+- `src/features/player/services/backgroundSyncService.ts` — Pre-background local save, active book local save
+- `src/features/player/stores/playerStore.ts` — 10s save interval, await local save on pause
+- `src/constants/version.ts` — v0.9.176
+
+---
+
+## [0.9.175] - 2026-03-05
+
+### Fixed — Player showing 00:00:00 for duration/time on some books
+
+- **Fix `isBookMedia` type guard failing for library cache items** — The ABS library items API (`/api/libraries/{id}/items`) returns `numTracks`, `numAudioFiles`, `numChapters` instead of `audioFiles[]` and `chapters[]`. The `isBookMedia()` type guard was checking `'audioFiles' in media`, which always returned `false` for library cache items. This caused duration to show as 0, tags to be unreadable, and other data access failures throughout the app. Changed to check `'duration' in media && !('episodes' in media)` which works for both full items and library list items. Fixed in 6 files with the broken check (playerStore, libraryCache, downloadManager, useHomeData, ContinueListeningHero, metadata.ts).
+- **Fix `viewBook` not setting duration/position** — When opening the player screen to view a book without playing it, the duration and position were not set, showing 00:00:00. Now reads duration from book data and progress from SQLite.
+- **Make `audioFiles` and `chapters` optional in `BookMedia` type** — These fields are not included in the library items list API response. Added `numTracks`, `numAudioFiles`, `numChapters` optional fields to match what the API returns. Added null guards where these fields are accessed after the type guard.
+
+### Files Modified
+- `src/core/types/media.ts` — Made audioFiles/chapters optional, added numTracks/numAudioFiles/numChapters
+- `src/shared/utils/metadata.ts` — Fixed isBookMedia type guard
+- `src/features/player/stores/playerStore.ts` — Fixed isBookMedia, viewBook sets duration/position
+- `src/core/cache/libraryCache.ts` — Fixed isBookMedia
+- `src/core/services/downloadManager.ts` — Fixed isBookMedia
+- `src/features/home/hooks/useHomeData.ts` — Fixed isBookMedia, null guards for chapters
+- `src/features/library/components/ContinueListeningHero.tsx` — Fixed isBookMedia (was checking 'chapters')
+- `src/constants/version.ts` — v0.9.175
+
+---
+
+## [0.9.174] - 2026-02-28
+
+### Fixed — Android Auto stability, cover art, and audio focus
+
+- **Simplify Android Auto to 2 tabs** — Removed Continue Listening, Downloads, Recently Added, Series, and Authors sections. Now shows only "Last Played" (quick resume) and "Library" (all books alphabetically with progress). Removed all folder/hierarchical browsing code (`PREFIX_FOLDER`, `createFolderItem()`, `isBrowsableSection`). (automotiveService.ts, AndroidAutoMediaBrowserService.kt)
+- **Fix browse sections not refreshing** — `notifyBrowseDataChanged()` was only notifying root, but Android Auto caches children at each level. Now notifies root + each section ID so cached book lists are refreshed. (AndroidAutoMediaBrowserService.kt)
+- **Fix cover art disappearing on every browse update** — `clearCoverArtCache()` was called on every browse data change, forcing re-download of all cover art and showing blank images during the reload. Cache is now preserved across browse updates. (AndroidAutoMediaBrowserService.kt)
+- **Fix audio focus thrashing** — The "already playing" play handler was calling `forceAndroidAutoSync()` which triggers `updatePlaybackState()` → `mediaSession.setPlaybackState()` → audio focus renegotiation. Removed the redundant sync; the subscription handles state updates. (automotiveService.ts)
+- **Fix redundant disk I/O** — `onLoadChildren()` was re-reading the browse JSON file from disk on every call (scrolling, expanding sections). Now uses cached data refreshed only by `notifyBrowseDataChanged()`. (AndroidAutoMediaBrowserService.kt)
+- **Add 5s timeout to cover art loading** — Glide `.get()` was blocking indefinitely if server is slow/unreachable, starving the thread pool. Now times out after 5 seconds. (AndroidAutoMediaBrowserService.kt)
+
+### Files Modified
+- `src/features/automotive/automotiveService.ts` — Simplified browse sections, fixed audio focus thrashing
+- `android/.../AndroidAutoMediaBrowserService.kt` — Section notifications, caching, Glide timeout
+- `plugins/android-auto/src/AndroidAutoMediaBrowserService.kt` — Mirror of Kotlin changes
+- `src/constants/version.ts` — v0.9.174
+
+---
+
 ## [0.9.173] - 2026-02-27
 
 ### Fixed — Smart rewind never worked on app restart

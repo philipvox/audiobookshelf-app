@@ -1486,7 +1486,7 @@ class AudioService {
       // If we're past the last track, stay on it
       if (i === this.tracks.length - 1) {
         targetTrackIndex = i;
-        positionInTrack = Math.min(globalPositionSec - track.startOffset, track.duration);
+        positionInTrack = Math.min(globalPositionSec - track.startOffset, Math.max(0, track.duration - 0.5));
       }
     }
 

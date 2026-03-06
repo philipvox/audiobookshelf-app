@@ -55,6 +55,7 @@ function getBookDuration(item: LibraryItem | null | undefined): number {
 }
 
 // Format duration as "Xh Ym" for display
+// Handles short books (< 1 min) by showing seconds
 function formatDuration(seconds: number): string {
   if (!seconds || seconds <= 0) return '';
   const hours = Math.floor(seconds / 3600);
@@ -62,7 +63,11 @@ function formatDuration(seconds: number): string {
   if (hours > 0) {
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   }
-  return `${minutes}m`;
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  // Very short content (< 1 min)
+  return `${Math.floor(seconds)}s`;
 }
 
 // Format time remaining as "Xh Ym left"
@@ -70,34 +75,43 @@ function formatTimeRemaining(durationSeconds: number, progress: number): string 
   if (!durationSeconds || durationSeconds <= 0 || progress >= 1) return '';
   const remaining = durationSeconds * (1 - progress);
   const hours = Math.floor(remaining / 3600);
-  const minutes = Math.floor((remaining % 3600) / 60);
+  const minutes = Math.ceil((remaining % 3600) / 60); // ceil so "45s left" shows as "1m left"
   if (hours > 0) {
     return minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`;
   }
-  return `${minutes}m left`;
+  if (minutes > 0) {
+    return `${minutes}m left`;
+  }
+  return 'almost done';
 }
 
 // Format subtitle with author and time info
 // For in-progress: "Author • 45% • 3h 21m left"
 // For not started: "Author • 12h 30m"
+// For finished: "Author • 12h 30m • Finished"
 function formatSubtitle(author: string, durationSeconds: number, progress?: number): string {
   const parts: string[] = [author];
+  const durationStr = formatDuration(durationSeconds);
 
-  if (progress !== undefined && progress > 0 && progress < 1) {
+  if (progress !== undefined && progress >= 0.95) {
+    // Finished: show total duration + finished badge
+    if (durationStr) {
+      parts.push(durationStr);
+    }
+    parts.push('Finished');
+  } else if (progress !== undefined && progress > 0) {
     // In-progress: show percentage and time remaining
     parts.push(`${Math.round(progress * 100)}%`);
     const remaining = formatTimeRemaining(durationSeconds, progress);
     if (remaining) {
       parts.push(remaining);
     }
-  } else if (progress === undefined || progress === 0) {
-    // Not started: show total duration
-    const durationStr = formatDuration(durationSeconds);
+  } else {
+    // Not started (progress === 0 or undefined): show total duration
     if (durationStr) {
       parts.push(durationStr);
     }
   }
-  // For finished (progress >= 1), just show author
 
   return parts.join(' • ');
 }
@@ -480,9 +494,11 @@ class AutomotiveService {
           // Guard: If already playing, don't call play() again. Calling play() when
           // already playing triggers audio focus renegotiation which causes the
           // play-stop-play-stop stuttering on Android Auto reconnection.
+          // DO NOT call forceAndroidAutoSync() here — it calls updatePlaybackState()
+          // which renegotiates audio focus, causing the same thrashing we're avoiding.
+          // The subscription-based syncState handles ongoing state sync.
           if (state.isPlaying) {
-            log('Already playing, skipping redundant play command — syncing state instead');
-            this.forceAndroidAutoSync();
+            log('Already playing, skipping redundant play command');
             break;
           }
 
@@ -1365,15 +1381,14 @@ class AutomotiveService {
 
   /**
    * Get browse sections for library display
-   * Streamlined for car use - focused on most useful categories
-   * Order: [Last Played if available], Continue Listening, Downloads, Library, Recently Added, Series, Authors
+   * Simplified for stability: Last Played + Library only.
+   * Fewer sections = fewer notifyChildrenChanged() calls = no flashing/crashing.
    */
   async getBrowseSections(): Promise<BrowseSection[]> {
     const sections: BrowseSection[] = [];
 
     try {
       const { useLibraryCache } = await import('@/core/cache/libraryCache');
-      // PERF: Use pre-imported player store
 
       const libraryItems = useLibraryCache.getState().items;
       const playerState = usePlayerStore.getState();
@@ -1392,56 +1407,7 @@ class AutomotiveService {
       }
 
       // =================================================================
-      // 1. CONTINUE LISTENING - Books with progress (primary action)
-      // =================================================================
-      const continueItems = libraryItems
-        .filter(item => {
-          const progress = item.userMediaProgress?.progress || 0;
-          return progress > 0 && progress < 1;
-        })
-        .sort((a, b) => {
-          const aTime = a.userMediaProgress?.lastUpdate || 0;
-          const bTime = b.userMediaProgress?.lastUpdate || 0;
-          return bTime - aTime;
-        })
-        .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item, { showProgress: true }));
-
-      if (continueItems.length > 0) {
-        sections.push({
-          id: 'continue-listening',
-          title: 'Continue Listening',
-          items: continueItems,
-        });
-      }
-
-      // =================================================================
-      // 2. DOWNLOADS - Offline books (critical for car use)
-      // =================================================================
-      const { downloadManager } = await import('@/core/services/downloadManager');
-      const FileSystem = await import('expo-file-system/legacy');
-      const allDownloads = await downloadManager.getAllDownloads();
-      const completedDownloads = allDownloads.filter(d => d.status === 'complete');
-
-      const downloadedItems: BrowseItem[] = [];
-      for (const download of completedDownloads.slice(0, this.config.maxListItems)) {
-        const item = libraryItems.find(i => i.id === download.itemId);
-        if (item) {
-          const localCoverPath = `${FileSystem.documentDirectory}audiobooks/${item.id}/cover.jpg`;
-          downloadedItems.push(this.createBrowseItem(item, { localCoverPath }));
-        }
-      }
-
-      if (downloadedItems.length > 0) {
-        sections.push({
-          id: 'downloads',
-          title: 'Downloads',
-          items: downloadedItems,
-        });
-      }
-
-      // =================================================================
-      // 3. LIBRARY - All books alphabetically (simplified name)
+      // LIBRARY - All books alphabetically
       // =================================================================
       const libraryBookItems = [...libraryItems]
         .sort((a, b) => {
@@ -1449,128 +1415,13 @@ class AutomotiveService {
           const bTitle = getBookMetadata(b)?.title || '';
           return aTitle.localeCompare(bTitle);
         })
-        .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item));
+        .map(item => this.createBrowseItem(item, { showProgress: true }));
 
       if (libraryBookItems.length > 0) {
         sections.push({
           id: 'library',
           title: 'Library',
           items: libraryBookItems,
-        });
-      }
-
-      // =================================================================
-      // 4. RECENTLY ADDED - New content discovery
-      // =================================================================
-      const recentlyAddedItems = [...libraryItems]
-        .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
-        .slice(0, this.config.maxListItems)
-        .map(item => this.createBrowseItem(item));
-
-      if (recentlyAddedItems.length > 0) {
-        sections.push({
-          id: 'recently-added',
-          title: 'Recently Added',
-          items: recentlyAddedItems,
-        });
-      }
-
-      // =================================================================
-      // 5. SERIES - Hierarchical: Series → Books (useful for sequential listening)
-      // =================================================================
-      const seriesMap = new Map<string, Array<{ item: LibraryItem; sequence: number }>>();
-      for (const item of libraryItems) {
-        const metadata = getBookMetadata(item);
-        // Check for series info in either format
-        const seriesName = metadata?.seriesName || metadata?.series?.[0]?.name;
-        const seriesSequence = metadata?.series?.[0]?.sequence || 1;
-
-        if (seriesName) {
-          const existing = seriesMap.get(seriesName) || [];
-          existing.push({ item, sequence: typeof seriesSequence === 'string' ? parseFloat(seriesSequence) : seriesSequence });
-          seriesMap.set(seriesName, existing);
-        }
-      }
-
-      // Sort series by name and create browse items
-      const seriesFolders = Array.from(seriesMap.entries())
-        .filter(([_, books]) => books.length > 1) // Only show series with multiple books
-        .sort(([a], [b]) => a.localeCompare(b))
-        .slice(0, this.config.maxListItems)
-        .map(([seriesName, books]): BrowseItem => {
-          // Sort books by sequence within series
-          const sortedBooks = books.sort((a, b) => a.sequence - b.sequence);
-
-          return {
-            id: `series:${seriesName}`,
-            title: seriesName,
-            subtitle: `${books.length} book${books.length !== 1 ? 's' : ''}`,
-            isPlayable: false,
-            isBrowsable: true,
-            itemCount: books.length,
-            children: sortedBooks.map(({ item, sequence }) => {
-              const browseItem = this.createBrowseItem(item, { sequence });
-              // Override subtitle to show sequence
-              const metadata = getBookMetadata(item);
-              browseItem.subtitle = `Book ${sequence}${metadata?.authorName ? ` • ${metadata.authorName}` : ''}`;
-              return browseItem;
-            }),
-          };
-        });
-
-      if (seriesFolders.length > 0) {
-        sections.push({
-          id: 'series',
-          title: 'Series',
-          items: seriesFolders,
-          isBrowsableSection: true,
-        });
-      }
-
-      // =================================================================
-      // 6. AUTHORS - Hierarchical: Authors → Books (popular browse method)
-      // =================================================================
-      const authorMap = new Map<string, LibraryItem[]>();
-      for (const item of libraryItems) {
-        const metadata = getBookMetadata(item);
-        const authorName = metadata?.authorName || metadata?.authors?.[0]?.name;
-        if (authorName) {
-          const existing = authorMap.get(authorName) || [];
-          existing.push(item);
-          authorMap.set(authorName, existing);
-        }
-      }
-
-      // Sort authors by name and create browse items
-      const authorFolders = Array.from(authorMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .slice(0, this.config.maxListItems)
-        .map(([authorName, books]): BrowseItem => {
-          // Sort books by title within author
-          const sortedBooks = books.sort((a, b) => {
-            const aTitle = getBookMetadata(a)?.title || '';
-            const bTitle = getBookMetadata(b)?.title || '';
-            return aTitle.localeCompare(bTitle);
-          });
-
-          return {
-            id: `author:${authorName}`,
-            title: authorName,
-            subtitle: `${books.length} book${books.length !== 1 ? 's' : ''}`,
-            isPlayable: false,
-            isBrowsable: true,
-            itemCount: books.length,
-            children: sortedBooks.map(item => this.createBrowseItem(item)),
-          };
-        });
-
-      if (authorFolders.length > 0) {
-        sections.push({
-          id: 'authors',
-          title: 'Authors',
-          items: authorFolders,
-          isBrowsableSection: true,
         });
       }
 
