@@ -196,6 +196,7 @@ export const finishedBooksSync = {
 
       let itemsWithProgress = 0;
       let itemsCached = 0;
+      let itemsSkippedInvalid = 0;
 
       for (const item of items) {
         // Get progress from the user's mediaProgress map (not from item)
@@ -205,17 +206,29 @@ export const finishedBooksSync = {
         itemsWithProgress++;
         const duration = getBookDuration(item);
 
-        // Import progress if server has any
-        if (serverProgress.currentTime > 0 || serverProgress.progress > 0) {
+        // Validate progress data from server (matching importRecentProgress pattern)
+        const hasValidCurrentTime = typeof serverProgress.currentTime === 'number'
+          && isFinite(serverProgress.currentTime)
+          && serverProgress.currentTime >= 0;
+        const hasValidProgress = typeof serverProgress.progress === 'number'
+          && isFinite(serverProgress.progress)
+          && serverProgress.progress >= 0 && serverProgress.progress <= 1;
+
+        // Import progress if server has any valid data
+        if ((hasValidCurrentTime && serverProgress.currentTime > 0) || (hasValidProgress && serverProgress.progress > 0)) {
+          // Skip if currentTime is invalid (would violate SQLite NOT NULL constraint)
+          if (!hasValidCurrentTime) {
+            itemsSkippedInvalid++;
+            continue;
+          }
+
           itemsCached++;
           // ALWAYS cache in memory for instant access on book detail screens
-          // FIX: Use server timestamp instead of Date.now() to preserve real
-          // timestamps for conflict resolution during position sync
           const serverUpdatedAt = serverProgress.lastUpdate || 0;
-          playbackCache.setProgress(item.id, {
+          playbackCache.setProgressSilent(item.id, {
             currentTime: serverProgress.currentTime,
             duration,
-            progress: serverProgress.progress,
+            progress: hasValidProgress ? serverProgress.progress : (duration > 0 ? serverProgress.currentTime / duration : 0),
             updatedAt: serverUpdatedAt || Date.now(),
           });
 
@@ -266,6 +279,9 @@ export const finishedBooksSync = {
       }
 
       // Log cache results
+      if (itemsSkippedInvalid > 0) {
+        log.warn(`Skipped ${itemsSkippedInvalid} items with invalid progress data (null/undefined currentTime)`);
+      }
       log.info(`Items with progress data: ${itemsWithProgress}, cached in memory: ${itemsCached}`);
 
       if (imported > 0 || progressImported > 0) {
@@ -314,11 +330,12 @@ export const finishedBooksSync = {
    * Preload the most recently played book into the player store.
    * This allows the UI to show correct progress before user hits play.
    * Called during app startup after progress is synced.
+   *
+   * @param cachedItems - Pre-fetched items to avoid redundant API calls
    */
-  async preloadMostRecentBook(): Promise<boolean> {
+  async preloadMostRecentBook(cachedItems?: LibraryItem[]): Promise<boolean> {
     try {
-      // Get items in progress from server
-      const items = await apiClient.getItemsInProgress();
+      const items = cachedItems || await apiClient.getItemsInProgress();
       if (items.length === 0) {
         log.info('No recent books to preload');
         return false;
@@ -349,13 +366,14 @@ export const finishedBooksSync = {
    *
    * IMPORTANT: Sessions are closed immediately after caching to prevent
    * multiple open sessions on the server (which causes progress corruption).
+   *
+   * @param cachedItems - Pre-fetched items to avoid redundant API calls
    */
-  async prefetchSessions(): Promise<number> {
+  async prefetchSessions(cachedItems?: LibraryItem[]): Promise<number> {
     let prefetched = 0;
 
     try {
-      // Get items in progress from server (returns recently played books)
-      const items = await apiClient.getItemsInProgress();
+      const items = cachedItems || await apiClient.getItemsInProgress();
       const recentItems = items.slice(0, 5); // Only prefetch top 5
 
       log.info(`Pre-fetching sessions for ${recentItems.length} recent books...`);
