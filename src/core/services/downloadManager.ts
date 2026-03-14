@@ -179,6 +179,10 @@ class DownloadManager {
     // Resume any paused downloads
     await this.resumePausedDownloads();
 
+    // Ensure network monitor is initialized before subscribing
+    // (prevents race condition where canDownload returns wrong value from uninitialized state)
+    await networkMonitor.init();
+
     // Subscribe to network changes (AFTER stuck downloads processed)
     this.previousCanDownload = networkMonitor.canDownload();
     this.networkUnsubscribe = networkMonitor.subscribe((state) => {
@@ -1129,14 +1133,14 @@ class DownloadManager {
       }
 
       // Fetch full item details from API to get audioFiles
-      // The cached item may not have audioFiles included
+      // Must use expanded=1 (not include=expanded) to get duration/size/tracks
       log(`Fetching full item details from API...`);
-      const fullItem = await apiClient.getItem(itemId);
+      const fullItem = await apiClient.getItemExpanded(itemId);
 
-      // Get audio files to download
-      const audioFiles: AudioFileInfo[] = isBookMedia(fullItem.media)
-        ? ((fullItem.media.audioFiles || []) as AudioFileInfo[])
-        : [];
+      // Get audio files — access directly instead of via isBookMedia type guard,
+      // since the non-expanded API response lacks 'duration' in media
+      const audioFiles: AudioFileInfo[] =
+        ((fullItem.media as any)?.audioFiles || []) as AudioFileInfo[];
       log(`Audio files found: ${audioFiles.length}`);
 
       if (audioFiles.length === 0) {
