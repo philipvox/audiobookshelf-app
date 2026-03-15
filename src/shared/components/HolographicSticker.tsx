@@ -77,12 +77,17 @@ interface HolographicStickerProps {
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
+let gyroscopeIntervalConfigured = false;
+
 export function HolographicSticker({ source, size, onPress, style }: HolographicStickerProps) {
   const rotateX = useSharedValue(0);
   const rotateY = useSharedValue(0);
 
   useEffect(() => {
-    Gyroscope.setUpdateInterval(32);
+    if (!gyroscopeIntervalConfigured) {
+      Gyroscope.setUpdateInterval(32);
+      gyroscopeIntervalConfigured = true;
+    }
 
     let prev = Date.now();
     const subscription = Gyroscope.addListener((data) => {
@@ -105,7 +110,7 @@ export function HolographicSticker({ source, size, onPress, style }: Holographic
     return () => {
       subscription.remove();
     };
-  }, [rotateX, rotateY]);
+  }, []);
 
   // Subtle 3D perspective tilt
   const containerStyle = useAnimatedStyle(() => ({

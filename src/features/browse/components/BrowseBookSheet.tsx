@@ -132,9 +132,9 @@ export function BrowseBookSheet({ book, visible, onClose, onViewDetails }: Brows
 
   const metadata = getMetadata(book);
   const title = metadata?.title || 'Unknown';
-  const author = (metadata as any)?.authorName || 'Unknown Author';
-  const narrator = (metadata as any)?.narratorName || '';
-  const progress = book.userMediaProgress?.progress || 0;
+  const author = (metadata as any)?.authorName || (metadata as any)?.authors?.[0]?.name || 'Unknown Author';
+  const narrator = (metadata as any)?.narratorName || (metadata as any)?.narrators?.[0] || '';
+  const progress = (book as any)?.mediaProgress?.progress || book.userMediaProgress?.progress || 0;
   const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 300, height: 300 });
 
   const translateY = slideAnim.interpolate({

@@ -558,13 +558,20 @@ export type ContentWarningCategory =
  * Parse content warnings from DNA tags.
  * Format: dna:cw:violence, dna:cw:sexual-content, etc.
  */
+const VALID_CW_CATEGORIES: readonly ContentWarningCategory[] = [
+  'violence', 'sexual-content', 'substance-abuse', 'mental-health',
+  'death', 'trauma', 'abuse', 'language',
+];
+
 export function parseContentWarnings(tags: string[] | undefined): ContentWarningCategory[] {
   if (!tags || tags.length === 0) return [];
 
   return tags
     .filter(t => t.toLowerCase().startsWith('dna:cw:'))
-    .map(t => t.split(':')[2]?.toLowerCase() as ContentWarningCategory)
-    .filter(Boolean);
+    .map(t => t.split(':')[2]?.toLowerCase())
+    .filter((v): v is ContentWarningCategory =>
+      !!v && (VALID_CW_CATEGORIES as readonly string[]).includes(v)
+    );
 }
 
 // ============================================================================

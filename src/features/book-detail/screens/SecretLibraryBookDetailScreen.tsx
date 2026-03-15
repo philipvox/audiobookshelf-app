@@ -416,9 +416,11 @@ export function SecretLibraryBookDetailScreen() {
     const tap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDelay(300)
-      .onEnd((e) => {
+      .onEnd((e, success) => {
         'worklet';
-        runOnJS(handleDoubleTap)(e.x, e.y);
+        if (success) {
+          runOnJS(handleDoubleTap)(e.x, e.y);
+        }
       });
     // Tell RNGH this Tap can coexist with the series Pan gesture
     if (panGestureRef) {

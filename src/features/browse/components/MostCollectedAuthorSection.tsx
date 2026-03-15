@@ -126,7 +126,7 @@ export const MostCollectedAuthorSection = React.memo(function MostCollectedAutho
         for (const [prevSeq, prevBookId] of sMap) {
           if (prevSeq >= seq) continue;
           const prev = progressMap.get(prevBookId);
-          if (!prev || (prev.progress < 0.05 && !prev.isFinished)) return false;
+          if (!prev || (!prev.isFinished && (prev.progress ?? 0) < 0.95)) return false;
         }
       }
       return true;

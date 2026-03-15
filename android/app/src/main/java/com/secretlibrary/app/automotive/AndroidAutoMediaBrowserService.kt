@@ -137,6 +137,8 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
             if (exoSession != null) {
                 sessionToken = exoSession.sessionToken
                 Log.d(TAG, "Got ExoPlayer's MediaSession token on retry")
+            } else {
+                Log.w(TAG, "ExoPlayer still not initialized — Android Auto may not show playback controls until audio starts")
             }
         }
 
@@ -228,7 +230,7 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
         val id = item.getString("id")
         val title = item.getString("title")
         val subtitle = item.optString("subtitle", "")
-        val imageUrl: String? = if (item.has("imageUrl")) item.getString("imageUrl") else null
+        val imageUrl: String? = if (item.has("imageUrl") && !item.isNull("imageUrl")) item.getString("imageUrl") else null
         val isPlayable = item.optBoolean("isPlayable", true)
         val isBrowsable = item.optBoolean("isBrowsable", false)
         val progress = item.optDouble("progress", 0.0)
