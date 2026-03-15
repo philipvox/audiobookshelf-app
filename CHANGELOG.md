@@ -9,6 +9,52 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.211] - 2026-03-14
+
+### Added — ExoPlayer Migration (Android Native Audio)
+
+**Architecture overhaul:** Moved Android audio engine from JavaScript (expo-av) to a native Foreground Service with ExoPlayer (AndroidX Media3). JS becomes a thin control surface. iOS remains unchanged on expo-av.
+
+**New plugin:** `plugins/exo-player/`
+- `AudioPlaybackService.kt` — Native service wrapping ExoPlayer with single MediaSession
+- `ExoPlayerModule.kt` — React Native bridge (JS <-> Native commands + events)
+- `ExoPlayerPackage.kt` — ReactPackage registration
+- `withExoPlayer.js` — Expo config plugin (copies files, registers package, adds Media3 deps)
+
+**Key improvements:**
+- Single ExoPlayer + single MediaSession = single source of truth for playback
+- Native audio focus management (no more JS-mediated focus fighting)
+- Native headphone unplug detection (replaces audio-noisy-module on Android)
+- Native lock screen/notification controls (replaces expo-media-control on Android)
+- Native stuck detection and position updates (replaces JS polling)
+- ExoPlayer playlist API handles multi-track audiobooks natively
+- Android Auto shares ExoPlayer's MediaSession — no more duplicate sessions
+
+**Platform split:**
+- `audioService.android.ts` — Android path using NativeModules.ExoPlayerModule
+- `audioService.ts` — iOS path unchanged (expo-av + expo-media-control)
+- Metro's platform-specific resolution handles routing automatically
+
+**Android Auto changes:**
+- `AndroidAutoMediaBrowserService.kt` — now reads MediaSession token from AudioPlaybackService instead of creating its own
+- `AndroidAutoModule.kt` — `updatePlaybackState()`, `updateMetadata()`, `updateMetadataExtended()` are now no-ops (ExoPlayer owns state)
+- Browse tree logic (onGetRoot, onLoadChildren, writeBrowseData) unchanged
+
+### Files Modified
+- **NEW** `plugins/exo-player/withExoPlayer.js`
+- **NEW** `plugins/exo-player/src/AudioPlaybackService.kt`
+- **NEW** `plugins/exo-player/src/ExoPlayerModule.kt`
+- **NEW** `plugins/exo-player/src/ExoPlayerPackage.kt`
+- **NEW** `src/features/player/services/audioService.android.ts`
+- `app.json` — added withExoPlayer plugin
+- `android/app/build.gradle` — added Media3 dependencies
+- `android/app/src/main/java/.../MainApplication.kt` — registered ExoPlayerPackage
+- `plugins/android-auto/src/AndroidAutoMediaBrowserService.kt` — share ExoPlayer's MediaSession
+- `plugins/android-auto/src/AndroidAutoModule.kt` — deprecated playback/metadata methods (no-op)
+- `src/constants/version.ts` — version bump
+
+---
+
 ## [0.9.210] - 2026-03-14
 
 ### Fixed — CodeRabbit Review Issues
