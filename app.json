@@ -70,6 +70,7 @@
     },
     "plugins": [
       "./plugins/android-auto/withAndroidAuto",
+      "./plugins/exo-player/withExoPlayer",
       "expo-splash-screen",
       [
         "expo-audio",
