@@ -19,16 +19,20 @@ interface SectionHeaderProps {
   count?: number;
   /** VIEW ALL callback — shows "VIEW ALL ›" link */
   onViewAll?: () => void;
+  /** Override heading color (for dark backgrounds) */
+  headingColor?: string;
+  /** Override label color (for dark backgrounds) */
+  labelColor?: string;
 }
 
-export const SectionHeader = React.memo(function SectionHeader({ label, heading, count, onViewAll }: SectionHeaderProps) {
+export const SectionHeader = React.memo(function SectionHeader({ label, heading, count, onViewAll, headingColor, labelColor }: SectionHeaderProps) {
   const colors = useSecretLibraryColors();
 
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
         <View style={styles.labelRow}>
-          <Text style={[styles.label, { color: colors.gray }]}>{label}</Text>
+          <Text style={[styles.label, { color: labelColor || colors.gray }]}>{label}</Text>
           {count !== undefined && (
             <Text style={[styles.count, { color: colors.black }]}> · {count}</Text>
           )}
@@ -40,7 +44,7 @@ export const SectionHeader = React.memo(function SectionHeader({ label, heading,
         )}
       </View>
       {heading && (
-        <Text style={[styles.heading, { color: colors.black }]}>{heading}</Text>
+        <Text style={[styles.heading, { color: headingColor || colors.black }]}>{heading}</Text>
       )}
     </View>
   );

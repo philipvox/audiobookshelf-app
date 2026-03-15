@@ -37,6 +37,9 @@ export function BrowseTabBar() {
             key={key}
             style={styles.tab}
             onPress={() => handlePress(key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={label}
           >
             <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
               {label}

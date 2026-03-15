@@ -9,6 +9,52 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.212] - 2026-03-14
+
+### Fixed — CodeRabbit Review Issues
+
+- **AudioPlaybackService.kt**: Converted from plain class to actual Android Foreground Service (extends `Service`, `onStartCommand`, `startForeground`, `onDestroy`). Background playback now persists properly.
+- **audioService.android.ts**: Fixed `getIsPlaying()` always returning false; now tracks last known state from native events. Fixed `currentUrl` not updating on track transitions. Fixed `cleanup()` not resetting setup state.
+- **HolographicSticker.tsx**: Made `Gyroscope.setUpdateInterval()` a one-time call. Removed shared values from `useEffect` dependency array.
+- **AndroidAutoMediaBrowserService.kt**: Added null/`"null"` check for artwork URLs. Added warning when ExoPlayer session unavailable.
+- **BrowseScreen**: Wired `clearFeelingCache()` into refresh flow. Added error handling for refresh failures.
+- **BrowseTabBar.tsx**: Added accessibility role and state props for screen readers.
+- **BrowseBookSheet.tsx**: Fixed author/narrator fallback to use `authors[0].name`/`narrators[0]`. Added `mediaProgress` alias for progress.
+- **LibraryMoodChips.tsx**: Active chip no longer disappears when below threshold.
+- **SeriesCompletionShelf.tsx**: Subscribe to `progressMap` state directly instead of stable `getProgress` function. Fixed heading color on dark background.
+- **MostCollectedAuthorSection.tsx**: Require finished prerequisite (>= 0.95 progress) before surfacing sequels.
+- **WhatsTheVibeSection.tsx**: Deduplicate vibes per item to prevent double-counting.
+- **parseBookDNA.ts**: Validate content warning categories against allowed list.
+- **SecretLibraryBookDetailScreen.tsx**: Added `success` guard to double-tap gesture `onEnd`.
+- **LibraryScreen.tsx**: Memoized `activePlaylistId` with `useMemo` to prevent unnecessary callback recreation.
+- **withExoPlayer.js**: Added manifest service declaration for AudioPlaybackService. Added `androidx.media` dependency. Added fail-fast warning when MainApplication regex doesn't match.
+- **SectionHeader.tsx**: Added `headingColor` and `labelColor` override props for dark backgrounds.
+
+### Files Modified
+- `plugins/exo-player/src/AudioPlaybackService.kt` — Foreground Service conversion
+- `plugins/exo-player/src/ExoPlayerModule.kt` — Start service via Intent
+- `plugins/exo-player/withExoPlayer.js` — Manifest + gradle fixes
+- `plugins/android-auto/src/AndroidAutoMediaBrowserService.kt` — Null handling
+- `android/app/src/main/AndroidManifest.xml` — Service declaration
+- `android/app/build.gradle` — androidx.media dependency
+- `android/app/src/main/java/.../exoplayer/*` — Copies of plugin files
+- `android/app/src/main/java/.../automotive/AndroidAutoMediaBrowserService.kt`
+- `src/features/player/services/audioService.android.ts`
+- `src/shared/components/HolographicSticker.tsx`
+- `src/features/browse/screens/SecretLibraryBrowseScreen.tsx`
+- `src/features/browse/components/BrowseTabBar.tsx`
+- `src/features/browse/components/BrowseBookSheet.tsx`
+- `src/features/browse/components/LibraryMoodChips.tsx`
+- `src/features/browse/components/SeriesCompletionShelf.tsx`
+- `src/features/browse/components/SectionHeader.tsx`
+- `src/features/browse/components/RecentlyAddedSection.tsx`
+- `src/features/browse/components/MostCollectedAuthorSection.tsx`
+- `src/features/browse/components/WhatsTheVibeSection.tsx`
+- `src/shared/utils/bookDNA/parseBookDNA.ts`
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx`
+- `src/features/home/screens/LibraryScreen.tsx`
+- `src/constants/version.ts`
+
 ## [0.9.211] - 2026-03-14
 
 ### Added — ExoPlayer Migration (Android Native Audio)

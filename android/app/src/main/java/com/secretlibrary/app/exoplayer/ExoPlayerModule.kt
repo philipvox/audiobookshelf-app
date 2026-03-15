@@ -1,6 +1,8 @@
 package com.secretlibrary.app.exoplayer
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -117,14 +119,21 @@ class ExoPlayerModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * Initialize the native playback service.
+     * Starts AudioPlaybackService as a foreground service.
      * Must be called before any other methods.
      */
     @ReactMethod
     fun initialize(promise: Promise) {
         try {
-            val service = AudioPlaybackService.instance ?: AudioPlaybackService()
-            service.initialize(reactContext.applicationContext)
-            promise.resolve(true)
+            AudioPlaybackService.start(reactContext.applicationContext)
+            // Wait briefly for service to initialize
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (AudioPlaybackService.instance != null) {
+                    promise.resolve(true)
+                } else {
+                    promise.reject("INIT_ERROR", "Service did not start in time")
+                }
+            }, 500)
         } catch (e: Exception) {
             Log.e(TAG, "Initialize failed", e)
             promise.reject("INIT_ERROR", e.message, e)

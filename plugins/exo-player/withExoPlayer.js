@@ -43,10 +43,33 @@ function withExoPlayerManifest(config) {
       (s) => s.$?.['android:name'] === '.exoplayer.AudioPlaybackService'
     );
 
-    // Note: AudioPlaybackService is NOT a real Android Service class — it's a
-    // plain Kotlin class managed by ExoPlayerModule. No manifest entry needed.
-    // The foreground service permission is already in the manifest from app.json.
-    // If we later convert it to a real Service, uncomment and add manifest entry here.
+    if (!hasService) {
+      application.service.push({
+        $: {
+          'android:name': '.exoplayer.AudioPlaybackService',
+          'android:exported': 'false',
+          'android:foregroundServiceType': 'mediaPlayback',
+        },
+      });
+    }
+
+    // Ensure FOREGROUND_SERVICE permission
+    if (!manifest.manifest['uses-permission']) {
+      manifest.manifest['uses-permission'] = [];
+    }
+    const perms = manifest.manifest['uses-permission'];
+    const hasFgPerm = perms.some(
+      (p) => p.$?.['android:name'] === 'android.permission.FOREGROUND_SERVICE'
+    );
+    if (!hasFgPerm) {
+      perms.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE' } });
+    }
+    const hasFgMediaPerm = perms.some(
+      (p) => p.$?.['android:name'] === 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK'
+    );
+    if (!hasFgMediaPerm) {
+      perms.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' } });
+    }
 
     return config;
   });
@@ -126,6 +149,7 @@ function withExoPlayerPackageRegistration(config) {
 
       // Add package registration if missing
       if (!content.includes('ExoPlayerPackage()')) {
+        const before = content;
         content = content.replace(
           /PackageList\(this\)\.packages\.apply\s*\{([^}]*)\}/,
           (match, inner) => {
@@ -136,6 +160,9 @@ function withExoPlayerPackageRegistration(config) {
             return `PackageList(this).packages.apply {\n              add(ExoPlayerPackage())\n            }`;
           }
         );
+        if (content === before) {
+          console.warn('[withExoPlayer] Could not find PackageList block in MainApplication.kt — ExoPlayerPackage not registered');
+        }
       }
 
       fs.writeFileSync(mainAppPath, content, 'utf8');
@@ -174,6 +201,7 @@ function withExoPlayerGradleDeps(config) {
     implementation "androidx.media3:media3-exoplayer:1.5.1"
     implementation "androidx.media3:media3-session:1.5.1"
     implementation "androidx.media3:media3-ui:1.5.1"
+    implementation "androidx.media:media:1.7.0"
 `;
 
       // Find the dependencies block and insert before its closing brace

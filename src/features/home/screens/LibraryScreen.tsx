@@ -1059,9 +1059,10 @@ export function LibraryScreen() {
   }, [filteredBooks, sortMode, sortDirection, isDataReady]);
 
   // Extract active playlist ID when in playlist content mode
-  const activePlaylistId = contentMode.startsWith('playlist:')
-    ? contentMode.replace('playlist:', '')
-    : undefined;
+  const activePlaylistId = useMemo(
+    () => contentMode.startsWith('playlist:') ? contentMode.slice('playlist:'.length) : undefined,
+    [contentMode]
+  );
 
   // Handlers
   const handleBookPress = useCallback((book: LibraryBook | BookSpineVerticalData) => {

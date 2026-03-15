@@ -20,6 +20,7 @@ import { secretLibraryColors as staticColors, secretLibraryDarkColors } from '@/
 import { useSecretLibraryColors } from '@/shared/theme';
 import { useLibraryCache } from '@/core/cache';
 import { useSpineCacheStatus } from '@/features/home';
+import { clearFeelingCache } from '@/shared/utils/bookDNA/feelingScoring';
 import { logger } from '@/shared/utils/logger';
 
 // Central filter hook — filters library once, sections receive pre-filtered items
@@ -94,7 +95,10 @@ export function SecretLibraryBrowseScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    refreshCache().finally(() => setIsRefreshing(false));
+    clearFeelingCache();
+    refreshCache()
+      .catch((e) => logger.warn('Browse refresh failed:', e))
+      .finally(() => setIsRefreshing(false));
   }, [refreshCache]);
 
   // Navigation handlers

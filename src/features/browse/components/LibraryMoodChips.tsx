@@ -42,9 +42,17 @@ export const LibraryMoodChips = React.memo(function LibraryMoodChips({ items, on
     return filterByFeeling(items, activeChip).length;
   }, [items, activeChip]);
 
-  const activeLabel = moods.find((m) => m.key === activeChip)?.label || '';
+  // Ensure the active chip is always visible even if it drops below threshold
+  const visibleMoods = useMemo(() => {
+    if (!activeChip || moods.some((m) => m.key === activeChip)) return moods;
+    // Add back the active chip with the real count
+    const count = filterByFeeling(items, activeChip).length;
+    return [...moods, { key: activeChip, label: activeChip, count }];
+  }, [moods, activeChip, items]);
 
-  if (moods.length === 0) return null;
+  const activeLabel = visibleMoods.find((m) => m.key === activeChip)?.label || '';
+
+  if (visibleMoods.length === 0) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.white }]}>
@@ -60,7 +68,7 @@ export const LibraryMoodChips = React.memo(function LibraryMoodChips({ items, on
       )}
 
       <View style={styles.chipsWrap}>
-        {moods.map(({ key, label, count }) => {
+        {visibleMoods.map(({ key, label, count }) => {
           const isActive = activeChip === key;
           return (
             <Pressable

@@ -4,13 +4,16 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -40,7 +43,7 @@ import java.util.concurrent.TimeUnit
  * JS becomes a thin control surface via ExoPlayerModule.
  * Android Auto, lock screen, and notification all share this MediaSession.
  */
-class AudioPlaybackService {
+class AudioPlaybackService : Service() {
 
     companion object {
         private const val TAG = "AudioPlaybackService"
@@ -60,6 +63,18 @@ class AudioPlaybackService {
         @Volatile
         var instance: AudioPlaybackService? = null
             private set
+
+        /**
+         * Start the service from ExoPlayerModule.
+         */
+        fun start(context: Context) {
+            val intent = Intent(context, AudioPlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
     }
 
     data class TrackInfo(
@@ -74,7 +89,6 @@ class AudioPlaybackService {
     var mediaSession: MediaSessionCompat? = null
         private set
     private var media3Session: MediaSession? = null
-    private var context: Context? = null
 
     // Track management
     private var tracks: List<TrackInfo> = emptyList()
@@ -123,12 +137,38 @@ class AudioPlaybackService {
         PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
         PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand")
+
+        // Initialize on first start
+        if (!isInitialized) {
+            initialize()
+        }
+
+        // Build and start foreground notification
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        Log.d(TAG, "Service onDestroy")
+        cleanup()
+        super.onDestroy()
+    }
+
     /**
-     * Initialize the playback service. Called once from ExoPlayerModule.
+     * Initialize ExoPlayer and MediaSession. Called once from onStartCommand.
      */
-    fun initialize(context: Context) {
+    private fun initialize() {
         if (isInitialized) return
-        this.context = context.applicationContext
         instance = this
 
         Log.d(TAG, "Initializing AudioPlaybackService")
@@ -137,7 +177,7 @@ class AudioPlaybackService {
         createNotificationChannel()
 
         // Create ExoPlayer
-        val player = ExoPlayer.Builder(context.applicationContext)
+        val player = ExoPlayer.Builder(applicationContext)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
@@ -152,7 +192,7 @@ class AudioPlaybackService {
         exoPlayer = player
 
         // Create legacy MediaSessionCompat (for Android Auto compatibility)
-        mediaSession = MediaSessionCompat(context.applicationContext, TAG).apply {
+        mediaSession = MediaSessionCompat(applicationContext, TAG).apply {
             setFlags(
                 MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                 MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
@@ -162,7 +202,7 @@ class AudioPlaybackService {
         }
 
         // Create Media3 MediaSession (wraps ExoPlayer, auto-syncs state)
-        media3Session = MediaSession.Builder(context.applicationContext, player)
+        media3Session = MediaSession.Builder(applicationContext, player)
             .build()
 
         // Set up ExoPlayer listeners
@@ -173,6 +213,40 @@ class AudioPlaybackService {
 
         isInitialized = true
         Log.d(TAG, "AudioPlaybackService initialized")
+    }
+
+    /**
+     * Build the persistent media notification for the foreground service.
+     */
+    private fun buildNotification(): Notification {
+        val launchIntent = applicationContext.packageManager
+            .getLaunchIntentForPackage(applicationContext.packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext, 0, launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(currentTitle.ifEmpty { "Secret Library" })
+            .setContentText(currentAuthor.ifEmpty { "Ready to play" })
+            .setSmallIcon(applicationContext.applicationInfo.icon)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        val session = mediaSession
+        if (session != null) {
+            builder.setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(session.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+        }
+
+        currentArtworkBitmap?.let { builder.setLargeIcon(it) }
+
+        return builder.build()
     }
 
     /**
@@ -354,6 +428,7 @@ class AudioPlaybackService {
         }
 
         updateMediaSessionMetadata()
+        updateNotification()
     }
 
     fun cleanup() {
@@ -377,6 +452,23 @@ class AudioPlaybackService {
 
         isInitialized = false
         instance = null
+
+        // Stop the foreground service
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /**
+     * Update the foreground notification with current metadata.
+     */
+    private fun updateNotification() {
+        if (!isInitialized) return
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.notify(NOTIFICATION_ID, buildNotification())
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update notification: ${e.message}")
+        }
     }
 
     // ── Private helpers ──────────────────────────────────────────────
@@ -391,7 +483,7 @@ class AudioPlaybackService {
                 description = "Controls for audio playback"
                 setShowBadge(false)
             }
-            val nm = context?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             nm?.createNotificationChannel(channel)
         }
     }
@@ -441,20 +533,24 @@ class AudioPlaybackService {
     }
 
     private fun loadArtworkAsync(url: String) {
-        val ctx = context ?: return
+        val savedUrl = url
         serviceScope.launch {
             try {
                 val bitmap = withContext(Dispatchers.IO) {
-                    Glide.with(ctx)
+                    Glide.with(applicationContext)
                         .asBitmap()
                         .load(url)
                         .apply(glideOptions)
                         .submit()
                         .get(5, TimeUnit.SECONDS)
                 }
-                currentArtworkBitmap = bitmap
-                updateMediaSessionMetadata()
-                Log.d(TAG, "Artwork loaded: ${bitmap.width}x${bitmap.height}")
+                // Re-check URL hasn't changed during async load
+                if (currentArtworkUrl == savedUrl) {
+                    currentArtworkBitmap = bitmap
+                    updateMediaSessionMetadata()
+                    updateNotification()
+                    Log.d(TAG, "Artwork loaded: ${bitmap.width}x${bitmap.height}")
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to load artwork: ${e.message}")
             }

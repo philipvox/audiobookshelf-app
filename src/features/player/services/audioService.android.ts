@@ -71,6 +71,7 @@ class AndroidAudioService {
   private currentTrackIndex = 0;
   private totalDuration = 0;
   private lastKnownGoodPosition = 0;
+  private lastIsPlaying = false;
   private metadata: { title?: string; artist?: string; artwork?: string } = {};
 
   // Scrubbing state (kept in JS since it's UI-driven)
@@ -142,6 +143,9 @@ class AndroidAudioService {
         didJustFinish: boolean;
         isStuck: boolean;
       }) => {
+        // Track isPlaying for sync reads
+        this.lastIsPlaying = state.isPlaying;
+
         // Skip position updates during scrubbing (same as iOS path)
         if (!this.isScrubbing) {
           this.lastKnownGoodPosition = state.position;
@@ -164,6 +168,10 @@ class AndroidAudioService {
       'ExoPlayerTrackChange',
       (data: { trackIndex: number; totalTracks: number; title?: string; startOffset?: number }) => {
         this.currentTrackIndex = data.trackIndex;
+        // Keep currentUrl aligned with native track transitions
+        if (data.trackIndex < this.tracks.length) {
+          this.currentUrl = this.tracks[data.trackIndex].url;
+        }
         log(`Track changed → ${data.trackIndex + 1}/${data.totalTracks}: ${data.title}`);
       }
     );
@@ -263,8 +271,7 @@ class AndroidAudioService {
   }
 
   getIsPlaying(): boolean {
-    // We rely on the last status callback. For sync read, check native.
-    return false; // Will be updated by status callback
+    return this.lastIsPlaying;
   }
 
   getCurrentUrl(): string | null {
@@ -559,6 +566,9 @@ class AndroidAudioService {
   async cleanup(): Promise<void> {
     this.removeEventListeners();
     await this.unloadAudio();
+    this.isSetup = false;
+    this.setupPromise = null;
+    this.lastIsPlaying = false;
   }
 }
 
