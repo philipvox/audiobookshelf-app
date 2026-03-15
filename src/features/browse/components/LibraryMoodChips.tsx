@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
@@ -42,20 +42,33 @@ export const LibraryMoodChips = React.memo(function LibraryMoodChips({ items, on
     return filterByFeeling(items, activeChip).length;
   }, [items, activeChip]);
 
-  const activeLabel = moods.find((m) => m.key === activeChip)?.label || '';
+  // Ensure the active chip is always visible even if it drops below threshold
+  const visibleMoods = useMemo(() => {
+    if (!activeChip || moods.some((m) => m.key === activeChip)) return moods;
+    // Add back the active chip with the real count
+    const count = filterByFeeling(items, activeChip).length;
+    return [...moods, { key: activeChip, label: activeChip, count }];
+  }, [moods, activeChip, items]);
 
-  if (moods.length === 0) return null;
+  const activeLabel = visibleMoods.find((m) => m.key === activeChip)?.label || '';
+
+  if (visibleMoods.length === 0) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.white }]}>
       <SectionHeader label="What are you in the mood for" />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {moods.map(({ key, label, count }) => {
+      {/* Active chip result summary — shown under header, before chips */}
+      {activeChip && activeCount > 0 && (
+        <View style={styles.resultSummary}>
+          <Text style={[styles.resultText, { color: colors.black }]}>
+            SHOWING {activeLabel} TITLES FROM YOUR LIBRARY · {activeCount} BOOKS MATCH
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.chipsWrap}>
+        {visibleMoods.map(({ key, label, count }) => {
           const isActive = activeChip === key;
           return (
             <Pressable
@@ -80,16 +93,7 @@ export const LibraryMoodChips = React.memo(function LibraryMoodChips({ items, on
             </Pressable>
           );
         })}
-      </ScrollView>
-
-      {/* Active chip result summary */}
-      {activeChip && activeCount > 0 && (
-        <View style={styles.resultSummary}>
-          <Text style={[styles.resultText, { color: colors.black }]}>
-            SHOWING {activeLabel} TITLES FROM YOUR LIBRARY · {activeCount} BOOKS MATCH
-          </Text>
-        </View>
-      )}
+      </View>
     </View>
   );
 });
@@ -98,7 +102,9 @@ const styles = StyleSheet.create({
   container: {
     paddingBottom: scale(16),
   },
-  scrollContent: {
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 24,
     gap: scale(8),
   },
@@ -124,7 +130,7 @@ const styles = StyleSheet.create({
   },
   resultSummary: {
     paddingHorizontal: 24,
-    paddingTop: scale(12),
+    paddingBottom: scale(12),
   },
   resultText: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,

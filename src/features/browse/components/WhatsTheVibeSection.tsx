@@ -64,7 +64,7 @@ export function WhatsTheVibeSection({ items, onVibePress }: WhatsTheVibeSectionP
 
     for (const item of items) {
       const tags = (item.media?.metadata as any)?.tags || (item.media as any)?.tags;
-      const vibes = parseCompVibes(tags);
+      const vibes = [...new Set(parseCompVibes(tags))];
       for (const vibe of vibes) {
         // Only track quality vibes
         if (!isQualityVibe(vibe)) continue;
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     paddingBottom: scale(20),
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     gap: scale(12),
   },
 });

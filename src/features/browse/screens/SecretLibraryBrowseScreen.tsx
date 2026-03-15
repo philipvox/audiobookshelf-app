@@ -5,17 +5,22 @@
  * personalized recommendations, discovery, and curated collections.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
+  Animated,
   StyleSheet,
   StatusBar,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { scale } from '@/shared/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { secretLibraryColors as staticColors } from '@/shared/theme/secretLibrary';
+import { secretLibraryColors as staticColors, secretLibraryDarkColors } from '@/shared/theme/secretLibrary';
 import { useSecretLibraryColors } from '@/shared/theme';
 import { useLibraryCache } from '@/core/cache';
 import { useSpineCacheStatus } from '@/features/home';
+import { clearFeelingCache } from '@/shared/utils/bookDNA/feelingScoring';
 import { logger } from '@/shared/utils/logger';
 
 // Central filter hook — filters library once, sections receive pre-filtered items
@@ -31,11 +36,22 @@ import { useNavigationWithLoading, useAutoHideLoading } from '@/shared/hooks';
 
 // Performance timing
 const PERF_TAG = '[Browse Perf]';
+const NAV_HEIGHT = scale(44);
 
 export function SecretLibraryBrowseScreen() {
   const [mounted, setMounted] = useState(false);
   const [tagFilterSheetVisible, setTagFilterSheetVisible] = useState(false);
   const [sheetBookId, setSheetBookId] = useState<string | null>(null);
+  const [heroCoverUrl, setHeroCoverUrl] = useState<string | null>(null);
+  const navBgOpacity = useRef(new Animated.Value(0)).current;
+
+  const handleScrollPastHero = useCallback((pastHero: boolean) => {
+    Animated.timing(navBgOpacity, {
+      toValue: pastHero ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [navBgOpacity]);
 
   const insets = useSafeAreaInsets();
   const { navigateWithLoading, navigation } = useNavigationWithLoading();
@@ -79,12 +95,15 @@ export function SecretLibraryBrowseScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    refreshCache().finally(() => setIsRefreshing(false));
+    clearFeelingCache();
+    refreshCache()
+      .catch((e) => logger.warn('Browse refresh failed:', e))
+      .finally(() => setIsRefreshing(false));
   }, [refreshCache]);
 
   // Navigation handlers
   const handleClose = useCallback(() => {
-    navigation.goBack();
+    navigation.navigate('Main', { screen: 'HomeTab' });
   }, [navigation]);
 
   const handleLogoPress = useCallback(() => {
@@ -93,6 +112,10 @@ export function SecretLibraryBrowseScreen() {
 
   const handleLogoLongPress = useCallback(() => {
     navigation.navigate('Main', { screen: 'ProfileTab' });
+  }, [navigation]);
+
+  const handleSearchPress = useCallback(() => {
+    navigation.navigate('Search');
   }, [navigation]);
 
   const handleBookPress = useCallback((bookId: string) => {
@@ -176,26 +199,36 @@ export function SecretLibraryBrowseScreen() {
     });
   }, [navigation]);
 
+  const headerHeight = insets.top + NAV_HEIGHT;
+
   return (
-    <View style={[styles.container, { backgroundColor: staticColors.black }]}>
-      <StatusBar barStyle="light-content" backgroundColor={staticColors.black} />
+    <View style={[styles.container, { backgroundColor: secretLibraryDarkColors.white }]}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* Fixed blurred cover background — stays in place during pull-to-refresh */}
+      {heroCoverUrl && (
+        <View style={styles.blurBackground} pointerEvents="none">
+          <Image
+            source={{ uri: heroCoverUrl }}
+            blurRadius={205}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.85)', secretLibraryDarkColors.white]}
+            locations={[0, 0.2, 0.75, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      )}
 
       {/* Loading overlay for initial load */}
       <ScreenLoadingOverlay visible={!mounted} />
 
-      {/* Safe area for top nav */}
-      <View style={[styles.safeAreaTop, { height: insets.top, backgroundColor: staticColors.black }]} />
-
-      {/* Top Navigation */}
-      <BrowseTopNav
-        onClose={handleClose}
-        onLogoPress={handleLogoPress}
-        onLogoLongPress={handleLogoLongPress}
-        onTagFilterPress={handleTagFilterPress}
-      />
-
-      {/* Unified Browse Content */}
+      {/* Unified Browse Content — fills entire screen, hero extends behind nav */}
       <BrowseContent
+        headerHeight={headerHeight}
+        onCoverUrl={setHeroCoverUrl}
         filteredItems={filteredItems}
         isRefreshing={isRefreshing}
         onRefresh={handleRefresh}
@@ -209,7 +242,28 @@ export function SecretLibraryBrowseScreen() {
         onVibePress={handleVibePress}
         onBrowseItemPress={handleBrowseItemPress}
         onMoodPress={handleMoodPress}
+        onScrollPastHero={handleScrollPastHero}
       />
+
+      {/* Top Navigation — floats over content */}
+      <View style={[styles.navOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
+        {/* Animated background with feathered bottom */}
+        <Animated.View style={[styles.navBg, { opacity: navBgOpacity }]} pointerEvents="none">
+          <LinearGradient
+            colors={[secretLibraryDarkColors.white, secretLibraryDarkColors.white, 'transparent']}
+            locations={[0, 0.7, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+        <BrowseTopNav
+          onClose={handleClose}
+          onLogoPress={handleLogoPress}
+          onLogoLongPress={handleLogoLongPress}
+          onTagFilterPress={handleTagFilterPress}
+          onSearchPress={handleSearchPress}
+          onViewAllBooks={handleViewAllBooks}
+        />
+      </View>
 
       {/* Tag Filter Sheet */}
       <TagFilterSheet
@@ -231,9 +285,28 @@ export function SecretLibraryBrowseScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: staticColors.black,
+    backgroundColor: secretLibraryDarkColors.white,
   },
-  safeAreaTop: {
-    backgroundColor: staticColors.black,
+  blurBackground: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+    zIndex: 0,
+  },
+  navOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  navBg: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: -scale(60),
   },
 });

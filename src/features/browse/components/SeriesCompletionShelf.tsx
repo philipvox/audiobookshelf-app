@@ -44,7 +44,7 @@ function getBookDuration(item: LibraryItem): number {
 
 function toSpineData(item: LibraryItem, cachedData?: { backgroundColor?: string; textColor?: string }): BookSpineVerticalData {
   const metadata = getMetadata(item);
-  const progress = item.userMediaProgress?.progress || 0;
+  const progress = (item as any)?.mediaProgress?.progress || item.userMediaProgress?.progress || 0;
 
   const base: BookSpineVerticalData = {
     id: item.id,
@@ -71,20 +71,20 @@ export const SeriesCompletionShelf = React.memo(function SeriesCompletionShelf({
   onBookLongPress,
   onSeriesPress,
 }: SeriesCompletionShelfProps) {
-  const getProgress = useProgressStore((s) => s.getProgress);
+  const progressMap = useProgressStore((s) => s.progressMap);
 
   const { finishedCount, seriesTotal } = useMemo(() => {
     let finished = 0;
 
     for (const book of books) {
-      const progress = getProgress(book.id);
+      const progress = progressMap[book.id];
       if (progress?.isFinished || (progress?.progress ?? 0) >= 0.95) {
         finished++;
       }
     }
 
     return { finishedCount: finished, seriesTotal: totalBooks ?? books.length };
-  }, [books, getProgress, totalBooks]);
+  }, [books, progressMap, totalBooks]);
 
   const handleSpinePress = useCallback((spine: BookSpineVerticalData) => {
     onBookPress(spine.id);
@@ -108,6 +108,8 @@ export const SeriesCompletionShelf = React.memo(function SeriesCompletionShelf({
         label={`${finishedCount} of ${seriesTotal} books`}
         heading={seriesName}
         onViewAll={() => onSeriesPress(seriesName)}
+        headingColor={colors.white}
+        labelColor={colors.white}
       />
 
       <ShelfRow
