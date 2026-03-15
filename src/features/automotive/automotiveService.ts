@@ -166,6 +166,9 @@ class AutomotiveService {
   private isCommandExecuting: boolean = false;
   private commandQueue: Array<{ command: string; param?: string }> = [];
 
+  // Callback set by setupPlayerStateSync to notify command cooldown
+  private _notifyCommandExecuted: (() => void) | null = null;
+
   // Initialization lock to prevent concurrent init from both Android Auto and main app
   private isInitializing: boolean = false;
   private initPromise: Promise<void> | null = null;
@@ -449,6 +452,10 @@ class AutomotiveService {
 
     try {
       await this.executeCommand(event);
+      // Signal command cooldown to suppress syncState subscription
+      // This prevents the subscription from re-syncing state that AA already
+      // knows about, which would renegotiate audio focus and cause stuttering
+      this._notifyCommandExecuted?.();
     } finally {
       this.isCommandExecuting = false;
 
@@ -530,14 +537,11 @@ class AutomotiveService {
       case 'skipNext':
       case 'skipToNext':
         {
-          // PERF: Use pre-imported store
           const state = usePlayerStore.getState();
-          const wasPlaying = state.isPlaying;
           await state.nextChapter();
-          // Ensure playback continues if it was playing
-          if (wasPlaying && !audioService.getIsPlaying()) {
-            audioService.play();  // Fire-and-forget
-          }
+          // Trust the native player to resume after seek (per playerStore convention).
+          // Calling audioService.play() directly bypasses playerStore state,
+          // causing isPlaying mismatch that makes AA show paused while audio plays.
           log('Skip next (next chapter) executed');
         }
         break;
@@ -545,14 +549,8 @@ class AutomotiveService {
       case 'skipPrevious':
       case 'skipToPrevious':
         {
-          // PERF: Use pre-imported store
           const state = usePlayerStore.getState();
-          const wasPlaying = state.isPlaying;
           await state.prevChapter();
-          // Ensure playback continues if it was playing
-          if (wasPlaying && !audioService.getIsPlaying()) {
-            audioService.play();  // Fire-and-forget
-          }
           log('Skip previous (previous chapter) executed');
         }
         break;
@@ -567,23 +565,9 @@ class AutomotiveService {
         {
           // PERF: Use pre-imported store
           const state = usePlayerStore.getState();
-          const oldPosition = state.position || 0;
           await state.skipForward(30);
           log('Fast forward 30s executed');
-
-          // FIX: Immediate position feedback to Android Auto
-          const { AndroidAutoModule } = NativeModules;
-          if (AndroidAutoModule) {
-            const newPosition = usePlayerStore.getState().position || oldPosition + 30;
-            const isPlaying = usePlayerStore.getState().isPlaying;
-            const speed = state.playbackRate || 1.0;
-            try {
-              AndroidAutoModule.updatePlaybackState(isPlaying, newPosition, speed);
-              log('Immediate position sent to Android Auto:', newPosition);
-            } catch (err) {
-              log('Failed to send position update:', err);
-            }
-          }
+          // Position feedback handled by syncState subscription (>10s jump detection)
         }
         break;
 
@@ -591,23 +575,9 @@ class AutomotiveService {
         {
           // PERF: Use pre-imported store
           const state = usePlayerStore.getState();
-          const oldPosition = state.position || 0;
           await state.skipBackward(30);
           log('Rewind 30s executed');
-
-          // FIX: Immediate position feedback to Android Auto
-          const { AndroidAutoModule } = NativeModules;
-          if (AndroidAutoModule) {
-            const newPosition = usePlayerStore.getState().position || Math.max(0, oldPosition - 30);
-            const isPlaying = usePlayerStore.getState().isPlaying;
-            const speed = state.playbackRate || 1.0;
-            try {
-              AndroidAutoModule.updatePlaybackState(isPlaying, newPosition, speed);
-              log('Immediate position sent to Android Auto:', newPosition);
-            } catch (err) {
-              log('Failed to send position update:', err);
-            }
-          }
+          // Position feedback handled by syncState subscription (>10s jump detection)
         }
         break;
 
@@ -620,24 +590,13 @@ class AutomotiveService {
             const wasPlaying = state.isPlaying;
             const positionSec = position / 1000; // Convert ms to seconds
             await state.seekTo(positionSec);
-            // Ensure playback continues if it was playing
+            // FIX: Resume via playerStore.play() instead of audioService.play()
+            // Direct audioService.play() bypasses playerStore state causing isPlaying mismatch
             if (wasPlaying && !audioService.getIsPlaying()) {
-              audioService.play();  // Fire-and-forget
+              await usePlayerStore.getState().play();
             }
-
-            // FIX: Immediate position feedback to Android Auto after seek
-            const { AndroidAutoModule } = NativeModules;
-            if (AndroidAutoModule) {
-              const newPosition = usePlayerStore.getState().position || positionSec;
-              const isPlaying = usePlayerStore.getState().isPlaying;
-              const speed = state.playbackRate || 1.0;
-              try {
-                AndroidAutoModule.updatePlaybackState(isPlaying, newPosition, speed);
-                log('Immediate seek position sent to Android Auto:', newPosition);
-              } catch (err) {
-                log('Failed to send seek position update:', err);
-              }
-            }
+            log('SeekTo executed:', positionSec);
+            // Position feedback handled by syncState subscription (>10s jump detection)
           }
         }
         break;
@@ -745,8 +704,8 @@ class AutomotiveService {
 
       // Try to add bookmark via the bookmark store/API
       try {
-        const { useBookmarkStore } = await import('@/features/bookmarks/stores/bookmarkStore');
-        await useBookmarkStore.getState().addBookmark({
+        const { useBookmarksStore } = await import('@/features/player/stores/bookmarksStore');
+        await useBookmarksStore.getState().addBookmark({
           libraryItemId: bookId,
           time: position,
           title: `Bookmark at ${this.formatTime(position)}`,
@@ -890,21 +849,46 @@ class AutomotiveService {
       let prevBookId = '';
       let prevChapterTitle: string | null = null;
 
-      // Helper to sync playback state to Android Auto
+      // Debounce timer to collapse rapid state changes into one native call.
+      // This prevents audio focus renegotiation storms when play/pause/seek
+      // fire multiple store updates in quick succession.
+      let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+      const SYNC_DEBOUNCE_MS = 300;
+
+      // Command cooldown — after handling an AA command, suppress syncState
+      // for a brief period to prevent the subscription from immediately
+      // re-syncing state that AA already knows about (which renegotiates
+      // audio focus and can cause play-then-pause stuttering).
+      let lastCommandTime = 0;
+      const COMMAND_COOLDOWN_MS = 800;
+
+      // Expose a way for executeCommand to signal a command was just processed
+      this._notifyCommandExecuted = () => {
+        lastCommandTime = Date.now();
+      };
+
+      // Helper to sync playback state to Android Auto (debounced)
       const syncPlaybackState = (isPlaying: boolean, position: number, speed: number) => {
-        try {
-          const result = AndroidAutoModule.updatePlaybackState(
-            isPlaying,
-            position, // seconds - Kotlin converts to ms
-            speed
-          );
-          // Handle both Promise and non-Promise returns
-          if (result && typeof result.catch === 'function') {
-            result.catch((err: any) => log('Failed to update playback state:', err));
-          }
-        } catch (err) {
-          log('Failed to update playback state:', err);
+        // Clear any pending debounced sync
+        if (syncDebounceTimer) {
+          clearTimeout(syncDebounceTimer);
         }
+        syncDebounceTimer = setTimeout(() => {
+          syncDebounceTimer = null;
+          try {
+            const result = AndroidAutoModule.updatePlaybackState(
+              isPlaying,
+              position, // seconds - Kotlin converts to ms
+              speed
+            );
+            // Handle both Promise and non-Promise returns
+            if (result && typeof result.catch === 'function') {
+              result.catch((err: any) => log('Failed to update playback state:', err));
+            }
+          } catch (err) {
+            log('Failed to update playback state:', err);
+          }
+        }, SYNC_DEBOUNCE_MS);
       };
 
       // Helper to sync current state to Android Auto
@@ -925,6 +909,15 @@ class AutomotiveService {
         // in setState(), so we only need to sync on:
         // 1. Play/pause changes
         // 2. Significant position jumps (seeks, chapter changes)
+
+        // Skip sync during command cooldown — the command handler already updated
+        // the native state, and re-syncing immediately causes audio focus fights
+        if (Date.now() - lastCommandTime < COMMAND_COOLDOWN_MS) {
+          // Still track state so we don't miss changes after cooldown
+          prevIsPlaying = isPlaying;
+          prevPosition = position;
+          return;
+        }
 
         // Sync on play/pause changes
         if (isPlaying !== prevIsPlaying) {
@@ -1261,6 +1254,11 @@ class AutomotiveService {
       // Update playback state with current position
       try {
         AndroidAutoModule.updatePlaybackState(isPlaying, position, speed);
+        // Notify the sync subscription to suppress for cooldown period
+        // (prevents audio focus thrashing from duplicate updatePlaybackState calls)
+        if (this._notifyCommandExecuted) {
+          this._notifyCommandExecuted();
+        }
       } catch (err) {
         log('Failed to force playback state sync:', err);
       }
