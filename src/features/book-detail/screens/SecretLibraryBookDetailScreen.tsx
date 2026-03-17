@@ -19,15 +19,40 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { PlayIcon, PauseIcon } from '@/features/player/components/PlayerIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 
 import { useBookDetails } from '../hooks/useBookDetails';
-import { ErrorView, BookDetailSkeleton, Loading, SkullRefreshControl, TopNav, TopNavCloseIcon, TopNavShareIcon } from '@/shared/components';
+import { ErrorView, Loading, SkullRefreshControl, TopNav, TopNavBackIcon, TopNavShareIcon } from '@/shared/components';
 import { useCoverUrl, useLibraryCache } from '@/core/cache';
-import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
+import { usePlayerStore, useCurrentChapterIndex } from '@/features/player';
+import { useShallow } from 'zustand/react/shallow';
+import { useQueueStore, useQueue } from '@/features/queue/stores/queueStore';
+import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
+import { downloadManager } from '@/core/services/downloadManager';
+import { useNormalizedChapters } from '@/shared/hooks';
+import { haptics } from '@/core/native/haptics';
+import { scale, useSecretLibraryColors } from '@/shared/theme';
+import { userApi, apiClient } from '@/core/api';
+import { useAuth } from '@/core/auth';
+import { sqliteCache } from '@/core/services/sqliteCache';
+import { playbackCache } from '@/core/services/playbackCache';
+import { useIsFinished, useMarkFinished, useBookProgress, useBookRating, useSetBookRating } from '@/core/hooks/useUserBooks';
+import { finishedBooksSync } from '@/core/services/finishedBooksSync';
+import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
+import { logger } from '@/shared/utils/logger';
+import {
+  secretLibraryColors as staticColors,
+} from '@/shared/theme/secretLibrary';
+import { useSpineCacheStore, BookSpineVertical, BookSpineVerticalData, useBookRowLayout, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
+import { SeriesSwipeContainer, SeriesNavigationArrows, useSeriesNavigation } from '../components/SeriesSwipeContainer';
+import { CoverStarStickers } from '../components/CoverStarStickers';
+import { useStarPositionStore, STAR_HIT_RADIUS } from '../stores/starPositionStore';
 
 // Extended metadata with narrator fields
 interface ExtendedBookMetadata extends BookMetadata {
@@ -46,27 +71,6 @@ function getBookMetadata(book: LibraryItem | null | undefined): ExtendedBookMeta
 function getBookDuration(book: LibraryItem | null | undefined): number {
   return book?.media?.duration || 0;
 }
-import { usePlayerStore, useCurrentChapterIndex } from '@/features/player';
-import { useQueueStore, useQueue } from '@/features/queue/stores/queueStore';
-import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
-import { downloadManager } from '@/core/services/downloadManager';
-import { useNormalizedChapters } from '@/shared/hooks';
-import { haptics } from '@/core/native/haptics';
-import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { userApi, apiClient } from '@/core/api';
-import { useAuth } from '@/core/auth';
-import { sqliteCache } from '@/core/services/sqliteCache';
-import { playbackCache } from '@/core/services/playbackCache';
-import { useIsFinished, useMarkFinished, useBookProgress } from '@/core/hooks/useUserBooks';
-import { finishedBooksSync } from '@/core/services/finishedBooksSync';
-import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
-import { logger } from '@/shared/utils/logger';
-import {
-  secretLibraryColors as staticColors,
-  secretLibraryFonts as fonts,
-} from '@/shared/theme/secretLibrary';
-import { useSpineCacheStore, BookSpineVertical, BookSpineVerticalData, useBookRowLayout, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
-import { SeriesSwipeContainer, SeriesNavigationArrows } from '../components/SeriesSwipeContainer';
 
 // =============================================================================
 // TYPES
@@ -124,7 +128,7 @@ const ResetIcon = ({ color = '#000', size = 14 }: IconProps) => (
   </Svg>
 );
 
-const BookmarkIcon = ({ color = '#000', size = 14, filled = false }: IconProps & { filled?: boolean }) => (
+const _BookmarkIcon = ({ color = '#000', size = 14, filled = false }: IconProps & { filled?: boolean }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={2}>
     <Path d="M5 4C5 2.89543 5.89543 2 7 2H17C18.1046 2 19 2.89543 19 4V21C19 21.3746 18.7907 21.7178 18.4576 21.8892C18.1245 22.0606 17.7236 22.0315 17.4188 21.8137L12 17.8619L6.58124 21.8137C6.27642 22.0315 5.87549 22.0606 5.54242 21.8892C5.20935 21.7178 5 21.3746 5 21V4Z" />
   </Svg>
@@ -341,7 +345,15 @@ export function SecretLibraryBookDetailScreen() {
   const coverPlaceholderUrl = useCoverUrl(bookId, { thumb: true });
 
   // Player state
-  const { loadBook, currentBook, isPlaying, play, pause, position, togglePlayer } = usePlayerStore();
+  const { loadBook, currentBook, isPlaying, play, pause, position, togglePlayer } = usePlayerStore(useShallow((s) => ({
+    loadBook: s.loadBook,
+    currentBook: s.currentBook,
+    isPlaying: s.isPlaying,
+    play: s.play,
+    pause: s.pause,
+    position: s.position,
+    togglePlayer: s.togglePlayer,
+  })));
   const isThisBookPlaying = currentBook?.id === bookId && isPlaying;
   const isThisBookLoaded = currentBook?.id === bookId;
 
@@ -357,9 +369,74 @@ export function SecretLibraryBookDetailScreen() {
 
   // Progress and finished state (single source of truth: SQLite)
   const { isFinished: isMarkedFinished } = useIsFinished(bookId);
-  const { progress: localProgress, currentTime: localCurrentTime, duration: localDuration } = useBookProgress(bookId);
+  const { progress: localProgress, currentTime: localCurrentTime, duration: _localDuration } = useBookProgress(bookId);
   const markFinished = useMarkFinished();
   const [isMarkingProgress, setIsMarkingProgress] = useState(false);
+
+  // Gold star stickers (double-tap to place, double-tap on star to remove)
+  const rawStars = useStarPositionStore((s) => s.positions[bookId]);
+  const stars = Array.isArray(rawStars) ? rawStars : [];
+  const addStar = useStarPositionStore((s) => s.addStar);
+  const removeStarAt = useStarPositionStore((s) => s.removeStarAt);
+  const setBookRating = useSetBookRating();
+  const _bookRating = useBookRating(bookId);
+  // Double-tap handler (called from JS thread via runOnJS)
+  const handleDoubleTap = useCallback((tapX: number, tapY: number) => {
+    const coverWidth = scale(320);
+    const coverHeight = scale(320);
+    const xPct = (tapX / coverWidth) * 100;
+    const yPct = (tapY / coverHeight) * 100;
+
+    const currentStars = useStarPositionStore.getState().positions[bookId] || [];
+    let hitIndex = -1;
+    let hitDist = Infinity;
+    for (let i = 0; i < currentStars.length; i++) {
+      const dx = currentStars[i].x - xPct;
+      const dy = currentStars[i].y - yPct;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < STAR_HIT_RADIUS && dist < hitDist) {
+        hitIndex = i;
+        hitDist = dist;
+      }
+    }
+
+    if (hitIndex >= 0) {
+      // Remove star — rating = remaining count (0-4)
+      removeStarAt(bookId, hitIndex);
+      const remaining = currentStars.length - 1;
+      setBookRating.mutate({ bookId, rating: remaining });
+      haptics.selection();
+    } else if (currentStars.length < 5) {
+      // Add star — rating = new count (1-5), max 5
+      const rotation = (Math.random() - 0.5) * 30;
+      const variant = Math.floor(Math.random() * 4);
+      addStar(bookId, { x: xPct, y: yPct, rotation, variant });
+      setBookRating.mutate({ bookId, rating: currentStars.length + 1 });
+      haptics.impact();
+    }
+  }, [bookId, addStar, removeStarAt, setBookRating]);
+
+  // Get Pan gesture ref from SeriesSwipeContainer so Tap can declare simultaneity
+  const seriesNav = useSeriesNavigation();
+  const panGestureRef = seriesNav?.panGestureRef;
+
+  // Double-tap gesture — declares simultaneity with the outer Pan gesture
+  const doubleTapGesture = useMemo(() => {
+    const tap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDelay(300)
+      .onEnd((e, success) => {
+        'worklet';
+        if (success) {
+          runOnJS(handleDoubleTap)(e.x, e.y);
+        }
+      });
+    // Tell RNGH this Tap can coexist with the series Pan gesture
+    if (panGestureRef) {
+      tap.simultaneousWithExternalGesture(panGestureRef);
+    }
+    return tap;
+  }, [handleDoubleTap, panGestureRef]);
 
   // Library membership state
   const isInLibrary = useIsInLibrary(bookId);
@@ -367,7 +444,7 @@ export function SecretLibraryBookDetailScreen() {
   const removeFromLibrary = useProgressStore((s) => s.removeFromLibrary);
 
   // Auth context (for potential future use)
-  const { serverUrl } = useAuth();
+  const { serverUrl: _serverUrl } = useAuth();
 
   // Get cached spine data reactively (has correct progress/duration from library cache)
   // This selector is reactive - updates when spine cache updates
@@ -596,21 +673,23 @@ export function SecretLibraryBookDetailScreen() {
     const seriesNameRaw = (typeof seriesData === 'object' ? seriesData?.name : seriesData)
       || metadata?.seriesName || '';
 
-    console.log('[BookDetail] handleSeriesPress:', {
-      seriesData,
-      seriesNameRaw,
-      metadataSeriesName: metadata?.seriesName,
-      metadataSeries: metadata?.series,
-    });
+    if (__DEV__) {
+      console.log('[BookDetail] handleSeriesPress:', {
+        seriesData,
+        seriesNameRaw,
+        metadataSeriesName: metadata?.seriesName,
+        metadataSeries: metadata?.series,
+      });
+    }
 
     if (seriesNameRaw) {
       haptics.selection();
       // Strip #N suffix and pass as seriesName (what SeriesDetailScreen expects)
       const cleanSeriesName = seriesNameRaw.replace(/\s*#[\d.]+$/, '').trim();
-      console.log('[BookDetail] Navigating to SeriesDetail with:', cleanSeriesName);
+      if (__DEV__) console.log('[BookDetail] Navigating to SeriesDetail with:', cleanSeriesName);
       navigation.navigate('SeriesDetail', { seriesName: cleanSeriesName });
     } else {
-      console.warn('[BookDetail] No series name found, cannot navigate');
+      if (__DEV__) console.warn('[BookDetail] No series name found, cannot navigate');
     }
   }, [book, navigation]);
 
@@ -649,9 +728,9 @@ export function SecretLibraryBookDetailScreen() {
       ? metadata.narrators.join(', ')
       : '');
   const description = metadata?.description || '';
-  const publisher = metadata?.publisher || '';
+  const _publisher = metadata?.publisher || '';
   const publishedYear = metadata?.publishedYear || '';
-  const language = metadata?.language || 'English';
+  const _language = metadata?.language || 'English';
 
   // Series info
   const seriesInfo = useMemo(() => {
@@ -837,7 +916,7 @@ export function SecretLibraryBookDetailScreen() {
 
   // Get spine typography - USE CACHED TYPOGRAPHY for consistency
   // This ensures book detail shows the EXACT same font as the book spine on home screen
-  const spineTypography = useMemo(() => {
+  const _spineTypography = useMemo(() => {
     // FIRST: Use pre-computed typography from spine cache (computed at app startup)
     // This is the SAME typography used by BookSpineVertical.tsx
     if (cachedSpineData?.typography) {
@@ -863,11 +942,11 @@ export function SecretLibraryBookDetailScreen() {
   // Use standard site font for title (Georgia/serif) instead of variable spine fonts
   const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
   const titleFontWeight = '600';
-  const titleFontStyle = 'normal' as const;
+  const _titleFontStyle = 'normal' as const;
   const titleTransform = 'none';
 
   // Apply text transform
-  const displayTitle = useMemo(() => {
+  const _displayTitle = useMemo(() => {
     if (titleTransform === 'uppercase') {
       return title.toUpperCase();
     }
@@ -915,12 +994,12 @@ export function SecretLibraryBookDetailScreen() {
     <View style={[styles.container, { backgroundColor: colors.white }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
 
-      {/* Header - Restored with Queue/Library pills */}
+      {/* Fixed header — stays in place during series swipe */}
       <TopNav
         variant={isDarkMode ? 'dark' : 'light'}
         showLogo={true}
         onLogoPress={handleLogoPress}
-        style={{ backgroundColor: 'transparent' }}
+        style={{ backgroundColor: colors.white }}
         pills={[
           {
             key: 'library',
@@ -948,8 +1027,8 @@ export function SecretLibraryBookDetailScreen() {
             onPress: handleShare,
           },
           {
-            key: 'close',
-            icon: <TopNavCloseIcon color={colors.black} size={14} />,
+            key: 'back',
+            icon: <TopNavBackIcon color={colors.black} size={14} />,
             onPress: handleClose,
           },
         ]}
@@ -966,8 +1045,9 @@ export function SecretLibraryBookDetailScreen() {
 
         {/* Hero Section - Centered Cover */}
         <View style={styles.hero}>
-          {/* Centered Cover */}
-          <View style={styles.heroCover}>
+          {/* Centered Cover - Double-tap to place/remove gold star */}
+          <GestureDetector gesture={doubleTapGesture}>
+          <Animated.View style={styles.heroCover}>
             {coverUrl ? (
               <Image
                 source={{ uri: coverUrl }}
@@ -975,7 +1055,8 @@ export function SecretLibraryBookDetailScreen() {
                 placeholderContentFit="cover"
                 style={styles.coverImage}
                 contentFit="cover"
-                transition={200}
+                cachePolicy="memory-disk"
+                transition={0}
               />
             ) : (
               <View style={[styles.coverImage, styles.coverPlaceholder]}>
@@ -984,7 +1065,10 @@ export function SecretLibraryBookDetailScreen() {
                 </Text>
               </View>
             )}
-          </View>
+            {/* Gold star sticker overlays */}
+            <CoverStarStickers stars={stars} />
+          </Animated.View>
+          </GestureDetector>
 
           {/* Split Title with Series Navigation Arrows */}
           <View style={styles.titleContainer}>
@@ -1093,7 +1177,8 @@ export function SecretLibraryBookDetailScreen() {
             style={[
               styles.btnDownload,
               { borderColor: colors.black },
-              (isDownloaded || isDownloading || isPaused) && [styles.btnDownloadActive, { backgroundColor: colors.black, borderColor: colors.black }],
+              isDownloaded && [styles.btnDownloadActive, { backgroundColor: colors.black, borderColor: colors.black }],
+              (isDownloading || isPaused) && { backgroundColor: '#FFFFFF' },
             ]}
             onPress={handleDownload}
             disabled={isDownloaded}
@@ -1104,10 +1189,10 @@ export function SecretLibraryBookDetailScreen() {
                 <CheckIcon color={colors.white} size={16} />
                 <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>Downloaded</Text>
               </>
-            ) : isPaused ? (
-              <Text style={[styles.btnText, { color: colors.white }]}>Paused {Math.round(downloadProgress * 100)}%</Text>
-            ) : isDownloading ? (
-              <Text style={[styles.btnText, { color: colors.white }]}>Downloading {Math.round(downloadProgress * 100)}%</Text>
+            ) : isPaused || isDownloading ? (
+              <Text style={[styles.btnText, { color: '#000' }]}>
+                {isPaused ? 'Paused' : 'Downloading'} {Math.round(downloadProgress * 100)}%
+              </Text>
             ) : isPending ? (
               <Text style={[styles.btnText, { color: colors.black }]}>Queued</Text>
             ) : (
@@ -1425,6 +1510,7 @@ export function SecretLibraryBookDetailScreen() {
           </ScrollView>
         </SkullRefreshControl>
       </SeriesSwipeContainer>
+
     </View>
   );
 }

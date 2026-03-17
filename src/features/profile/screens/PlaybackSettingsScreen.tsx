@@ -14,13 +14,10 @@ import {
   StatusBar,
   TouchableOpacity,
   Modal,
-  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
-  ChevronLeft,
-  ChevronRight,
   Gauge,
   SkipForward,
   SkipBack,
@@ -30,17 +27,17 @@ import {
   CheckSquare,
   Info,
   Check,
-  type LucideIcon,
+  Bluetooth,
+  Clock,
 } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores';
 import { usePlayerSettingsStore } from '@/features/player/stores/playerSettingsStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { scale } from '@/shared/theme';
-import {
-  secretLibraryColors as colors,
-  secretLibraryFonts as fonts,
-} from '@/shared/theme/secretLibrary';
+import { scale, useSecretLibraryColors } from '@/shared/theme';
+import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
 import { SettingsHeader } from '../components/SettingsHeader';
+import { SettingsRow } from '../components/SettingsRow';
+import { SectionHeader } from '../components/SectionHeader';
 
 // =============================================================================
 // CONSTANTS
@@ -58,59 +55,6 @@ function formatSpeed(speed: number): string {
 // =============================================================================
 // COMPONENTS
 // =============================================================================
-
-interface SettingsRowProps {
-  Icon: LucideIcon;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  switchValue?: boolean;
-  onSwitchChange?: (value: boolean) => void;
-  note?: string;
-}
-
-function SettingsRow({ Icon, label, value, onPress, switchValue, onSwitchChange, note }: SettingsRowProps) {
-  const content = (
-    <View style={styles.settingsRow}>
-      <View style={styles.rowLeft}>
-        <View style={styles.iconContainer}>
-          <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
-        </View>
-        <View style={styles.rowContent}>
-          <Text style={styles.rowLabel}>{label}</Text>
-          {note && <Text style={styles.rowNote}>{note}</Text>}
-        </View>
-      </View>
-      <View style={styles.rowRight}>
-        {value && <Text style={styles.rowValue}>{value}</Text>}
-        {onSwitchChange !== undefined && (
-          <Switch
-            value={switchValue}
-            onValueChange={onSwitchChange}
-            trackColor={{ false: 'rgba(0,0,0,0.1)', true: colors.black }}
-            thumbColor={colors.white}
-            ios_backgroundColor="rgba(0,0,0,0.1)"
-          />
-        )}
-        {onPress && <ChevronRight size={scale(16)} color={colors.gray} strokeWidth={1.5} />}
-      </View>
-    </View>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-        {content}
-      </TouchableOpacity>
-    );
-  }
-
-  return content;
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
-}
 
 interface OptionPickerProps<T> {
   visible: boolean;
@@ -133,19 +77,22 @@ function OptionPicker<T>({
   onSelect,
   onClose,
 }: OptionPickerProps<T>) {
+  const colors = useSecretLibraryColors();
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.pickerContainer}>
-          <Text style={styles.pickerTitle}>{title}</Text>
-          {subtitle && <Text style={styles.pickerSubtitle}>{subtitle}</Text>}
+        <View style={[styles.pickerContainer, { backgroundColor: colors.white }]}>
+          <Text style={[styles.pickerTitle, { color: colors.black }]}>{title}</Text>
+          {subtitle && <Text style={[styles.pickerSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
           <View style={styles.pickerOptions}>
             {options.map((option, index) => (
               <TouchableOpacity
                 key={index}
                 style={[
                   styles.pickerOption,
-                  selectedValue === option && styles.pickerOptionSelected,
+                  { borderBottomColor: colors.borderLight },
+                  selectedValue === option && { backgroundColor: colors.grayLight },
                 ]}
                 onPress={() => {
                   onSelect(option);
@@ -155,6 +102,7 @@ function OptionPicker<T>({
                 <Text
                   style={[
                     styles.pickerOptionText,
+                    { color: colors.black },
                     selectedValue === option && styles.pickerOptionTextSelected,
                   ]}
                 >
@@ -178,7 +126,8 @@ function OptionPicker<T>({
 
 export function PlaybackSettingsScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const _navigation = useNavigation();
+  const colors = useSecretLibraryColors();
 
   // Player settings from store
   const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
@@ -193,6 +142,10 @@ export function PlaybackSettingsScreen() {
   const setSmartRewindEnabled = usePlayerSettingsStore((s) => s.setSmartRewindEnabled);
   const smartRewindMaxSeconds = usePlayerSettingsStore((s) => s.smartRewindMaxSeconds);
   const setSmartRewindMaxSeconds = usePlayerSettingsStore((s) => s.setSmartRewindMaxSeconds);
+  const bluetoothAutoResume = usePlayerSettingsStore((s) => s.bluetoothAutoResume);
+  const setBluetoothAutoResume = usePlayerSettingsStore((s) => s.setBluetoothAutoResume);
+  const showTimeRemaining = usePlayerSettingsStore((s) => s.showTimeRemaining);
+  const setShowTimeRemaining = usePlayerSettingsStore((s) => s.setShowTimeRemaining);
   const showCompletionPrompt = usePlayerStore((s) => s.showCompletionPrompt ?? true);
   const setShowCompletionPrompt = usePlayerStore((s) => s.setShowCompletionPrompt);
   const autoMarkFinished = usePlayerStore((s) => s.autoMarkFinished ?? false);
@@ -216,133 +169,132 @@ export function PlaybackSettingsScreen() {
   }, [setSkipBackInterval]);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.grayLight} />
-      <SettingsHeader title="Playback" />
+    <View style={[styles.container, { backgroundColor: colors.grayLight }]}>
+      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.grayLight} />
+      <SettingsHeader title="Playback Settings" />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.content, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Speed Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Speed" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={Gauge}
-              label="Default Speed"
-              value={formatSpeed(globalDefaultRate)}
-              onPress={() => setShowSpeedPicker(true)}
-              note="Used for books without a saved preference"
-            />
-          </View>
-        </View>
+        {/* Display & Speed */}
+        <SectionHeader title="Display & Speed" />
+        <SettingsRow
+          Icon={Clock}
+          label="Time Display"
+          value={showTimeRemaining ? 'Time Left' : 'Time Played'}
+          onPress={() => setShowTimeRemaining(!showTimeRemaining)}
+          description={showTimeRemaining ? 'Shows how much time remains' : 'Shows how much you\'ve listened'}
+        />
+        <SettingsRow
+          Icon={Gauge}
+          label="Default Speed"
+          value={formatSpeed(globalDefaultRate ?? 1)}
+          onPress={() => setShowSpeedPicker(true)}
+          description="Applied to books without a saved speed"
+        />
 
-        {/* Skip Intervals Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Skip Intervals" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={SkipForward}
-              label="Skip Forward"
-              value={`${skipForwardInterval}s`}
-              onPress={() => setShowForwardPicker(true)}
-            />
-            <SettingsRow
-              Icon={SkipBack}
-              label="Skip Back"
-              value={`${skipBackInterval}s`}
-              onPress={() => setShowBackPicker(true)}
-            />
-          </View>
-        </View>
+        {/* Skip Intervals */}
+        <SectionHeader title="Skip Intervals" />
+        <SettingsRow
+          Icon={SkipForward}
+          label="Skip Forward"
+          value={`${skipForwardInterval}s`}
+          onPress={() => setShowForwardPicker(true)}
+        />
+        <SettingsRow
+          Icon={SkipBack}
+          label="Skip Back"
+          value={`${skipBackInterval}s`}
+          onPress={() => setShowBackPicker(true)}
+        />
 
-        {/* Sleep Timer Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Sleep Timer" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={Smartphone}
-              label="Shake to Extend"
-              switchValue={shakeToExtendEnabled}
-              onSwitchChange={setShakeToExtendEnabled}
-              note="Shake to add 15 minutes when timer is low"
-            />
-          </View>
-        </View>
+        {/* Sleep Timer */}
+        <SectionHeader title="Sleep Timer" />
+        <SettingsRow
+          Icon={Smartphone}
+          label="Shake to Extend"
+          switchValue={shakeToExtendEnabled}
+          onSwitchChange={setShakeToExtendEnabled}
+          description="Adds 15 minutes when you shake near expiry"
+        />
 
-        {/* Smart Rewind Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Smart Rewind" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={RefreshCw}
-              label="Smart Rewind"
-              switchValue={smartRewindEnabled}
-              onSwitchChange={setSmartRewindEnabled}
-              note="Automatically rewind after pausing"
-            />
-            {smartRewindEnabled && (
-              <View style={styles.maxRewindContainer}>
-                <Text style={styles.maxRewindLabel}>Maximum Rewind</Text>
-                <View style={styles.maxRewindOptions}>
-                  {SMART_REWIND_MAX_OPTIONS.map((seconds) => (
-                    <TouchableOpacity
-                      key={seconds}
-                      style={[
-                        styles.maxRewindOption,
-                        smartRewindMaxSeconds === seconds && styles.maxRewindOptionSelected,
-                      ]}
-                      onPress={() => setSmartRewindMaxSeconds(seconds)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.maxRewindOptionText,
-                          smartRewindMaxSeconds === seconds && styles.maxRewindOptionTextSelected,
-                        ]}
-                      >
-                        {seconds}s
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.maxRewindNote}>
-                  Rewind amount increases with pause duration
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
+        {/* Bluetooth */}
+        <SectionHeader title="Bluetooth" />
+        <SettingsRow
+          Icon={Bluetooth}
+          label="Auto-Resume on Connect"
+          switchValue={bluetoothAutoResume}
+          onSwitchChange={setBluetoothAutoResume}
+          description="Resumes playback when Bluetooth connects"
+        />
 
-        {/* Completion Section */}
-        <View style={styles.section}>
-          <SectionHeader title="Book Completion" />
-          <View style={styles.sectionCard}>
-            <SettingsRow
-              Icon={CheckCircle}
-              label="Completion Prompt"
-              switchValue={showCompletionPrompt}
-              onSwitchChange={setShowCompletionPrompt}
-              note="Ask what to do when a book ends"
-            />
-            {!showCompletionPrompt && (
-              <SettingsRow
-                Icon={CheckSquare}
-                label="Auto-Mark Finished"
-                switchValue={autoMarkFinished}
-                onSwitchChange={setAutoMarkFinished}
-                note="Automatically mark books as finished"
-              />
-            )}
+        {/* Smart Rewind */}
+        <SectionHeader title="Smart Rewind" />
+        <SettingsRow
+          Icon={RefreshCw}
+          label="Smart Rewind"
+          switchValue={smartRewindEnabled}
+          onSwitchChange={setSmartRewindEnabled}
+          description="Rewinds a few seconds after a pause"
+        />
+        {smartRewindEnabled && (
+          <View style={[styles.maxRewindContainer, { borderTopColor: colors.borderLight }]}>
+            <Text style={[styles.maxRewindLabel, { color: colors.gray }]}>Maximum Rewind</Text>
+            <View style={styles.maxRewindOptions}>
+              {SMART_REWIND_MAX_OPTIONS.map((seconds) => (
+                <TouchableOpacity
+                  key={seconds}
+                  style={[
+                    styles.maxRewindOption,
+                    { backgroundColor: colors.grayLight },
+                    smartRewindMaxSeconds === seconds && { backgroundColor: colors.black },
+                  ]}
+                  onPress={() => setSmartRewindMaxSeconds(seconds)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.maxRewindOptionText,
+                      { color: colors.gray },
+                      smartRewindMaxSeconds === seconds && { color: colors.white },
+                    ]}
+                  >
+                    {seconds}s
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.maxRewindNote, { color: colors.gray }]}>
+              Rewind amount increases with pause duration
+            </Text>
           </View>
-        </View>
+        )}
+
+        {/* Book Completion */}
+        <SectionHeader title="Book Completion" />
+        <SettingsRow
+          Icon={CheckCircle}
+          label="Completion Prompt"
+          switchValue={showCompletionPrompt}
+          onSwitchChange={setShowCompletionPrompt}
+          description="Shows options when a book finishes"
+        />
+        {!showCompletionPrompt && (
+          <SettingsRow
+            Icon={CheckSquare}
+            label="Auto-Mark Finished"
+            switchValue={autoMarkFinished}
+            onSwitchChange={setAutoMarkFinished}
+            description="Marks books as finished automatically"
+          />
+        )}
 
         {/* Info Note */}
         <View style={styles.infoSection}>
           <Info size={scale(16)} color={colors.gray} strokeWidth={1.5} />
-          <Text style={styles.infoText}>
+          <Text style={[styles.infoText, { color: colors.gray }]}>
             Playback speed is remembered per book. The default speed is only used when playing a book for the first time.
           </Text>
         </View>
@@ -354,7 +306,7 @@ export function PlaybackSettingsScreen() {
         title="Default Playback Speed"
         subtitle="Used for new books"
         options={SPEED_OPTIONS}
-        selectedValue={globalDefaultRate}
+        selectedValue={globalDefaultRate ?? 1}
         formatOption={formatSpeed}
         onSelect={handleSpeedSelect}
         onClose={() => setShowSpeedPicker(false)}
@@ -392,7 +344,6 @@ export function PlaybackSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.grayLight,
   },
   scrollView: {
     flex: 1,
@@ -400,80 +351,16 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
   },
-  section: {
-    marginBottom: 28,
-  },
-  sectionHeader: {
-    fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: colors.gray,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-    paddingLeft: 4,
-  },
-  sectionCard: {
-    backgroundColor: colors.white,
-  },
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  iconContainer: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(8),
-    backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rowContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  rowLabel: {
-    fontFamily: fonts.playfair.regular,
-    fontSize: scale(15),
-    color: colors.black,
-  },
-  rowNote: {
-    fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: colors.gray,
-    marginTop: 2,
-  },
-  rowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rowValue: {
-    fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(11),
-    color: colors.black,
-  },
   // Smart Rewind max selector
   maxRewindContainer: {
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
   },
   maxRewindLabel: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(10),
-    color: colors.gray,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 12,
@@ -486,24 +373,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 8,
-    backgroundColor: colors.grayLight,
     alignItems: 'center',
-  },
-  maxRewindOptionSelected: {
-    backgroundColor: colors.black,
   },
   maxRewindOptionText: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(11),
-    color: colors.gray,
-  },
-  maxRewindOptionTextSelected: {
-    color: colors.white,
   },
   maxRewindNote: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(9),
-    color: colors.gray,
     marginTop: 12,
   },
   // Info section
@@ -516,7 +394,6 @@ const styles = StyleSheet.create({
   infoText: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(9),
-    color: colors.gray,
     flex: 1,
     lineHeight: scale(16),
   },
@@ -529,7 +406,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   pickerContainer: {
-    backgroundColor: colors.white,
     borderRadius: 0,
     width: '100%',
     maxWidth: 340,
@@ -538,13 +414,11 @@ const styles = StyleSheet.create({
   pickerTitle: {
     fontFamily: fonts.playfair.regular,
     fontSize: scale(20),
-    color: colors.black,
     marginBottom: 4,
   },
   pickerSubtitle: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(10),
-    color: colors.gray,
     marginBottom: 16,
   },
   pickerOptions: {
@@ -557,15 +431,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
-  },
-  pickerOptionSelected: {
-    backgroundColor: colors.grayLight,
   },
   pickerOptionText: {
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(12),
-    color: colors.black,
   },
   pickerOptionTextSelected: {
     fontFamily: fonts.jetbrainsMono.bold,

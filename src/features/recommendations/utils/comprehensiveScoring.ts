@@ -19,7 +19,6 @@ import {
   MISMATCH_PENALTIES,
   ABANDONMENT_PENALTIES,
   DIVERSITY,
-  getTemporalDecay,
   calculateMetadataRichness,
   getConfidenceLevel,
 } from './scoreWeights';
@@ -29,8 +28,27 @@ import {
   BookDNA,
   hasMoodScores,
   getDNAMoodScore,
-} from '@/features/mood-discovery/utils/parseBookDNA';
-import { Mood, Pace, Weight, World, MoodSession } from '@/features/mood-discovery/types';
+} from '@/shared/utils/bookDNA';
+import { Mood } from '@/shared/utils/bookDNA';
+import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+
+// Local types for mood session scoring (legacy, kept for compatibility)
+type Pace = 'slow' | 'steady' | 'fast' | 'any';
+type Weight = 'light' | 'balanced' | 'heavy' | 'any';
+type World = 'contemporary' | 'historical' | 'fantasy' | 'scifi' | 'any';
+interface MoodSession {
+  mood: Mood;
+  pace: Pace;
+  weight: Weight;
+  world: World;
+  flavor: string | null;
+  seedBookId: string | null;
+  length: string;
+  excludeChildrens: boolean;
+  createdAt: number;
+  softExpiresAt: number;
+  expiresAt: number;
+}
 
 // ============================================================================
 // TYPES
@@ -114,6 +132,8 @@ export interface ComprehensiveScore {
   dna: BookDNA;
   /** Publication era */
   era: PublicationEra | null;
+  /** Debug breakdown — only present when debug=true */
+  debugBreakdown?: DebugScoreBreakdown;
 }
 
 export type RecommendationCategory =
@@ -124,6 +144,61 @@ export type RecommendationCategory =
   | 'narrator-gateway'  // Loved narrator, new author
   | 'wild-card'         // Discovery/serendipity
   | 'comparable';       // Similar to loved book
+
+// ============================================================================
+// DEBUG SCORE BREAKDOWN (opt-in via debug flag)
+// ============================================================================
+
+export interface DebugScoreBreakdown {
+  total: number;
+  factors: {
+    genreOverlap: number;
+    tagOverlap: number;
+    moodMatch: number;
+    spectrumMatch: number;
+    authorBonus: number;
+    narratorBonus: number;
+    seriesBonus: number;
+    durationSimilarity: number;
+    yearProximity: number;
+    abandonmentPenalty: number;
+    pacingMatch: number;
+  };
+  confidence: 'LOW' | 'GOOD' | 'EXCELLENT';
+  /** Auto-generated from the top 2 contributing factors */
+  primaryReason: string;
+}
+
+/** Generate a human-readable reason string from the top 2 scoring factors */
+function generatePrimaryReason(factors: DebugScoreBreakdown['factors']): string {
+  const FACTOR_LABELS: Record<string, string> = {
+    genreOverlap: 'genre overlap',
+    tagOverlap: 'tag overlap',
+    moodMatch: 'mood match',
+    spectrumMatch: 'spectrum alignment',
+    authorBonus: 'author affinity',
+    narratorBonus: 'narrator affinity',
+    seriesBonus: 'series continuation',
+    durationSimilarity: 'similar length',
+    yearProximity: 'era match',
+    pacingMatch: 'pacing match',
+  };
+
+  const top = Object.entries(factors)
+    .filter(([key]) => key !== 'abandonmentPenalty')
+    .filter(([_, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2);
+
+  if (top.length === 0) return 'No strong match factors';
+
+  return top
+    .map(([key, val]) => {
+      const label = FACTOR_LABELS[key] || key;
+      return val >= 20 ? `Strong ${label}` : label.charAt(0).toUpperCase() + label.slice(1);
+    })
+    .join(' + ');
+}
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -155,7 +230,7 @@ function getDurationHours(item: LibraryItem): number {
 function scoreAuthorAffinity(
   author: string | null,
   affinities: AffinityData,
-  knownAuthors: Set<string>
+  _knownAuthors: Set<string>
 ): { score: number; reason: string | null } {
   if (!author) return { score: 0, reason: null };
 
@@ -176,7 +251,7 @@ function scoreAuthorAffinity(
 function scoreNarratorAffinity(
   narrator: string | null,
   affinities: AffinityData,
-  knownNarrators: Set<string>
+  _knownNarrators: Set<string>
 ): { score: number; reason: string | null } {
   if (!narrator) return { score: 0, reason: null };
 
@@ -296,7 +371,7 @@ function scoreMoodMatch(
   // Genre-based mood scoring (fallback)
   if (!isPrimary) {
     // Import mood genre map
-    const { MOOD_GENRE_MAP } = require('@/features/mood-discovery/types');
+    const { MOOD_GENRE_MAP } = require('./moodMaps');
     const moodGenres = MOOD_GENRE_MAP[session.mood] || [];
 
     for (const genre of genres) {
@@ -335,7 +410,7 @@ function scorePaceMatch(
   }
 
   // Genre/description fallback
-  const { PACE_INDICATORS } = require('@/features/mood-discovery/types');
+  const { PACE_INDICATORS } = require('./moodMaps');
   const indicators = PACE_INDICATORS[pace] || [];
 
   const text = [...genres, description].join(' ').toLowerCase();
@@ -355,7 +430,7 @@ function scoreWeightMatch(
 ): number {
   if (!weight || weight === 'any') return 0;
 
-  const { WEIGHT_INDICATORS } = require('@/features/mood-discovery/types');
+  const { WEIGHT_INDICATORS } = require('./moodMaps');
   const indicators = WEIGHT_INDICATORS[weight] || [];
 
   const text = [...genres, description].join(' ').toLowerCase();
@@ -374,7 +449,7 @@ function scoreWorldMatch(
 ): number {
   if (!world || world === 'any') return 0;
 
-  const { WORLD_GENRE_MAP } = require('@/features/mood-discovery/types');
+  const { WORLD_GENRE_MAP } = require('./moodMaps');
   const worldGenres = WORLD_GENRE_MAP[world] || [];
 
   for (const genre of genres) {
@@ -450,7 +525,7 @@ function calculateMismatchPenalty(
 
   // Weight mismatch
   if (session.weight && session.weight !== 'any' && session.weight !== 'balanced') {
-    const { WEIGHT_INDICATORS } = require('@/features/mood-discovery/types');
+    const { WEIGHT_INDICATORS } = require('./moodMaps');
 
     if (session.weight === 'light') {
       const heavyIndicators = WEIGHT_INDICATORS.heavy || [];
@@ -467,7 +542,7 @@ function calculateMismatchPenalty(
 
   // Pace mismatch
   if (session.pace && session.pace !== 'any' && session.pace !== 'steady') {
-    const { PACE_INDICATORS } = require('@/features/mood-discovery/types');
+    const { PACE_INDICATORS } = require('./moodMaps');
 
     if (session.pace === 'slow') {
       const fastIndicators = PACE_INDICATORS.fast || [];
@@ -532,14 +607,18 @@ function determineCategory(
 
 /**
  * Calculate comprehensive score for a library item.
+ * @param debug - When true, includes a DebugScoreBreakdown with factor-level
+ *   traceability and an auto-generated primaryReason string.
  */
 export function calculateComprehensiveScore(
   item: LibraryItem,
-  context: ScoringContext
+  context: ScoringContext,
+  debug: boolean = false
 ): ComprehensiveScore {
   const metadata = getMetadata(item);
   const tags = getItemTags(item);
-  const dna = parseBookDNA(tags);
+  const dnaEnabled = useDNASettingsStore.getState().enableDNAFeatures;
+  const dna = dnaEnabled ? parseBookDNA(tags) : parseBookDNA([]);
   const era = getPublicationEra(item);
   const durationHours = getDurationHours(item);
 
@@ -633,7 +712,7 @@ export function calculateComprehensiveScore(
   });
   const confidence = getConfidenceLevel(richness);
 
-  return {
+  const result: ComprehensiveScore = {
     total,
     breakdown,
     confidence,
@@ -643,6 +722,50 @@ export function calculateComprehensiveScore(
     dna,
     era,
   };
+
+  // Debug breakdown: maps internal factor names to the standardized debug schema
+  if (debug) {
+    const debugFactors: DebugScoreBreakdown['factors'] = {
+      genreOverlap: genreResult.score,
+      tagOverlap: 0, // Tags are scored in comparable engine, not affinity scoring
+      moodMatch: moodResult.moodScore + moodResult.dnaScore,
+      spectrumMatch: 0, // Spectrum contribution is folded into dnaScore above
+      authorBonus: authorResult.score,
+      narratorBonus: narratorResult.score,
+      seriesBonus: seriesResult.score,
+      durationSimilarity: lengthScore,
+      yearProximity: eraScore,
+      abandonmentPenalty: abandonmentPenalty,
+      pacingMatch: paceScore,
+    };
+
+    // If DNA was used, separate mood vs spectrum contributions for traceability
+    if (dna.hasDNA && context.moodSession) {
+      const specPref = MOOD_SPECTRUM_PREFS[context.moodSession.mood];
+      if (specPref) {
+        const specValue = dna.spectrums[specPref.key];
+        if (specValue !== null) {
+          const distance = Math.abs(specValue - specPref.value);
+          const alignment = Math.max(0, 1 - distance);
+          const spectrumContrib = alignment * DNA_WEIGHTS.spectrumMatch;
+          debugFactors.spectrumMatch = spectrumContrib;
+          debugFactors.moodMatch = moodResult.moodScore + moodResult.dnaScore - spectrumContrib;
+        }
+      }
+    }
+
+    const debugConfidence: DebugScoreBreakdown['confidence'] =
+      confidence === 'high' ? 'EXCELLENT' : confidence === 'medium' ? 'GOOD' : 'LOW';
+
+    result.debugBreakdown = {
+      total,
+      factors: debugFactors,
+      confidence: debugConfidence,
+      primaryReason: generatePrimaryReason(debugFactors),
+    };
+  }
+
+  return result;
 }
 
 // ============================================================================

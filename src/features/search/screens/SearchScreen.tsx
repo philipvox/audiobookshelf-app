@@ -21,18 +21,38 @@ import {
   ScrollView,
   Keyboard,
   Pressable,
+  Dimensions,
+  PanResponder,
+  type GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useLibraryCache, getAllGenres, getAllAuthors, getAllSeries, getAllNarrators, useCoverUrl, type FilterOptions } from '@/core/cache';
+import { useLibraryCache, getAllGenres, getAllAuthors, getAllSeries, getAllNarrators, type FilterOptions } from '@/core/cache';
 import { usePlayerStore } from '@/features/player';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
-import { HeartButton, SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon, useBookContextMenu } from '@/shared/components';
+import { SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon, useBookContextMenu } from '@/shared/components';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
+import { wp, spacing, radius, scale, useSecretLibraryColors } from '@/shared/theme';
+import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
+import { useIsDarkMode } from '@/shared/theme/themeStore';
+import { useKidModeStore } from '@/shared/stores/kidModeStore';
+import { filterForKidMode } from '@/shared/utils/kidModeFilter';
+import { logger } from '@/shared/utils/logger';
+import { useToast } from '@/shared/hooks/useToast';
+import { useBrowseCounts } from '@/features/browse';
+import { SeriesCard } from '@/features/browse/components/SeriesCard';
+import { BookSimpleRow } from '../components/BookSimpleRow';
+import { SearchFilterSheet, type SearchFilterState, type AvailableFilters, type AgeRange } from '../components/SearchFilterSheet';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
+import { SearchHeroCard } from '../components/SearchHeroCard';
+import { RecentlyAddedSection } from '@/features/browse/components/RecentlyAddedSection';
+import { DURATION_RANGES, type DurationRangeId } from '@/features/browse/hooks/useBrowseCounts';
 
 // Type guard for book media
 function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
@@ -44,22 +64,6 @@ function getBookMetadata(item: LibraryItem): BookMetadata | null {
   if (item.mediaType !== 'book' || !item.media?.metadata) return null;
   return item.media.metadata as BookMetadata;
 }
-import { TOP_NAV_HEIGHT, SCREEN_BOTTOM_PADDING } from '@/constants/layout';
-import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
-import { wp, spacing, radius, scale, useSecretLibraryColors } from '@/shared/theme';
-import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { globalLoading } from '@/shared/stores/globalLoadingStore';
-import { useIsDarkMode } from '@/shared/theme/themeStore';
-import { useKidModeStore } from '@/shared/stores/kidModeStore';
-import { filterForKidMode } from '@/shared/utils/kidModeFilter';
-import { logger } from '@/shared/utils/logger';
-import { useToast } from '@/shared/hooks/useToast';
-import { useBrowseCounts } from '@/features/browse';
-import { SeriesCard } from '@/features/browse/components/SeriesCard';
-import { BookSimpleRow } from '../components/BookSimpleRow';
-import { SearchFilterSheet, type SearchFilterState, type AvailableFilters, type AgeRange } from '../components/SearchFilterSheet';
-import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
-import { DURATION_RANGES, type DurationRangeId } from '@/features/browse/hooks/useBrowseCounts';
 
 const SCREEN_WIDTH = wp(100);
 const GAP = spacing.sm;
@@ -85,8 +89,8 @@ function useDebounce<T>(value: T, delay: number): T {
 
 // Series card constants
 const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
-const SERIES_COVER_WIDTH = 65;
-const SERIES_COVER_HEIGHT = 95;
+const _SERIES_COVER_WIDTH = 65;
+const _SERIES_COVER_HEIGHT = 95;
 const COVER_SIZE = 60;
 
 type SortOption = 'title' | 'author' | 'dateAdded' | 'duration';
@@ -99,16 +103,189 @@ type SearchScreenParams = {
   scannedISBN?: string;
 };
 
+// ─── DNA Range Slider ───────────────────────────────────────────────────────
+type DnaFilter = { baseTag: string; label: string; minScore: number; maxScore: number; filterMin: number; filterMax: number };
+
+const THUMB_W = scale(22);
+const TRACK_H = scale(4);
+
+const DnaRangeSlider = React.memo(function DnaRangeSlider({
+  filter,
+  onChange,
+  onRemove,
+  resultCount,
+  styles: s,
+}: {
+  filter: DnaFilter;
+  onChange: (f: DnaFilter) => void;
+  onRemove: () => void;
+  resultCount: number;
+  styles: any;
+}) {
+  const trackWidth = useRef(0);
+  const trackX = useRef(0);
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // Pending values during drag — visual only, committed on release
+  const [pending, setPending] = useState<{ filterMin: number; filterMax: number } | null>(null);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const dragging = useRef<'min' | 'max' | null>(null);
+
+  const steps = filter.maxScore - filter.minScore;
+
+  const xToVal = (x: number) => {
+    const ratio = Math.max(0, Math.min(1, x / trackWidth.current));
+    return Math.round(ratio * steps) + filterRef.current.minScore;
+  };
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e: GestureResponderEvent) => {
+      const localX = e.nativeEvent.pageX - trackX.current;
+      const f = filterRef.current;
+      const s = f.maxScore - f.minScore;
+      const tw = trackWidth.current;
+      const minX = ((f.filterMin - f.minScore) / Math.max(s, 1)) * tw;
+      const maxX = ((f.filterMax - f.minScore) / Math.max(s, 1)) * tw;
+      // When thumbs overlap, pick based on which side the tap is on
+      if (f.filterMin === f.filterMax) {
+        dragging.current = localX >= maxX ? 'max' : 'min';
+      } else {
+        dragging.current = Math.abs(localX - minX) <= Math.abs(localX - maxX) ? 'min' : 'max';
+      }
+      const newVal = xToVal(localX);
+      if (dragging.current === 'min') {
+        setPending({ filterMin: Math.min(newVal, f.filterMax), filterMax: f.filterMax });
+      } else {
+        setPending({ filterMin: f.filterMin, filterMax: Math.max(newVal, f.filterMin) });
+      }
+    },
+    onPanResponderMove: (e: GestureResponderEvent) => {
+      const localX = e.nativeEvent.pageX - trackX.current;
+      const newVal = xToVal(localX);
+      const f = filterRef.current;
+      if (dragging.current === 'min') {
+        setPending((p) => ({ filterMin: Math.min(newVal, p?.filterMax ?? f.filterMax), filterMax: p?.filterMax ?? f.filterMax }));
+      } else {
+        setPending((p) => ({ filterMin: p?.filterMin ?? f.filterMin, filterMax: Math.max(newVal, p?.filterMin ?? f.filterMin) }));
+      }
+    },
+    onPanResponderRelease: () => {
+      const p = pendingRef.current;
+      if (p) {
+        onChangeRef.current({ ...filterRef.current, ...p });
+      }
+      setPending(null);
+      dragging.current = null;
+    },
+    onPanResponderTerminate: () => {
+      setPending(null);
+      dragging.current = null;
+    },
+  })).current;
+
+  const onTrackLayout = useCallback((e: any) => {
+    trackWidth.current = e.nativeEvent.layout.width;
+    e.target?.measureInWindow?.((x: number) => { trackX.current = x; });
+  }, []);
+
+  // Use pending values while dragging, committed values otherwise
+  const [expanded, setExpanded] = useState(true);
+
+  const displayMin = pending ? pending.filterMin : filter.filterMin;
+  const displayMax = pending ? pending.filterMax : filter.filterMax;
+  const ticks = Array.from({ length: steps + 1 }, (_, i) => filter.minScore + i);
+
+  const pct = (val: number) => `${((val - filter.minScore) / Math.max(steps, 1)) * 100}%`;
+
+  return (
+    <View style={s.dnaScoreBar}>
+      <View style={s.dnaScoreHeader}>
+        <TouchableOpacity style={s.dnaScoreHeaderLeft} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+          <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={14} color={staticColors.gray} strokeWidth={1.5} />
+          <Text style={s.dnaScoreLabel}>
+            <Text style={{ textTransform: 'capitalize' }}>{filter.label}</Text>
+          </Text>
+          <Text style={s.dnaScoreValue}>
+            {displayMin}–{displayMax}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Icon name="X" size={14} color={staticColors.gray} strokeWidth={1.5} />
+        </TouchableOpacity>
+      </View>
+
+      {expanded && (
+        <>
+          {/* Track + thumbs */}
+          <View style={s.dnaTrackContainer} {...panResponder.panHandlers}>
+            <View style={s.dnaTrack} onLayout={onTrackLayout}>
+              <View style={[s.dnaTrackFill, { left: pct(displayMin), right: `${((filter.maxScore - displayMax) / Math.max(steps, 1)) * 100}%` }]} />
+            </View>
+            <View style={[s.dnaThumb, { left: pct(displayMin) }]}>
+              <View style={s.dnaThumbInner} />
+            </View>
+            <View style={[s.dnaThumb, { left: pct(displayMax) }]}>
+              <View style={s.dnaThumbInner} />
+            </View>
+          </View>
+
+          {/* Number ticks */}
+          <View style={s.dnaTickRow}>
+            {ticks.map((val) => {
+              const inRange = val >= displayMin && val <= displayMax;
+              return (
+                <TouchableOpacity
+                  key={val}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                  onPress={() => {
+                    const f = filterRef.current;
+                    if (f.filterMin === f.filterMax) {
+                      // Overlapping: expand toward tap direction
+                      if (val >= f.filterMax) {
+                        onChangeRef.current({ ...f, filterMax: val });
+                      } else {
+                        onChangeRef.current({ ...f, filterMin: val });
+                      }
+                    } else {
+                      const distMin = Math.abs(val - f.filterMin);
+                      const distMax = Math.abs(val - f.filterMax);
+                      if (distMin <= distMax) {
+                        onChangeRef.current({ ...f, filterMin: Math.min(val, f.filterMax) });
+                      } else {
+                        onChangeRef.current({ ...f, filterMax: Math.max(val, f.filterMin) });
+                      }
+                    }
+                  }}
+                >
+                  <Text style={[s.dnaTickText, inRange && s.dnaTickTextActive]}>
+                    {val}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+    </View>
+  );
+});
+
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ Search: SearchScreenParams }, 'Search'>>();
   const inputRef = useRef<TextInput>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { loadBook, isLoading: isPlayerLoading, currentBook } = usePlayerStore();
+  const loadBook = usePlayerStore((s) => s.loadBook);
 
   // Book context menu
-  const { showMenu } = useBookContextMenu();
+  const { _showMenu } = useBookContextMenu();
 
   // Theme-aware colors (Secret Library design system)
   const colors = useSecretLibraryColors();
@@ -126,7 +303,7 @@ export function SearchScreen() {
   const BORDER_DEFAULT = colors.grayLine; // Default border
 
   // Browse counts for Quick Browse section
-  const browseCounts = useBrowseCounts();
+  const _browseCounts = useBrowseCounts();
 
   // Theme-aware styles
   const styles = useMemo(() => createStyles({
@@ -151,6 +328,17 @@ export function SearchScreen() {
 
   // Debounced query for search (300ms delay per research)
   const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
+
+  // Lazy load heavy sections (hero card, recently added) so search opens instantly
+  const [showHeavySections, setShowHeavySections] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShowHeavySections(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // DNA score filter — when searching scored DNA tags (e.g., dna:mood:mystery)
+  const [dnaScoreFilters, setDnaScoreFilters] = useState<DnaFilter[]>([]);
+  const [showDnaTagPicker, setShowDnaTagPicker] = useState(false);
 
   // Show autocomplete when typing (but not for committed searches)
   // Start committed if we have an initial query (e.g., from ISBN search)
@@ -192,7 +380,7 @@ export function SearchScreen() {
   const { showError } = useToast();
 
   // Get cached data
-  const { filterItems, isLoaded } = useLibraryCache();
+  const { items: libraryItems, filterItems, isLoaded } = useLibraryCache();
 
   // Get filter options from cache
   const allGenres = useMemo(() => getAllGenres(), [isLoaded]);
@@ -201,7 +389,7 @@ export function SearchScreen() {
   const allSeries = useMemo(() => getAllSeries(), [isLoaded]);
 
   // Download status tracking
-  const [downloadTasks, setDownloadTasks] = useState<Map<string, DownloadTask>>(new Map());
+  const [_downloadTasks, setDownloadTasks] = useState<Map<string, DownloadTask>>(new Map());
 
   // Subscribe to download status changes
   useEffect(() => {
@@ -281,7 +469,8 @@ export function SearchScreen() {
   // Check if we have any active search/filters (use debounced for results)
   const hasActiveSearch = debouncedQuery.trim().length > 0 || selectedGenres.length > 0 ||
     selectedAuthors.length > 0 || selectedNarrators.length > 0 || selectedSeries.length > 0 ||
-    durationFilter.min !== undefined || durationFilter.max !== undefined || ageRange !== 'all';
+    durationFilter.min !== undefined || durationFilter.max !== undefined || ageRange !== 'all' ||
+    dnaScoreFilters.length > 0;
 
   // Helper to filter by age range based on genres
   const filterByAgeRange = useCallback((items: LibraryItem[], range: AgeRange): LibraryItem[] => {
@@ -315,8 +504,11 @@ export function SearchScreen() {
   const bookResults = useMemo(() => {
     if (!hasActiveSearch) return [];
 
-    // Get base results from cache
-    let results = filterItems(filters);
+    // Get base results — if only DNA filters active (no query/other filters), start with all books
+    const hasTextOrFilterSearch = debouncedQuery.trim().length > 0 || selectedGenres.length > 0 ||
+      selectedAuthors.length > 0 || selectedNarrators.length > 0 || selectedSeries.length > 0 ||
+      durationFilter.min !== undefined || durationFilter.max !== undefined || ageRange !== 'all';
+    let results = hasTextOrFilterSearch ? filterItems(filters) : [...libraryItems].filter(i => i.mediaType === 'book');
 
     // If query has results, use them; otherwise try fuzzy matching
     if (results.length === 0 && debouncedQuery.trim()) {
@@ -339,8 +531,23 @@ export function SearchScreen() {
     // Apply age range filter
     results = filterByAgeRange(results, ageRange);
 
+    // Apply DNA score filters — each filter narrows results (AND logic)
+    for (const df of dnaScoreFilters) {
+      const { baseTag, filterMin, filterMax } = df;
+      results = results.filter((item) => {
+        const tags: string[] = (item.media as any)?.tags || [];
+        return tags.some((t) => {
+          const lower = t.toLowerCase();
+          if (!lower.startsWith(baseTag + ':')) return false;
+          const scorePart = lower.slice(baseTag.length + 1);
+          const score = parseFloat(scorePart);
+          return !isNaN(score) && score >= filterMin && score <= filterMax;
+        });
+      });
+    }
+
     return results.slice(0, 100);
-  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled, ageRange, filterByAgeRange]);
+  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled, ageRange, filterByAgeRange, dnaScoreFilters, libraryItems, selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationFilter]);
 
   // Filter authors matching query (with fuzzy matching)
   const authorResults = useMemo(() => {
@@ -371,10 +578,87 @@ export function SearchScreen() {
   // ============================================================================
 
   // Autocomplete uses instant query (not debounced) for responsiveness
-  const autocompleteSuggestions = useMemo(() => {
-    if (!query.trim() || query.length < 2) return { books: [], authors: [], series: [], narrators: [] };
+  // Parse DNA tags: "dna:mood:mystery:7" → { baseTag: "dna:mood:mystery", category: "mood", label: "mystery", score: 7 }
+  // Plain tags: "slow-burn" → { baseTag: "slow-burn", category: "", label: "slow-burn", score: null }
+  interface ParsedTag {
+    baseTag: string;   // Tag without score (used for grouping)
+    category: string;  // DNA category (mood, trope, etc.) or empty
+    label: string;     // Human-readable label
+    score: number | null;
+    searchable: string;
+  }
 
-    const lowerQuery = query.toLowerCase();
+  function parseDnaTag(raw: string): ParsedTag {
+    const lower = raw.toLowerCase().trim();
+    if (lower.startsWith('dna:')) {
+      const parts = lower.slice(4).split(':');
+      // Check if last part is a number (score)
+      const lastPart = parts[parts.length - 1];
+      const maybeScore = parseFloat(lastPart);
+      const hasScore = parts.length >= 3 && !isNaN(maybeScore);
+
+      const category = parts[0].replace(/-/g, ' ');
+      const labelParts = hasScore ? parts.slice(1, -1) : parts.slice(1);
+      const label = labelParts.join(' ').replace(/-/g, ' ').trim();
+      const score = hasScore ? maybeScore : null;
+      const baseTag = hasScore ? `dna:${parts.slice(0, -1).join(':')}` : lower;
+      const searchable = `${category} ${label} ${label.replace(/\s/g, '')}`;
+
+      return { baseTag, category, label, score, searchable };
+    }
+    return { baseTag: lower, category: '', label: lower, score: null, searchable: lower };
+  }
+
+  interface TagSuggestion {
+    baseTag: string;
+    category: string;
+    label: string;
+    hasScore: boolean;
+    minScore: number;
+    maxScore: number;
+    bookCount: number;
+    searchable: string;
+  }
+
+  // Build unique tags list, grouping scored DNA tags by baseTag
+  const allTags = useMemo(() => {
+    if (!isLoaded) return [] as TagSuggestion[];
+    const tagMap = new Map<string, TagSuggestion>();
+    for (const item of libraryItems) {
+      const metadata = getBookMetadata(item);
+      const genres = metadata?.genres || [];
+      const tags = (item.media as any)?.tags || [];
+      for (const t of [...genres, ...tags]) {
+        const parsed = parseDnaTag(t);
+        const existing = tagMap.get(parsed.baseTag);
+        if (existing) {
+          existing.bookCount++;
+          if (parsed.score !== null) {
+            existing.hasScore = true;
+            existing.minScore = Math.min(existing.minScore, parsed.score);
+            existing.maxScore = Math.max(existing.maxScore, parsed.score);
+          }
+        } else {
+          tagMap.set(parsed.baseTag, {
+            baseTag: parsed.baseTag,
+            category: parsed.category,
+            label: parsed.label,
+            hasScore: parsed.score !== null,
+            minScore: parsed.score ?? 0,
+            maxScore: parsed.score ?? 0,
+            bookCount: 1,
+            searchable: parsed.searchable,
+          });
+        }
+      }
+    }
+    return Array.from(tagMap.values()).sort((a, b) => b.bookCount - a.bookCount);
+  }, [libraryItems, isLoaded]);
+
+  const autocompleteSuggestions = useMemo(() => {
+    if (!query.trim() || query.length < 2) return { books: [], authors: [], series: [], narrators: [], tags: [] };
+
+    const _lowerQuery = query.toLowerCase();
 
     // Books - simple text, max 2 (per research: 4-6 total suggestions)
     // Apply Kid Mode filter to autocomplete results
@@ -396,7 +680,6 @@ export function SearchScreen() {
       });
 
     // Authors - max 2 (with image data for thumbnails)
-    // FIX 3: Use fuzzyMatch for consistent matching (accent/space-insensitive)
     const authors = allAuthors
       .filter(a => fuzzyMatch(query, a.name))
       .slice(0, 2)
@@ -408,21 +691,24 @@ export function SearchScreen() {
       }));
 
     // Series - max 1
-    // FIX 3: Use fuzzyMatch for consistent matching
     const series = allSeries
       .filter(s => fuzzyMatch(query, s.name))
       .slice(0, 1)
       .map(s => ({ name: s.name, bookCount: s.bookCount }));
 
     // Narrators - max 1
-    // FIX 3: Use fuzzyMatch for consistent matching
     const narrators = allNarrators
       .filter(n => fuzzyMatch(query, n.name))
       .slice(0, 1)
       .map(n => ({ name: n.name, bookCount: n.bookCount }));
 
-    return { books, authors, series, narrators };
-  }, [query, filterItems, allAuthors, allSeries, allNarrators, kidModeEnabled]);
+    // Tags/Genres/DNA - max 3, search against label and searchable (not raw dna: prefix)
+    const tags = allTags
+      .filter(t => t.searchable.includes(_lowerQuery) || _lowerQuery.split(/\s+/).every(w => t.searchable.includes(w)))
+      .slice(0, 3);
+
+    return { books, authors, series, narrators, tags };
+  }, [query, filterItems, allAuthors, allSeries, allNarrators, allTags, kidModeEnabled]);
 
   // "Did you mean" suggestions when no results
   const spellingSuggestions = useMemo(() => {
@@ -544,12 +830,14 @@ export function SearchScreen() {
     setSelectedSeries([]);
     setDurationRangeId(null);
     setAgeRange('all');
+    setDnaScoreFilters([]);
+    setShowDnaTagPicker(false);
     setHasCommittedSearch(false);
     inputRef.current?.focus();
   };
 
   // Handle Quick Browse category press
-  const handleQuickBrowseCategory = useCallback((category: QuickBrowseCategory) => {
+  const _handleQuickBrowseCategory = useCallback((category: QuickBrowseCategory) => {
     switch (category) {
       case 'genres':
         navigation.navigate('GenresList');
@@ -641,6 +929,41 @@ export function SearchScreen() {
     navigation.navigate('NarratorDetail', { narratorName });
   };
 
+  // Handle tag/genre autocomplete — commits as search query
+  const handleAutocompleteTag = (tag: TagSuggestion) => {
+    setQuery(tag.baseTag);
+    setHasCommittedSearch(true);
+    saveSearch(tag.label);
+    if (tag.hasScore) {
+      addDnaFilter(tag);
+    }
+    Keyboard.dismiss();
+  };
+
+  const addDnaFilter = (tag: TagSuggestion) => {
+    // Don't add duplicate
+    if (dnaScoreFilters.some((f) => f.baseTag === tag.baseTag)) return;
+    setDnaScoreFilters((prev) => [
+      ...prev,
+      {
+        baseTag: tag.baseTag,
+        label: tag.category ? `${tag.category} › ${tag.label}` : tag.label,
+        minScore: tag.minScore,
+        maxScore: tag.maxScore,
+        filterMin: tag.minScore,
+        filterMax: tag.maxScore,
+      },
+    ]);
+  };
+
+  const removeDnaFilter = (baseTag: string) => {
+    setDnaScoreFilters((prev) => prev.filter((f) => f.baseTag !== baseTag));
+  };
+
+  const updateDnaFilter = (updated: DnaFilter) => {
+    setDnaScoreFilters((prev) => prev.map((f) => (f.baseTag === updated.baseTag ? updated : f)));
+  };
+
   // Handle "Did you mean" suggestion tap
   const handleSpellingSuggestion = (text: string) => {
     setQuery(text);
@@ -654,7 +977,7 @@ export function SearchScreen() {
     navigation.navigate('BookDetail', { id: book.id });
   }, [navigation, query]);
 
-  const handlePlayBook = useCallback(async (book: LibraryItem) => {
+  const _handlePlayBook = useCallback(async (book: LibraryItem) => {
     Keyboard.dismiss();
     if (query.trim()) saveSearch(query.trim());
     try {
@@ -690,29 +1013,36 @@ export function SearchScreen() {
   const hasResults = bookResults.length > 0 || seriesResults.length > 0 ||
     authorResults.length > 0 || narratorResults.length > 0;
 
-  // Header colors based on theme
-  const headerBg = colors.isDark ? staticColors.black : staticColors.cream;
+  // Suggested books for no-results state — recently added books
+  const suggestedBooks = useMemo(() => {
+    if (hasResults || !hasActiveSearch) return [];
+    const sorted = [...libraryItems].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+    return sorted.slice(0, 6);
+  }, [libraryItems, hasResults, hasActiveSearch]);
+
+  // Header colors based on theme — match page bg for seamless look
+  const _headerBg = colors.white; // Same as page background
   const headerIconColor = colors.isDark ? staticColors.white : staticColors.black;
   const headerBorderColor = colors.isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.white }]}>
-      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={headerBg} />
+      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
 
-      {/* Safe area for top nav - matches theme */}
-      <View style={{ height: insets.top, backgroundColor: headerBg }} />
+      {/* Safe area for top nav - matches page bg */}
+      <View style={{ height: insets.top, backgroundColor: colors.white }} />
 
-      {/* TopNav with skull logo and integrated search bar - theme-aware */}
+      {/* TopNav with skull logo and integrated search bar */}
       <TopNav
         variant={colors.isDark ? 'dark' : 'light'}
         showLogo={true}
         onLogoPress={handleLogoPress}
         includeSafeArea={false}
-        style={{ backgroundColor: headerBg, zIndex: 30 }}
+        style={{ backgroundColor: colors.white, zIndex: 30 }}
         circleButtons={[
           {
             key: 'back',
-            icon: <TopNavBackIcon color={headerIconColor} size={14} />,
+            icon: <TopNavBackIcon color={headerIconColor} size={16} />,
             onPress: handleBack,
           },
         ]}
@@ -722,6 +1052,7 @@ export function SearchScreen() {
             setQuery(text);
             setHasCommittedSearch(false);
           },
+          onClear: handleClear,
           placeholder: 'Search books, authors, series...',
           onSubmitEditing: handleSearch,
           onFocus: handleInputFocus,
@@ -740,7 +1071,7 @@ export function SearchScreen() {
                 accessibilityLabel="Scan ISBN barcode"
                 accessibilityRole="button"
               >
-                <Icon name="ScanBarcode" size={18} color={headerIconColor} />
+                <Icon name="ScanBarcode" size={12} color={headerIconColor} strokeWidth={1.5} />
               </TouchableOpacity>
               {/* Filter Button */}
               <TouchableOpacity
@@ -753,7 +1084,7 @@ export function SearchScreen() {
                 accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
                 accessibilityRole="button"
               >
-                <Icon name="SlidersHorizontal" size={18} color={activeFilterCount > 0 ? (colors.isDark ? staticColors.black : staticColors.white) : headerIconColor} />
+                <Icon name="SlidersHorizontal" size={12} color={activeFilterCount > 0 ? (colors.isDark ? staticColors.black : staticColors.white) : headerIconColor} strokeWidth={1.5} />
                 {activeFilterCount > 0 && (
                   <View style={styles.filterBadge}>
                     <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
@@ -771,122 +1102,161 @@ export function SearchScreen() {
           {/* Darkened background per Baymard research */}
           <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} />
 
-          <View style={[styles.autocompleteContainer, { top: insets.top + 64 }]}>
-            {/* Books */}
-            {autocompleteSuggestions.books.length > 0 && (
-              <View style={styles.autocompleteSectionContainer}>
-                <Text style={styles.autocompleteSection}>BOOKS</Text>
-                {autocompleteSuggestions.books.map((book) => (
-                  <TouchableOpacity
-                    key={book.id}
-                    style={styles.autocompleteItem}
-                    onPress={() => handleAutocompleteBook(book.id)}
-                    accessibilityLabel={`${book.title} by ${book.author}, ${book.duration}`}
-                    accessibilityRole="button"
-                    accessibilityHint="Double tap to view book"
-                  >
-                    <View style={styles.autocompleteItemContent}>
-                      <Text style={styles.autocompleteTitle} numberOfLines={1}>{book.title}</Text>
-                      <Text style={styles.autocompleteMeta}>{book.author} · {book.duration}</Text>
-                    </View>
-                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Authors */}
-            {autocompleteSuggestions.authors.length > 0 && (
-              <View style={styles.autocompleteSectionContainer}>
-                <Text style={styles.autocompleteSection}>AUTHORS</Text>
-                {autocompleteSuggestions.authors.map((author) => {
-                  const imageUrl = author.id && author.imagePath
-                    ? apiClient.getAuthorImageUrl(author.id)
-                    : null;
-                  const initials = author.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-                  return (
+          <View style={[styles.autocompleteContainer, { top: insets.top + 64, maxHeight: Dimensions.get('window').height * 0.6 }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
+              {/* Books */}
+              {autocompleteSuggestions.books.length > 0 && (
+                <View style={styles.autocompleteSectionContainer}>
+                  <Text style={styles.autocompleteSection}>BOOKS</Text>
+                  {autocompleteSuggestions.books.map((book) => (
                     <TouchableOpacity
-                      key={author.name}
+                      key={book.id}
                       style={styles.autocompleteItem}
-                      onPress={() => handleAutocompleteAuthor(author.name)}
-                      accessibilityLabel={`Author: ${author.name}, ${author.bookCount} books`}
+                      onPress={() => handleAutocompleteBook(book.id)}
+                      accessibilityLabel={`${book.title} by ${book.author}, ${book.duration}`}
                       accessibilityRole="button"
-                      accessibilityHint="Double tap to view author"
+                      accessibilityHint="Double tap to view book"
                     >
-                      {/* Author Thumbnail */}
-                      {imageUrl ? (
-                        <Image source={imageUrl} style={styles.autocompleteThumbnail} contentFit="cover" />
-                      ) : (
-                        <View style={[styles.autocompleteThumbnail, styles.autocompleteThumbnailPlaceholder]}>
-                          <Text style={styles.autocompleteThumbnailInitials}>{initials}</Text>
-                        </View>
-                      )}
                       <View style={styles.autocompleteItemContent}>
-                        <Text style={styles.autocompleteTitle}>{author.name}</Text>
-                        <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
+                        <Text style={styles.autocompleteTitle} numberOfLines={1}>{book.title}</Text>
+                        <Text style={styles.autocompleteMeta}>{book.author} · {book.duration}</Text>
                       </View>
-                      <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
+                      <Icon name="ChevronRight" size={14} color={TEXT_TERTIARY} strokeWidth={2} />
                     </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Series */}
-            {autocompleteSuggestions.series.length > 0 && (
-              <View style={styles.autocompleteSectionContainer}>
-                <Text style={styles.autocompleteSection}>SERIES</Text>
-                {autocompleteSuggestions.series.map((series) => (
-                  <TouchableOpacity
-                    key={series.name}
-                    style={styles.autocompleteItem}
-                    onPress={() => handleAutocompleteSeries(series.name)}
-                    accessibilityLabel={`Series: ${series.name}, ${series.bookCount} books`}
-                    accessibilityRole="button"
-                    accessibilityHint="Double tap to view series"
-                  >
-                    <View style={styles.autocompleteItemContent}>
-                      <Text style={styles.autocompleteTitle}>{series.name}</Text>
-                      <Text style={styles.autocompleteMeta}>{series.bookCount} books</Text>
-                    </View>
-                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Narrators */}
-            {autocompleteSuggestions.narrators.length > 0 && (
-              <View style={styles.autocompleteSectionContainer}>
-                <Text style={styles.autocompleteSection}>NARRATORS</Text>
-                {autocompleteSuggestions.narrators.map((narrator) => (
-                  <TouchableOpacity
-                    key={narrator.name}
-                    style={styles.autocompleteItem}
-                    onPress={() => handleAutocompleteNarrator(narrator.name)}
-                    accessibilityLabel={`Narrator: ${narrator.name}, ${narrator.bookCount} books`}
-                    accessibilityRole="button"
-                    accessibilityHint="Double tap to view narrator"
-                  >
-                    <View style={styles.autocompleteItemContent}>
-                      <Text style={styles.autocompleteTitle}>{narrator.name}</Text>
-                      <Text style={styles.autocompleteMeta}>{narrator.bookCount} books narrated</Text>
-                    </View>
-                    <Icon name="ChevronRight" size={16} color={TEXT_TERTIARY} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* No autocomplete results */}
-            {autocompleteSuggestions.books.length === 0 &&
-              autocompleteSuggestions.authors.length === 0 &&
-              autocompleteSuggestions.series.length === 0 &&
-              autocompleteSuggestions.narrators.length === 0 && (
-                <View style={styles.noAutocomplete}>
-                  <Text style={styles.noAutocompleteText}>Press search to find results</Text>
+                  ))}
                 </View>
               )}
+
+              {/* Authors */}
+              {autocompleteSuggestions.authors.length > 0 && (
+                <View style={styles.autocompleteSectionContainer}>
+                  <Text style={styles.autocompleteSection}>AUTHORS</Text>
+                  {autocompleteSuggestions.authors.map((author) => {
+                    const imageUrl = author.id && author.imagePath
+                      ? apiClient.getAuthorImageUrl(author.id)
+                      : null;
+                    const initials = author.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+                    return (
+                      <TouchableOpacity
+                        key={author.name}
+                        style={styles.autocompleteItem}
+                        onPress={() => handleAutocompleteAuthor(author.name)}
+                        accessibilityLabel={`Author: ${author.name}, ${author.bookCount} books`}
+                        accessibilityRole="button"
+                        accessibilityHint="Double tap to view author"
+                      >
+                        {/* Author Thumbnail */}
+                        {imageUrl ? (
+                          <Image source={imageUrl} style={styles.autocompleteThumbnail} contentFit="cover" />
+                        ) : (
+                          <View style={[styles.autocompleteThumbnail, styles.autocompleteThumbnailPlaceholder]}>
+                            <Text style={styles.autocompleteThumbnailInitials}>{initials}</Text>
+                          </View>
+                        )}
+                        <View style={styles.autocompleteItemContent}>
+                          <Text style={styles.autocompleteTitle}>{author.name}</Text>
+                          <Text style={styles.autocompleteMeta}>{author.bookCount} books</Text>
+                        </View>
+                        <Icon name="ChevronRight" size={14} color={TEXT_TERTIARY} strokeWidth={2} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Series */}
+              {autocompleteSuggestions.series.length > 0 && (
+                <View style={styles.autocompleteSectionContainer}>
+                  <Text style={styles.autocompleteSection}>SERIES</Text>
+                  {autocompleteSuggestions.series.map((series) => (
+                    <TouchableOpacity
+                      key={series.name}
+                      style={styles.autocompleteItem}
+                      onPress={() => handleAutocompleteSeries(series.name)}
+                      accessibilityLabel={`Series: ${series.name}, ${series.bookCount} books`}
+                      accessibilityRole="button"
+                      accessibilityHint="Double tap to view series"
+                    >
+                      <View style={styles.autocompleteItemContent}>
+                        <Text style={styles.autocompleteTitle}>{series.name}</Text>
+                        <Text style={styles.autocompleteMeta}>{series.bookCount} books</Text>
+                      </View>
+                      <Icon name="ChevronRight" size={14} color={TEXT_TERTIARY} strokeWidth={2} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Narrators */}
+              {autocompleteSuggestions.narrators.length > 0 && (
+                <View style={styles.autocompleteSectionContainer}>
+                  <Text style={styles.autocompleteSection}>NARRATORS</Text>
+                  {autocompleteSuggestions.narrators.map((narrator) => (
+                    <TouchableOpacity
+                      key={narrator.name}
+                      style={styles.autocompleteItem}
+                      onPress={() => handleAutocompleteNarrator(narrator.name)}
+                      accessibilityLabel={`Narrator: ${narrator.name}, ${narrator.bookCount} books`}
+                      accessibilityRole="button"
+                      accessibilityHint="Double tap to view narrator"
+                    >
+                      <View style={styles.autocompleteItemContent}>
+                        <Text style={styles.autocompleteTitle}>{narrator.name}</Text>
+                        <Text style={styles.autocompleteMeta}>{narrator.bookCount} books narrated</Text>
+                      </View>
+                      <Icon name="ChevronRight" size={14} color={TEXT_TERTIARY} strokeWidth={2} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Tags / Genres / DNA */}
+              {autocompleteSuggestions.tags.length > 0 && (
+                <View style={styles.autocompleteSectionContainer}>
+                  <Text style={styles.autocompleteSection}>TAGS</Text>
+                  {autocompleteSuggestions.tags.map((tag) => (
+                    <TouchableOpacity
+                      key={tag.baseTag}
+                      style={styles.autocompleteItem}
+                      onPress={() => handleAutocompleteTag(tag)}
+                      accessibilityLabel={`Tag: ${tag.label}, ${tag.bookCount} books`}
+                      accessibilityRole="button"
+                    >
+                      <Icon name="Tag" size={16} color={TEXT_TERTIARY} strokeWidth={1.5} />
+                      <View style={styles.autocompleteItemContent}>
+                        <Text style={styles.autocompleteTitle} numberOfLines={1}>
+                          {tag.category ? (
+                            <>
+                              <Text style={{ color: TEXT_SECONDARY, textTransform: 'capitalize' }}>{tag.category}</Text>
+                              <Text style={{ color: TEXT_TERTIARY }}> › </Text>
+                              <Text style={{ textTransform: 'capitalize' }}>{tag.label}</Text>
+                            </>
+                          ) : (
+                            <Text style={{ textTransform: 'capitalize' }}>{tag.label}</Text>
+                          )}
+                          {tag.hasScore && (
+                            <Text style={{ color: TEXT_TERTIARY }}> ({tag.minScore}–{tag.maxScore})</Text>
+                          )}
+                        </Text>
+                        <Text style={styles.autocompleteMeta}>{tag.bookCount} books</Text>
+                      </View>
+                      <Icon name="ChevronRight" size={14} color={TEXT_TERTIARY} strokeWidth={2} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* No autocomplete results */}
+              {autocompleteSuggestions.books.length === 0 &&
+                autocompleteSuggestions.authors.length === 0 &&
+                autocompleteSuggestions.series.length === 0 &&
+                autocompleteSuggestions.narrators.length === 0 &&
+                autocompleteSuggestions.tags.length === 0 && (
+                  <View style={styles.noAutocomplete}>
+                    <Text style={styles.noAutocompleteText}>Press search to find results</Text>
+                  </View>
+                )}
+            </ScrollView>
           </View>
         </>
       )}
@@ -912,10 +1282,58 @@ export function SearchScreen() {
         {/* Empty state - show previous searches */}
         {isLoaded && !hasActiveSearch && (
           <View style={styles.emptyStateContainer}>
+            {/* DNA filter — start narrowing from all books */}
+            <View style={styles.dnaAddContainer}>
+              {showDnaTagPicker ? (
+                <View>
+                  <View style={styles.dnaTagPickerHeader}>
+                    <Text style={styles.dnaAddText}>DNA FILTERS</Text>
+                    <TouchableOpacity onPress={() => setShowDnaTagPicker(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Icon name="X" size={14} color={TEXT_TERTIARY} strokeWidth={1.5} />
+                    </TouchableOpacity>
+                  </View>
+                  {(() => {
+                    const scored = allTags.filter((t) => t.hasScore);
+                    const groups = new Map<string, typeof scored>();
+                    for (const t of scored) {
+                      const cat = t.category || 'Other';
+                      if (!groups.has(cat)) groups.set(cat, []);
+                      groups.get(cat)!.push(t);
+                    }
+                    return Array.from(groups.entries()).map(([cat, tags]) => (
+                      <View key={cat}>
+                        <Text style={styles.dnaTagCategoryLabel}>{cat}</Text>
+                        <View style={styles.dnaTagPickerWrap}>
+                          {tags.map((tag) => (
+                            <TouchableOpacity
+                              key={tag.baseTag}
+                              style={styles.dnaTagChip}
+                              onPress={() => {
+                                addDnaFilter(tag);
+                                setShowDnaTagPicker(false);
+                              }}
+                            >
+                              <Text style={styles.dnaTagChipText}>{tag.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    ));
+                  })()}
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)}>
+                  <Icon name="Plus" size={12} color={TEXT_TERTIARY} strokeWidth={1.5} />
+                  <Text style={styles.dnaAddText}>DNA filter</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             {previousSearches.length > 0 ? (
               <View style={styles.previousSearches}>
                 <View style={styles.previousSearchesHeader}>
                   <Text style={styles.previousSearchesTitle}>Recent Searches</Text>
+
                   <TouchableOpacity onPress={clearSearchHistory}>
                     <Text style={styles.clearHistoryText}>Clear</Text>
                   </TouchableOpacity>
@@ -926,13 +1344,13 @@ export function SearchScreen() {
                     style={styles.previousSearchItem}
                     onPress={() => handlePreviousSearchPress(search)}
                   >
-                    <Icon name="Clock" size={18} color={TEXT_TERTIARY} />
+                    <Icon name="Clock" size={16} color={TEXT_TERTIARY} strokeWidth={1.5} />
                     <Text style={styles.previousSearchText}>{search}</Text>
                     <TouchableOpacity
                       style={styles.removeSearchButton}
                       onPress={() => removeFromHistory(search)}
                     >
-                      <Icon name="X" size={16} color={TEXT_TERTIARY} />
+                      <Icon name="X" size={14} color={TEXT_TERTIARY} strokeWidth={1.5} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 ))}
@@ -945,47 +1363,135 @@ export function SearchScreen() {
               </View>
             )}
 
+            {/* Featured book hero card — lazy loaded */}
+            {showHeavySections && (
+              <SearchHeroCard
+                items={libraryItems}
+                onBookPress={(id) => navigation.navigate('BookDetail', { id })}
+              />
+            )}
+
             {/* Browse categories */}
             <View style={styles.browseRecovery}>
+              {/* Big Browse Button */}
+              <TouchableOpacity
+                style={styles.bigBrowseButton}
+                onPress={() => { navigation.navigate('BrowsePage'); }}
+              >
+                <Icon name="Globe" size={18} color={colors.black} strokeWidth={1} />
+                <Text style={[styles.bigBrowseButtonText, { color: colors.black }]}>Discover</Text>
+              </TouchableOpacity>
               <View style={styles.browseRecoveryGrid}>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('GenresList')}
                 >
-                  <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Genres</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('AuthorsList')}
                 >
-                  <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Authors</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('SeriesList')}
                 >
-                  <Icon name="Library" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Library" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Series</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('DurationFilter')}
                 >
-                  <Icon name="Timer" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Timer" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Duration</Text>
                 </TouchableOpacity>
               </View>
-              {/* Big Browse Button */}
-              <TouchableOpacity
-                style={[styles.bigBrowseButton, { backgroundColor: colors.black }]}
-                onPress={() => { navigation.navigate('BrowsePage'); }}
-              >
-                <Icon name="Globe" size={20} color={colors.white} strokeWidth={1.5} />
-                <Text style={[styles.bigBrowseButtonText, { color: colors.white }]}>Browse All Books</Text>
-              </TouchableOpacity>
             </View>
+
+          </View>
+        )}
+
+        {/* DNA Score Range Sliders — always at top when active */}
+        {hasActiveSearch && dnaScoreFilters.length > 0 && (
+          <View>
+            {dnaScoreFilters.map((df) => (
+              <DnaRangeSlider
+                key={df.baseTag}
+                filter={df}
+                onChange={updateDnaFilter}
+                onRemove={() => removeDnaFilter(df.baseTag)}
+                resultCount={bookResults.length}
+                styles={styles}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* + Add DNA filter button — always at top when searching */}
+        {hasActiveSearch && (
+          <View style={styles.dnaAddContainer}>
+            {showDnaTagPicker ? (
+              <View>
+                <View style={styles.dnaTagPickerHeader}>
+                  <Text style={styles.dnaAddText}>DNA FILTERS</Text>
+                  <TouchableOpacity onPress={() => setShowDnaTagPicker(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Icon name="X" size={14} color={TEXT_TERTIARY} strokeWidth={1.5} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.dnaTagPickerWrap}>
+                  {(() => {
+                    const candidates = allTags.filter((t) => {
+                      if (!t.hasScore) return false;
+                      if (dnaScoreFilters.some((f) => f.baseTag === t.baseTag)) return false;
+                      return bookResults.some((book) => {
+                        const tags: string[] = (book.media as any)?.tags || [];
+                        return tags.some((bt) => bt.toLowerCase().startsWith(t.baseTag + ':'));
+                      });
+                    });
+                    return candidates
+                      .map((tag) => {
+                        const matchCount = bookResults.filter((book) => {
+                          const tags: string[] = (book.media as any)?.tags || [];
+                          return tags.some((bt) => {
+                            const lower = bt.toLowerCase();
+                            if (!lower.startsWith(tag.baseTag + ':')) return false;
+                            const score = parseFloat(lower.slice(tag.baseTag.length + 1));
+                            return !isNaN(score) && score >= 5;
+                          });
+                        }).length;
+                        const distance = matchCount === 0 ? Infinity : Math.abs(matchCount - 10);
+                        return { tag, matchCount, distance };
+                      })
+                      .filter((c) => c.matchCount > 0)
+                      .sort((a, b) => a.distance - b.distance);
+                  })()
+                    .map(({ tag, matchCount }) => (
+                      <TouchableOpacity
+                        key={tag.baseTag}
+                        style={styles.dnaTagChip}
+                        onPress={() => {
+                          addDnaFilter(tag);
+                          setShowDnaTagPicker(false);
+                        }}
+                      >
+                        <Text style={styles.dnaTagChipText}>
+                          {tag.label} <Text style={styles.dnaTagChipCount}>{matchCount}</Text>
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)}>
+                <Icon name="Plus" size={12} color={TEXT_TERTIARY} strokeWidth={1.5} />
+                <Text style={styles.dnaAddText}>Add filter</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -1014,55 +1520,56 @@ export function SearchScreen() {
               </View>
             )}
 
-            {/* Browse categories */}
+            {/* Browse categories — matches idle page layout */}
             <View style={styles.browseRecovery}>
+              <TouchableOpacity
+                style={styles.bigBrowseButton}
+                onPress={() => { navigation.navigate('BrowsePage'); }}
+              >
+                <Icon name="Globe" size={18} color={colors.black} strokeWidth={1} />
+                <Text style={[styles.bigBrowseButtonText, { color: colors.black }]}>Discover</Text>
+              </TouchableOpacity>
               <View style={styles.browseRecoveryGrid}>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('GenresList')}
                 >
-                  <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Genres</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('AuthorsList')}
                 >
-                  <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Authors</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('SeriesList')}
                 >
-                  <Icon name="Library" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Library" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Series</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.browseRecoveryItem, { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.08)' : colors.cream }]}
+                  style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('DurationFilter')}
                 >
-                  <Icon name="Timer" size={24} color={colors.black} strokeWidth={1.5} />
+                  <Icon name="Timer" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Duration</Text>
                 </TouchableOpacity>
               </View>
-              {/* Big Browse Button */}
-              <TouchableOpacity
-                style={[styles.bigBrowseButton, { backgroundColor: colors.black }]}
-                onPress={() => { navigation.navigate('BrowsePage'); }}
-              >
-                <Icon name="Globe" size={20} color={colors.white} strokeWidth={1.5} />
-                <Text style={[styles.bigBrowseButtonText, { color: colors.white }]}>Browse All Books</Text>
-              </TouchableOpacity>
             </View>
 
-            {/* Tips */}
-            <View style={styles.searchTips}>
-              <Text style={styles.searchTipsTitle}>Search tips:</Text>
-              <Text style={styles.searchTip}>• Check spelling of author/narrator names</Text>
-              <Text style={styles.searchTip}>• Try searching by series name</Text>
-              <Text style={styles.searchTip}>• Use fewer keywords</Text>
-            </View>
+            {/* Recently added — horizontal cover carousel like Browse page, lazy loaded */}
+            {showHeavySections && (
+              <RecentlyAddedSection
+                items={libraryItems}
+                onBookPress={(id) => navigation.navigate('BookDetail', { id })}
+                limit={12}
+                backgroundColor="transparent"
+              />
+            )}
           </View>
         )}
 
@@ -1070,12 +1577,7 @@ export function SearchScreen() {
         {hasActiveSearch && bookResults.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Books</Text>
-              {bookResults.length > 5 && (
-                <TouchableOpacity>
-                  <Text style={styles.viewAllText}>VIEW ALL</Text>
-                </TouchableOpacity>
-              )}
+              <Text style={styles.sectionLabel}>BOOKS</Text>
             </View>
             <View>
               {bookResults.slice(0, 10).map((book, index) => {
@@ -1091,7 +1593,7 @@ export function SearchScreen() {
                     duration={duration}
                     showSeparator={index < bookResults.slice(0, 10).length - 1}
                     onPress={() => handleBookPress(book)}
-                    onLongPress={() => showMenu(book)}
+                    onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
                   />
                 );
               })}
@@ -1287,9 +1789,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: 4,
   },
   filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'transparent',
     borderWidth: 1,
     // borderColor set dynamically in JSX based on theme
@@ -1302,18 +1804,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   filterBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -3,
+    right: -3,
     backgroundColor: '#FF3B30',
-    borderRadius: 8,
-    width: 16,
-    height: 16,
+    borderRadius: 6,
+    width: 12,
+    height: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterBadgeText: {
     color: '#FFF',
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
   },
 
@@ -1510,25 +2012,31 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   previousSearchesTitle: {
     color: colors.TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: secretLibraryFonts.jetbrainsMono.medium,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    opacity: 0.5,
   },
   clearHistoryText: {
     color: colors.ACCENT,
-    fontSize: 14,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   previousSearchItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.BORDER_DEFAULT,
   },
   previousSearchText: {
     flex: 1,
     color: colors.TEXT_SECONDARY,
-    fontSize: 15,
-    marginLeft: 12,
+    fontSize: 14,
+    marginLeft: 10,
   },
   removeSearchButton: {
     padding: 4,
@@ -1709,9 +2217,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.isDarkMode ? '#1A1A1A' : colors.CARD_COLOR,
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
-    maxHeight: 400,
     zIndex: 20,
     paddingVertical: 8,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -1726,36 +2234,42 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   autocompleteSection: {
     color: colors.TEXT_TERTIARY,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontFamily: secretLibraryFonts.jetbrainsMono.medium,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingTop: 12,
+    paddingBottom: 6,
+    opacity: 0.6,
   },
   autocompleteItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   autocompleteItemContent: {
     flex: 1,
   },
   autocompleteTitle: {
     color: colors.TEXT_PRIMARY,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
   },
   autocompleteMeta: {
     color: colors.TEXT_TERTIARY,
-    fontSize: 13,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginTop: 2,
   },
   autocompleteThumbnail: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 10,
     backgroundColor: colors.BORDER_DEFAULT,
   },
   autocompleteThumbnailPlaceholder: {
@@ -1765,17 +2279,20 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   autocompleteThumbnailInitials: {
     color: colors.TEXT_INVERSE,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   noAutocomplete: {
-    paddingVertical: 24,
+    paddingVertical: 20,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
   noAutocompleteText: {
     color: colors.TEXT_TERTIARY,
-    fontSize: 14,
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // No results recovery styles
@@ -1825,7 +2342,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 
   // Browse recovery
   browseRecovery: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   browseRecoveryTitle: {
     color: colors.TEXT_SECONDARY,
@@ -1842,32 +2359,36 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.04)' : colors.CARD_COLOR,
+    backgroundColor: 'transparent',
     borderRadius: 12,
     gap: 8,
     borderWidth: 1,
-    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
   },
   browseRecoveryText: {
     color: colors.TEXT_SECONDARY,
-    fontSize: 13,
-    fontWeight: '500',
+    fontFamily: secretLibraryFonts.jetbrainsMono.medium,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   bigBrowseButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
-    marginTop: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
   },
   bigBrowseButtonText: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(12),
-    fontWeight: '600',
+    fontFamily: secretLibraryFonts.jetbrainsMono.medium,
+    fontSize: scale(11),
     textTransform: 'uppercase',
     letterSpacing: 1,
+    color: colors.TEXT_PRIMARY,
   },
 
   // Search tips
@@ -1888,5 +2409,151 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.TEXT_TERTIARY,
     fontSize: 13,
     lineHeight: 20,
+  },
+
+  // Section label (subtle uppercase like "NEW TO LIBRARY")
+  sectionLabel: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(11),
+    color: colors.TEXT_TERTIARY,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+
+  // DNA Score Filter Bar
+  dnaScoreBar: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    marginBottom: 12,
+  },
+  dnaScoreHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dnaScoreHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dnaScoreLabel: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.medium,
+    fontSize: scale(11),
+    color: colors.TEXT_SECONDARY,
+    letterSpacing: 0.5,
+  },
+  dnaScoreValue: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.TEXT_TERTIARY,
+  },
+  dnaTrackContainer: {
+    height: scale(24),
+    justifyContent: 'center',
+    marginHorizontal: THUMB_W / 2,
+  },
+  dnaTrack: {
+    height: scale(2),
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+    borderRadius: 1,
+    overflow: 'hidden',
+  },
+  dnaTrackFill: {
+    position: 'absolute' as const,
+    top: 0,
+    bottom: 0,
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.5)',
+    borderRadius: 1,
+  },
+  dnaThumb: {
+    position: 'absolute' as const,
+    width: THUMB_W,
+    height: scale(20),
+    marginLeft: -THUMB_W / 2,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  dnaThumbInner: {
+    width: scale(4),
+    height: scale(14),
+    borderRadius: scale(2),
+    backgroundColor: colors.isDarkMode ? '#FFFFFF' : '#333333',
+  },
+  dnaTickRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    marginHorizontal: THUMB_W / 2,
+    marginTop: 0,
+  },
+  dnaTickText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.TEXT_TERTIARY,
+    textAlign: 'center' as const,
+    width: scale(20),
+    marginLeft: -scale(10),
+  },
+  dnaTickTextActive: {
+    color: colors.isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
+  },
+
+  // DNA add filter
+  dnaAddContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  dnaAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+  },
+  dnaAddText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.TEXT_TERTIARY,
+    letterSpacing: 0.5,
+  },
+
+  // DNA tag picker
+  dnaTagPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dnaTagPickerWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dnaTagCategoryLabel: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    color: colors.TEXT_TERTIARY,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  dnaTagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+    backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+  },
+  dnaTagChipText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    color: colors.TEXT_SECONDARY,
+    textTransform: 'capitalize',
+  },
+  dnaTagChipCount: {
+    color: colors.TEXT_TERTIARY,
+    fontSize: scale(9),
   },
 });
