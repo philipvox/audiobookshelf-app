@@ -9,6 +9,30 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.220] - 2026-03-20
+
+### Changed
+- **Bug Reporter submits in-app** — Replaced email/copy/share submission with direct POST to `mysecretlibrary.com/api/bugs` (same GitHub Issues backend as the website). Reports now submit entirely in-app with success/error banners. Added "Report on our website" link at bottom for users who prefer the web form. Auto-populates version and platform in the website link.
+
+### Files Modified
+- `src/features/profile/screens/BugReportScreen.tsx` — Rewritten submission to POST to API, added result banners, added website link
+- `src/constants/version.ts` — Version bump
+
+---
+
+## [0.9.219] - 2026-03-20
+
+### Fixed
+- **Bug Reporter dark mode detection** — Fixed `isDarkMode` using broken `colors.black === '#FFFFFF'` comparison (always false) instead of `colors.isDark`, causing StatusBar to always show dark-content regardless of theme
+- **Bug Reporter no-email fallback** — Added Copy to Clipboard and Share buttons so users without a configured email app can still send reports via Discord, GitHub, or messaging apps. Previously showed a dead-end alert with just the email address
+- **Bug Reporter clipboard** — Switched from missing `expo-clipboard` dependency to React Native's built-in `Clipboard` API (matching existing codebase pattern)
+
+### Files Modified
+- `src/features/profile/screens/BugReportScreen.tsx` — Fixed dark mode, added copy/share actions, fixed clipboard import
+- `src/constants/version.ts` — Version bump
+
+---
+
 ## [0.9.218] - 2026-03-17
 
 ### Fixed

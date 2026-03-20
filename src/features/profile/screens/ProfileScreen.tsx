@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Undo2,
   Redo2,
+  Bug,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@/core/auth';
@@ -576,6 +577,11 @@ export function ProfileScreen() {
             label="About"
             subtitle={`v${APP_VERSION}`}
             onPress={() => navigation.navigate('About')}
+          />
+          <ProfileLink
+            Icon={Bug}
+            label="Report a Bug"
+            onPress={() => navigation.navigate('BugReport')}
           />
         </View>
 
