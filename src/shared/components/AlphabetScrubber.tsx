@@ -45,7 +45,7 @@ export function AlphabetScrubber({
   visible = true,
   style,
 }: AlphabetScrubberProps) {
-  const { colors } = useTheme();
+  const _theme = useTheme();
   const containerRef = useRef<View>(null);
   const [containerHeight, setContainerHeight] = useState(0);
   const lastLetterRef = useRef<string>('');

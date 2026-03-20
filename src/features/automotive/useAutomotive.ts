@@ -38,6 +38,15 @@ export function useAutomotiveConnection() {
     // Get initial state
     setState(automotiveService.getConnectionState());
     setPlatform(automotiveService.getConnectedPlatform());
+
+    return () => {
+      // Clear callbacks to prevent retained references to unmounted component
+      automotiveService.setCallbacks({
+        onConnect: () => {},
+        onDisconnect: () => {},
+        onAction: () => {},
+      });
+    };
   }, []);
 
   return {
@@ -109,6 +118,10 @@ export function useAutomotive() {
     // Update only the action handler, preserving connection callbacks
     // Note: useAutomotiveConnection already sets up onConnect/onDisconnect
     automotiveService.setActionHandler(handleAction);
+
+    return () => {
+      automotiveService.setActionHandler(() => {});
+    };
   }, [handleAction]);
 
   return {

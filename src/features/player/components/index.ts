@@ -3,10 +3,9 @@
  */
 
 export {
-  MoonIcon,
   RewindIcon,
   FastForwardIcon,
-  DownArrowIcon,
-  BookmarkFlagIcon,
-  SettingsIconCircle,
+  BookmarkIcon,
+  ChevronDownIcon,
+  ClockIcon,
 } from './PlayerIcons';

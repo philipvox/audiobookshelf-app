@@ -42,10 +42,12 @@ import { wp, spacing, radius, scale, useSecretLibraryColors } from '@/shared/the
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { useIsDarkMode } from '@/shared/theme/themeStore';
 import { useKidModeStore } from '@/shared/stores/kidModeStore';
+import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
 import { filterForKidMode } from '@/shared/utils/kidModeFilter';
 import { logger } from '@/shared/utils/logger';
 import { useToast } from '@/shared/hooks/useToast';
 import { useBrowseCounts } from '@/features/browse';
+import type { QuickBrowseCategory } from '@/features/search/components/QuickBrowseGrid';
 import { SeriesCard } from '@/features/browse/components/SeriesCard';
 import { BookSimpleRow } from '../components/BookSimpleRow';
 import { SearchFilterSheet, type SearchFilterState, type AvailableFilters, type AgeRange } from '../components/SearchFilterSheet';
@@ -107,13 +109,12 @@ type SearchScreenParams = {
 type DnaFilter = { baseTag: string; label: string; minScore: number; maxScore: number; filterMin: number; filterMax: number };
 
 const THUMB_W = scale(22);
-const TRACK_H = scale(4);
 
 const DnaRangeSlider = React.memo(function DnaRangeSlider({
   filter,
   onChange,
   onRemove,
-  resultCount,
+  resultCount: _resultCount,
   styles: s,
 }: {
   filter: DnaFilter;
@@ -285,7 +286,7 @@ export function SearchScreen() {
   const loadBook = usePlayerStore((s) => s.loadBook);
 
   // Book context menu
-  const { _showMenu } = useBookContextMenu();
+  const { showMenu: _showMenu } = useBookContextMenu();
 
   // Theme-aware colors (Secret Library design system)
   const colors = useSecretLibraryColors();
@@ -375,6 +376,9 @@ export function SearchScreen() {
 
   // Kid Mode filter state
   const kidModeEnabled = useKidModeStore((state) => state.enabled);
+
+  // DNA features toggle
+  const dnaEnabled = useDNASettingsStore((s) => s.enableDNAFeatures);
 
   // Toast for error feedback
   const { showError } = useToast();
@@ -532,7 +536,8 @@ export function SearchScreen() {
     results = filterByAgeRange(results, ageRange);
 
     // Apply DNA score filters — each filter narrows results (AND logic)
-    for (const df of dnaScoreFilters) {
+    // Skip when DNA features are disabled
+    for (const df of dnaEnabled ? dnaScoreFilters : []) {
       const { baseTag, filterMin, filterMax } = df;
       results = results.filter((item) => {
         const tags: string[] = (item.media as any)?.tags || [];
@@ -547,7 +552,7 @@ export function SearchScreen() {
     }
 
     return results.slice(0, 100);
-  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled, ageRange, filterByAgeRange, dnaScoreFilters, libraryItems, selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationFilter]);
+  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled, ageRange, filterByAgeRange, dnaScoreFilters, dnaEnabled, libraryItems, selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationFilter]);
 
   // Filter authors matching query (with fuzzy matching)
   const authorResults = useMemo(() => {
@@ -703,12 +708,16 @@ export function SearchScreen() {
       .map(n => ({ name: n.name, bookCount: n.bookCount }));
 
     // Tags/Genres/DNA - max 3, search against label and searchable (not raw dna: prefix)
+    // When DNA is disabled, exclude DNA tags (those with scores or dna: prefix)
     const tags = allTags
-      .filter(t => t.searchable.includes(_lowerQuery) || _lowerQuery.split(/\s+/).every(w => t.searchable.includes(w)))
+      .filter(t => {
+        if (!dnaEnabled && (t.hasScore || t.baseTag.startsWith('dna:'))) return false;
+        return t.searchable.includes(_lowerQuery) || _lowerQuery.split(/\s+/).every(w => t.searchable.includes(w));
+      })
       .slice(0, 3);
 
     return { books, authors, series, narrators, tags };
-  }, [query, filterItems, allAuthors, allSeries, allNarrators, allTags, kidModeEnabled]);
+  }, [query, filterItems, allAuthors, allSeries, allNarrators, allTags, kidModeEnabled, dnaEnabled]);
 
   // "Did you mean" suggestions when no results
   const spellingSuggestions = useMemo(() => {
@@ -1014,7 +1023,7 @@ export function SearchScreen() {
     authorResults.length > 0 || narratorResults.length > 0;
 
   // Suggested books for no-results state — recently added books
-  const suggestedBooks = useMemo(() => {
+  const _suggestedBooks = useMemo(() => {
     if (hasResults || !hasActiveSearch) return [];
     const sorted = [...libraryItems].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     return sorted.slice(0, 6);
@@ -1282,7 +1291,8 @@ export function SearchScreen() {
         {/* Empty state - show previous searches */}
         {isLoaded && !hasActiveSearch && (
           <View style={styles.emptyStateContainer}>
-            {/* DNA filter — start narrowing from all books */}
+            {/* DNA filter — start narrowing from all books (hidden when DNA disabled) */}
+            {dnaEnabled && (
             <View style={styles.dnaAddContainer}>
               {showDnaTagPicker ? (
                 <View>
@@ -1328,6 +1338,7 @@ export function SearchScreen() {
                 </TouchableOpacity>
               )}
             </View>
+            )}
 
             {previousSearches.length > 0 ? (
               <View style={styles.previousSearches}>
@@ -1416,8 +1427,8 @@ export function SearchScreen() {
           </View>
         )}
 
-        {/* DNA Score Range Sliders — always at top when active */}
-        {hasActiveSearch && dnaScoreFilters.length > 0 && (
+        {/* DNA Score Range Sliders — always at top when active (hidden when DNA disabled) */}
+        {dnaEnabled && hasActiveSearch && dnaScoreFilters.length > 0 && (
           <View>
             {dnaScoreFilters.map((df) => (
               <DnaRangeSlider
@@ -1432,8 +1443,8 @@ export function SearchScreen() {
           </View>
         )}
 
-        {/* + Add DNA filter button — always at top when searching */}
-        {hasActiveSearch && (
+        {/* + Add DNA filter button — always at top when searching (hidden when DNA disabled) */}
+        {dnaEnabled && hasActiveSearch && (
           <View style={styles.dnaAddContainer}>
             {showDnaTagPicker ? (
               <View>

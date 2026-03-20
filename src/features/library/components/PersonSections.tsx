@@ -209,7 +209,7 @@ export function MetaCategoryPersonSection({
   type,
   label,
 }: MetaCategoryPersonSectionProps) {
-  const { _colors, isDark } = useTheme();
+  const { colors: _colors, isDark } = useTheme();
 
   const handleToggle = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

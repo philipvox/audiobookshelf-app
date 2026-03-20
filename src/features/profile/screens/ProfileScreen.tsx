@@ -36,6 +36,7 @@ import {
 import { useAuth } from '@/core/auth';
 import { TopNavBackIcon } from '@/shared/components';
 import { useDownloads } from '@/core/hooks/useDownloads';
+import { useDefaultLibrary } from '@/features/library';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION } from '@/constants/version';
@@ -52,6 +53,7 @@ const SKIP_FORWARD_OPTIONS = [10, 15, 30, 45, 60];
 const SKIP_BACK_OPTIONS = [5, 10, 15, 30, 45];
 import { useChapterCleaningStore, CLEANING_LEVEL_INFO } from '../stores/chapterCleaningStore';
 import { useHapticSettingsStore } from '../stores/hapticSettingsStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useDNASettingsStore } from '../stores/dnaSettingsStore';
 import { useSpineCacheStore } from '@/features/home/stores/spineCache';
 import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
@@ -169,6 +171,9 @@ export function ProfileScreen() {
   const dnaEnabled = useDNASettingsStore((s) => s.enableDNAFeatures);
   const toggleDNA = useDNASettingsStore((s) => s.toggleDNAFeatures);
 
+  // Library switcher
+  const { library: activeLibrary, libraries, setLibrary } = useDefaultLibrary();
+
   // Quick settings
   const { setGlobalDefaultRate } = useSpeedStore();
   const currentLibraryId = useLibraryCache((s) => s.currentLibraryId);
@@ -186,18 +191,31 @@ export function ProfileScreen() {
   const skipForwardInterval = usePlayerSettingsStore((s) => s.skipForwardInterval);
   const skipBackInterval = usePlayerSettingsStore((s) => s.skipBackInterval);
   const chapterLevel = useChapterCleaningStore((s) => s.level);
-  const hapticsEnabled = useHapticSettingsStore((s) => s.enabled);
-
-  // Haptics: count enabled categories
-  const playbackControls = useHapticSettingsStore((s) => s.playbackControls);
-  const scrubberFeedback = useHapticSettingsStore((s) => s.scrubberFeedback);
-  const speedControl = useHapticSettingsStore((s) => s.speedControl);
-  const sleepTimer = useHapticSettingsStore((s) => s.sleepTimer);
-  const hapticDownloads = useHapticSettingsStore((s) => s.downloads);
-  const hapticBookmarks = useHapticSettingsStore((s) => s.bookmarks);
-  const hapticCompletions = useHapticSettingsStore((s) => s.completions);
-  const uiInteractions = useHapticSettingsStore((s) => s.uiInteractions);
-  const enabledHapticCount = [playbackControls, scrubberFeedback, speedControl, sleepTimer, hapticDownloads, hapticBookmarks, hapticCompletions, uiInteractions].filter(Boolean).length;
+  // Haptics: batch subscriptions to reduce re-renders (was 9 separate selectors)
+  const {
+    hapticsEnabled,
+    playbackControls,
+    scrubberFeedback,
+    speedControl,
+    sleepTimer: hapticSleepTimer,
+    hapticDownloads,
+    hapticBookmarks,
+    hapticCompletions,
+    uiInteractions,
+  } = useHapticSettingsStore(
+    useShallow((s) => ({
+      hapticsEnabled: s.enabled,
+      playbackControls: s.playbackControls,
+      scrubberFeedback: s.scrubberFeedback,
+      speedControl: s.speedControl,
+      sleepTimer: s.sleepTimer,
+      hapticDownloads: s.downloads,
+      hapticBookmarks: s.bookmarks,
+      hapticCompletions: s.completions,
+      uiInteractions: s.uiInteractions,
+    }))
+  );
+  const enabledHapticCount = [playbackControls, scrubberFeedback, speedControl, hapticSleepTimer, hapticDownloads, hapticBookmarks, hapticCompletions, uiInteractions].filter(Boolean).length;
 
   // Display Settings subtitle
   const useServerSpines = useSpineCacheStore((s) => s.useServerSpines);
@@ -210,6 +228,13 @@ export function ProfileScreen() {
 
   const playbackSubtitle = `${globalDefaultRate ?? 1}x · ${skipForwardInterval}s/${skipBackInterval}s`;
   const hapticsSubtitle = hapticsEnabled ? `On · ${enabledHapticCount} of 8` : 'Off';
+
+  const handleLibrarySwitch = useCallback((id: string) => {
+    if (id === activeLibrary?.id) return;
+    haptics.buttonPress();
+    setLibrary(id);
+    loadCache(id, true);
+  }, [activeLibrary?.id, setLibrary, loadCache]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -256,7 +281,7 @@ export function ProfileScreen() {
     }
   }, [navigation]);
 
-  const handleSpeedCycle = useCallback(() => {
+  const _handleSpeedCycle = useCallback(() => {
     haptics.buttonPress();
     const currentIdx = SPEED_QUICK_OPTIONS.indexOf(globalDefaultRate ?? 1);
     const nextIdx = (currentIdx + 1) % SPEED_QUICK_OPTIONS.length;
@@ -367,6 +392,42 @@ export function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Library Picker */}
+          {libraries.length > 0 && (
+            <View style={[styles.libraryPicker, { borderTopColor: colors.borderLight }]}>
+              <Text style={[styles.libraryPickerLabel, { color: colors.gray }]}>Library</Text>
+              <View style={styles.libraryPickerPills}>
+                {libraries.map((lib) => {
+                  const isActive = lib.id === activeLibrary?.id;
+                  return (
+                    <TouchableOpacity
+                      key={lib.id}
+                      style={[
+                        styles.libraryPill,
+                        {
+                          backgroundColor: isActive ? colors.black : 'transparent',
+                          borderColor: isActive ? colors.black : colors.borderLight,
+                        },
+                      ]}
+                      onPress={() => handleLibrarySwitch(lib.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.libraryPillText,
+                          { color: isActive ? colors.white : colors.gray },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {lib.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           {/* Stats row */}
           <TouchableOpacity
@@ -615,6 +676,34 @@ const styles = StyleSheet.create({
     fontFamily: fonts.jetbrainsMono.regular,
     fontSize: scale(8),
     fontWeight: '600',
+  },
+  // Library Picker
+  libraryPicker: {
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  libraryPickerLabel: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  libraryPickerPills: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  libraryPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  libraryPillText: {
+    fontFamily: fonts.jetbrainsMono.regular,
+    fontSize: scale(10),
   },
   statsRow: {
     flexDirection: 'row',

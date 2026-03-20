@@ -57,7 +57,7 @@ export function SecretLibraryBrowseScreen() {
   const { navigateWithLoading, navigation } = useNavigationWithLoading();
 
   // Book context menu
-  const { _showMenu } = useBookContextMenu();
+  const { showMenu: _showMenu } = useBookContextMenu();
 
   // Theme-aware colors
   const _colors = useSecretLibraryColors();

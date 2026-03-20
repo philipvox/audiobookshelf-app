@@ -14,6 +14,8 @@ import {
   TouchableOpacity,
   Modal,
   Dimensions,
+  ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { colors, spacing } from '@/shared/theme';
 import { SPINE_TEMPLATES, SpineTemplate, getConfigForSize } from '../utils/spine/templateAdapter';
@@ -996,7 +998,40 @@ function SpinePreview({ template, book, size = 'normal', width }: SpinePreviewPr
 // STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create<{
+  container: ViewStyle;
+  header: ViewStyle;
+  backButton: ViewStyle;
+  backButtonText: TextStyle;
+  headerTitle: TextStyle;
+  headerSubtitle: TextStyle;
+  bookshelfContainer: ViewStyle;
+  rowContainer: ViewStyle;
+  rowLabel: TextStyle;
+  scrollView: ViewStyle;
+  scrollContent: ViewStyle;
+  shelfLine: ViewStyle;
+  spineItem: ViewStyle;
+  templateLabel: TextStyle;
+  spine: ViewStyle;
+  section: ViewStyle;
+  text: TextStyle;
+  modalOverlay: ViewStyle;
+  modalContent: ViewStyle;
+  closeButton: ViewStyle;
+  modalPreview: ViewStyle;
+  modalScroll: ViewStyle;
+  modalTitle: TextStyle;
+  modalDescription: TextStyle;
+  sectionLabel: TextStyle;
+  genreTags: ViewStyle;
+  genreTag: ViewStyle;
+  preferredTag: ViewStyle;
+  genreTagText: TextStyle;
+  specRow: ViewStyle;
+  specKey: TextStyle;
+  specValue: TextStyle;
+}>({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundPrimary,
@@ -1007,7 +1042,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray + '30',
+    borderBottomColor: '#66666630',
   },
 
   backButton: {
@@ -1016,7 +1051,7 @@ const styles = StyleSheet.create({
   },
 
   backButtonText: {
-    color: colors.accent,
+    color: colors.accent.primary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1045,7 +1080,7 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accent.primary,
     marginBottom: spacing.xs,
     paddingTop: spacing.md,
   },
@@ -1056,7 +1091,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingBottom: spacing.md,
-    alignItems: 'center', // Center spines vertically
+    alignItems: 'center',
   },
 
   shelfLine: {
@@ -1084,7 +1119,6 @@ const styles = StyleSheet.create({
     borderColor: colors.textPrimary + '40',
     borderRadius: 4,
     position: 'relative',
-    // Subtle shadow for depth
     shadowColor: '#000',
     shadowOffset: { width: 2, height: 4 },
     shadowOpacity: 0.3,
@@ -1106,7 +1140,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
@@ -1155,7 +1188,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accent.primary,
     marginBottom: spacing.sm,
     marginTop: spacing.sm,
   },
@@ -1168,14 +1201,14 @@ const styles = StyleSheet.create({
   },
 
   genreTag: {
-    backgroundColor: colors.gray + '30',
+    backgroundColor: '#66666630',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: 6,
   },
 
   preferredTag: {
-    backgroundColor: colors.accent + '40',
+    backgroundColor: colors.accent.primary + '40',
   },
 
   genreTagText: {
@@ -1189,7 +1222,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray + '20',
+    borderBottomColor: '#66666620',
   },
 
   specKey: {

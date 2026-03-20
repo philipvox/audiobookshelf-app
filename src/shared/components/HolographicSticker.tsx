@@ -179,7 +179,7 @@ export function HolographicSticker({ source, size, onPress, style }: Holographic
     <Animated.View style={[styles.container, { width: size, height: size }, style, containerStyle]}>
       {/* Layer 1: Holographic chrome base — fills the circle */}
       <LinearGradient
-        colors={HOLO_BASE as unknown as string[]}
+        colors={HOLO_BASE as unknown as [string, string, ...string[]]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.overlay, { borderRadius: size / 2 }]}
@@ -188,7 +188,7 @@ export function HolographicSticker({ source, size, onPress, style }: Holographic
       {/* Layer 2: Iridescent shimmer — shifts with tilt */}
       <Animated.View style={[styles.overlay, holo1Style]} pointerEvents="none">
         <LinearGradient
-          colors={HOLO_COLORS_1 as unknown as string[]}
+          colors={HOLO_COLORS_1 as unknown as [string, string, ...string[]]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -198,7 +198,7 @@ export function HolographicSticker({ source, size, onPress, style }: Holographic
       {/* Layer 3: Cross-direction shimmer for depth */}
       <Animated.View style={[styles.overlay, holo2Style]} pointerEvents="none">
         <LinearGradient
-          colors={HOLO_COLORS_2 as unknown as string[]}
+          colors={HOLO_COLORS_2 as unknown as [string, string, ...string[]]}
           start={{ x: 1, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -208,7 +208,7 @@ export function HolographicSticker({ source, size, onPress, style }: Holographic
       {/* Layer 4: Specular glare highlight */}
       <Animated.View style={[styles.overlay, glareStyle]} pointerEvents="none">
         <LinearGradient
-          colors={GLARE_COLORS as unknown as string[]}
+          colors={GLARE_COLORS as unknown as [string, string, ...string[]]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}

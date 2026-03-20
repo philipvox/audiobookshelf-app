@@ -54,7 +54,6 @@ import { BookshelfView } from '../components/BookshelfView';
 import { BookSpineVerticalData } from '../components/BookSpineVertical';
 import { RecommendedBook } from '../components/DiscoverMoreCard';
 import { useHomeData } from '../hooks/useHomeData';
-import { useRecommendations } from '@/features/recommendations/hooks/useRecommendations';
 import { useInProgressBooks, useFinishedBooks } from '@/core/hooks/useUserBooks';
 import { useShallow } from 'zustand/react/shallow';
 import { useProgressStore } from '@/core/stores/progressStore';
@@ -563,7 +562,7 @@ const viewPickerStyles = StyleSheet.create({
 // =============================================================================
 
 export function LibraryScreen() {
-  const { _navigateWithLoading, jumpToTabWithLoading, navigation } = useNavigationWithLoading();
+  const { navigateWithLoading: _navigateWithLoading, jumpToTabWithLoading, navigation } = useNavigationWithLoading();
   // Note: Safe area is handled by TopNav component (includeSafeArea={true} by default)
 
   // Book context menu (long-press actions)
@@ -584,12 +583,22 @@ export function LibraryScreen() {
   const [showPlaylistNameModal, setShowPlaylistNameModal] = useState(false);
   const [playlistNameInput, setPlaylistNameInput] = useState('');
 
-  // Playlist settings from store
-  const defaultView = usePlaylistSettingsStore((s) => s.defaultView);
-  const visiblePlaylistIds = usePlaylistSettingsStore((s) => s.visiblePlaylistIds);
-  const playlistOrder = usePlaylistSettingsStore((s) => s.playlistOrder);
-  const hiddenBuiltInViews = usePlaylistSettingsStore((s) => s.hiddenBuiltInViews);
-  const allItemOrder = usePlaylistSettingsStore((s) => s.allItemOrder);
+  // Playlist settings from store - batched with useShallow to reduce re-renders
+  const {
+    defaultView,
+    visiblePlaylistIds,
+    playlistOrder,
+    hiddenBuiltInViews,
+    allItemOrder,
+  } = usePlaylistSettingsStore(
+    useShallow((s) => ({
+      defaultView: s.defaultView,
+      visiblePlaylistIds: s.visiblePlaylistIds,
+      playlistOrder: s.playlistOrder,
+      hiddenBuiltInViews: s.hiddenBuiltInViews,
+      allItemOrder: s.allItemOrder,
+    }))
+  );
 
   // Initialize content mode from default view setting
   const [contentMode, setContentMode] = useState<ContentMode>(defaultView || 'library');
@@ -670,16 +679,19 @@ export function LibraryScreen() {
     useLibraryCache.getState().loadSpineManifest();
   }, []);
 
-  // Get recommendations for "Find More Books" card (5 for empty state stack)
-  const { recommendations: recommendedItems } = useRecommendations(allCacheItems, 5);
-
   // Note: Auto-refresh now happens during app boot (App.tsx) to prevent library flash
   // Manual refresh is still available via pull-to-refresh
 
-  // Transform recommendations to the format needed by DiscoverMoreCard
-  // Include genres, tags, and duration so BookSpineVertical can render properly
+  // Show newest released books in the "Find More" card
   const discoverRecommendations = useMemo((): RecommendedBook[] => {
-    return recommendedItems.slice(0, 5).map((item) => {
+    if (!allCacheItems.length) return [];
+    // Sort by published year descending (newest releases first)
+    const sorted = [...allCacheItems].sort((a, b) => {
+      const yearA = parseInt(getBookMetadata(a)?.publishedYear || '0', 10);
+      const yearB = parseInt(getBookMetadata(b)?.publishedYear || '0', 10);
+      return yearB - yearA;
+    });
+    return sorted.slice(0, 6).map((item) => {
       const metadata = getBookMetadata(item);
       return {
         id: item.id,
@@ -690,7 +702,7 @@ export function LibraryScreen() {
         duration: getBookDuration(item),
       };
     });
-  }, [recommendedItems]);
+  }, [allCacheItems]);
 
   // Handler for "Find More Books" card press
   const handleDiscoverPress = useCallback(() => {

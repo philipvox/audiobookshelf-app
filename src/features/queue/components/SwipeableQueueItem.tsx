@@ -29,7 +29,7 @@ interface SwipeableQueueItemProps {
 
 export function SwipeableQueueItem({
   book,
-  _position,
+  position: _position,
   onRemove,
   onPlayNext,
   onPress,

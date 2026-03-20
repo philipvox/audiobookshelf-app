@@ -202,6 +202,7 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
     // Find first valid book from recommendation rows
     for (let rowIdx = startIndex; rowIdx < recommendationRows.length; rowIdx++) {
       const row = recommendationRows[rowIdx];
+      if (!row?.items) continue;
       for (const book of row.items) {
         const fullItem = items.find((i) => i.id === book.id);
         if (!fullItem) continue;
@@ -310,8 +311,6 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
   // Use spine typography fontFamily directly
   const _titleFontFamily = spineTypography.fontFamily || Platform.select({ ios: 'Georgia', android: 'serif' });
   const _titleFontWeight = spineTypography.titleWeight || spineTypography.fontWeight || '500';
-  const titleTransform = spineTypography.titleTransform || 'none';
-
   // Hero always uses natural case (no uppercase transform)
   const { displayLine1, displayLine2 } = useMemo(() => {
     return { displayLine1: line1, displayLine2: line2 };

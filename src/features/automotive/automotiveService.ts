@@ -1233,10 +1233,10 @@ class AutomotiveService {
       const seriesName = metadata?.seriesName || metadata?.series?.[0]?.name || null;
       const duration = state.duration || 0;
       const position = state.position || 0;
-      const speed = state.playbackRate || 1.0;
+      const speed = state.getBookSpeed(book.id) || 1.0;
       const isPlaying = state.isPlaying;
       const bookProgress = book.userMediaProgress?.progress || 0;
-      const chapterTitle = state.currentChapter?.title || null;
+      const chapterTitle = state.getCurrentChapter()?.title || null;
 
       const coverUrl = getAuthenticatedCoverUrl(book.id);
 
@@ -1325,7 +1325,12 @@ class AutomotiveService {
    * Set callbacks for automotive events
    */
   setCallbacks(callbacks: AutomotiveCallbacks): void {
-    this.callbacks = callbacks;
+    // Preserve any existing action handler set by setActionHandler
+    const existingAction = this.callbacks?.onAction;
+    this.callbacks = {
+      ...callbacks,
+      onAction: callbacks.onAction || existingAction || (() => {}),
+    };
   }
 
   /**

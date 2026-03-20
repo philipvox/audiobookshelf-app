@@ -16,6 +16,8 @@ import {
   Alert,
   Share,
   Clipboard,
+  ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -54,9 +56,9 @@ function SliderRow({ label, value, min, max, step = 1, suffix = '', onChange }: 
           step={step}
           value={value}
           onValueChange={onChange}
-          minimumTrackTintColor={colors.accent}
+          minimumTrackTintColor={colors.accent.primary}
           maximumTrackTintColor="#333"
-          thumbTintColor={colors.accent}
+          thumbTintColor={colors.accent.primary}
         />
         <Text style={sliderStyles.rangeLabel}>{max}</Text>
       </View>
@@ -64,7 +66,15 @@ function SliderRow({ label, value, min, max, step = 1, suffix = '', onChange }: 
   );
 }
 
-const sliderStyles = StyleSheet.create({
+const sliderStyles = StyleSheet.create<{
+  container: ViewStyle;
+  header: ViewStyle;
+  label: TextStyle;
+  value: TextStyle;
+  sliderContainer: ViewStyle;
+  slider: ViewStyle;
+  rangeLabel: TextStyle;
+}>({
   container: {
     marginBottom: 16,
   },
@@ -82,7 +92,7 @@ const sliderStyles = StyleSheet.create({
   value: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accent.primary,
     minWidth: 50,
     textAlign: 'right',
   },
@@ -138,7 +148,15 @@ function ToggleButton({ options, value, onChange, label }: ToggleButtonProps) {
   );
 }
 
-const toggleStyles = StyleSheet.create({
+const toggleStyles = StyleSheet.create<{
+  container: ViewStyle;
+  label: TextStyle;
+  optionsRow: ViewStyle;
+  option: ViewStyle;
+  optionActive: ViewStyle;
+  optionText: TextStyle;
+  optionTextActive: TextStyle;
+}>({
   container: {
     marginBottom: 16,
   },
@@ -167,8 +185,8 @@ const toggleStyles = StyleSheet.create({
     borderColor: '#333',
   },
   optionActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.accent.primary,
+    borderColor: colors.accent.primary,
   },
   optionText: {
     fontSize: 12,
@@ -516,7 +534,15 @@ function SpinePreview({ config, width, height, title, author }: SpinePreviewProp
   );
 }
 
-const previewStyles = StyleSheet.create({
+const previewStyles = StyleSheet.create<{
+  spine: ViewStyle;
+  section: ViewStyle;
+  verticalTextContainer: ViewStyle;
+  horizontalTextContainer: ViewStyle;
+  text: TextStyle;
+  decoLine: ViewStyle;
+  dividerLine: ViewStyle;
+}>({
   spine: {
     borderRadius: 3,
     borderWidth: 1,
@@ -629,7 +655,7 @@ export function SpinePlaygroundScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Spine Editor</Text>
         <TouchableOpacity onPress={exportConfig} style={styles.headerBtn}>
-          <Share2 size={20} color={colors.accent} />
+          <Share2 size={20} color={colors.accent.primary} />
         </TouchableOpacity>
       </View>
 
@@ -896,7 +922,39 @@ export function SpinePlaygroundScreen() {
 // STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create<{
+  container: ViewStyle;
+  header: ViewStyle;
+  headerBtn: ViewStyle;
+  headerTitle: TextStyle;
+  genreNav: ViewStyle;
+  navArrow: ViewStyle;
+  genreInfo: ViewStyle;
+  genreName: TextStyle;
+  modifiedDot: ViewStyle;
+  previewSection: ViewStyle;
+  previewRow: ViewStyle;
+  previewItem: ViewStyle;
+  previewItemActive: ViewStyle;
+  sizeLabel: TextStyle;
+  sizeLabelActive: TextStyle;
+  tabsContainer: ViewStyle;
+  sizeTabs: ViewStyle;
+  sizeTab: ViewStyle;
+  sizeTabActive: ViewStyle;
+  sizeTabText: TextStyle;
+  sizeTabTextActive: TextStyle;
+  sectionTabs: ViewStyle;
+  sectionTab: ViewStyle;
+  sectionTabActive: ViewStyle;
+  sectionTabText: TextStyle;
+  sectionTabTextActive: TextStyle;
+  controls: ViewStyle;
+  controlsContent: ViewStyle;
+  previewInputs: ViewStyle;
+  inputLabel: TextStyle;
+  input: TextStyle;
+}>({
   container: {
     flex: 1,
     backgroundColor: '#000',
@@ -954,7 +1012,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accent.primary,
   },
 
   // Preview Section
@@ -977,7 +1035,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   previewItemActive: {
-    borderColor: colors.accent,
+    borderColor: colors.accent.primary,
     backgroundColor: 'rgba(243, 182, 12, 0.1)',
   },
   sizeLabel: {
@@ -987,7 +1045,7 @@ const styles = StyleSheet.create({
     color: '#555',
   },
   sizeLabelActive: {
-    color: colors.accent,
+    color: colors.accent.primary,
   },
 
   // Tabs
@@ -1014,7 +1072,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   sizeTabTextActive: {
-    color: colors.accent,
+    color: colors.accent.primary,
   },
   sectionTabs: {
     flexDirection: 'row',
@@ -1026,7 +1084,7 @@ const styles = StyleSheet.create({
   },
   sectionTabActive: {
     borderBottomWidth: 2,
-    borderBottomColor: colors.accent,
+    borderBottomColor: colors.accent.primary,
   },
   sectionTabText: {
     fontSize: 12,

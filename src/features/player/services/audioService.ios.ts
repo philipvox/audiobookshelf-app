@@ -532,6 +532,7 @@ class IOSAudioService {
     this.totalDuration = 0;
     this.lastKnownGoodPosition = 0;
     this.isScrubbing = false;
+    this.currentBookId = null;
 
     // Clear callbacks to prevent stale events from firing into wrong book context
     // New callbacks are set by loadBook() before the next loadTracks() call

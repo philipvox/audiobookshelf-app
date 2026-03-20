@@ -187,15 +187,24 @@ export const useCompletionSheetStore = create<CompletionState & CompletionAction
           }
 
           // Auto-advance: play next book in queue (only if user hasn't started a different book)
-          const nextBook = await queueStore.playNext();
-          if (nextBook) {
-            const { usePlayerStore } = await import('@/features/player/stores');
-            const currentlyPlaying = usePlayerStore.getState().currentBook;
-            if (!currentlyPlaying || currentlyPlaying.id === bookId) {
-              log.debug('Auto-advancing to next queued book:', nextBook.id);
-              usePlayerStore.getState().loadBook(nextBook, { autoPlay: true, showPlayer: false });
-            } else {
-              log.debug('Skipping auto-advance — user is already playing a different book');
+          const { usePlayerStore } = await import('@/features/player/stores');
+          // Guard: Don't advance queue if another book is already loading
+          if (usePlayerStore.getState().isLoading) {
+            log.debug('Skipping auto-advance — another book is already loading');
+          } else {
+            const nextBook = await queueStore.playNext();
+            if (nextBook) {
+              // Re-check state after async playNext() to avoid race condition
+              const freshState = usePlayerStore.getState();
+              if (freshState.isLoading) {
+                log.debug('Skipping auto-advance — book started loading during playNext()');
+              } else if (!freshState.currentBook || freshState.currentBook.id === bookId) {
+                log.debug('Auto-advancing to next queued book:', nextBook.id);
+                freshState.loadBook(nextBook, { autoPlay: true, showPlayer: false })
+                  .catch((err: unknown) => log.debug('Auto-advance loadBook failed:', err));
+              } else {
+                log.debug('Skipping auto-advance — user is already playing a different book');
+              }
             }
           }
         } catch (err) {

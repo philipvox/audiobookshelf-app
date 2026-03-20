@@ -943,7 +943,7 @@ export function SecretLibraryBookDetailScreen() {
   const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
   const titleFontWeight = '600';
   const _titleFontStyle = 'normal' as const;
-  const titleTransform = 'none';
+  const titleTransform: string = 'none';
 
   // Apply text transform
   const _displayTitle = useMemo(() => {

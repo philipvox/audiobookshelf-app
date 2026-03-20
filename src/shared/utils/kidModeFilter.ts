@@ -48,7 +48,7 @@ interface KidModeFilterSettings {
 function matchesAny(value: string, list: string[]): boolean {
   const lowerValue = value.toLowerCase().trim();
   return list.some(
-    (item) => lowerValue === item || lowerValue.includes(item) || item.includes(lowerValue)
+    (item) => lowerValue === item || lowerValue.includes(item)
   );
 }
 
@@ -64,7 +64,7 @@ export function getAgeCategoryFromTag(tag: string): AgeCategory | null {
   for (const category of AGE_CATEGORY_ORDER) {
     const categoryTags = AGE_CATEGORY_TAGS[category];
     for (const catTag of categoryTags) {
-      if (lower === catTag || lower.includes(catTag) || catTag.includes(lower)) {
+      if (lower === catTag || lower.includes(catTag)) {
         return category;
       }
     }

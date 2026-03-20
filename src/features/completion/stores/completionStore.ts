@@ -51,40 +51,70 @@ export const useCompletionStore = create<CompletionStore>()(
     markComplete: async (bookId: string) => {
       const { completedBooks, syncWithServer } = get();
 
+      // Save previous state for rollback
+      const previousValue = completedBooks.get(bookId);
+
       // Optimistic update
       const newMap = new Map(completedBooks);
       newMap.set(bookId, true);
       set({ completedBooks: newMap });
 
-      // Persist locally
-      await sqliteCache.setMarkedComplete(bookId, true);
+      try {
+        // Persist locally
+        await sqliteCache.setMarkedComplete(bookId, true);
 
-      // Sync with server
-      await syncWithServer(bookId, true);
+        // Sync with server
+        await syncWithServer(bookId, true);
 
-      // Invalidate related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
-      queryClient.invalidateQueries({ queryKey: ['book', bookId] });
+        // Invalidate related queries
+        queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
+        queryClient.invalidateQueries({ queryKey: ['book', bookId] });
+      } catch (err) {
+        // Rollback optimistic update on failure
+        const rollbackMap = new Map(get().completedBooks);
+        if (previousValue === undefined) {
+          rollbackMap.delete(bookId);
+        } else {
+          rollbackMap.set(bookId, previousValue);
+        }
+        set({ completedBooks: rollbackMap });
+        throw err;
+      }
     },
 
     // Mark a book as incomplete
     markIncomplete: async (bookId: string) => {
       const { completedBooks, syncWithServer } = get();
 
+      // Save previous state for rollback
+      const previousValue = completedBooks.get(bookId);
+
       // Optimistic update
       const newMap = new Map(completedBooks);
       newMap.set(bookId, false);
       set({ completedBooks: newMap });
 
-      // Persist locally
-      await sqliteCache.setMarkedComplete(bookId, false);
+      try {
+        // Persist locally
+        await sqliteCache.setMarkedComplete(bookId, false);
 
-      // Sync with server
-      await syncWithServer(bookId, false);
+        // Sync with server
+        await syncWithServer(bookId, false);
 
-      // Invalidate related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
-      queryClient.invalidateQueries({ queryKey: ['book', bookId] });
+        // Invalidate related queries
+        queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
+        queryClient.invalidateQueries({ queryKey: ['book', bookId] });
+      } catch (err) {
+        // Rollback optimistic update on failure
+        const rollbackMap = new Map(get().completedBooks);
+        if (previousValue === undefined) {
+          rollbackMap.delete(bookId);
+        } else {
+          rollbackMap.set(bookId, previousValue);
+        }
+        set({ completedBooks: rollbackMap });
+        throw err;
+      }
     },
 
     // Toggle completion status

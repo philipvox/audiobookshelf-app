@@ -480,8 +480,11 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
       flush: async () => {
         if (pendingWrites.size === 0) return;
 
-        const toWrite = new Map(pendingWrites);
-        pendingWrites.clear();
+        // Atomic swap: take ownership of current pending writes and replace
+        // with a fresh Map. Any writes that arrive during flush go into the
+        // new Map and won't be lost.
+        const toWrite = pendingWrites;
+        pendingWrites = new Map();
 
         log.debug(`Flushing ${toWrite.size} progress updates to SQLite`);
 
@@ -498,8 +501,10 @@ export const useProgressStore = create<ProgressStoreState & ProgressStoreActions
             });
           } catch (error) {
             log.error(`Failed to flush progress for ${bookId}:`, error);
-            // Re-queue failed writes
-            pendingWrites.set(bookId, data);
+            // Re-queue failed writes only if not already superseded by a newer write
+            if (!pendingWrites.has(bookId)) {
+              pendingWrites.set(bookId, data);
+            }
           }
         }
         // If any writes failed and were re-queued, schedule another flush

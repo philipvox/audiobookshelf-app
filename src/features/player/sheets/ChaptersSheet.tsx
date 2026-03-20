@@ -191,7 +191,7 @@ function ChapterItem({
   isCurrent,
   chapterProgress,
   onSelect,
-  _highlightText,
+  highlightText: _highlightText,
 }: {
   chapter: ChapterData;
   index: number;

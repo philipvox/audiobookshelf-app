@@ -20,6 +20,7 @@ import Animated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { usePlayerStore, usePlaybackRate } from '@/features/player';
+import { useSeekingStore } from '@/features/player/stores/seekingStore';
 import { haptics } from '@/core/native/haptics';
 import { audioService } from '@/features/player/services/audioService';
 import { wp, useTheme } from '@/shared/theme';
@@ -538,7 +539,7 @@ export function CoverPlayButton({
     // CRITICAL: Set isSeeking=true to block position updates from audio callbacks
     // This prevents stale values from overwriting our target position during the
     // entire operation including the 50ms delay.
-    usePlayerStore.setState({ isSeeking: true, seekPosition: finalPosition });
+    useSeekingStore.setState({ isSeeking: true, seekPosition: finalPosition });
 
     // CRITICAL: Clear scrubbing flag BEFORE final seek
     // This ensures track switches execute immediately instead of being queued.
@@ -556,11 +557,8 @@ export function CoverPlayButton({
     // This ensures the store has the correct position when we exit seeking mode.
     // Audio callbacks can resume updating position after this point.
     const actualPosition = audioService.getLastKnownGoodPosition() ?? finalPosition;
-    usePlayerStore.setState({
-      position: actualPosition,
-      isSeeking: false,
-      seekDirection: null,
-    });
+    usePlayerStore.setState({ position: actualPosition });
+    useSeekingStore.setState({ isSeeking: false, seekDirection: null });
 
     // Resume playback if was playing before scrub
     if (wasPlayingRef.current) {

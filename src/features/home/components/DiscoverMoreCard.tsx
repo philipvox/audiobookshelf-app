@@ -1,17 +1,16 @@
 /**
  * src/features/home/components/DiscoverMoreCard.tsx
  *
- * "Find More Books" card that appears at the end of the bookshelf.
- * Shows 3 recommended book spines (rotated 90°) stacked horizontally with a CTA.
+ * "Find More Books" card at the end of the bookshelf.
  *
- * Design: Matches Secret Library aesthetic with:
- * - Playfair Display title directly above horizontal spines
- * - Actual BookSpineVertical components rotated 90° and scaled down
- * - Aligns to bottom of shelf like other books
+ * Approach: Render spines in a normal horizontal row (like the bookshelf),
+ * then rotate the entire row -90° to lay the stack on its side.
+ * Both server and procedural spines render in their natural vertical
+ * orientation — no per-spine rotation math needed.
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import {
   secretLibraryColors as staticColors,
   secretLibraryFonts,
@@ -19,11 +18,9 @@ import {
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { haptics } from '@/core/native/haptics';
 import { BookSpineVertical, BookSpineVerticalData } from './BookSpineVertical';
-// MIGRATED: Now using new spine system via adapter
 import { calculateBookDimensions, getSpineDimensions, isLightColor, darkenColorForDisplay } from '../utils/spine/adapter';
-import { PROCEDURAL_SPINE_BOX } from '../utils/spine/constants';
-import { fitToBoundingBox } from '../utils/spine/core/dimensions';
 import { useSpineCacheStore } from '../stores/spineCache';
+import { useLibraryCache } from '@/core/cache';
 
 // =============================================================================
 // TYPES
@@ -39,13 +36,9 @@ export interface RecommendedBook {
 }
 
 interface DiscoverMoreCardProps {
-  /** 3 recommended books to show as horizontal spines */
   recommendations: RecommendedBook[];
-  /** Callback when "Find More" is pressed */
   onPress: () => void;
-  /** Callback when a book spine is pressed */
   onBookPress?: (book: RecommendedBook) => void;
-  /** Height to match bookshelf spines */
   height?: number;
 }
 
@@ -53,46 +46,35 @@ interface DiscoverMoreCardProps {
 // CONSTANTS
 // =============================================================================
 
-const SPINE_GAP = 0;
-
-// Card-specific scale — spines in the Discover card are smaller than shelf spines
-const CARD_SCALE = 0.6;
-const CARD_MAX_W = PROCEDURAL_SPINE_BOX.MAX_WIDTH * CARD_SCALE;
-const CARD_MAX_H = PROCEDURAL_SPINE_BOX.MAX_HEIGHT * CARD_SCALE;
-
-// Card dimensions — wide enough for the largest rotated spines
-const CARD_WIDTH = 365;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const CARD_MARGIN = 12;
+// The row height (spine height) becomes on-screen width after rotation
+const SPINE_HEIGHT = SCREEN_WIDTH - CARD_MARGIN * 2;
 
 // =============================================================================
-// HORIZONTAL SPINE WRAPPER
+// SPINE ITEM (renders in natural vertical orientation)
 // =============================================================================
 
-interface HorizontalSpineWrapperProps {
+interface SpineItemProps {
   book: RecommendedBook;
+  spineWidth: number;
+  spineHeight: number;
   onPress?: (book: RecommendedBook) => void;
 }
 
-function HorizontalSpineWrapper({ book, onPress }: HorizontalSpineWrapperProps) {
-  // Get spine cache for consistent styling with shelf view
-  const getSpineData = useSpineCacheStore((state) => state.getSpineData);
-  // Subscribe to colorVersion to trigger re-render when colors are extracted
-  const colorVersion = useSpineCacheStore((state) => state.colorVersion);
+function SpineItem({ book, spineWidth, spineHeight, onPress }: SpineItemProps) {
+  const getSpineData = useSpineCacheStore((s) => s.getSpineData);
+  const colorVersion = useSpineCacheStore((s) => s.colorVersion);
 
-  // Convert RecommendedBook to BookSpineVerticalData, enriched with cached colors/typography
   const spineData: BookSpineVerticalData = useMemo(() => {
     const cached = getSpineData(book.id);
-
     if (cached) {
-      // Use cached data for consistent styling with shelf view
-      // Apply same darkening logic as BookshelfView
       let bgColor = cached.backgroundColor;
       let txtColor = cached.textColor;
-
-      if (isLightColor(bgColor)) {
+      if (bgColor && isLightColor(bgColor)) {
         bgColor = darkenColorForDisplay(bgColor);
         txtColor = staticColors.white;
       }
-
       return {
         id: book.id,
         title: cached.title || book.title,
@@ -105,10 +87,6 @@ function HorizontalSpineWrapper({ book, onPress }: HorizontalSpineWrapperProps) 
         textColor: txtColor,
       };
     }
-
-    // Fallback: use Secret Library default styling (dark background with light text/stroke)
-    // This ensures consistent appearance even when spine colors haven't been extracted yet
-    // Matches the dark spine aesthetic with white borders seen in the main bookshelf
     return {
       id: book.id,
       title: book.title,
@@ -116,77 +94,26 @@ function HorizontalSpineWrapper({ book, onPress }: HorizontalSpineWrapperProps) 
       genres: book.genres,
       tags: book.tags,
       duration: book.duration,
-      backgroundColor: '#1a1a1a',  // Dark background (matches shelf spines)
-      textColor: '#FFFFFF',        // White text and border
+      backgroundColor: '#1a1a1a',
+      textColor: '#FFFFFF',
     };
   }, [book, getSpineData, colorVersion]);
 
-  // Calculate dimensions based on book's metadata (genre, duration)
-  // Uses bounding-box fit to preserve aspect ratio at card scale
-  const spineDimensions = useMemo(() => {
-    const genres = book.genres || [];
-    const tags = book.tags || [];
-    const duration = book.duration || 6 * 60 * 60; // Default 6 hours
-    const hasGenreData = genres.length > 0 || tags.length > 0;
-
-    let canonicalWidth: number;
-    let canonicalHeight: number;
-
-    if (hasGenreData) {
-      const calculated = calculateBookDimensions({
-        id: book.id,
-        genres,
-        tags,
-        duration,
-      });
-      canonicalWidth = calculated.width;
-      canonicalHeight = calculated.height;
-    } else {
-      const baseDims = getSpineDimensions(book.id, genres, duration);
-      canonicalWidth = baseDims.width;
-      canonicalHeight = baseDims.height;
-    }
-
-    const { width, height } = fitToBoundingBox(canonicalWidth, canonicalHeight, CARD_MAX_W, CARD_MAX_H);
-    return { width, height };
-  }, [book.id, book.genres, book.tags, book.duration]);
-
-  // Container dimensions = swapped spine dimensions (rotated 90°)
-  // After rotation: height becomes width, width becomes height
-  const containerWidth = spineDimensions.height;
-  const containerHeight = spineDimensions.width;
-
-  // Handle press on the spine
   const handlePress = useCallback(() => {
     onPress?.(book);
   }, [book, onPress]);
 
   return (
-    <View style={[styles.spineWrapper, { width: containerWidth, height: containerHeight }]}>
-      <View
-        style={[
-          styles.spineRotator,
-          {
-            width: spineDimensions.width,
-            height: spineDimensions.height,
-            // Center the rotated element within the container
-            marginLeft: (containerWidth - spineDimensions.width) / 2,
-            marginTop: (containerHeight - spineDimensions.height) / 2,
-          },
-        ]}
-      >
-        <BookSpineVertical
-          book={spineData}
-          width={spineDimensions.width}
-          height={spineDimensions.height}
-          leanAngle={0}
-          isActive={false}
-          showShadow={false}
-          onPress={handlePress}
-          isHorizontalDisplay={false}
-        />
-      </View>
-    </View>
+    <BookSpineVertical
+      book={spineData}
+      width={spineWidth}
+      height={spineHeight}
+      leanAngle={0}
+      isActive={false}
+      showShadow={false}
+      onPress={handlePress}
+      isHorizontalDisplay
+    />
   );
 }
 
@@ -198,10 +125,12 @@ export function DiscoverMoreCard({
   recommendations,
   onPress,
   onBookPress,
-  _height = 320,
 }: DiscoverMoreCardProps) {
-  // Theme-aware colors
   const colors = useSecretLibraryColors();
+  const useServerSpines = useSpineCacheStore((s) => s.useServerSpines);
+  const serverSpineDimensions = useSpineCacheStore((s) => s.serverSpineDimensions);
+  const _spineDimVersion = useSpineCacheStore((s) => s.serverSpineDimensionsVersion);
+  const booksWithServerSpines = useLibraryCache((s) => s.booksWithServerSpines);
 
   const handleDiscoverPress = useCallback(() => {
     haptics.buttonPress();
@@ -213,26 +142,106 @@ export function DiscoverMoreCard({
     onBookPress?.(book);
   }, [onBookPress]);
 
-  // Take up to 3 recommendations
-  const booksToShow = recommendations.slice(0, 3);
+  const booksToShow = recommendations.slice(0, 6);
+
+  // Pre-calculate dimensions for all spines with a common scale factor.
+  // For server spines, use actual image dimensions so the layout matches
+  // what BookSpineVertical will actually render (avoiding gaps).
+  const spineLayouts = useMemo(() => {
+    const rawDims = booksToShow.map((book) => {
+      const genres = book.genres || [];
+      const tags = book.tags || [];
+      const duration = book.duration || 6 * 60 * 60;
+      const hasGenreData = genres.length > 0 || tags.length > 0;
+
+      let procW: number;
+      let procH: number;
+      if (hasGenreData) {
+        const calc = calculateBookDimensions({ id: book.id, genres, tags, duration });
+        procW = calc.width;
+        procH = calc.height;
+      } else {
+        const dims = getSpineDimensions(book.id, genres, duration);
+        procW = dims.width;
+        procH = dims.height;
+      }
+
+      return { width: procW, height: procH };
+    });
+
+    const maxH = Math.max(...rawDims.map((d) => d.height));
+    const sf = SPINE_HEIGHT / maxH;
+
+    return rawDims.map((d, i) => {
+      const propW = Math.round(d.width * sf);
+      const propH = Math.round(d.height * sf);
+
+      // If this book has a server spine with cached dimensions,
+      // compute the actual width BookSpineVertical will render
+      const bookId = booksToShow[i].id;
+      const hasServer = useServerSpines && booksWithServerSpines.has(bookId);
+      const cached = serverSpineDimensions[bookId];
+      if (hasServer && cached && (Date.now() - cached.cachedAt < 24 * 60 * 60 * 1000)) {
+        const sFit = Math.min(propW / cached.width, propH / cached.height);
+        return {
+          width: Math.round(cached.width * sFit),
+          height: Math.round(cached.height * sFit),
+        };
+      }
+
+      return { width: propW, height: propH };
+    });
+  }, [booksToShow, useServerSpines, booksWithServerSpines, serverSpineDimensions, _spineDimVersion]);
+
+  const SPINE_GAP = 5;
+  const totalRowWidth = useMemo(
+    () => spineLayouts.reduce((sum, l) => sum + l.width, 0) + SPINE_GAP * (booksToShow.length - 1),
+    [spineLayouts, booksToShow.length],
+  );
+
+  // After -90° rotation:
+  // - Row width (totalRowWidth) becomes on-screen height
+  // - Row height (SPINE_HEIGHT) becomes on-screen width
+  const displayW = SPINE_HEIGHT;
+  const displayH = totalRowWidth;
+
+  const offsetX = (displayW - totalRowWidth) / 2;
+  const offsetY = (displayH - SPINE_HEIGHT) / 2;
 
   return (
     <View style={styles.container}>
-      {/* Title - tapping goes to Discover */}
       <Pressable style={styles.titleSection} onPress={handleDiscoverPress}>
-        <Text style={[styles.title, { color: colors.black }]}>Find More</Text>
-        <Text style={[styles.titleItalic, { color: colors.black }]}>Books →</Text>
+        <Text style={[styles.title, { color: colors.black }]}>Discover</Text>
+        <Text style={[styles.titleItalic, { color: colors.black }]}>More →</Text>
       </Pressable>
 
-      {/* Horizontal spines - tapping each opens that book's detail */}
-      <View style={styles.spinesContainer}>
-        {booksToShow.map((book) => (
-          <HorizontalSpineWrapper
-            key={book.id}
-            book={book}
-            onPress={handleBookPress}
-          />
-        ))}
+      {/* Container sized to post-rotation dimensions */}
+      <View style={{ width: displayW, height: displayH, overflow: 'hidden' }}>
+        {/* Horizontal row of spines, rotated -90° as a unit */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 5,
+            width: totalRowWidth,
+            height: SPINE_HEIGHT,
+            transform: [
+              { translateX: offsetX },
+              { translateY: offsetY },
+              { rotate: '-90deg' },
+            ],
+          }}
+        >
+          {booksToShow.map((book, i) => (
+            <SpineItem
+              key={book.id}
+              book={book}
+              spineWidth={spineLayouts[i].width}
+              spineHeight={spineLayouts[i].height}
+              onPress={handleBookPress}
+            />
+          )).reverse()}
+        </View>
       </View>
     </View>
   );
@@ -244,36 +253,29 @@ export function DiscoverMoreCard({
 
 const styles = StyleSheet.create({
   container: {
-    width: CARD_WIDTH,
     alignItems: 'flex-start',
     justifyContent: 'flex-end',
-    marginLeft: 12,
-    alignSelf: 'flex-end', // Align to bottom of shelf
+    marginLeft: CARD_MARGIN,
+    alignSelf: 'stretch',
   },
   titleSection: {
-    marginBottom: 16,
+    marginBottom: 20,
+    alignSelf: 'flex-start',
   },
   title: {
     fontFamily: secretLibraryFonts.playfair.semiBold,
-    fontSize: scale(44),
+    fontSize: scale(56),
     color: staticColors.black,
-    lineHeight: scale(42), // Tighter than font size for compact look
+    lineHeight: scale(54),
+    textAlign: 'left',
   },
   titleItalic: {
     fontFamily: secretLibraryFonts.playfair.semiBold,
     fontStyle: 'italic',
-    fontSize: scale(44),
+    fontSize: scale(56),
     color: staticColors.black,
-    lineHeight: scale(42),
-  },
-  spinesContainer: {
-    gap: SPINE_GAP,
-  },
-  spineWrapper: {
-    overflow: 'hidden',
-  },
-  spineRotator: {
-    transform: [{ rotate: '90deg' }],
+    lineHeight: scale(54),
+    textAlign: 'left',
   },
 });
 

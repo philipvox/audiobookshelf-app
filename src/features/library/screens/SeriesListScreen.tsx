@@ -34,6 +34,7 @@ import { useSpineCacheStore } from '@/features/home/stores/spineCache';
 import { fitToBoundingBox } from '@/features/home/utils/spine/core/dimensions';
 
 const PADDING = 16;
+const ESTIMATED_SERIES_HEIGHT = 100; // Approximate height for getItemLayout
 const MAX_PROGRESS_DOTS = 8;
 const MAX_SPINES = 12;
 const MINI_SPINE_MAX_HEIGHT = scale(54);
@@ -251,6 +252,131 @@ export function SeriesListScreen() {
     navigation.navigate('Main', { screen: 'HomeTab' });
   }, [navigation]);
 
+  const seriesKeyExtractor = useCallback((item: any) => item.name, []);
+
+  const getSeriesItemLayout = useCallback((_data: any, index: number) => ({
+    length: ESTIMATED_SERIES_HEIGHT,
+    offset: ESTIMATED_SERIES_HEIGHT * index,
+    index,
+  }), []);
+
+  const renderSeriesItem = useCallback(({ item: series }: { item: any }) => {
+    // Build spine items from book IDs
+    const bookIds = series.books.map((b: any) => b.id);
+    const spineItems = buildSpineItems(bookIds, serverDims);
+
+    // Calculate progress
+    const progress = getSeriesProgress(series.books);
+    const hasProgress = progress.completed > 0 || progress.inProgress > 0;
+    const isComplete = progress.completed === series.bookCount;
+    const remainingDuration = progress.totalDuration - progress.totalListened;
+    const dotsToShow = Math.min(series.bookCount, MAX_PROGRESS_DOTS);
+    const showMoreIndicator = series.bookCount > MAX_PROGRESS_DOTS;
+
+    // Get author from first book (only BookMetadata has authorName)
+    const metadata = series.books[0]?.media?.metadata;
+    const author = metadata && 'authorName' in metadata ? metadata.authorName || '' : '';
+
+    return (
+      <Pressable
+        style={[
+          styles.seriesCard,
+          isDark ? styles.cardDark : styles.cardLight,
+        ]}
+        onPress={() => handleSeriesPress(series.name)}
+      >
+        {/* Left side: Name, author, count */}
+        <View style={styles.seriesCardLeft}>
+          <Text
+            style={[styles.seriesName, isDark && styles.seriesNameDark]}
+            numberOfLines={2}
+          >
+            {series.name}
+          </Text>
+
+          {author && (
+            <Text style={styles.authorText} numberOfLines={1}>
+              {author}
+            </Text>
+          )}
+
+          <Text style={styles.bookCountText}>
+            {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
+          </Text>
+
+          {/* Progress Row - only show if there's progress */}
+          {hasProgress && (
+            <View style={styles.progressRow}>
+              <View style={styles.progressDots}>
+                {Array.from({ length: dotsToShow }).map((_, i) => {
+                  let status: 'completed' | 'in_progress' | 'not_started';
+                  if (i < progress.completed) {
+                    status = 'completed';
+                  } else if (i < progress.completed + progress.inProgress) {
+                    status = 'in_progress';
+                  } else {
+                    status = 'not_started';
+                  }
+                  return <ProgressDot key={i} status={status} accent={accent} accentDim={accentDim} />;
+                })}
+                {showMoreIndicator && (
+                  <Text style={[styles.moreText, { color: colors.text.tertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
+                )}
+              </View>
+              <Text style={[styles.progressCount, { color: accent }]}>
+                {progress.completed}/{series.bookCount}
+              </Text>
+            </View>
+          )}
+
+          {/* Remaining time - only show if there's progress */}
+          {hasProgress && remainingDuration > 0 && (
+            <Text style={styles.remainingText}>
+              ~{formatDurationShort(remainingDuration)} left
+            </Text>
+          )}
+        </View>
+
+        {/* Right side: Spine images + complete badge */}
+        <View style={styles.seriesCardRight}>
+          {/* Complete badge */}
+          {isComplete && (
+            <View style={[styles.completeBadge, { backgroundColor: accent }]}>
+              <Icon name="Check" size={10} color={colors.text.inverse} />
+            </View>
+          )}
+
+          {/* Mini spines */}
+          <View style={styles.spinesRow}>
+            {spineItems.map(({ id, url, color, width, height }: any) => (
+              <View
+                key={id}
+                style={[styles.spineItem, { backgroundColor: color, width, height }]}
+              >
+                <Image
+                  source={{ uri: url }}
+                  style={styles.spineImage}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Heart button - far right */}
+        <View style={styles.heartContainer}>
+          <SeriesHeartButton
+            seriesName={series.name}
+            size={18}
+            activeColor="#fff"
+            inactiveColor="rgba(255,255,255,0.4)"
+          />
+        </View>
+      </Pressable>
+    );
+  }, [isDark, serverDims, handleSeriesPress, accent, accentDim, colors.text.tertiary, colors.text.inverse]);
+
   if (!isLoaded) {
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background.primary }]}>
@@ -339,130 +465,14 @@ export function SeriesListScreen() {
       <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
         <FlatList
           data={sortedSeries}
-          keyExtractor={(item) => item.name}
+          keyExtractor={seriesKeyExtractor}
+          getItemLayout={getSeriesItemLayout}
           contentContainerStyle={[styles.list, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           initialNumToRender={12}
           maxToRenderPerBatch={8}
           windowSize={7}
-        renderItem={({ item: series }) => {
-          const _isFavorite = favoriteSeriesNames.includes(series.name);
-
-          // Build spine items from book IDs
-          const bookIds = series.books.map(b => b.id);
-          const spineItems = buildSpineItems(bookIds, serverDims);
-
-          // Calculate progress
-          const progress = getSeriesProgress(series.books);
-          const hasProgress = progress.completed > 0 || progress.inProgress > 0;
-          const isComplete = progress.completed === series.bookCount;
-          const remainingDuration = progress.totalDuration - progress.totalListened;
-          const dotsToShow = Math.min(series.bookCount, MAX_PROGRESS_DOTS);
-          const showMoreIndicator = series.bookCount > MAX_PROGRESS_DOTS;
-
-          // Get author from first book (only BookMetadata has authorName)
-          const metadata = series.books[0]?.media?.metadata;
-          const author = metadata && 'authorName' in metadata ? metadata.authorName || '' : '';
-
-          return (
-            <Pressable
-              style={[
-                styles.seriesCard,
-                isDark ? styles.cardDark : styles.cardLight,
-              ]}
-              onPress={() => handleSeriesPress(series.name)}
-            >
-              {/* Left side: Name, author, count */}
-              <View style={styles.seriesCardLeft}>
-                <Text
-                  style={[styles.seriesName, isDark && styles.seriesNameDark]}
-                  numberOfLines={2}
-                >
-                  {series.name}
-                </Text>
-
-                {author && (
-                  <Text style={styles.authorText} numberOfLines={1}>
-                    {author}
-                  </Text>
-                )}
-
-                <Text style={styles.bookCountText}>
-                  {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
-                </Text>
-
-                {/* Progress Row - only show if there's progress */}
-                {hasProgress && (
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressDots}>
-                      {Array.from({ length: dotsToShow }).map((_, i) => {
-                        let status: 'completed' | 'in_progress' | 'not_started';
-                        if (i < progress.completed) {
-                          status = 'completed';
-                        } else if (i < progress.completed + progress.inProgress) {
-                          status = 'in_progress';
-                        } else {
-                          status = 'not_started';
-                        }
-                        return <ProgressDot key={i} status={status} accent={accent} accentDim={accentDim} />;
-                      })}
-                      {showMoreIndicator && (
-                        <Text style={[styles.moreText, { color: colors.text.tertiary }]}>+{series.bookCount - MAX_PROGRESS_DOTS}</Text>
-                      )}
-                    </View>
-                    <Text style={[styles.progressCount, { color: accent }]}>
-                      {progress.completed}/{series.bookCount}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Remaining time - only show if there's progress */}
-                {hasProgress && remainingDuration > 0 && (
-                  <Text style={styles.remainingText}>
-                    ~{formatDurationShort(remainingDuration)} left
-                  </Text>
-                )}
-              </View>
-
-              {/* Right side: Spine images + complete badge */}
-              <View style={styles.seriesCardRight}>
-                {/* Complete badge */}
-                {isComplete && (
-                  <View style={[styles.completeBadge, { backgroundColor: accent }]}>
-                    <Icon name="Check" size={10} color={colors.text.inverse} />
-                  </View>
-                )}
-
-                {/* Mini spines */}
-                <View style={styles.spinesRow}>
-                  {spineItems.map(({ id, url, color, width, height }) => (
-                    <View
-                      key={id}
-                      style={[styles.spineItem, { backgroundColor: color, width, height }]}
-                    >
-                      <Image
-                        source={{ uri: url }}
-                        style={styles.spineImage}
-                        cachePolicy="memory-disk"
-                        contentFit="cover"
-                      />
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              {/* Heart button - far right */}
-              <View style={styles.heartContainer}>
-                <SeriesHeartButton
-                  seriesName={series.name}
-                  size={18}
-                  activeColor="#fff"
-                  inactiveColor="rgba(255,255,255,0.4)"
-                />
-              </View>
-            </Pressable>
-          );
-        }}
+          renderItem={renderSeriesItem}
         />
       </SkullRefreshControl>
     </View>

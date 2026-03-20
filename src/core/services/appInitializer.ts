@@ -182,6 +182,15 @@ class AppInitializer {
     // Import auth service lazily to avoid circular dependencies
     const { authService } = await import('@/core/auth/authService');
 
+    // Ensure SQLite is ready BEFORE running steps that depend on it.
+    // completion, migration, and progress all call sqliteCache.ensureReady()
+    // internally — if SQLite hasn't initialized yet, they block waiting for it
+    // and hit the per-step timeout (10s). Pre-initializing here avoids that.
+    await this.timedStep('sqlite', async () => {
+      const { sqliteCache } = await import('@/core/services/sqliteCache');
+      await sqliteCache.init();
+    }, INIT_STEP_TIMEOUT_MS);
+
     // BLOCKING: Wait for fonts, auth, and book state (progress/completion/migration)
     // so the UI shows correct finished/in-progress states immediately
     const [fontResult, authResult] = await Promise.all([
@@ -518,7 +527,7 @@ class AppInitializer {
   private async initBackgroundTaskService(): Promise<void> {
     try {
       const { backgroundTaskService, TaskPriority } = await import('@/core/services/backgroundTaskService');
-      const { _useProgressStore } = await import('@/core/stores/progressStore');
+      const { useProgressStore: _useProgressStore } = await import('@/core/stores/progressStore');
 
       // Start the background task service
       backgroundTaskService.start();

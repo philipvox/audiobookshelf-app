@@ -9,6 +9,81 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.218] - 2026-03-17
+
+### Fixed
+- **Discover More procedural spines upside down** — Procedural spine title rotation flipped to `+90deg` when rendered in horizontal display mode (`isHorizontalDisplay`), matching server spine orientation so the whole-row `-90deg` rotation produces correct left-to-right text
+
+### Files Modified
+- `src/features/home/components/BookSpineVertical.tsx` — Use `isHorizontalDisplay` prop to conditionally flip title rotation
+- `src/constants/version.ts` — Version bump
+
+---
+
+## [0.9.217] - 2026-03-17
+
+### Fixed — Comprehensive Codebase Audit (49 issues reviewed, 16 fixes applied)
+
+**Critical Fixes:**
+- **Queue race condition** — `queueStore.checkAndAddSeriesBook` now appends to existing queue instead of replacing it, preventing loss of queued items
+- **Completion auto-advance race** — `completionSheetStore` re-checks loading state after async `playNext()` to prevent double-loading books
+- **Chromecast silent errors** — Added error logging to all silent `.catch(() => {})` handlers in `castStore` for debuggability
+- **TopPickHero null guard** — Added `row?.items` guard in recommendation rows iteration to prevent crashes on empty data
+- **BookContextMenu unhandled errors** — Wrapped `handlePlay` and `handleToggleComplete` in try-catch blocks
+
+**High Severity Fixes:**
+- **Player URL_EXPIRED recovery** — Guard against user switching books during token refresh to prevent loading wrong book
+- **Chromecast position preservation** — On cast disconnect, position is preserved until local resume succeeds instead of resetting to 0
+- **Chromecast unawaited promises** — Added `.catch()` handlers to `startDiscovery()` and `isConnected()` calls
+- **Chromecast play null check** — Explicit null check with warning log instead of silent optional chaining
+- **Automotive callback overwrite** — `setCallbacks` now preserves existing `onAction` handler via spread
+
+**Medium Severity Fixes:**
+- **Duration validation** — Added upper bound (500 hours) and `Number.isFinite` check to prevent corrupted duration from audio service
+- **Stale book closure in series check** — Guard against current book changing before series auto-advance fires
+
+**Low Severity Fixes:**
+- **Short audiobook completion threshold** — Scaled end-of-book threshold from fixed 5s to `Math.min(5, duration * 0.1)` for short books
+- **Seeking with zero duration** — Handle `duration <= 0` case in `updateSeekPosition` clamping
+- **SpineCache rejected promises** — Added logging for rejected color extraction promises
+- **BookRow test assertion** — Strengthened weak `/\d+/` regex to specific `/10\s*h/i` for duration format test
+
+### Files Modified
+- `src/features/queue/stores/queueStore.ts` — Fix queue replacement race condition
+- `src/features/player/stores/completionSheetStore.ts` — Fix auto-advance race condition
+- `src/features/chromecast/stores/castStore.ts` — Error logging, position preservation, promise handling
+- `src/features/browse/components/TopPickHero.tsx` — Null guard for recommendation rows
+- `src/shared/components/BookContextMenu.tsx` — Try-catch wrappers for async handlers
+- `src/features/player/stores/playerStore.ts` — URL_EXPIRED guard, duration validation, series check guard, cast play null check, scaled end threshold
+- `src/features/player/stores/seekingStore.ts` — Zero duration clamping
+- `src/features/home/stores/spineCache.ts` — Rejected promise logging
+- `src/features/automotive/automotiveService.ts` — Preserve existing action handler
+- `src/features/library/components/__tests__/BookRow.test.tsx` — Stronger test assertion
+- `src/constants/version.ts` — Version bump to 0.9.217
+
+---
+
+## [0.9.216] - 2026-03-17
+
+### Added — Chromecast Playback Integration
+- **Wire up Chromecast native plugin** — Copied Chromecast Kotlin files (CastModule, CastPackage, CastOptionsProvider) to android build directory, registered CastPackage in MainApplication.kt, added `play-services-cast-framework:22.0.0` dependency, and added CastOptionsProvider meta-data to AndroidManifest.xml. Cast icon will now appear when Chromecast devices are on the network.
+- **Route playback to cast when connected** — When a Chromecast is connected, `loadBook()` loads media on the cast device with an authenticated streaming URL and pauses local audio. The local audio engine still loads for instant resume on disconnect.
+- **Route seeking to cast** — `seekTo()` sends seek commands to the cast device when connected. All seek operations (skip forward/backward, chapter navigation, timeline scrubbing) automatically route through cast since they funnel through `seekTo()`.
+- **Sync cast position to player UI** — Cast device position updates (polled every 1s) are fed back into the player store so the timeline, progress bar, and chapter display stay in sync.
+- **Cast session lifecycle** — Connecting to a Chromecast mid-playback automatically loads the current book at the current position. Disconnecting resumes local playback from the cast device's last position.
+- **updatePlaybackState cast guard** — Local audio service status updates are ignored while casting to prevent stale paused-state from overriding cast playback state.
+
+### Files Modified
+- `android/app/src/main/java/com/secretlibrary/app/chromecast/` — Created directory, copied CastModule.kt, CastPackage.kt, CastOptionsProvider.kt
+- `android/app/src/main/java/com/secretlibrary/app/MainApplication.kt` — Registered CastPackage
+- `android/app/build.gradle` — Added cast-framework dependency
+- `android/app/src/main/AndroidManifest.xml` — Added CastOptionsProvider meta-data
+- `src/features/player/stores/playerStore.ts` — Cast routing in loadBook, seekTo, updatePlaybackState
+- `src/features/chromecast/stores/castStore.ts` — Position sync to player, session lifecycle handlers
+- `src/constants/version.ts` — Version bump to 0.9.216
+
+---
+
 ## [0.9.215] - 2026-03-17
 
 ### Fixed — Android Auto: Covers, Last Played, and Cold-Start Playback

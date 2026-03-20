@@ -160,7 +160,7 @@ export function BookSpineVertical({
   onPressIn,
   onPressOut,
   showShadow = false,
-  isHorizontalDisplay: _isHorizontalDisplay = false,
+  isHorizontalDisplay = false,
   style: styleProp,
 }: BookSpineVerticalProps) {
   // --- Server spine support ---
@@ -403,7 +403,7 @@ export function BookSpineVertical({
               <View style={{
                 width: titleH - pad * 3,
                 height: width - pad * 4,
-                transform: [{ rotate: '-90deg' }],
+                transform: [{ rotate: isHorizontalDisplay ? '90deg' : '-90deg' }],
                 justifyContent: 'center',
               }}>
                 {titleLines.map((line, i) => (

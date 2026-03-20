@@ -121,8 +121,8 @@ export function LoginScreen() {
 
   // Async ABS server verification
   const [absCheckStatus, setAbsCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
-  const absCheckTimer = useRef<ReturnType<typeof setTimeout>>();
-  const absCheckAbort = useRef<AbortController>();
+  const absCheckTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const absCheckAbort = useRef<AbortController>(undefined);
 
   useEffect(() => {
     // Reset on URL change

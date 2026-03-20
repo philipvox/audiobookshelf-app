@@ -32,6 +32,9 @@ import {
 } from 'lucide-react-native';
 import { usePlayerStore } from '@/features/player/stores';
 import { usePlayerSettingsStore } from '@/features/player/stores/playerSettingsStore';
+import { useSpeedStore } from '@/features/player/stores/speedStore';
+import { useSleepTimerStore } from '@/features/player/stores/sleepTimerStore';
+import { useCompletionSheetStore } from '@/features/player/stores/completionSheetStore';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
@@ -129,14 +132,14 @@ export function PlaybackSettingsScreen() {
   const _navigation = useNavigation();
   const colors = useSecretLibraryColors();
 
-  // Player settings from store
-  const globalDefaultRate = usePlayerStore((s) => s.globalDefaultRate);
-  const setGlobalDefaultRate = usePlayerStore((s) => s.setGlobalDefaultRate);
-  const skipForwardInterval = usePlayerStore((s) => s.skipForwardInterval ?? 30);
-  const setSkipForwardInterval = usePlayerStore((s) => s.setSkipForwardInterval);
-  const skipBackInterval = usePlayerStore((s) => s.skipBackInterval ?? 15);
-  const setSkipBackInterval = usePlayerStore((s) => s.setSkipBackInterval);
-  const shakeToExtendEnabled = usePlayerStore((s) => s.shakeToExtendEnabled);
+  // Player settings from stores
+  const globalDefaultRate = useSpeedStore((s) => s.globalDefaultRate);
+  const setGlobalDefaultRate = useSpeedStore((s) => s.setGlobalDefaultRate);
+  const skipForwardInterval = usePlayerSettingsStore((s) => s.skipForwardInterval ?? 30);
+  const setSkipForwardInterval = usePlayerSettingsStore((s) => s.setSkipForwardInterval);
+  const skipBackInterval = usePlayerSettingsStore((s) => s.skipBackInterval ?? 15);
+  const setSkipBackInterval = usePlayerSettingsStore((s) => s.setSkipBackInterval);
+  const shakeToExtendEnabled = useSleepTimerStore((s) => s.shakeToExtendEnabled);
   const setShakeToExtendEnabled = usePlayerStore((s) => s.setShakeToExtendEnabled);
   const smartRewindEnabled = usePlayerSettingsStore((s) => s.smartRewindEnabled);
   const setSmartRewindEnabled = usePlayerSettingsStore((s) => s.setSmartRewindEnabled);
@@ -146,10 +149,10 @@ export function PlaybackSettingsScreen() {
   const setBluetoothAutoResume = usePlayerSettingsStore((s) => s.setBluetoothAutoResume);
   const showTimeRemaining = usePlayerSettingsStore((s) => s.showTimeRemaining);
   const setShowTimeRemaining = usePlayerSettingsStore((s) => s.setShowTimeRemaining);
-  const showCompletionPrompt = usePlayerStore((s) => s.showCompletionPrompt ?? true);
-  const setShowCompletionPrompt = usePlayerStore((s) => s.setShowCompletionPrompt);
-  const autoMarkFinished = usePlayerStore((s) => s.autoMarkFinished ?? false);
-  const setAutoMarkFinished = usePlayerStore((s) => s.setAutoMarkFinished);
+  const showCompletionPrompt = useCompletionSheetStore((s) => s.showCompletionPrompt ?? true);
+  const setShowCompletionPrompt = useCompletionSheetStore((s) => s.setShowCompletionPrompt);
+  const autoMarkFinished = useCompletionSheetStore((s) => s.autoMarkFinished ?? false);
+  const setAutoMarkFinished = useCompletionSheetStore((s) => s.setAutoMarkFinished);
 
   // Modal states
   const [showSpeedPicker, setShowSpeedPicker] = useState(false);

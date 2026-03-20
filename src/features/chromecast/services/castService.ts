@@ -3,7 +3,7 @@
  * Provides a typed interface over NativeModules.CastModule.
  */
 
-import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
 import { logger } from '@/shared/utils/logger';
 
 const { CastModule } = NativeModules;
@@ -16,6 +16,7 @@ interface CastMediaParams {
   author: string;
   coverUrl: string;
   position: number; // seconds
+  contentType: string; // MIME type (e.g., 'audio/mp4', 'audio/mpeg')
 }
 
 interface CastDevice {
@@ -30,12 +31,14 @@ interface MediaStatus {
   isPlaying: boolean;
   isPaused: boolean;
   isIdle: boolean;
+  idleReason?: number;
 }
 
 class CastService {
   private emitter: NativeEventEmitter | null = null;
   private listeners: Map<string, CastEventCallback[]> = new Map();
   private subscriptions: any[] = [];
+  private initialized = false;
 
   /**
    * Whether the native CastModule is available.
@@ -46,12 +49,20 @@ class CastService {
 
   /**
    * Initialize event listeners from the native module.
+   * Idempotent — safe to call multiple times.
    */
   initialize() {
     if (!this.isAvailable) {
       logger.warn('[Cast] Native CastModule not available');
       return;
     }
+
+    // Prevent double initialization — would stack duplicate listeners
+    if (this.initialized) {
+      logger.info('[Cast] Already initialized, skipping');
+      return;
+    }
+    this.initialized = true;
 
     this.emitter = new NativeEventEmitter(CastModule);
 
@@ -60,7 +71,8 @@ class CastService {
       'onSessionEnded',
       'onSessionStartFailed',
       'onMediaStatusUpdate',
-      'onDevicesDiscovered',
+      'onMediaFinished',
+      'onMediaError',
     ];
 
     for (const event of events) {
@@ -83,6 +95,7 @@ class CastService {
     }
     this.subscriptions = [];
     this.listeners.clear();
+    this.initialized = false;
   }
 
   /**
@@ -121,7 +134,8 @@ class CastService {
       params.title,
       params.author,
       params.coverUrl,
-      params.position
+      params.position,
+      params.contentType
     );
   }
 

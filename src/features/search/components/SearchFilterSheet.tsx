@@ -76,7 +76,7 @@ export function SearchFilterSheet({
   filters,
   onApply,
   availableFilters,
-  _resultCount,
+  resultCount: _resultCount,
 }: SearchFilterSheetProps) {
   const _insets = useSafeAreaInsets();
   const colors = useSecretLibraryColors();

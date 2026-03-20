@@ -1,20 +1,21 @@
 /**
- * Cast icon button that appears in the player header when Cast devices are available.
- * Tapping shows the native Cast device picker.
+ * Cast icon button for the TopNav.
+ * Shows native Cast device picker on press.
+ * Hides itself when no Cast SDK is available.
  */
 
 import React from 'react';
-import { TouchableOpacity, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { Cast } from 'lucide-react-native';
 import { useCastStore } from '../stores/castStore';
-import { scale, useTheme } from '@/shared/theme';
+import { useSecretLibraryColors } from '@/shared/theme/secretLibrary';
 
 interface CastButtonProps {
   size?: number;
 }
 
-export function CastButton({ size = 22 }: CastButtonProps) {
-  const { colors } = useTheme();
+export function CastButton({ size = 16 }: CastButtonProps) {
+  const colors = useSecretLibraryColors();
   const isAvailable = useCastStore((s) => s.isAvailable);
   const isConnected = useCastStore((s) => s.isConnected);
   const showPicker = useCastStore((s) => s.showPicker);
@@ -22,26 +23,32 @@ export function CastButton({ size = 22 }: CastButtonProps) {
   if (!isAvailable) return null;
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={showPicker}
-      style={styles.button}
-      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={[
+        styles.circleButton,
+        {
+          borderColor: isConnected ? '#F3B60C' : colors.grayLine,
+          backgroundColor: isConnected ? 'rgba(243,182,12,0.15)' : 'transparent',
+        },
+      ]}
     >
       <Cast
-        size={scale(size)}
-        color={isConnected ? String(colors.accent) : String(colors.text.secondary)}
+        size={size}
+        color={isConnected ? '#F3B60C' : colors.black}
         strokeWidth={2}
       />
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    padding: 4,
-    minHeight: scale(44),
-    minWidth: scale(44),
-    justifyContent: 'center',
+  circleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -93,7 +93,7 @@ const ListAuthorItem = React.memo(function ListAuthorItem({
   isDark,
 }: {
   item: AuthorItem;
-  onPress: () => void;
+  onPress: (name: string) => void;
   isDark: boolean;
 }) {
   const hasImage = item.id && item.imagePath;
@@ -101,7 +101,7 @@ const ListAuthorItem = React.memo(function ListAuthorItem({
   return (
     <Pressable
       style={[styles.row, isDark ? styles.rowDark : styles.rowLight]}
-      onPress={onPress}
+      onPress={() => onPress(item.name)}
     >
       {/* Avatar */}
       <View style={[styles.avatar, { backgroundColor: getAvatarColor(item.name) }]}>
@@ -310,12 +310,18 @@ export function AuthorsListScreen() {
   const renderItem = useCallback(({ item }: { item: AuthorItem }) => (
     <ListAuthorItem
       item={item}
-      onPress={() => handleAuthorPress(item.name)}
+      onPress={handleAuthorPress}
       isDark={isDark}
     />
   ), [handleAuthorPress, isDark]);
 
   const keyExtractor = useCallback((item: AuthorItem) => item.name, []);
+
+  const getItemLayout = useCallback((_data: any, index: number) => ({
+    length: ESTIMATED_ITEM_HEIGHT,
+    offset: ESTIMATED_ITEM_HEIGHT * index,
+    index,
+  }), []);
 
   // Icon colors for TopNav
   const iconColor = isDark ? secretLibraryColors.white : secretLibraryColors.black;
@@ -373,6 +379,7 @@ export function AuthorsListScreen() {
             data={mounted ? sortedAuthors : []}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
+            getItemLayout={getItemLayout}
             contentContainerStyle={[styles.list, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
             showsVerticalScrollIndicator={false}
             onScroll={handleScroll}

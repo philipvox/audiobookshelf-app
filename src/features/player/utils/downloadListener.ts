@@ -15,6 +15,7 @@ import { useSeekingStore } from '../stores/seekingStore';
 
 let downloadListenerUnsubscribe: (() => void) | null = null;
 let currentStreamingBookId: string | null = null;
+let switchToLocalTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // =============================================================================
 // TYPES
@@ -116,7 +117,7 @@ export async function setupDownloadCompletionListener(
         };
 
         // Use longer delay for network stability (especially mobile data)
-        setTimeout(async () => {
+        switchToLocalTimeout = setTimeout(async () => {
           try {
             // Wait for user to finish seeking/loading (max 5 seconds)
             const isSafe = await waitForSafeState(5000);
@@ -175,6 +176,10 @@ export async function setupDownloadCompletionListener(
  * Cleans up the download completion listener.
  */
 export function cleanupDownloadCompletionListener(): void {
+  if (switchToLocalTimeout) {
+    clearTimeout(switchToLocalTimeout);
+    switchToLocalTimeout = null;
+  }
   if (downloadListenerUnsubscribe) {
     downloadListenerUnsubscribe();
     downloadListenerUnsubscribe = null;

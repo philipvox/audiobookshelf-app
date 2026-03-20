@@ -74,10 +74,11 @@ export function generateSpineStyle(config: SpineConfig): CompleteSpineStyle {
   const typography = applyTypographyVariations(baseTypography, config);
 
   // 4. Get colors (with fallback)
-  const colors = config.overrides?.colors || {
-    background: '#F5F5F5',
-    text: '#000000',
-    fromCover: false,
+  const overrideColors = config.overrides?.colors;
+  const colors = {
+    background: overrideColors?.background || '#F5F5F5',
+    text: overrideColors?.text || '#000000',
+    fromCover: overrideColors?.fromCover || false,
   };
 
   return {

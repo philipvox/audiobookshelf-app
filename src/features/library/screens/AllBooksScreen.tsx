@@ -122,7 +122,7 @@ const SortArrow = ({ color = '#000', direction = 'desc' }: { color?: string; dir
 // List item component
 interface ListItemProps {
   item: LibraryItem;
-  onPress: () => void;
+  onPress: (id: string) => void;
   isDark: boolean;
   showPublishedYear?: boolean;
   showRating?: boolean;
@@ -145,7 +145,7 @@ const ListBookItem = React.memo(function ListBookItem({ item, onPress, isDark, s
         styles.bookCard,
         isDark ? styles.cardDark : styles.cardLight,
       ]}
-      onPress={onPress}
+      onPress={() => onPress(item.id)}
     >
       {/* Cover */}
       <View style={styles.coverContainer}>
@@ -155,7 +155,7 @@ const ListBookItem = React.memo(function ListBookItem({ item, onPress, isDark, s
           contentFit="cover"
         />
         <CoverStars bookId={item.id} starSize={scale(14)} />
-        <CompleteBadgeOverlay bookId={item.id} size="tiny" />
+        <CompleteBadgeOverlay bookId={item.id} size="small" />
       </View>
 
       {/* Info */}
@@ -208,7 +208,7 @@ export function AllBooksScreen() {
   const [mounted, setMounted] = useState(false);
   const [activeLetter, setActiveLetter] = useState<string | undefined>(undefined);
 
-  const { items: libraryItems, refreshCache, _isLoaded } = useLibraryCache();
+  const { items: libraryItems, refreshCache, isLoaded: _isLoaded } = useLibraryCache();
   const starPositions = useStarPositionStore((s) => s.positions);
 
   // Current sort label for the pill
@@ -397,7 +397,7 @@ export function AllBooksScreen() {
   const renderItem = useCallback(({ item }: { item: LibraryItem }) => (
     <ListBookItem
       item={item}
-      onPress={() => handleBookPress(item.id)}
+      onPress={handleBookPress}
       isDark={isDark}
       showPublishedYear={sortBy === 'published'}
       showRating={sortBy === 'rating'}
@@ -405,6 +405,12 @@ export function AllBooksScreen() {
   ), [handleBookPress, isDark, sortBy]);
 
   const keyExtractor = useCallback((item: LibraryItem) => item.id, []);
+
+  const getItemLayout = useCallback((_data: any, index: number) => ({
+    length: ESTIMATED_ITEM_HEIGHT,
+    offset: ESTIMATED_ITEM_HEIGHT * index,
+    index,
+  }), [ESTIMATED_ITEM_HEIGHT]);
 
   // Icon colors for TopNav
   const iconColor = isDark ? secretLibraryColors.white : secretLibraryColors.black;
@@ -464,6 +470,7 @@ export function AllBooksScreen() {
             data={mounted ? sortedBooks : []}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
+            getItemLayout={getItemLayout}
             contentContainerStyle={[styles.list, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
             showsVerticalScrollIndicator={false}
             onScroll={handleScroll}

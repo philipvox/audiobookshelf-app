@@ -77,7 +77,7 @@ export const SeriesCompletionShelf = React.memo(function SeriesCompletionShelf({
     let finished = 0;
 
     for (const book of books) {
-      const progress = progressMap[book.id];
+      const progress = progressMap.get(book.id);
       if (progress?.isFinished || (progress?.progress ?? 0) >= 0.95) {
         finished++;
       }

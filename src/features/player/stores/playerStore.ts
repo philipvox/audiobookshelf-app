@@ -150,8 +150,9 @@ function getBookMetadata(item: LibraryItem | null | undefined): BookMetadata | n
 // =============================================================================
 
 // Chapter type is defined in ../types.ts to avoid circular dependencies
-// Re-exported here for backwards compatibility
-export { Chapter } from '../types';
+// Import for local use and re-export for backwards compatibility
+import { Chapter } from '../types';
+export { Chapter };
 
 // Bookmark type re-exported from bookmarksStore (single source of truth)
 export type { Bookmark };
@@ -394,6 +395,7 @@ const autoDownloadCheckedBooks = new Set<string>();
 // These are cleared on pause, cleanup, and loadBook to prevent orphaned callbacks
 let stuckDetectionTimeout: NodeJS.Timeout | null = null;
 let stuckRecoveryTimeout: NodeJS.Timeout | null = null;
+let stuckVerificationTimeout: NodeJS.Timeout | null = null;
 
 /**
  * Clear stuck detection timeouts to prevent memory leaks
@@ -407,6 +409,10 @@ function clearStuckDetectionTimeouts(): void {
   if (stuckRecoveryTimeout) {
     clearTimeout(stuckRecoveryTimeout);
     stuckRecoveryTimeout = null;
+  }
+  if (stuckVerificationTimeout) {
+    clearTimeout(stuckVerificationTimeout);
+    stuckVerificationTimeout = null;
   }
 }
 
@@ -837,7 +843,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // getStreamUrl(), syncProgress(), and auto-sync all work correctly.
             // Without this, sessionService.currentSession is null and single-file
             // books fail with "Could not get stream URL".
-            sessionService.adoptSession(cachedSession as PlaybackSession);
+            sessionService.adoptSession(cachedSession as unknown as PlaybackSession);
 
             // Ensure audio is ready
             if (!playbackCache.isAudioInitialized()) {
@@ -1214,6 +1220,61 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           return;
         }
 
+        // Chromecast: If connected, load media on cast device and pause local audio
+        // Local audio still loads (for instant resume on disconnect) but cast handles playback
+        const castState = getCastState();
+        if (castState.isConnected && autoPlay) {
+          try {
+            // Build authenticated streaming URL for cast device
+            // Cast device fetches directly from server, needs token in URL
+            const castBaseUrl = apiClient.getBaseURL().replace(/\/+$/, '');
+            const castToken = apiClient.getAuthToken();
+            let castStreamUrl: string;
+            let castContentType = 'audio/mp4';
+
+            if (audioTrackInfos.length > 0) {
+              // Use the first track URL (direct file URL with INO)
+              castStreamUrl = audioTrackInfos[0].url;
+            } else if (streamUrl) {
+              castStreamUrl = streamUrl;
+            } else {
+              // Fallback: build file URL from first audio file's INO
+              const bookAudioFiles = isBookMedia(book.media) ? book.media.audioFiles || [] : [];
+              const firstFile = bookAudioFiles[0];
+              if (firstFile?.ino) {
+                castStreamUrl = `${castBaseUrl}/api/items/${book.id}/file/${firstFile.ino}?token=${castToken}`;
+              } else {
+                log('[Cast] No audio file INO available, cannot build cast URL');
+                throw new Error('No audio file INO for cast streaming');
+              }
+            }
+
+            // Determine content type from the book's audio files
+            const bookAudioFiles = isBookMedia(book.media) ? book.media.audioFiles || [] : [];
+            if (bookAudioFiles[0]?.mimeType) {
+              castContentType = bookAudioFiles[0].mimeType;
+            }
+
+            // Ensure token is in the URL
+            if (castToken && !castStreamUrl.includes('token=')) {
+              const sep = castStreamUrl.includes('?') ? '&' : '?';
+              castStreamUrl = `${castStreamUrl}${sep}token=${castToken}`;
+            }
+
+            // Build authenticated cover URL for cast device
+            const castCoverUrl = `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}token=${castToken}`;
+
+            log('[Cast] Loading media on cast device at position:', resumePosition.toFixed(1));
+            await castState.loadMedia(castStreamUrl, title, author, castCoverUrl, resumePosition, castContentType);
+
+            // Pause local audio — cast device handles playback
+            audioService.pause().catch(() => {});
+            log('[Cast] Media loaded on cast device, local audio paused');
+          } catch (castErr) {
+            log('[Cast] Failed to load on cast device, continuing with local playback:', castErr);
+          }
+        }
+
         // Apply per-book playback rate (delegated to speedStore - single source of truth)
         const bookSpeed = await useSpeedStore.getState().applyBookSpeed(book.id);
         log('Applied playback rate for book:', bookSpeed);
@@ -1254,8 +1315,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         // Check if we should auto-add next series book to queue
         // Only do this when actually PLAYING (not just viewing a book)
         if (autoPlay) {
+          const bookForSeriesCheck = book; // Capture reference for async closure
           (async () => {
             try {
+              // Guard: Don't check series if the user already switched books
+              if (get().currentBook?.id !== bookForSeriesCheck.id) {
+                playerLogger.debug('Skipping series check - user switched books');
+                return;
+              }
+
               const { useQueueStore } = await import('@/features/queue/stores/queueStore');
               const queueStore = useQueueStore.getState();
 
@@ -1271,7 +1339,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
               playerLogger.debug('Checking series book, autoplay:', queueStore.autoplayEnabled, 'timeSinceFinish:', timeSinceLastFinish);
               if (shouldCheckSeries) {
-                await queueStore.checkAndAddSeriesBook(book);
+                await queueStore.checkAndAddSeriesBook(bookForSeriesCheck);
               } else if (timeSinceLastFinish <= TRANSITION_GUARD_MS) {
                 playerLogger.debug('Skipping series check - book just finished, avoiding race');
               }
@@ -1396,8 +1464,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // Force sync all pending progress
       await backgroundSyncService.forceSyncAll();
 
-      // Stop background sync loop to prevent it from running after cleanup
-      backgroundSyncService.stop();
+      // Destroy background sync (stops loop + clears AppState listener + pending timeouts)
+      backgroundSyncService.destroy();
 
       // Close session
       await sessionService.closeSession(position);
@@ -1553,8 +1621,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // If casting to Chromecast, route play through cast
       const castState = getCastState();
       if (castState.isConnected) {
-        set({ isPlaying: true });
-        castState.play?.();
+        if (castState.play) {
+          set({ isPlaying: true });
+          castState.play().catch(() => {});
+        } else {
+          audioLog.warn('[Player] Cast connected but play() unavailable');
+        }
         return;
       }
 
@@ -1735,7 +1807,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const castState = getCastState();
       if (castState.isConnected) {
         set({ isPlaying: false });
-        castState.pause?.();
+        castState.pause?.().catch(() => {});
         return;
       }
 
@@ -1830,6 +1902,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const clampedPos = clampPosition(position, duration);
 
       log(`seekTo: ${clampedPos.toFixed(1)}`);
+
+      // Chromecast: Route seek to cast device when connected
+      const castState = getCastState();
+      if (castState.isConnected) {
+        set({ position: clampedPos });
+        castState.seek?.(clampedPos).catch(() => {});
+        return;
+      }
 
       // Delegate to seekingStore (single source of truth for seeking)
       // seekTo is an atomic operation - it handles seeking internally
@@ -2170,7 +2250,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
           try {
             // Clear any cached session to force a fresh one
-            playbackCache.clearSession(currentBook.id);
+            playbackCache.invalidateSession(currentBook.id);
+
+            // Guard: Don't reload if user has already switched to a different book
+            const freshState = get();
+            if (freshState.currentBook?.id !== currentBook.id) {
+              playerLogger.info('[URL_EXPIRED] User switched books during refresh, skipping reload');
+              return;
+            }
 
             // Reload the book at the same position with autoPlay
             // (Don't use autoPlay:false + play() — that can trigger double loadBook)
@@ -2196,10 +2283,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     // =========================================================================
 
     updatePlaybackState: (state: PlaybackState) => {
+      // Chromecast guard: When casting, local audio is paused so its state updates
+      // are stale. Cast position sync (castStore → playerStore) handles UI updates.
+      const castState = getCastState();
+      if (castState.isConnected) return;
+
       const {
         currentBook,
         duration: storeDuration,
-        _isLoading,
         isPlaying: wasPlaying,
         position: prevPosition,
       } = get();
@@ -2218,7 +2309,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         // Attempt recovery by calling play()
         audioService.play().then(() => {
           // Wait 1 second to verify recovery worked
-          setTimeout(() => {
+          // Track timeout to prevent leaks on book switch / cleanup
+          if (stuckVerificationTimeout) clearTimeout(stuckVerificationTimeout);
+          stuckVerificationTimeout = setTimeout(() => {
+            stuckVerificationTimeout = null;
             const currentState = get();
             // Guard: Don't act if book changed or was unloaded during recovery
             if (!currentState.currentBook || currentState.currentBook.id !== bookIdAtStuck) return;
@@ -2247,14 +2341,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // state.duration is just the current track's duration (can be much smaller)
       const totalBookDuration = storeDuration > 0 ? storeDuration : state.duration;
       // FIX: Update store duration if:
-      // 1. audioService reports a LARGER value (rare case)
+      // 1. audioService reports a LARGER value (rare case) but within sane bounds
       // 2. storeDuration is 0 and audioService has detected a valid duration
-      const shouldUpdateDuration = state.duration > storeDuration || (storeDuration === 0 && state.duration > 0);
+      // Guard: reject absurdly large durations (>500 hours) as parsing errors
+      const MAX_SANE_DURATION = 500 * 3600;
+      const isValidAudioDuration = Number.isFinite(state.duration) && state.duration > 0 && state.duration < MAX_SANE_DURATION;
+      const shouldUpdateDuration = isValidAudioDuration && (state.duration > storeDuration || storeDuration === 0);
       const displayDuration = totalBookDuration;
 
       // Log when duration is detected for the first time (storeDuration was 0)
       if (storeDuration === 0 && state.duration > 0) {
-        audioLog.info(`[DURATION_FIX] Duration detected from audio: ${state.duration.toFixed(1)}s`);
+        audioLog.store(`[DURATION_FIX] Duration detected from audio: ${state.duration.toFixed(1)}s`);
       }
 
       // Log significant state changes
@@ -2368,7 +2465,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         log('Position at finish:', endPosition.toFixed(1) + 's');
         log('Total book duration:', totalBookDuration.toFixed(1) + 's');
 
-        const isNearEnd = totalBookDuration > 0 && endPosition >= totalBookDuration - 5;
+        // Use scaled threshold to avoid marking very short books as finished too early
+        const endThreshold = Math.min(5, totalBookDuration * 0.1);
+        const isNearEnd = totalBookDuration > 0 && endPosition >= totalBookDuration - endThreshold;
 
         if (isNearEnd && currentBook) {
           // Mark this book as finished to prevent duplicate handling
@@ -2424,12 +2523,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // Check queue for next book (late import to avoid circular dependency)
             (async () => {
               try {
+                // Guard: Don't advance queue if another book is already loading
+                if (get().isLoading) {
+                  log('Skipping queue advance — another book is already loading');
+                  return;
+                }
                 const { useQueueStore } = await import('@/features/queue/stores/queueStore');
                 const queueStore = useQueueStore.getState();
                 const nextBook = await queueStore.playNext();
                 if (nextBook) {
                   log('Loading next book from queue:', nextBook.id);
-                  get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
+                  await get().loadBook(nextBook, { autoPlay: true, showPlayer: false });
                 }
               } catch (err) {
                 log('Queue check failed:', err);

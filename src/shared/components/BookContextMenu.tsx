@@ -363,7 +363,7 @@ export function BookContextMenu({
   onViewDetails,
   playlistId,
 }: BookContextMenuProps) {
-  const { _colors } = useTheme();
+  const { colors: _colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { height: screenHeight } = useWindowDimensions();
@@ -427,9 +427,13 @@ export function BookContextMenu({
 
   // ─── Toggle actions (do NOT close sheet) ────────────────────────────
 
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback(async () => {
     if (book) {
-      loadBook(book, { autoPlay: true, showPlayer: true });
+      try {
+        await loadBook(book, { autoPlay: true, showPlayer: true });
+      } catch {
+        // loadBook handles its own error logging
+      }
       onClose();
     }
   }, [book, loadBook, onClose]);
@@ -486,8 +490,12 @@ export function BookContextMenu({
 
   const handleToggleComplete = useCallback(async () => {
     if (!book) return;
-    await toggleComplete(book.id);
-    addToast({ type: 'success', message: isComplete ? 'Marked as Unfinished' : 'Marked as Finished', duration: 3000 });
+    try {
+      await toggleComplete(book.id);
+      addToast({ type: 'success', message: isComplete ? 'Marked as Unfinished' : 'Marked as Finished', duration: 3000 });
+    } catch {
+      addToast({ type: 'info', message: 'Failed to update status', duration: 3000 });
+    }
   }, [book, isComplete, toggleComplete, addToast]);
 
   // ─── Navigation actions (close sheet) ───────────────────────────────

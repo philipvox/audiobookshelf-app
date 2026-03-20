@@ -26,7 +26,7 @@ import { BASE_DIMENSIONS } from './spine/constants';
 export type AuthorPosition = 'top' | 'bottom';
 export type SpinePersonality = 'refined' | 'bold' | 'playful' | 'classic' | 'modern' | 'stark' | 'warm';
 export type AuthorBoxPreference = 'never' | 'horizontal-only' | 'always' | 'auto';
-export type AuthorOrientationBias = 'horizontal' | 'vertical' | 'neutral';
+export type AuthorOrientationBias = 'horizontal' | 'vertical' | 'neutral' | 'stacked-words';
 export type TitleWeight = 'light' | 'normal' | 'heavy';
 export type ContrastLevel = 'low' | 'medium' | 'high';
 export type FontFamily =
@@ -63,6 +63,8 @@ export type FontFamily =
   | 'courier'            // Monospace, technical
   | 'marker-felt'        // Handwritten, playful
   | 'zapfino'            // Calligraphic, ornate
+  // Additional mappings
+  | 'merriweather'       // Warm, readable serif (maps to Lora)
   // System
   | 'system';            // Platform default
 
@@ -646,6 +648,7 @@ export type CompositionAuthorOrientation =
   | 'horizontal'
   | 'vertical-up'
   | 'vertical-down'
+  | 'stacked-words'     // Each word on its own line
   | 'match-title'       // Same orientation as title
   | 'oppose-title';     // Opposite of title orientation
 

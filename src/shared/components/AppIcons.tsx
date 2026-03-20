@@ -790,7 +790,7 @@ export function IconButton({
   size = 36,
   bordered = true,
   backgroundColor,
-  _onPress,
+  onPress: _onPress,
   style,
 }: {
   children: React.ReactNode;

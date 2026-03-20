@@ -1213,18 +1213,6 @@ export function SecretLibraryPlayerScreen() {
                 </View>
               )}
               {bookId && <CoverStars bookId={bookId} starSize={scale(48)} />}
-              {/* Chromecast button overlay - top left of cover */}
-              {castAvailable && (
-                <TouchableOpacity
-                  onPress={showCastPicker}
-                  style={styles.castOverlay}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={[styles.castOverlayBg, castConnected && styles.castOverlayBgActive]}>
-                    <CastIcon color={castConnected ? '#F3B60C' : '#FFFFFF'} size={18} />
-                  </View>
-                </TouchableOpacity>
-              )}
               {/* Loading/buffering spinner overlay on cover */}
               {(isLoading || isBuffering) && (
                 <View style={styles.coverLoadingOverlay}>
@@ -1769,25 +1757,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: scale(8),
-  },
-
-  // Chromecast button overlay on cover
-  castOverlay: {
-    position: 'absolute',
-    top: scale(10),
-    left: scale(10),
-    zIndex: 10,
-  },
-  castOverlayBg: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  castOverlayBgActive: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
   },
 
   // Time Delta Popup - overlays cover

@@ -55,7 +55,7 @@ export interface SpineConfig {
     /** Force specific dimensions */
     dimensions?: { width: number; height: number };
     /** Force specific colors */
-    colors?: { background: string; text: string };
+    colors?: { background: string; text: string; fromCover?: boolean };
   };
 }
 

@@ -125,6 +125,17 @@ describe('authService', () => {
       isActive: true,
       isLocked: false,
       createdAt: Date.now(),
+      permissions: {
+        download: true,
+        update: false,
+        delete: false,
+        upload: false,
+        accessAllLibraries: true,
+        accessAllTags: true,
+        accessExplicitContent: true,
+      },
+      librariesAccessible: [],
+      itemTagsAccessible: [],
     };
 
     it('should store user data in AsyncStorage', async () => {

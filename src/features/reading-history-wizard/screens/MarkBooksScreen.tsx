@@ -718,7 +718,7 @@ export function MarkBooksScreen() {
 
   // Finished books from SQLite (single source of truth)
   const finishedBookIds = useFinishedBookIds();
-  const { mark: markBookFinished, unmark: unmarkBookFinished, undo: _undoLastMark, _canUndo, _isProcessing } = useUndoableMarkFinished();
+  const { mark: markBookFinished, unmark: unmarkBookFinished, undo: _undoLastMark, canUndo: _canUndo, isProcessing: _isProcessing } = useUndoableMarkFinished();
 
   // Gallery store for session/wizard UI state only
   const startSession = useGalleryStore((s) => s.startSession);

@@ -178,6 +178,11 @@ class AudioService {
     let currentState = AppState.currentState;
 
     this.appStateSubscription = AppState.addEventListener('change', (nextState: string) => {
+      // Skip processing when no audio is loaded to avoid unnecessary work
+      if (!this.isLoaded) {
+        currentState = nextState;
+        return;
+      }
       if (nextState === 'background' || nextState === 'inactive') {
         // Remember if we were playing when backgrounding
         this.wasPlayingBeforeBackground = this.player?.playing ?? false;
@@ -2037,6 +2042,7 @@ class AudioService {
     }
 
     this.currentUrl = null;
+    this.currentBookId = null;
     this.isLoaded = false;
     this.tracks = [];
     this.currentTrackIndex = 0;

@@ -5,7 +5,7 @@
  * Cover image fills the card, with a blurred cassette section at the bottom.
  */
 
-import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   StyleSheet,
@@ -116,15 +116,7 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    if (isPlaying) {
-      startSpinAnimation(1500);
-    } else {
-      stopSpinAnimation();
-    }
-  }, [isPlaying]);
-
-  const startSpinAnimation = (speed: number, reverse: boolean = false) => {
+  const startSpinAnimation = useCallback((speed: number, reverse: boolean = false) => {
     if (spinAnimationRef.current) spinAnimationRef.current.stop();
 
     leftSpinAnim.setValue(0);
@@ -147,14 +139,22 @@ const CassettePlayer: React.FC<CassettePlayerProps> = ({
     ]);
 
     spinAnimationRef.current.start();
-  };
+  }, [leftSpinAnim, rightSpinAnim]);
 
-  const stopSpinAnimation = () => {
+  const stopSpinAnimation = useCallback(() => {
     if (spinAnimationRef.current) {
       spinAnimationRef.current.stop();
       spinAnimationRef.current = null;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      startSpinAnimation(1500);
+    } else {
+      stopSpinAnimation();
+    }
+  }, [isPlaying, startSpinAnimation, stopSpinAnimation]);
 
   const togglePlay = () => {
     if (isControlled) return;

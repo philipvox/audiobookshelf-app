@@ -85,24 +85,14 @@ export function GlobalMiniPlayer() {
     isPlaying,
     isLoading,
     isBuffering,
-    _position,
-    _duration,
     chapters,
-    _play,
-    _pause,
-    cleanup,
   } = usePlayerStore(
     useShallow((s) => ({
       currentBook: s.currentBook,
       isPlaying: s.isPlaying,
       isLoading: s.isLoading,
       isBuffering: s.isBuffering,
-      position: s.position,
-      duration: s.duration,
       chapters: s.chapters,
-      play: s.play,
-      pause: s.pause,
-      cleanup: s.cleanup,
     }))
   );
 
@@ -159,11 +149,6 @@ export function GlobalMiniPlayer() {
     // Set store state so other parts of the app know the player is visible
     setPlayerVisible();
   }, [setPlayerVisible]);
-
-  const _handleCloseMiniPlayer = useCallback(() => {
-    haptics.selection();
-    cleanup();
-  }, [cleanup]);
 
   // Pan gesture: drag up to continuously reveal full player
   const panGesture = Gesture.Pan()

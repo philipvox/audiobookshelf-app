@@ -60,6 +60,20 @@ export interface CachedSpineData {
   progress: number;
   /** Accent color extracted from cover image (or genre fallback) */
   accentColor?: string;
+  /** Legacy: background color (kept for compatibility) */
+  backgroundColor?: string;
+  /** Legacy: text color (kept for compatibility) */
+  textColor?: string;
+  /** Legacy: typography config (kept for compatibility) */
+  typography?: {
+    fontFamily?: string;
+    fontWeight?: string;
+    titleWeight?: string;
+    textTransform?: string;
+    fontStyle?: string;
+  };
+  /** Series sequence number */
+  seriesSequence?: number;
 }
 
 /** Server spine dimension entry with timestamp for TTL-based expiry */
@@ -202,6 +216,8 @@ async function extractMissingColors(
       for (const result of results) {
         if (result.status === 'fulfilled') {
           setAccentColor(result.value.id, result.value.color);
+        } else {
+          log.debug('Color extraction rejected:', result.reason);
         }
       }
     }

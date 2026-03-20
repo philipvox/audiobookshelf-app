@@ -395,6 +395,9 @@ class DownloadManager {
       this.activeDownloads.delete(itemId);
     }
 
+    // Clean up stale progress info
+    this.progressInfo.delete(itemId);
+
     // Remove from database and queue
     log(`Removing from database and queue...`);
     await sqliteCache.deleteDownload(itemId);
@@ -1024,11 +1027,13 @@ class DownloadManager {
           ? download.resumeAsync()
           : download.downloadAsync();
 
+        let downloadTimeoutId: NodeJS.Timeout | null = null;
         const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('Download timed out after 5 minutes - server may be unreachable or file too large')), timeoutMs);
+          downloadTimeoutId = setTimeout(() => reject(new Error('Download timed out after 5 minutes - server may be unreachable or file too large')), timeoutMs);
         });
 
         const result = await Promise.race([downloadPromise, timeoutPromise]);
+        if (downloadTimeoutId) clearTimeout(downloadTimeoutId);
         clearInterval(waitingInterval);
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 

@@ -51,18 +51,15 @@ jest.mock('lucide-react-native', () => ({
 function createMockBook(overrides: Partial<EnrichedBook> = {}): EnrichedBook {
   return {
     id: 'book-1',
+    item: {} as any,
     title: 'Test Book',
     author: 'Test Author',
+    seriesName: '',
     duration: 36000, // 10 hours
+    totalBytes: 0,
     progress: 0,
-    lastPlayedAt: null,
-    isFavorite: false,
+    lastPlayedAt: undefined,
     isDownloaded: false,
-    narrator: 'Test Narrator',
-    series: null,
-    seriesSequence: null,
-    genres: [],
-    coverUrl: null,
     ...overrides,
   };
 }
@@ -98,9 +95,8 @@ describe('BookRow', () => {
       <BookRow book={book} onPress={mockOnPress} onPlay={mockOnPlay} />
     );
 
-    // Duration should be formatted (implementation may vary)
-    // Check that the component renders without error
-    expect(getByText(/\d+/)).toBeTruthy();
+    // 36000 seconds = 10 hours. Verify formatted duration contains "10"
+    expect(getByText(/10\s*h/i)).toBeTruthy();
   });
 
   it('calls onPress when row is pressed', () => {

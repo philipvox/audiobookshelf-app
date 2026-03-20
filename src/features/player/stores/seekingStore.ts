@@ -147,9 +147,16 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       // Safety: auto-reset if seeking gets stuck (prevents blocking all position updates)
       if (seekingSafetyTimeout) clearTimeout(seekingSafetyTimeout);
-      seekingSafetyTimeout = setTimeout(() => {
+      seekingSafetyTimeout = setTimeout(async () => {
         if (get().isSeeking) {
-          log.warn('Seeking stuck for >10s — auto-resetting');
+          log.warn('Seeking stuck for >10s — committing current position and resetting');
+          // Send final seekTo so audio position matches the last UI position
+          const { seekPosition } = get();
+          try {
+            await audioService.seekTo(seekPosition);
+          } catch (err) {
+            log.warn('Safety timeout seekTo failed:', err);
+          }
           get().resetSeekingState();
         }
         seekingSafetyTimeout = null;
@@ -171,7 +178,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
         get().startSeeking(newPosition);
       }
 
-      const clampedPosition = Math.max(0, Math.min(duration, newPosition));
+      const clampedPosition = duration > 0
+        ? Math.max(0, Math.min(duration, newPosition))
+        : Math.max(0, newPosition);
       set({ seekPosition: clampedPosition });
 
       // Send seek command to audio service

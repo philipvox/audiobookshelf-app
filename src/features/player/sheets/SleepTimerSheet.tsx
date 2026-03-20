@@ -126,13 +126,14 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
     const currentChapter = chapters[chapterIndex];
     if (!currentChapter) return 0;
     const remaining = Math.max(0, currentChapter.end - position);
-    return Math.ceil(remaining / 60);
+    return Math.round(remaining / 60);
   };
 
   const getBookRemainingTime = (): { hours: number; mins: number } => {
     const remaining = Math.max(0, duration - position);
-    const hours = Math.floor(remaining / 3600);
-    const mins = Math.floor((remaining % 3600) / 60);
+    const totalMins = Math.round(remaining / 60);
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
     return { hours, mins };
   };
 

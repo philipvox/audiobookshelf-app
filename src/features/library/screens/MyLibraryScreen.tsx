@@ -73,7 +73,7 @@ export function MyLibraryScreen() {
 
   // Get all library data from hook
   const {
-    _enrichedBooks,
+    enrichedBooks: _enrichedBooks,
     filteredBooks,
     favoritedBooks,
     serverInProgressBooks,
@@ -84,7 +84,7 @@ export function MyLibraryScreen() {
     activeDownloads,
     continueListeningItems,
     totalStorageUsed,
-    _isLoaded,
+    isLoaded: _isLoaded,
     isLoading,
     hasDownloading,
     hasPaused,
@@ -98,10 +98,6 @@ export function MyLibraryScreen() {
     currentLibraryId,
   } = useLibraryData({ activeTab, sort, searchQuery });
 
-  // DEBUG: Log filtered books on every render
-  console.log(`[MyLibrary] isLoading=${isLoading}, books=${filteredBooks.length}, first3:`,
-    filteredBooks.slice(0, 3).map(b => b.title)
-  );
 
   // Load spine manifest on mount to ensure spines render correctly
   useEffect(() => {

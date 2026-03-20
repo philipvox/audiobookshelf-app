@@ -93,7 +93,7 @@ export function CollectionDetailScreen() {
   const colors = useSecretLibraryColors();
 
   const { collectionId } = route.params;
-  const { collection, isLoading, _error } = useCollectionDetails(collectionId);
+  const { collection, isLoading, error: _error } = useCollectionDetails(collectionId);
 
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('book');

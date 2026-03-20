@@ -86,7 +86,7 @@ class TypedEventBus {
 
     for (const listener of listenersCopy) {
       try {
-        const result = listener(payload);
+        const result = listener(payload) as unknown;
         // Fix: Handle async listeners - catch promise rejections
         if (result instanceof Promise) {
           result.catch((error) => {

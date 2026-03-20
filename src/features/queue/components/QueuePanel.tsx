@@ -349,6 +349,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
   },
 
+  // Grip handle for drag reorder
+  gripHandle: {
+    width: scale(24),
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+
   // Row
   row: {
     flexDirection: 'row',

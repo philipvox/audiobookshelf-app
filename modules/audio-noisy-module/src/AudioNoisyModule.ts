@@ -1,4 +1,4 @@
-import { requireNativeModule, EventEmitter, Subscription } from 'expo-modules-core';
+import { requireNativeModule, EventEmitter, type EventSubscription as Subscription } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
 // Event data interface
@@ -23,7 +23,7 @@ const NativeAudioNoisyModule = isAndroid
 
 // Event emitter for native events
 const emitter = isAndroid && NativeAudioNoisyModule
-  ? new EventEmitter(NativeAudioNoisyModule)
+  ? new EventEmitter(NativeAudioNoisyModule as any)
   : null;
 
 /**
@@ -112,7 +112,7 @@ export function addAudioNoisyListener(
     };
   }
 
-  return emitter.addListener('onAudioBecomingNoisy', callback);
+  return (emitter as any).addListener('onAudioBecomingNoisy', callback);
 }
 
 export default {

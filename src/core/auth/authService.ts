@@ -204,6 +204,41 @@ class AuthService {
       // ("cannot start a transaction within a transaction").
       useLibraryCache.getState().clearCache(true);
 
+      // 5b. Reset ALL user-specific Zustand stores to prevent data leaking
+      // between accounts. Each require uses a static string (Metro requirement).
+      // Individual try/catch so one failure doesn't block others.
+      // Skip in test environment — native modules crash Jest workers.
+      if (process.env.NODE_ENV !== 'test') {
+        try { require('@/features/player/stores/playerStore').usePlayerStore.getState().cleanup?.(); } catch {}
+        try { require('@/features/player/stores/sleepTimerStore').useSleepTimerStore.getState().clearSleepTimer?.(); } catch {}
+        try { require('@/features/player/stores/seekingStore').useSeekingStore.getState().cancelSeeking?.(); } catch {}
+        try { require('@/features/player/stores/bookmarksStore').useBookmarksStore.getState().clearBookmarks?.(); } catch {}
+        try { require('@/features/player/stores/speedStore').useSpeedStore.setState({ bookSpeedMap: {}, playbackRate: 1, globalDefaultRate: 1 }); } catch {}
+        try { require('@/features/completion/stores/completionStore').useCompletionStore.setState({ completedBooks: new Map() }); } catch {}
+        try { require('@/features/player/stores/completionSheetStore').useCompletionSheetStore.setState({ showCompletionSheet: false, completionSheetBook: null }); } catch {}
+        try { require('@/shared/stores/myLibraryStore').useMyLibraryStore.setState({ libraryIds: new Set(), favoriteSeriesNames: new Set(), selectedIds: new Set(), isSelecting: false }); } catch {}
+        try { require('@/core/stores/progressStore').useProgressStore.setState({ progressMap: new Map(), librarySet: new Set(), version: 0 }); } catch {}
+        try { require('@/features/queue/stores/queueStore').useQueueStore.setState({ queue: [], autoplayEnabled: true, autoSeriesBookId: null }); } catch {}
+        try { require('@/features/wishlist/stores/wishlistStore').useWishlistStore.setState({ items: [], followedAuthors: [], trackedSeries: [] }); } catch {}
+        try { require('@/features/recommendations/stores/dismissedItemsStore').useDismissedItemsStore.getState().clearAllDismissals?.(); } catch {}
+        try { require('@/features/book-detail/stores/starPositionStore').useStarPositionStore.setState({ positions: {} }); } catch {}
+        try { require('@/shared/stores/librarySyncStore').useLibrarySyncStore.getState().reset?.(); } catch {}
+        try { require('@/core/stores/syncStatusStore').useSyncStatusStore.setState({ pendingCount: 0, lastSyncedAt: null, isSyncing: false, lastError: null }); } catch {}
+        try { require('@/features/recommendations/stores/recommendationsCacheStore').useRecommendationsCacheStore.getState().invalidateCache?.(); } catch {}
+        try { require('@/features/home/stores/spineCache').useSpineCacheStore.setState({ serverSpineDimensions: {}, accentColors: {}, cachedManifestBookIds: [] }); } catch {}
+        try { require('@/features/recommendations/stores/preferencesStore').usePreferencesStore.getState().resetPreferences?.(); } catch {}
+        try { require('@/features/browse/stores/contentFilterStore').useContentFilterStore.getState().reset?.(); } catch {}
+        try { require('@/features/reading-history-wizard/stores/galleryStore').useGalleryStore.getState().reset?.(); } catch {}
+        try { require('@/features/playlists/stores/playlistSettingsStore').usePlaylistSettingsStore.setState({ visiblePlaylistIds: [], playlistOrder: [] }); } catch {}
+        try { require('@/shared/stores/kidModeStore').useKidModeStore.setState({ isEnabled: false, pin: null, pinFailedAttempts: 0, pinLockoutUntil: null }); } catch {}
+        try {
+          const castStore = require('@/features/chromecast/stores/castStore').useCastStore;
+          castStore.getState().cleanup?.();
+          castStore.setState({ isConnected: false, deviceName: null, sessionId: null, position: 0, duration: 0, isPlaying: false });
+        } catch {}
+        log.info('All Zustand stores reset');
+      }
+
       // 6. Reset network optimizer cache (prevents stale API responses/covers)
       apiClient.resetNetwork();
 

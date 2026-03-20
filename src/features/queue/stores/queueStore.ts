@@ -167,9 +167,8 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         set({ queue: filteredQueue, autoSeriesBookId: null });
       }
 
-      const currentQueue = get().queue;
       const newItems: QueueBook[] = [];
-      let position = currentQueue.length;
+      let position = get().queue.length;
 
       for (const book of newBooks) {
         const bookData = JSON.stringify(book);
@@ -186,7 +185,9 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         position++;
       }
 
-      set({ queue: [...currentQueue, ...newItems] });
+      // Re-read queue after async loop to avoid overwriting concurrent changes
+      const latestQueue = get().queue;
+      set({ queue: [...latestQueue, ...newItems] });
       log.debug(`Added ${newItems.length} books to queue`);
     } catch (err) {
       log.error('addBooksToQueue error:', err);
@@ -307,7 +308,8 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
         played: false,
       };
 
-      set({ queue: [newItem], autoSeriesBookId: nextBook.id });
+      const currentQueue = get().queue;
+      set({ queue: [...currentQueue, newItem], autoSeriesBookId: nextBook.id });
       const nextMetadata = getBookMetadata(nextBook);
       log.info(`Auto-added next series book: ${nextMetadata?.title || nextBook.id}`);
     } catch (err) {

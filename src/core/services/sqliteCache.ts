@@ -1059,15 +1059,16 @@ class SQLiteCache {
   }
 
   async setCollections(collections: Collection[]): Promise<void> {
-    const db = await this.ensureReady();
     const now = Date.now();
 
     try {
-      await db.withTransactionAsync(async () => {
-        await db.runAsync('DELETE FROM collections');
-        // Batch insert for 50-70% speedup
-        const rows = collections.map(c => [c.id, JSON.stringify(c), now]);
-        await this.batchInsert(db, 'collections', ['id', 'data', 'updated_at'], rows);
+      await this.withTransactionLock(async (db) => {
+        await db.withTransactionAsync(async () => {
+          await db.runAsync('DELETE FROM collections');
+          // Batch insert for 50-70% speedup
+          const rows = collections.map(c => [c.id, JSON.stringify(c), now]);
+          await this.batchInsert(db, 'collections', ['id', 'data', 'updated_at'], rows);
+        });
       });
       log.debug(`Cached ${collections.length} collections`);
     } catch (err) {
@@ -1109,7 +1110,7 @@ class SQLiteCache {
       return map;
     } catch (err) {
       log.warn('getAllPlaybackProgress error:', err);
-      throw err;
+      return new Map();
     }
   }
 
@@ -1551,12 +1552,13 @@ class SQLiteCache {
   }
 
   async addFavorite(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
     try {
-      await db.runAsync(
-        'INSERT OR REPLACE INTO favorites (item_id, added_at, synced) VALUES (?, ?, 0)',
-        [itemId, new Date().toISOString()]
-      );
+      await this.withTransactionLock(async (db) => {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO favorites (item_id, added_at, synced) VALUES (?, ?, 0)',
+          [itemId, new Date().toISOString()]
+        );
+      });
       log.debug(`Added favorite: ${itemId}`);
     } catch (err) {
       log.warn('addFavorite error:', err);
@@ -1564,9 +1566,10 @@ class SQLiteCache {
   }
 
   async removeFavorite(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
     try {
-      await db.runAsync('DELETE FROM favorites WHERE item_id = ?', [itemId]);
+      await this.withTransactionLock(async (db) => {
+        await db.runAsync('DELETE FROM favorites WHERE item_id = ?', [itemId]);
+      });
       log.debug(`Removed favorite: ${itemId}`);
     } catch (err) {
       log.warn('removeFavorite error:', err);
@@ -1587,16 +1590,17 @@ class SQLiteCache {
   }
 
   async cacheFavorites(favorites: FavoriteItem[]): Promise<void> {
-    const db = await this.ensureReady();
     try {
-      await db.withTransactionAsync(async () => {
-        await db.runAsync('DELETE FROM favorites');
-        for (const fav of favorites) {
-          await db.runAsync(
-            'INSERT INTO favorites (item_id, added_at, synced) VALUES (?, ?, 1)',
-            [fav.itemId, fav.addedAt]
-          );
-        }
+      await this.withTransactionLock(async (db) => {
+        await db.withTransactionAsync(async () => {
+          await db.runAsync('DELETE FROM favorites');
+          for (const fav of favorites) {
+            await db.runAsync(
+              'INSERT INTO favorites (item_id, added_at, synced) VALUES (?, ?, 1)',
+              [fav.itemId, fav.addedAt]
+            );
+          }
+        });
       });
       log.debug(`Cached ${favorites.length} favorites`);
     } catch (err) {
@@ -1624,9 +1628,10 @@ class SQLiteCache {
   }
 
   async markFavoriteSynced(itemId: string): Promise<void> {
-    const db = await this.ensureReady();
     try {
-      await db.runAsync('UPDATE favorites SET synced = 1 WHERE item_id = ?', [itemId]);
+      await this.withTransactionLock(async (db) => {
+        await db.runAsync('UPDATE favorites SET synced = 1 WHERE item_id = ?', [itemId]);
+      });
     } catch (err) {
       log.warn('markFavoriteSynced error:', err);
     }
@@ -1701,7 +1706,8 @@ class SQLiteCache {
         await db.runAsync('DELETE FROM authors WHERE library_id = ?', [libraryId]);
         await db.runAsync('DELETE FROM series WHERE library_id = ?', [libraryId]);
         await db.runAsync('DELETE FROM narrators WHERE library_id = ?', [libraryId]);
-        await db.runAsync('DELETE FROM sync_metadata WHERE key LIKE ?', [`%${libraryId}%`]);
+        const escapedId = libraryId.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        await db.runAsync("DELETE FROM sync_metadata WHERE key LIKE ? ESCAPE '\\'", [`%${escapedId}%`]);
       });
       log.debug(`Cleared cache for library: ${libraryId}`);
     } catch (err) {
@@ -3777,6 +3783,8 @@ class SQLiteCache {
       userRating: row.user_rating,
       genres: row.genres,
       playbackSpeed: row.playback_speed,
+      chapters: row.chapters,
+      chaptersUpdatedAt: row.chapters_updated_at,
     };
   }
 
