@@ -1,13 +1,13 @@
 /**
  * src/features/home/components/BookSpineVertical.tsx
  *
- * Vertical book spine — heavily blurred cover as full background,
- * rotated title + horizontal author overlaid on top.
- * System fonts for maximum readability.
+ * Vertical book spine with 12 generative composition layouts.
+ * Genre-specific paper backgrounds, typography, and decorative elements.
+ * Cloth textures overlaid for physical book feel.
  */
 
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Pressable, View, Text, ViewStyle } from 'react-native';
+import { StyleSheet, Pressable, View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -19,7 +19,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { haptics } from '@/core/native/haptics';
 import { useSpineUrl, useLibraryCache } from '@/core/cache';
-import { apiClient } from '@/core/api';
 import { useSpineCacheStore } from '../stores/spineCache';
 import { useStarPositionStore } from '@/features/book-detail/stores/starPositionStore';
 import {
@@ -27,7 +26,9 @@ import {
   calculateBookDimensions,
   MIN_TOUCH_TARGET,
 } from '../utils/spine/adapter';
-import { getGenreFallbackColor } from '../services/colorExtractor';
+import { getGenreVisualConfig } from '../utils/spine/genreVisualConfig';
+import { COMPOSITIONS, pickComposition } from '../utils/spine/compositions';
+import { hashString, hashToPick } from '../utils/spine/core/hashing';
 
 // =============================================================================
 // TYPES
@@ -93,37 +94,9 @@ const BOOK_TEXTURES = [
 const SPRING_CONFIG = { damping: 15, stiffness: 200 };
 const EMPTY_GENRES: string[] = [];
 
-// Layout proportions for text overlay
-const TITLE_ZONE_RATIO = 0.75;
-const BLUR_RADIUS = 250;
-
 // =============================================================================
 // HELPERS
 // =============================================================================
-
-/**
- * For titles > 3 words, split into two lines so line 2 has at least 2 words.
- * Returns [line1, line2] or [fullTitle] if no split needed.
- */
-function splitSpineTitle(title: string): [string] | [string, string] {
-  const words = title.split(' ');
-  if (words.length <= 3) return [title];
-
-  const maxFirstLine = words.length - 2;
-  const half = title.length / 2;
-  let bestSplit = 1;
-  let charCount = words[0].length;
-
-  for (let i = 1; i <= maxFirstLine; i++) {
-    if (charCount >= half) break;
-    bestSplit = i;
-    charCount += 1 + words[i].length;
-  }
-
-  bestSplit = Math.min(bestSplit + 1, maxFirstLine);
-
-  return [words.slice(0, bestSplit).join(' '), words.slice(bestSplit).join(' ')];
-}
 
 function pickTexture(bookId: string): number {
   let h = 0;
@@ -131,14 +104,6 @@ function pickTexture(bookId: string): number {
     h = ((h << 5) - h + bookId.charCodeAt(i)) | 0;
   }
   return BOOK_TEXTURES[Math.abs(h) % BOOK_TEXTURES.length];
-}
-
-function buildCoverUrl(bookId: string): string | null {
-  try {
-    return apiClient.getItemCoverUrl(bookId);
-  } catch {
-    return null;
-  }
 }
 
 // =============================================================================
@@ -187,11 +152,13 @@ export function BookSpineVertical({
   const bookStars = useStarPositionStore((s) => s.positions[book.id]);
   const hasStars = Array.isArray(bookStars) && bookStars.length > 0;
 
-  // --- Accent color ---
-  const cachedAccentColor = useSpineCacheStore((state) => state.accentColors[book.id]);
-  const _colorVersion = useSpineCacheStore((state) => state.colorVersion);
+  // --- Genre visual config ---
   const genres = useMemo(() => book.genres || EMPTY_GENRES, [book.genres]);
-  const accentColor = cachedAccentColor || getGenreFallbackColor(genres, book.id);
+  const visualConfig = useMemo(() => getGenreVisualConfig(genres), [genres]);
+  const bgColor = useMemo(() => hashToPick(book.id + '-bg', visualConfig.backgrounds), [book.id, visualConfig]);
+  const titleFont = useMemo(() => hashToPick(book.id + '-tf', visualConfig.titleFonts), [book.id, visualConfig]);
+  const authorFont = useMemo(() => hashToPick(book.id + '-af', visualConfig.authorFonts), [book.id, visualConfig]);
+  const compositionIndex = useMemo(() => pickComposition(book.id, book.title), [book.id, book.title]);
 
   // --- Dimensions ---
   const duration = book.duration || DEFAULT_DURATION;
@@ -235,18 +202,8 @@ export function BookSpineVertical({
 
   const touchPadding = dimensions.touchPadding ?? 0;
 
-  // --- Cover URL ---
-  const coverUrl = useMemo(() => buildCoverUrl(book.id), [book.id]);
-
-  // --- Title formatting ---
-  const titleLines = useMemo(() => splitSpineTitle(book.title), [book.title]);
-
   // --- Texture (deterministic per book) ---
   const bookTexture = useMemo(() => pickTexture(book.id), [book.id]);
-
-  // --- Layout zones ---
-  const pad = Math.max(4, Math.round(width * 0.1)); // consistent padding on all sides
-  const titleH = Math.round(height * TITLE_ZONE_RATIO);
 
   // --- Progress ---
   const progress = book.progress ?? 0;
@@ -346,7 +303,7 @@ export function BookSpineVertical({
             width,
             height,
             borderRadius: CORNER_RADIUS,
-            backgroundColor: '#1A1A1A',
+            backgroundColor: bgColor,
           },
           styleProp,
         ]}
@@ -375,78 +332,30 @@ export function BookSpineVertical({
               }]} />
             )}
 
-            {/* Blurred cover as full background */}
-            {coverUrl ? (
-              <Image
-                source={{ uri: coverUrl }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                contentPosition="center"
-                blurRadius={BLUR_RADIUS}
-                recyclingKey={`${book.id}-posterize`}
-              />
-            ) : null}
+            {/* Solid paper background */}
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor }]} />
 
-            {/* Accent color overlay */}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: accentColor, opacity: 0.4 }]} />
+            {/* Top shadow */}
+            <LinearGradient
+              colors={[`rgba(0,0,0,${visualConfig.isDark ? 0.25 : 0.04})`, 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5 }}
+              pointerEvents="none"
+            />
 
-            {/* Spacer pushes title+author to bottom */}
-            <View style={{ flex: 1 }} />
-
-            {/* Title — rotated 90° CCW, near bottom */}
-            <View style={{
-              height: titleH,
-              justifyContent: 'center',
-              alignItems: 'center',
-              overflow: 'hidden',
-            }}>
-              <View style={{
-                width: titleH - pad * 3,
-                height: width - pad * 4,
-                transform: [{ rotate: isHorizontalDisplay ? '90deg' : '-90deg' }],
-                justifyContent: 'center',
-              }}>
-                {titleLines.map((line, i) => (
-                  <Text
-                    key={i}
-                    style={{
-                      color: '#FFFFFF',
-                      fontWeight: '700',
-                      fontSize: Math.max(8, (width - pad * 4) * 0.55),
-                      textAlign: titleLines.length === 1 ? 'center' : 'left',
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit={i === 0}
-                    minimumFontScale={0.3}
-                  >
-                    {line}
-                  </Text>
-                ))}
-              </View>
-            </View>
-
-            {/* Author — centered, matching padding */}
-            <View style={{
-              paddingHorizontal: pad,
-              paddingBottom: pad,
-              paddingTop: pad,
-            }}>
-              <Text
-                style={{
-                  color: 'rgba(255,255,255,0.8)',
-                  fontWeight: '400',
-                  fontSize: Math.min(14, Math.max(7, width * 0.22)),
-                  textAlign: 'center',
-                }}
-                numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.5}
-              >
-                {book.author}
-              </Text>
-            </View>
+            {/* Composition content (title + author + decorations) */}
+            {COMPOSITIONS[compositionIndex]({
+              w: width,
+              h: height,
+              title: book.title,
+              author: book.author,
+              titleFont,
+              authorFont,
+              isDark: visualConfig.isDark,
+              hash: hashString(book.id),
+              isHorizontalDisplay,
+            })}
 
             {/* Progress bar overlay at bottom */}
             {showProgress && (
@@ -454,7 +363,7 @@ export function BookSpineVertical({
                 <View style={{
                   height: 2,
                   width: `${Math.min(progressPercent, 100)}%` as any,
-                  backgroundColor: progressPercent >= 100 ? '#4CAF50' : '#F3B60C',
+                  backgroundColor: progressPercent >= 100 ? '#4CAF50' : '#E8A000',
                   borderRadius: 1,
                 }} />
               </View>
@@ -463,26 +372,26 @@ export function BookSpineVertical({
             {/* Book cloth texture — multiply over everything */}
             <Image
               source={bookTexture}
-              style={[StyleSheet.absoluteFill, { mixBlendMode: 'multiply', opacity: 0.7 } as any]}
+              style={[StyleSheet.absoluteFill, { mixBlendMode: 'multiply', opacity: 0.07 } as any]}
               contentFit="fill"
               pointerEvents="none"
             />
 
             {/* Thin white spine-edge highlight on left */}
             <LinearGradient
-              colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0)']}
+              colors={[`rgba(255,255,255,${visualConfig.isDark ? 0.05 : 0.28})`, 'rgba(255,255,255,0)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ position: 'absolute', top: 0, bottom: 0, left: 2, width: Math.max(4, width * 0.1) }}
+              style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '15%' as any }}
               pointerEvents="none"
             />
 
             {/* Thin black shadow on right */}
             <LinearGradient
-              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.25)']}
+              colors={['rgba(0,0,0,0)', `rgba(0,0,0,${visualConfig.isDark ? 0.22 : 0.07})`]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ position: 'absolute', top: 0, bottom: 0, right: 2, width: Math.max(4, width * 0.1) }}
+              style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%' as any }}
               pointerEvents="none"
             />
           </>
@@ -548,10 +457,11 @@ const styles = StyleSheet.create({
 export default React.memo(BookSpineVertical, (prevProps, nextProps) => {
   return (
     prevProps.book.id === nextProps.book.id &&
+    prevProps.book.title === nextProps.book.title &&
+    prevProps.book.author === nextProps.book.author &&
     prevProps.book.progress === nextProps.book.progress &&
     prevProps.book.isDownloaded === nextProps.book.isDownloaded &&
-    prevProps.book.backgroundColor === nextProps.book.backgroundColor &&
-    prevProps.book.textColor === nextProps.book.textColor &&
+    prevProps.book.genres === nextProps.book.genres &&
     prevProps.width === nextProps.width &&
     prevProps.height === nextProps.height &&
     prevProps.leanAngle === nextProps.leanAngle &&
