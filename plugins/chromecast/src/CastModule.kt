@@ -193,43 +193,63 @@ class CastModule(reactContext: ReactApplicationContext) :
     /**
      * Show the native Cast device picker dialog.
      *
-     * A MediaRouteButton must be attached to a window for its click handler
-     * to show the chooser dialog. We add a hidden button to the activity's
-     * decor view, click it, then remove it on the next frame.
+     * Uses MediaRouteChooserDialog directly (when not connected) or
+     * MediaRouteControllerDialog (when connected). This is more reliable
+     * than the MediaRouteButton.showDialog() workaround which can fail
+     * silently if the button isn't fully attached to the window.
      */
     @ReactMethod
     fun showCastPicker(promise: Promise) {
         val activity = reactApplicationContext.currentActivity
         if (activity == null) {
+            Log.e(TAG, "showCastPicker: No activity available")
             promise.reject("NO_ACTIVITY", "No activity available")
             return
         }
 
-        val ctx = castContext
+        // If async init hasn't completed yet, try synchronous fallback
+        var ctx = castContext
         if (ctx == null) {
-            Log.w(TAG, "showCastPicker: CastContext not ready yet")
-            promise.reject("NO_CAST_CONTEXT", "Cast not initialized yet")
+            Log.w(TAG, "showCastPicker: CastContext not ready, trying synchronous init")
+            try {
+                @Suppress("DEPRECATION")
+                ctx = CastContext.getSharedInstance(activity)
+                castContext = ctx
+                // Only register listener if initialize() hasn't done it yet
+                if (sessionManager == null) {
+                    sessionManager = ctx.sessionManager
+                    sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+                }
+                Log.d(TAG, "showCastPicker: Synchronous CastContext init succeeded")
+            } catch (e: Exception) {
+                Log.e(TAG, "showCastPicker: CastContext not available", e)
+                promise.reject("NO_CAST_CONTEXT", "Cast not initialized yet", e)
+                return
+            }
+        }
+
+        val selector = ctx!!.mergedSelector
+        if (selector == null) {
+            Log.w(TAG, "showCastPicker: No route selector — Cast SDK may not be configured")
+            promise.reject("NO_SELECTOR", "No route selector available")
             return
         }
 
         activity.runOnUiThread {
             try {
-                val button = androidx.mediarouter.app.MediaRouteButton(activity)
-                CastButtonFactory.setUpMediaRouteButton(activity, button)
-
-                // The button must be in the view hierarchy to show its dialog.
-                // Add it invisibly to the decor view, click, then remove.
-                button.visibility = android.view.View.GONE
-                val rootView = activity.window.decorView as android.view.ViewGroup
-                rootView.addView(button)
-
-                // showDialog() shows the route chooser when no device is
-                // connected, or the controller dialog when already connected.
-                button.showDialog()
-
-                // Clean up: remove from hierarchy on the next frame
-                button.post { rootView.removeView(button) }
-
+                val session = sessionManager?.currentCastSession
+                if (session?.isConnected == true) {
+                    // Already connected — show controller dialog
+                    Log.d(TAG, "showCastPicker: Showing controller dialog (connected to ${session.castDevice?.friendlyName})")
+                    val dialog = androidx.mediarouter.app.MediaRouteControllerDialog(activity)
+                    dialog.show()
+                } else {
+                    // Not connected — show device chooser
+                    Log.d(TAG, "showCastPicker: Showing chooser dialog")
+                    val dialog = androidx.mediarouter.app.MediaRouteChooserDialog(activity)
+                    dialog.routeSelector = selector
+                    dialog.show()
+                }
                 promise.resolve(true)
             } catch (e: Exception) {
                 Log.e(TAG, "showCastPicker failed", e)

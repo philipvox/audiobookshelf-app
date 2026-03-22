@@ -274,6 +274,15 @@ function AuthenticatedApp() {
       usePlayerStore.getState().loadPlayerSettings?.().catch((err: any) => {
         logger.warn('[AppNavigator] Player settings load failed:', err);
       });
+
+      // Initialize Chromecast — sets up event listeners, starts discovery,
+      // and detects existing sessions (e.g., app restarted while casting)
+      try {
+        const { useCastStore } = require('@/features/chromecast/stores/castStore');
+        useCastStore.getState().initialize();
+      } catch (err: any) {
+        logger.warn('[AppNavigator] Cast init failed:', err);
+      }
     });
     return () => task.cancel();
   }, []);

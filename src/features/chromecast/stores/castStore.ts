@@ -45,6 +45,9 @@ export const useCastStore = create<CastState>((set, get) => {
   let initialized = false;
   // Flag to prevent onSessionEnded from racing with disconnect()
   let isDisconnecting = false;
+  // Track last progress save time to avoid saving every 1s poll
+  let lastProgressSaveTime = 0;
+  const CAST_PROGRESS_SAVE_INTERVAL = 10_000; // Save every 10 seconds
 
   /**
    * Build a proper streaming URL for the Cast device.
@@ -125,7 +128,8 @@ export const useCastStore = create<CastState>((set, get) => {
               const metadata = book.media?.metadata as any;
               const title = metadata?.title || 'Audiobook';
               const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
-              const coverUrl = `${apiClient.getItemCoverUrl(book.id)}${token ? `&token=${token}` : ''}`;
+              const rawCoverUrl = apiClient.getItemCoverUrl(book.id);
+              const coverUrl = token ? `${rawCoverUrl}${rawCoverUrl.includes('?') ? '&' : '?'}token=${token}` : rawCoverUrl;
 
               // Build proper streaming URL from audio file INO
               const { url: streamUrl, contentType } = buildCastStreamUrl(book, baseUrl, token);
@@ -209,6 +213,22 @@ export const useCastStore = create<CastState>((set, get) => {
                 position: data.position,
                 isPlaying: data.isPlaying,
               });
+
+              // Periodically save progress to SQLite so it's not lost if app crashes
+              const now = Date.now();
+              if (data.isPlaying && now - lastProgressSaveTime > CAST_PROGRESS_SAVE_INTERVAL) {
+                lastProgressSaveTime = now;
+                try {
+                  const { backgroundSyncService } = require('@/core/services/backgroundSyncService');
+                  backgroundSyncService.saveProgressLocal(
+                    playerState.currentBook.id,
+                    data.position,
+                    data.duration || playerState.duration
+                  );
+                } catch {
+                  // backgroundSyncService not available
+                }
+              }
             }
           } catch {
             // Player store not available yet — skip sync
@@ -276,7 +296,15 @@ export const useCastStore = create<CastState>((set, get) => {
     },
 
     showPicker: async () => {
-      await castService.showCastPicker();
+      // Auto-initialize if not done yet (useCastSession may not be mounted)
+      if (!initialized && castService.isAvailable) {
+        get().initialize();
+      }
+      try {
+        await castService.showCastPicker();
+      } catch (err) {
+        logger.error('[Cast] showPicker failed:', err);
+      }
     },
 
     loadMedia: async (url, title, author, coverUrl, position, contentType) => {

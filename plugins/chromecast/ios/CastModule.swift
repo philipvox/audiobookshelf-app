@@ -16,6 +16,8 @@ class CastModule: RCTEventEmitter {
   private var statusTimer: Timer?
   /// Retain request delegates strongly — GCKRequest.delegate is weak
   private var pendingDelegates: [Int: RequestDelegate] = [:]
+  /// Track last idle state to avoid emitting duplicate finish/error events
+  private var lastIdleReason: GCKMediaPlayerIdleReason = .none
 
   override init() {
     super.init()
@@ -39,6 +41,8 @@ class CastModule: RCTEventEmitter {
       "onSessionEnded",
       "onSessionStartFailed",
       "onMediaStatusUpdate",
+      "onMediaFinished",
+      "onMediaError",
       "onDevicesDiscovered",
     ]
   }
@@ -85,6 +89,7 @@ class CastModule: RCTEventEmitter {
   // MARK: - Media Control
 
   @objc func loadMedia(_ url: String, title: String, author: String, coverUrl: String, position: Double,
+                       contentType: String,
                        resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     DispatchQueue.main.async {
       guard let client = self.sessionManager.currentCastSession?.remoteMediaClient else {
@@ -105,13 +110,14 @@ class CastModule: RCTEventEmitter {
       }
       let builder = GCKMediaInformationBuilder(contentURL: mediaURL)
       builder.streamType = .buffered
-      builder.contentType = "audio/mp4"
+      builder.contentType = contentType.isEmpty ? "audio/mp4" : contentType
       builder.metadata = metadata
 
       let options = GCKMediaLoadOptions()
       options.autoplay = true
       options.playPosition = position
 
+      self.lastIdleReason = .none
       let request = client.loadMedia(builder.build(), with: options)
       let delegate = RequestDelegate(resolve: resolve, reject: reject) { [weak self] requestID in
         self?.pendingDelegates.removeValue(forKey: requestID)
@@ -210,13 +216,34 @@ class CastModule: RCTEventEmitter {
           let client = sessionManager.currentCastSession?.remoteMediaClient,
           let status = client.mediaStatus else { return }
 
+    let position = client.approximateStreamPosition()
+    let duration = status.mediaInformation?.streamDuration ?? 0
+
     sendEvent(withName: "onMediaStatusUpdate", body: [
-      "position": client.approximateStreamPosition(),
-      "duration": status.mediaInformation?.streamDuration ?? 0,
+      "position": position,
+      "duration": duration,
       "isPlaying": status.playerState == .playing,
       "isPaused": status.playerState == .paused,
       "isIdle": status.playerState == .idle,
+      "idleReason": status.idleReason.rawValue,
     ])
+
+    // Detect playback finished or error (idle state transitions)
+    if status.playerState == .idle && status.idleReason != lastIdleReason {
+      lastIdleReason = status.idleReason
+      if status.idleReason == .finished {
+        sendEvent(withName: "onMediaFinished", body: [
+          "position": position,
+          "duration": duration,
+        ])
+      } else if status.idleReason == .error {
+        sendEvent(withName: "onMediaError", body: [
+          "error": "Media playback error on Cast device",
+        ])
+      }
+    } else if status.playerState != .idle {
+      lastIdleReason = .none
+    }
   }
 }
 
@@ -225,6 +252,16 @@ class CastModule: RCTEventEmitter {
 extension CastModule: GCKSessionManagerListener {
   func sessionManager(_ sessionManager: GCKSessionManager, didStart session: GCKCastSession) {
     guard hasListeners else { return }
+    startMediaStatusPolling()
+    sendEvent(withName: "onSessionStarted", body: [
+      "sessionId": session.sessionID ?? "",
+      "deviceName": session.device?.friendlyName ?? "Unknown",
+    ])
+  }
+
+  func sessionManager(_ sessionManager: GCKSessionManager, didResumeCastSession session: GCKCastSession) {
+    guard hasListeners else { return }
+    startMediaStatusPolling()
     sendEvent(withName: "onSessionStarted", body: [
       "sessionId": session.sessionID ?? "",
       "deviceName": session.device?.friendlyName ?? "Unknown",

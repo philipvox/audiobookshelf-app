@@ -171,6 +171,7 @@ function withCastGradleDeps(config) {
       const castDeps = `
     // Google Cast (Chromecast) framework
     implementation "com.google.android.gms:play-services-cast-framework:22.0.0"
+    implementation "androidx.mediarouter:mediarouter:1.7.0"
 `;
 
       const depsMatch = content.match(/dependencies\s*\{/);
@@ -241,27 +242,23 @@ function withCastIosFiles(config) {
         // Try the app slug name
         const altDir = path.join(projectRoot, 'ios', 'SecretLibrary');
         if (fs.existsSync(altDir)) {
-          // Copy to alternative directory
-          const src = path.join(pluginDir, 'CastModule.swift');
-          if (fs.existsSync(src)) {
-            fs.copyFileSync(src, path.join(altDir, 'CastModule.swift'));
-          }
-          const bridgeSrc = path.join(pluginDir, 'CastModule-Bridging-Header.h');
-          if (fs.existsSync(bridgeSrc)) {
-            fs.copyFileSync(bridgeSrc, path.join(altDir, 'CastModule-Bridging-Header.h'));
+          const iosFiles = ['CastModule.swift', 'CastModule.m', 'CastModule-Bridging-Header.h'];
+          for (const file of iosFiles) {
+            const src = path.join(pluginDir, file);
+            if (fs.existsSync(src)) {
+              fs.copyFileSync(src, path.join(altDir, file));
+            }
           }
         }
         return config;
       }
 
-      const swiftSrc = path.join(pluginDir, 'CastModule.swift');
-      if (fs.existsSync(swiftSrc)) {
-        fs.copyFileSync(swiftSrc, path.join(iosDir, 'CastModule.swift'));
-      }
-
-      const bridgeSrc = path.join(pluginDir, 'CastModule-Bridging-Header.h');
-      if (fs.existsSync(bridgeSrc)) {
-        fs.copyFileSync(bridgeSrc, path.join(iosDir, 'CastModule-Bridging-Header.h'));
+      const iosFiles = ['CastModule.swift', 'CastModule.m', 'CastModule-Bridging-Header.h'];
+      for (const file of iosFiles) {
+        const src = path.join(pluginDir, file);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, path.join(iosDir, file));
+        }
       }
 
       return config;
