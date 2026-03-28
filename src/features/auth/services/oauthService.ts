@@ -10,12 +10,21 @@
 
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import * as Crypto from 'expo-crypto';
 import { logger } from '@/shared/utils/logger';
 
 const OAUTH_CALLBACK_PATH = 'oauth-callback';
 
 /** Whether we're actively waiting for an OAuth callback */
 let waitingForCallback = false;
+
+/** CSRF state parameter for the current OAuth flow */
+let pendingOAuthState: string | null = null;
+
+/** Generate a cryptographically secure random hex string for CSRF state */
+function generateState(): string {
+  return Crypto.randomUUID().replace(/-/g, '');
+}
 
 /**
  * Build the full OAuth callback URL the server should redirect to.
@@ -36,7 +45,9 @@ function getCallbackUrl(): string {
  */
 async function startOAuthFlow(serverUrl: string): Promise<string> {
   const callbackUrl = getCallbackUrl();
-  const authUrl = `${serverUrl}/auth/openid?redirect=${encodeURIComponent(callbackUrl)}&isRest=true`;
+  const state = generateState();
+  pendingOAuthState = state;
+  const authUrl = `${serverUrl}/auth/openid?redirect=${encodeURIComponent(callbackUrl)}&isRest=true&state=${state}`;
 
   logger.info('[OAuth] Starting OIDC flow', { authUrl, callbackUrl });
 
@@ -46,6 +57,16 @@ async function startOAuthFlow(serverUrl: string): Promise<string> {
     const result = await WebBrowser.openAuthSessionAsync(authUrl, callbackUrl);
 
     if (result.type === 'success' && result.url) {
+      // Validate CSRF state parameter
+      const returnedState = extractStateFromUrl(result.url);
+      if (!returnedState || returnedState !== pendingOAuthState) {
+        throw new Error(
+          !returnedState
+            ? 'OAuth callback missing state parameter'
+            : 'OAuth state mismatch — possible CSRF attack'
+        );
+      }
+
       const token = extractTokenFromUrl(result.url);
       if (token) {
         logger.info('[OAuth] Token received from callback');
@@ -61,6 +82,23 @@ async function startOAuthFlow(serverUrl: string): Promise<string> {
     throw new Error('SSO login failed');
   } finally {
     waitingForCallback = false;
+    pendingOAuthState = null;
+  }
+}
+
+/**
+ * Extract the state parameter from an OAuth callback URL.
+ */
+function extractStateFromUrl(url: string): string | null {
+  try {
+    const parsed = Linking.parse(url);
+    const state = parsed.queryParams?.state;
+    if (typeof state === 'string' && state.length > 0) {
+      return state;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -93,6 +131,13 @@ function handleDeepLink(url: string): string | null {
 
   const parsed = Linking.parse(url);
   if (parsed.path !== OAUTH_CALLBACK_PATH) {
+    return null;
+  }
+
+  // Validate CSRF state parameter to prevent injection via deep link
+  const returnedState = extractStateFromUrl(url);
+  if (!returnedState || returnedState !== pendingOAuthState) {
+    logger.warn('[OAuth] handleDeepLink: state mismatch or missing, rejecting callback');
     return null;
   }
 

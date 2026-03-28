@@ -112,6 +112,8 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
             onPress={handleUndo}
             style={styles.undoButton}
             hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
           >
             <Text style={styles.undoText}>Undo</Text>
           </TouchableOpacity>

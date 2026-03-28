@@ -16,7 +16,7 @@ import { CoverStars } from '@/shared/components/CoverStars';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
 import { useContentFilterStore, filterByAudience } from '../stores/contentFilterStore';
-import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useReadingHistory } from '@/shared/hooks/useReadingHistory';
 
 // Carousel layout constants
 const PADDING = 16;
@@ -56,7 +56,7 @@ const SeriesCard = React.memo(function SeriesCard({ series, onPress }: SeriesCar
   const bookCount = series.books.length;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8} accessibilityLabel={`Open series ${series.name}, ${bookCount} books`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -81,7 +81,7 @@ const SeriesCard = React.memo(function SeriesCard({ series, onPress }: SeriesCar
   );
 });
 
-export function RecentSeriesSection({
+export const RecentSeriesSection = React.memo(function RecentSeriesSection({
   onSeriesPress,
   onViewAll,
   limit = 8
@@ -164,7 +164,7 @@ export function RecentSeriesSection({
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.white }]}>Recent Series</Text>
         {onViewAll && (
-          <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll}>
+          <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll} accessibilityLabel="View all recent series" accessibilityRole="button">
             <Text style={[styles.viewAllText, { color: colors.gray }]}>View All</Text>
             <ChevronRight size={16} color={colors.gray} />
           </TouchableOpacity>
@@ -189,7 +189,7 @@ export function RecentSeriesSection({
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -40,7 +40,7 @@ export function isColorLight(hex: string): boolean {
   return luminance > 0.5;
 }
 
-export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const color = hex.replace('#', '');
   if (color.length !== 6) return null;
   return {

@@ -7,10 +7,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, Image, LayoutChangeEvent } from 'react-native';
+import { View, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { Image } from 'expo-image';
 import { scale } from '@/shared/theme';
-import { useStarPositionStore } from '@/features/book-detail/stores/starPositionStore';
-import type { StarPosition } from '@/features/book-detail/stores/starPositionStore';
+import { useStarPositionStore } from '@/shared/stores/starPositionStore';
+import type { StarPosition } from '@/shared/stores/starPositionStore';
 
 const STAR_IMAGE = require('../../../assets/stars/star5.webp');
 
@@ -48,7 +49,7 @@ export function CoverStars({ bookId, starSize = scale(24) }: CoverStarsProps) {
               left: xPx - starSize / 2,
               transform: [{ rotate: `${star.rotation}deg` }],
             }}
-            resizeMode="contain"
+            contentFit="contain"
           />
         );
       })}

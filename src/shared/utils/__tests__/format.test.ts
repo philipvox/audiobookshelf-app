@@ -6,7 +6,7 @@
  */
 
 // Import directly from the module (no expo dependencies)
-import { formatBytes, formatFileSize, formatDuration } from '../format';
+import { formatBytes, formatDuration } from '../format';
 
 describe('formatBytes', () => {
   it('formats 0 bytes correctly', () => {
@@ -36,24 +36,6 @@ describe('formatBytes', () => {
     expect(formatBytes(1536, 0)).toBe('2 KB');
     expect(formatBytes(1536, 1)).toBe('1.5 KB');
     expect(formatBytes(1536, 3)).toBe('1.500 KB');
-  });
-});
-
-describe('formatFileSize', () => {
-  it('formats 0 bytes correctly', () => {
-    expect(formatFileSize(0)).toBe('0 MB');
-  });
-
-  it('formats bytes with 1 decimal', () => {
-    expect(formatFileSize(1024)).toBe('1.0 KB');
-  });
-
-  it('formats megabytes', () => {
-    expect(formatFileSize(1024 * 1024 * 150)).toBe('150.0 MB');
-  });
-
-  it('formats gigabytes', () => {
-    expect(formatFileSize(1024 * 1024 * 1024 * 1.5)).toBe('1.5 GB');
   });
 });
 

@@ -14,7 +14,6 @@ import {
   StyleSheet,
   Pressable,
   Platform,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import Animated, {
@@ -30,7 +29,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { scale } from '@/shared/theme';
 import { useShallow } from 'zustand/react/shallow';
-import { usePlayerStore, useCurrentChapterIndex, useSeekingStore } from '@/features/player/stores';
+import { usePlayerStore, useCurrentChapterIndex, useSeekingStore, usePlayerSettingsStore } from '@/shared/stores/playerFacade';
 import { useNormalizedChapters } from '@/shared/hooks';
 import { getTitle } from '@/shared/utils/metadata';
 import { useCoverUrl } from '@/core/cache';
@@ -42,7 +41,7 @@ import {
   FastForwardIcon,
   PlayIcon,
   PauseIcon,
-} from '@/features/player/components/PlayerIcons';
+} from '@/shared/components/PlayerIcons';
 import {
   playerTransitionProgress,
   SPRING_CONFIG,
@@ -68,6 +67,7 @@ export function GlobalMiniPlayer() {
   const [currentRouteName, setCurrentRouteName] = useState('');
 
   // Track current route for hiding on modal screens
+  // navigation reference is stable (React Navigation guarantee), so [] is correct
   useEffect(() => {
     const unsubscribe = navigation.addListener('state', () => {
       const state = navigation.getState();
@@ -77,27 +77,20 @@ export function GlobalMiniPlayer() {
       }
     });
     return unsubscribe;
-  }, [navigation]);
+  }, []);
 
-  // Player state - PERF: batch subscriptions with useShallow to reduce re-renders
-  const {
-    currentBook,
-    isPlaying,
-    isLoading,
-    isBuffering,
-    chapters,
-  } = usePlayerStore(
+  // Player state - PERF: only subscribe to state that affects visibility/display
+  // isLoading, isBuffering, chapters are read via getState() to avoid excess re-renders
+  const { currentBook, isPlaying } = usePlayerStore(
     useShallow((s) => ({
       currentBook: s.currentBook,
       isPlaying: s.isPlaying,
-      isLoading: s.isLoading,
-      isBuffering: s.isBuffering,
-      chapters: s.chapters,
     }))
   );
 
-  // Current chapter
+  // Current chapter - read chapters from store snapshot (avoids subscribing to the array reference)
   const currentChapterIndex = useCurrentChapterIndex();
+  const chapters = usePlayerStore.getState().chapters;
   const normalizedChapters = useNormalizedChapters(chapters, {
     bookTitle: getTitle(currentBook),
   });
@@ -121,19 +114,19 @@ export function GlobalMiniPlayer() {
 
   const handleSkipBack = useCallback(() => {
     haptics.selection();
-    // Read position at call time to avoid stale closure during rapid taps
     const currentPos = usePlayerStore.getState().position;
     const currentDur = usePlayerStore.getState().duration;
-    const newPosition = Math.max(0, currentPos - 15);
+    const { skipBackInterval } = usePlayerSettingsStore.getState();
+    const newPosition = Math.max(0, currentPos - skipBackInterval);
     useSeekingStore.getState().seekTo(newPosition, currentDur, bookId);
   }, [bookId]);
 
   const handleSkipForward = useCallback(() => {
     haptics.selection();
-    // Read position at call time to avoid stale closure during rapid taps
     const currentPos = usePlayerStore.getState().position;
     const currentDur = usePlayerStore.getState().duration;
-    const newPosition = Math.min(currentDur, currentPos + 30);
+    const { skipForwardInterval } = usePlayerSettingsStore.getState();
+    const newPosition = Math.min(currentDur, currentPos + skipForwardInterval);
     useSeekingStore.getState().seekTo(newPosition, currentDur, bookId);
   }, [bookId]);
 
@@ -188,13 +181,13 @@ export function GlobalMiniPlayer() {
     ),
   }));
 
-  // Cover hides instantly so the full player's cover (positioned at same spot) takes over
+  // Cover always hidden but kept in layout for transition positioning
   const coverAnimStyle = useAnimatedStyle(() => ({
-    opacity: playerTransitionProgress.value > 0.01 ? 0 : 1,
+    opacity: 0,
   }));
 
   // Determine if mini player should be hidden
-  const hiddenRoutes = ['ReadingHistoryWizard', 'PreferencesOnboarding', 'SpinePlayground'];
+  const hiddenRoutes = ['SpinePlayground'];
   const shouldHide = !currentBook || hiddenRoutes.includes(currentRouteName);
 
   const title = currentBook ? getTitle(currentBook) : '';
@@ -218,9 +211,14 @@ export function GlobalMiniPlayer() {
           {/* Controls Row */}
           <View style={styles.controlsRow}>
             {/* Book Info - tap to open player */}
-            <Pressable style={styles.infoContainer} onPress={handleOpenPlayer}>
+            <Pressable
+              style={styles.infoContainer}
+              onPress={handleOpenPlayer}
+              accessibilityRole="button"
+              accessibilityLabel={`Now playing: ${title}. ${chapterName}. Double tap to open full player`}
+            >
               <Animated.View style={[styles.coverWrap, coverAnimStyle]}>
-                <Image source={coverUrl} style={styles.cover} contentFit="cover" cachePolicy="memory-disk" />
+                <Image source={coverUrl} style={styles.cover} contentFit="cover" cachePolicy="memory-disk" accessible={false} />
                 {currentBook?.id && <CoverStars bookId={currentBook.id} starSize={scale(14)} />}
               </Animated.View>
               <View style={styles.textContainer}>
@@ -236,6 +234,10 @@ export function GlobalMiniPlayer() {
               <TouchableOpacity
                 style={styles.skipButton}
                 onPress={handleSkipBack}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Skip back"
+                accessibilityHint="Double tap to skip backward"
               >
                 <RewindIcon color={secretLibraryColors.white} size={22} />
               </TouchableOpacity>
@@ -244,6 +246,10 @@ export function GlobalMiniPlayer() {
               <TouchableOpacity
                 style={styles.skipButton}
                 onPress={handleSkipForward}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Skip forward"
+                accessibilityHint="Double tap to skip forward"
               >
                 <FastForwardIcon color={secretLibraryColors.white} size={22} />
               </TouchableOpacity>
@@ -252,20 +258,10 @@ export function GlobalMiniPlayer() {
               <TouchableOpacity
                 style={styles.playButton}
                 onPress={handlePlayPause}
-                disabled={isLoading}
+                accessibilityRole="button"
+                accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
               >
-                {isLoading ? (
-                  <ActivityIndicator size={18} color={secretLibraryColors.black} />
-                ) : isBuffering ? (
-                  <View style={styles.bufferingContainer}>
-                    <ActivityIndicator size={32} color={secretLibraryColors.black} style={styles.bufferingSpinner} />
-                    {isPlaying ? (
-                      <PauseIcon color={secretLibraryColors.black} size={12} />
-                    ) : (
-                      <PlayIcon color={secretLibraryColors.black} size={12} />
-                    )}
-                  </View>
-                ) : isPlaying ? (
+                {isPlaying ? (
                   <PauseIcon color={secretLibraryColors.black} size={18} />
                 ) : (
                   <PlayIcon color={secretLibraryColors.black} size={18} />
@@ -327,6 +323,7 @@ const styles = StyleSheet.create({
     height: scale(40),
     borderRadius: scale(4),
     overflow: 'hidden',
+    opacity: 0,
   },
   cover: {
     width: scale(40),
@@ -380,13 +377,6 @@ const styles = StyleSheet.create({
     backgroundColor: secretLibraryColors.white,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bufferingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bufferingSpinner: {
-    position: 'absolute',
   },
 });
 

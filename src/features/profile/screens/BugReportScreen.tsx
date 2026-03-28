@@ -127,7 +127,12 @@ export function BugReportScreen() {
         }),
       });
 
-      const result = await res.json();
+      let result: unknown;
+      try {
+        result = await res.json();
+      } catch {
+        result = null;
+      }
 
       if (res.ok) {
         setSubmitResult('success');
@@ -136,7 +141,11 @@ export function BugReportScreen() {
         setCategory('other');
       } else {
         setSubmitResult('error');
-        setErrorMessage(result.error || 'Something went wrong. Try again.');
+        const errorMsg =
+          typeof result === 'object' && result !== null && 'error' in result
+            ? String((result as { error: unknown }).error)
+            : 'Something went wrong. Try again.';
+        setErrorMessage(errorMsg);
       }
     } catch {
       setSubmitResult('error');
@@ -202,6 +211,8 @@ export function BugReportScreen() {
             style={[styles.pickerButton, { backgroundColor: colors.white, borderColor: colors.borderLight }]}
             onPress={() => setShowCategories((v: boolean) => !v)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Bug category, currently ${selectedCategoryLabel}`}
           >
             <Text style={[styles.pickerText, { color: colors.black }]}>{selectedCategoryLabel}</Text>
             <ChevronDown size={scale(16)} color={colors.gray} strokeWidth={1.5} />
@@ -223,6 +234,9 @@ export function BugReportScreen() {
                       setCategory(cat.key);
                       setShowCategories(false);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${cat.label}${isActive ? ', currently selected' : ''}`}
+                    accessibilityState={{ selected: isActive }}
                   >
                     <Text style={[styles.categoryItemText, { color: isActive ? colors.black : colors.gray }]}>
                       {cat.label}
@@ -243,6 +257,7 @@ export function BugReportScreen() {
             onChangeText={setTitle}
             maxLength={120}
             returnKeyType="next"
+            accessibilityLabel="Bug report title"
           />
 
           {/* Description */}
@@ -256,6 +271,7 @@ export function BugReportScreen() {
             multiline
             numberOfLines={6}
             textAlignVertical="top"
+            accessibilityLabel="Bug report description"
           />
 
           {/* Diagnostics Preview */}
@@ -273,6 +289,8 @@ export function BugReportScreen() {
             onPress={handleSubmit}
             disabled={!canSubmit || isSending}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isSending ? 'Submitting bug report' : 'Submit bug report'}
           >
             {isSending ? (
               <ActivityIndicator size="small" color={colors.white} />
@@ -291,6 +309,8 @@ export function BugReportScreen() {
             style={styles.websiteLink}
             onPress={handleOpenWebsite}
             activeOpacity={0.7}
+            accessibilityRole="link"
+            accessibilityLabel="Report on our website instead"
           >
             <ExternalLink size={scale(14)} color={colors.gray} strokeWidth={1.5} />
             <Text style={[styles.websiteLinkText, { color: colors.gray }]}>

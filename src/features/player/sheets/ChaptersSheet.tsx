@@ -11,12 +11,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  ScrollView,
+  FlatList,
   Animated,
   TextInput,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Image } from 'expo-image';
+import type { BookMetadata } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
 import { useCoverUrl } from '@/core/cache';
@@ -213,6 +214,10 @@ function ChapterItem({
       ]}
       onPress={onSelect}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`Chapter ${index + 1}, ${displayTitle}, ${formatDuration(chapterDuration)}${isCurrent ? ', currently playing' : ''}${isComplete ? ', completed' : ''}`}
+      accessibilityState={{ selected: isCurrent }}
+      accessibilityHint="Double tap to play this chapter"
     >
       <Text style={[
         styles.chapterNumber,
@@ -275,7 +280,7 @@ export function ChaptersSheet({
   const searchInputRef = useRef<TextInput>(null);
 
   // Book metadata
-  const metadata = currentBook?.media?.metadata as any;
+  const metadata = currentBook?.media?.metadata as BookMetadata | undefined;
   const bookTitle = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
 
@@ -343,6 +348,21 @@ export function ChaptersSheet({
     searchInputRef.current?.focus();
   }, []);
 
+  const renderChapterItem = useCallback(({ item }: { item: { chapter: ChapterData; originalIndex: number } }) => (
+    <ChapterItem
+      chapter={item.chapter}
+      index={item.originalIndex}
+      isComplete={item.originalIndex < currentChapterIndex}
+      isCurrent={item.originalIndex === currentChapterIndex}
+      chapterProgress={item.originalIndex === currentChapterIndex ? chapterProgress : undefined}
+      onSelect={() => handleChapterSelect(item.chapter.start)}
+      highlightText={searchQuery}
+    />
+  ), [currentChapterIndex, chapterProgress, handleChapterSelect, searchQuery]);
+
+  const chapterKeyExtractor = useCallback((item: { chapter: ChapterData; originalIndex: number }) =>
+    String(item.chapter.id ?? item.originalIndex), []);
+
   return (
     <View style={styles.container}>
       <View style={styles.handle} />
@@ -369,14 +389,15 @@ export function ChaptersSheet({
               onChangeText={setSearchQuery}
               autoCapitalize="none"
               autoCorrect={false}
+              accessibilityLabel="Search chapters"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={handleClearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={handleClearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Clear search">
                 <CloseIcon color={colors.gray} size={12} />
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity style={styles.searchCancelBtn} onPress={handleSearchToggle}>
+          <TouchableOpacity style={styles.searchCancelBtn} onPress={handleSearchToggle} accessibilityRole="button" accessibilityLabel="Cancel search">
             <Text style={styles.searchCancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -385,9 +406,9 @@ export function ChaptersSheet({
           {/* Book Info */}
           <View style={styles.bookInfo}>
             {coverUrl ? (
-              <Image source={{ uri: coverUrl }} style={styles.bookCover} contentFit="cover" />
+              <Image source={{ uri: coverUrl }} style={styles.bookCover} contentFit="cover" accessible={false} />
             ) : (
-              <View style={[styles.bookCover, styles.bookCoverFallback]}>
+              <View style={[styles.bookCover, styles.bookCoverFallback]} accessible={false}>
                 <Text style={styles.bookCoverInitials}>{getBookInitials(bookTitle)}</Text>
               </View>
             )}
@@ -419,27 +440,19 @@ export function ChaptersSheet({
       )}
 
       {/* Chapter List */}
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {filteredChapters.length === 0 ? (
+      <FlatList
+        data={filteredChapters}
+        keyExtractor={chapterKeyExtractor}
+        renderItem={renderChapterItem}
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
           <View style={styles.emptySearch}>
             <Text style={styles.emptySearchText}>No chapters found</Text>
             <Text style={styles.emptySearchSubtext}>Try a different search term</Text>
           </View>
-        ) : (
-          filteredChapters.map(({ chapter, originalIndex }) => (
-            <ChapterItem
-              key={chapter.id || originalIndex}
-              chapter={chapter}
-              index={originalIndex}
-              isComplete={originalIndex < currentChapterIndex}
-              isCurrent={originalIndex === currentChapterIndex}
-              chapterProgress={originalIndex === currentChapterIndex ? chapterProgress : undefined}
-              onSelect={() => handleChapterSelect(chapter.start)}
-              highlightText={searchQuery}
-            />
-          ))
-        )}
-      </ScrollView>
+        }
+      />
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
@@ -447,6 +460,9 @@ export function ChaptersSheet({
           style={[styles.actionButton, isSearching && styles.actionButtonActive]}
           onPress={handleSearchToggle}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isSearching ? 'Close search' : 'Search chapters'}
+          accessibilityState={{ selected: isSearching }}
         >
           <SearchIcon color={isSearching ? colors.white : colors.black} size={14} />
           <Text style={[styles.actionButtonText, isSearching && styles.actionButtonTextActive]}>
@@ -457,6 +473,8 @@ export function ChaptersSheet({
           style={[styles.actionButton, styles.actionButtonPrimary]}
           onPress={handleResume}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Resume playback"
         >
           <PlayIcon color={colors.white} size={14} />
           <Text style={styles.actionButtonTextPrimary}>Resume</Text>

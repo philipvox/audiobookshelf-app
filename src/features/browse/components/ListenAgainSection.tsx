@@ -13,8 +13,8 @@ import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLi
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
-import { CompleteBadgeOverlay } from '@/features/completion';
-import { useReadingHistory } from '@/features/reading-history-wizard';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
+import { useReadingHistory } from '@/shared/hooks/useReadingHistory';
 
 // Carousel layout constants
 const PADDING = 16;
@@ -51,7 +51,7 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, o
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8} accessibilityLabel={`Open ${title}${author ? ` by ${author}` : ''}`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -59,6 +59,7 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, o
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={200}
+          accessibilityLabel={`Cover art for ${title}`}
         />
         <CompleteBadgeOverlay bookId={item.id} size="small" />
       </View>
@@ -74,7 +75,7 @@ const CarouselBookCard = React.memo(function CarouselBookCard({ item, onPress, o
   );
 });
 
-export function ListenAgainSection({
+export const ListenAgainSection = React.memo(function ListenAgainSection({
   items,
   onBookPress,
   onBookLongPress,
@@ -119,7 +120,7 @@ export function ListenAgainSection({
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.white }]}>Listen Again</Text>
         {onViewAll && (
-          <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll}>
+          <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll} accessibilityLabel="View all listen again books" accessibilityRole="button">
             <Text style={[styles.viewAllText, { color: colors.gray }]}>View All</Text>
             <ChevronRight size={16} color={colors.gray} />
           </TouchableOpacity>
@@ -145,7 +146,7 @@ export function ListenAgainSection({
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

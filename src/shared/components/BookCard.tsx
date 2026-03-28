@@ -28,7 +28,6 @@ import {
   Check,
   Cloud,
   CloudOff,
-  Bookmark,
   Pause,
 } from 'lucide-react-native';
 import { useCoverUrl } from '@/core/cache';
@@ -36,10 +35,9 @@ import type { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
-import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
-import { usePlayerStore } from '@/features/player';
+import { useQueueStore, useIsInQueue } from '@/shared/stores/queueFacade';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { useNetworkStatus } from './NetworkStatusBar';
-import { useWishlistStore, useIsOnWishlist } from '@/features/wishlist';
 import {
   colors,
   spacing,
@@ -175,8 +173,6 @@ export interface BookCardProps {
    * - Streaming: blue cloud ☁
    */
   showStatusBadge?: boolean;
-  /** Show wishlist bookmark button on cover top-right */
-  showWishlistButton?: boolean;
   /** Layout variant:
    * - default: Title first, then author (standard)
    * - search: Author first (gray), then title (bold) - per reference design
@@ -186,7 +182,7 @@ export interface BookCardProps {
   showPlayOverlay?: boolean;
 }
 
-export function BookCard({
+export const BookCard = React.memo(function BookCard({
   book,
   onPress,
   onLongPress,
@@ -195,7 +191,6 @@ export function BookCard({
   onPlayPress,
   context = 'browse',
   showStatusBadge = false,
-  showWishlistButton = false,
   layout = 'default',
   showPlayOverlay = false,
 }: BookCardProps) {
@@ -210,12 +205,6 @@ export function BookCard({
   const isNowPlaying = currentBookId === book.id;
   const isOnline = useNetworkStatus();
 
-  // Wishlist state
-  const isOnWishlist = useIsOnWishlist(book.id);
-  const addFromLibraryItem = useWishlistStore((s) => s.addFromLibraryItem);
-  const removeItem = useWishlistStore((s) => s.removeItem);
-  const getWishlistItemByLibraryId = useWishlistStore((s) => s.getWishlistItemByLibraryId);
-
   // Determine if book is unavailable (offline + not downloaded)
   const isUnavailableOffline = !isOnline && !isDownloaded && !isDownloading;
 
@@ -226,7 +215,6 @@ export function BookCard({
 
   // Animation
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const wishlistScaleAnim = useRef(new Animated.Value(1)).current;
 
   // Get metadata
   const coverUrl = useCoverUrl(book.id);
@@ -322,34 +310,6 @@ export function BookCard({
     }
   }, [book, isInQueue, addToQueue, removeFromQueue, scaleAnim]);
 
-  // Handle wishlist toggle
-  const handleWishlistPress = useCallback(() => {
-    // Bounce animation
-    Animated.sequence([
-      Animated.timing(wishlistScaleAnim, {
-        toValue: 1.3,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.spring(wishlistScaleAnim, {
-        toValue: 1,
-        friction: 4,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    if (isOnWishlist) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const wishlistItem = getWishlistItemByLibraryId(book.id);
-      if (wishlistItem) {
-        removeItem(wishlistItem.id);
-      }
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      addFromLibraryItem(book.id);
-    }
-  }, [book.id, isOnWishlist, addFromLibraryItem, removeItem, getWishlistItemByLibraryId, wishlistScaleAnim]);
-
   // Handle long press for context menu
   const handleLongPress = useCallback(() => {
     if (onLongPress) {
@@ -366,6 +326,8 @@ export function BookCard({
         onPress={onPress}
         onLongPress={handleLongPress}
         delayLongPress={400}
+        accessibilityRole="button"
+        accessibilityLabel={`Open book ${title} by ${author}`}
       >
         {/* Cover with optional queue button overlay */}
         <View style={styles.coverContainer}>
@@ -380,6 +342,7 @@ export function BookCard({
             ]}
             contentFit="cover"
             transition={200}
+            accessible={false}
           />
 
           {/* Progress bar overlay at bottom of cover */}
@@ -393,6 +356,8 @@ export function BookCard({
               style={styles.playOverlay}
               onPress={handlePlayPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Play ${title}`}
             >
               <Play size={iconSizes.sm} color={semanticColors.iconInverse} fill={semanticColors.iconInverse} />
             </TouchableOpacity>
@@ -403,7 +368,10 @@ export function BookCard({
             <TouchableOpacity
               style={[styles.queueButton, isInQueue && styles.queueButtonActive]}
               onPress={handleQueuePress}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={isInQueue ? `Remove ${title} from queue` : `Add ${title} to queue`}
+              accessibilityState={{ selected: isInQueue }}
             >
               <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
                 {isInQueue ? (
@@ -433,22 +401,6 @@ export function BookCard({
             </View>
           )}
 
-          {/* Wishlist bookmark button on cover */}
-          {showWishlistButton && (
-            <TouchableOpacity
-              style={[styles.wishlistButton, isOnWishlist && styles.wishlistButtonActive]}
-              onPress={handleWishlistPress}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Animated.View style={{ transform: [{ scale: wishlistScaleAnim }] }}>
-                <Bookmark
-                  size={iconSizes.xs}
-                  color={isOnWishlist ? colors.background.primary : colors.text.primary}
-                  fill={isOnWishlist ? colors.background.primary : 'none'}
-                />
-              </Animated.View>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Book info */}
@@ -492,6 +444,14 @@ export function BookCard({
           style={[styles.actionButton, isUnavailableOffline && styles.actionButtonDisabled]}
           onPress={isUnavailableOffline ? undefined : handleDownloadPress}
           disabled={isUnavailableOffline}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isDownloading || isPaused ? `Download ${title} in progress` :
+            isPending ? `Download ${title} queued` :
+            isUnavailableOffline ? `${title} unavailable offline` :
+            `Download ${title}`
+          }
+          accessibilityState={{ disabled: isUnavailableOffline }}
         >
           {isDownloading || isPaused || isPending ? (
             <ProgressRing progress={progress * 100} size={scale(28)} isPaused={isPaused} warningColor={semanticColors.warning} />
@@ -508,13 +468,15 @@ export function BookCard({
         <TouchableOpacity
           style={styles.playButton}
           onPress={handlePlayPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Play ${title}`}
         >
           <Play size={iconSizes.sm} color={colors.background.primary} fill={colors.background.primary} />
         </TouchableOpacity>
       )}
     </View>
   );
-}
+});
 
 // Wrapper for backwards compatibility
 export function BookCardWithState(props: BookCardProps) {
@@ -583,23 +545,6 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   offlineBadge: {
     backgroundColor: colors.error,
-  } as ViewStyle,
-  wishlistButton: {
-    position: 'absolute',
-    top: spacing.xxs,
-    right: spacing.xxs,
-    width: scale(22),
-    height: scale(22),
-    borderRadius: scale(11),
-    backgroundColor: colors.overlay.medium,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border.default,
-  } as ViewStyle,
-  wishlistButtonActive: {
-    backgroundColor: colors.accent.primary,
-    borderColor: colors.accent.primary,
   } as ViewStyle,
   info: {
     flex: 1,

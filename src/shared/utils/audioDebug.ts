@@ -56,13 +56,23 @@ export const audioLog = {
   debug: (msg: string, ...args: any[]) =>
     DEBUG && console.log(`[Debug ${getTimestamp()}] ${msg}`, ...args),
 
-  // Errors (always log, even in production)
-  error: (msg: string, ...args: any[]) =>
-    console.error(`[Audio Error ${getTimestamp()}] ${msg}`, ...args),
+  // Errors (always log, but strip extra args like stack traces in production)
+  error: (msg: string, ...args: any[]) => {
+    if (__DEV__) {
+      console.error(`[Audio Error ${getTimestamp()}] ${msg}`, ...args);
+    } else {
+      console.error(`[Audio Error] ${msg}`);
+    }
+  },
 
-  // Warnings (always log)
-  warn: (msg: string, ...args: any[]) =>
-    console.warn(`[Audio Warn ${getTimestamp()}] ${msg}`, ...args),
+  // Warnings (always log, but strip extra args like stack traces in production)
+  warn: (msg: string, ...args: any[]) => {
+    if (__DEV__) {
+      console.warn(`[Audio Warn ${getTimestamp()}] ${msg}`, ...args);
+    } else {
+      console.warn(`[Audio Warn] ${msg}`);
+    }
+  },
 
   // Timing - measure operation duration
   timing: (label: string, startTime: number) =>
@@ -292,19 +302,24 @@ export function logPositionSources(sources: {
 
   console.log('[Debug] Position sources:');
   if (sources.trackPlayer !== undefined) {
-    console.log(`  - TrackPlayer: ${formatDuration(sources.trackPlayer)} (${sources.trackPlayer.toFixed(1)}s)`);
+    const v = Number(sources.trackPlayer) || 0;
+    console.log(`  - TrackPlayer: ${formatDuration(v)} (${v.toFixed(1)}s)`);
   }
   if (sources.store !== undefined) {
-    console.log(`  - Store: ${formatDuration(sources.store)} (${sources.store.toFixed(1)}s)`);
+    const v = Number(sources.store) || 0;
+    console.log(`  - Store: ${formatDuration(v)} (${v.toFixed(1)}s)`);
   }
   if (sources.session !== undefined) {
-    console.log(`  - Session: ${formatDuration(sources.session)} (${sources.session.toFixed(1)}s)`);
+    const v = Number(sources.session) || 0;
+    console.log(`  - Session: ${formatDuration(v)} (${v.toFixed(1)}s)`);
   }
   if (sources.localProgress !== undefined) {
-    console.log(`  - LocalProgress: ${formatDuration(sources.localProgress)} (${sources.localProgress.toFixed(1)}s)`);
+    const v = Number(sources.localProgress) || 0;
+    console.log(`  - LocalProgress: ${formatDuration(v)} (${v.toFixed(1)}s)`);
   }
   if (sources.finalPosition !== undefined) {
-    console.log(`  => Final: ${formatDuration(sources.finalPosition)} (${sources.finalPosition.toFixed(1)}s)`);
+    const v = Number(sources.finalPosition) || 0;
+    console.log(`  => Final: ${formatDuration(v)} (${v.toFixed(1)}s)`);
   }
 }
 

@@ -4,6 +4,7 @@
  * AudiobookShelf API client extending base client with all API operations.
  */
 
+import axios from 'axios';
 import { BaseApiClient } from './baseClient';
 import { endpoints, buildQueryString } from './endpoints';
 import { createLogger } from '@/shared/utils/logger';
@@ -29,6 +30,23 @@ import { MediaProgress, PlaybackSession } from '../types/media';
 import { Series, Author } from '../types/metadata';
 
 const apiLogger = createLogger('API');
+
+/** Community manifest v2 book entry */
+export interface CommunityManifestBook {
+  id: string;
+  asin?: string;
+  isbn?: string;
+  hash?: string;
+  w?: number;
+  h?: number;
+}
+
+/** Community manifest v2 response */
+export interface CommunityManifestV2 {
+  version: number;
+  count: number;
+  books: CommunityManifestBook[];
+}
 
 /**
  * Main API Client class with all AudiobookShelf API operations
@@ -179,11 +197,14 @@ class ApiClient extends BaseApiClient {
 
   /**
    * Get spine image URL for a library item.
-   * Spines are pre-generated PNG images stored in ABS metadata folder.
-   * Server serves these via Caddy proxy: /api/items/{id}/spine → metadata/items/{id}/spine.png
+   * If a custom spineServerUrl is set, uses that as the base.
+   * Otherwise falls back to the main ABS server URL.
+   *
+   * @param customBaseUrl - Optional custom spine server URL (e.g. http://192.168.1.100:8786)
    */
-  getItemSpineUrl(itemId: string, options?: { width?: number; height?: number; thumb?: boolean }): string {
-    const baseUrl = `${this.getBaseURL()}${endpoints.items.spine(itemId)}`;
+  getItemSpineUrl(itemId: string, options?: { width?: number; height?: number; thumb?: boolean; customBaseUrl?: string }): string {
+    const serverBase = options?.customBaseUrl || this.getBaseURL();
+    const baseUrl = `${serverBase}${endpoints.items.spine(itemId)}`;
 
     const params = new URLSearchParams();
 
@@ -206,11 +227,27 @@ class ApiClient extends BaseApiClient {
   /**
    * Get the spine manifest - list of all book IDs that have server-generated spines.
    * This allows the app to skip 404 requests for books without server spines.
+   *
+   * @param customBaseUrl - Optional custom spine server URL. If set, fetches manifest
+   *   from this server instead of the main ABS server.
    */
-  async getSpineManifest(): Promise<{ items: string[]; version: number; count: number }> {
+  async getSpineManifest(customBaseUrl?: string): Promise<{ items: string[]; version: number; count: number; dimensions?: Record<string, [number, number]> }> {
     try {
-      // Add cache-busting param to bypass CDN/browser cache
       const cacheBuster = `?_=${Date.now()}`;
+
+      if (customBaseUrl) {
+        // Use standalone axios (no auth interceptors) for third-party spine servers
+        const url = `${customBaseUrl}${endpoints.spines.manifest}${cacheBuster}`;
+        const { data } = await axios.get(url, { timeout: 10000 });
+        return {
+          items: data.items || [],
+          version: data.version || 1,
+          count: data.count || 0,
+          dimensions: data.dimensions || undefined,
+        };
+      }
+
+      // Default: fetch from main ABS server (uses auth headers)
       const response = await this.get<{ items: string[]; version: number; count: number; generated: string }>(
         endpoints.spines.manifest + cacheBuster
       );
@@ -222,6 +259,26 @@ class ApiClient extends BaseApiClient {
     } catch (error) {
       apiLogger.warn('Failed to fetch spine manifest:', error);
       return { items: [], version: 0, count: 0 };
+    }
+  }
+
+  /**
+   * Get the community spine manifest v2 — multi-key format for universal matching.
+   * Returns books with ASIN, ISBN, and fuzzy title+author hash for cross-instance matching.
+   */
+  async getCommunityManifestV2(communityBaseUrl: string): Promise<CommunityManifestV2> {
+    try {
+      const cacheBuster = `?_=${Date.now()}`;
+      const url = `${communityBaseUrl}${endpoints.spines.manifestV2}${cacheBuster}`;
+      const { data } = await axios.get(url, { timeout: 15000 });
+      return {
+        version: data.version || 2,
+        count: data.count || 0,
+        books: data.books || [],
+      };
+    } catch (error) {
+      apiLogger.warn('Failed to fetch community manifest v2:', error);
+      return { version: 0, count: 0, books: [] };
     }
   }
 

@@ -59,6 +59,10 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
         // Progress percentage (0-100)
         const val DESCRIPTION_EXTRAS_KEY_COMPLETION_PERCENTAGE = "android.media.extra.MEDIA_PROGRESS"
 
+        // Retry constants for browse data polling
+        private const val BROWSE_DATA_POLL_INTERVAL_MS = 500L
+        private const val BROWSE_DATA_POLL_MAX_ATTEMPTS = 20  // 10 seconds total
+
         // Instance reference for module communication
         @Volatile
         var instance: AndroidAutoMediaBrowserService? = null
@@ -67,6 +71,7 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
 
     // NO own MediaSession — we share the one from AudioPlaybackService
     private var browseData: JSONArray? = null
+    private var browseDataLoaded = false  // true once we have non-empty data
 
     // Coroutine scope for async operations
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -78,13 +83,7 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
 
         // Get MediaSession token from ExoPlayer's AudioPlaybackService
         // If ExoPlayer hasn't initialized yet, we'll retry in onGetRoot
-        val exoSession = AudioPlaybackService.instance?.mediaSession
-        if (exoSession != null) {
-            sessionToken = exoSession.sessionToken
-            Log.d(TAG, "Using ExoPlayer's MediaSession token")
-        } else {
-            Log.w(TAG, "ExoPlayer not initialized yet — will retry on onGetRoot")
-        }
+        trySetSessionToken()
 
         // Load initial browse data
         loadBrowseData()
@@ -104,18 +103,8 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
     ): BrowserRoot {
         Log.d(TAG, "onGetRoot called by: $clientPackageName")
 
-        // Try to grab ExoPlayer's MediaSession token immediately (non-blocking).
-        // If ExoPlayer hasn't initialized yet, onLoadChildren will retry.
-        // NEVER block the binder thread here — Thread.sleep causes ANR.
-        if (sessionToken == null) {
-            val exoSession = AudioPlaybackService.instance?.mediaSession
-            if (exoSession != null) {
-                sessionToken = exoSession.sessionToken
-                Log.d(TAG, "Got ExoPlayer's MediaSession token in onGetRoot")
-            } else {
-                Log.w(TAG, "ExoPlayer not initialized yet — will set session token when available")
-            }
-        }
+        // Try to grab ExoPlayer's MediaSession token
+        trySetSessionToken()
 
         // Refresh browse data on connection
         loadBrowseData()
@@ -140,19 +129,19 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
         Log.d(TAG, "onLoadChildren: $parentId")
 
         // Lazily set session token if ExoPlayer became ready after onGetRoot
-        if (sessionToken == null) {
-            val exoSession = AudioPlaybackService.instance?.mediaSession
-            if (exoSession != null) {
-                sessionToken = exoSession.sessionToken
-                Log.d(TAG, "Got ExoPlayer's MediaSession token in onLoadChildren")
-            }
-        }
+        trySetSessionToken()
 
         // Detach result so we can load async
         result.detach()
 
         serviceScope.launch {
             val items = try {
+                // If browse data is empty and this is the root, poll for data
+                // JS side may still be writing the file (race condition on first connect)
+                if (parentId == MEDIA_ROOT_ID && !hasBrowseData()) {
+                    Log.d(TAG, "No browse data yet — polling for file (up to ${BROWSE_DATA_POLL_MAX_ATTEMPTS * BROWSE_DATA_POLL_INTERVAL_MS}ms)")
+                    waitForBrowseData()
+                }
                 loadChildrenAsync(parentId)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load children for $parentId", e)
@@ -164,6 +153,47 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
                 Log.w(TAG, "sendResult failed (framework timeout?): ${e.message}")
             }
         }
+    }
+
+    /**
+     * Try to set the MediaSession token from ExoPlayer.
+     * Safe to call multiple times — only sets once.
+     */
+    private fun trySetSessionToken() {
+        if (sessionToken != null) return
+        val exoSession = AudioPlaybackService.instance?.mediaSession
+        if (exoSession != null) {
+            sessionToken = exoSession.sessionToken
+            Log.d(TAG, "Got ExoPlayer's MediaSession token")
+        } else {
+            Log.w(TAG, "ExoPlayer not initialized yet — will retry")
+        }
+    }
+
+    /**
+     * Check if we have non-empty browse data.
+     */
+    private fun hasBrowseData(): Boolean {
+        return browseDataLoaded && browseData != null && browseData!!.length() > 0
+    }
+
+    /**
+     * Poll for browse data file with exponential backoff.
+     * Called when onLoadChildren fires before JS has written the browse data file.
+     * Blocks the coroutine (not the main thread) until data arrives or timeout.
+     */
+    private suspend fun waitForBrowseData() {
+        for (attempt in 1..BROWSE_DATA_POLL_MAX_ATTEMPTS) {
+            delay(BROWSE_DATA_POLL_INTERVAL_MS)
+            loadBrowseData()
+            if (hasBrowseData()) {
+                Log.d(TAG, "Browse data arrived after ${attempt * BROWSE_DATA_POLL_INTERVAL_MS}ms")
+                return
+            }
+            // Also retry session token while waiting
+            trySetSessionToken()
+        }
+        Log.w(TAG, "Browse data still empty after polling — Android Auto will show empty list")
     }
 
     private fun loadChildrenAsync(parentId: String): MutableList<MediaBrowserCompat.MediaItem> {
@@ -273,15 +303,19 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
             val file = File(filesDir, BROWSE_DATA_FILE)
             if (file.exists()) {
                 val content = file.readText()
-                browseData = JSONArray(content)
-                Log.d(TAG, "Loaded browse data: ${browseData?.length()} sections")
+                val data = JSONArray(content)
+                browseData = data
+                browseDataLoaded = data.length() > 0
+                Log.d(TAG, "Loaded browse data: ${data.length()} sections")
             } else {
                 Log.d(TAG, "Browse data file not found, using empty data")
                 browseData = JSONArray()
+                browseDataLoaded = false
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading browse data", e)
             browseData = JSONArray()
+            browseDataLoaded = false
         }
     }
 

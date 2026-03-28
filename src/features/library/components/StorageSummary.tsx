@@ -18,19 +18,12 @@ import { CloudDownload, ChevronRight } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { scale } from '@/shared/theme';
 import { useColors } from '@/shared/theme/themeStore';
+import { formatBytes } from '@/shared/utils/format';
 
 interface StorageSummaryProps {
   usedBytes: number;
   bookCount?: number;
   onManagePress?: () => void;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
 export function StorageSummary({ usedBytes, bookCount = 0, onManagePress }: StorageSummaryProps) {
@@ -95,6 +88,8 @@ export function StorageSummary({ usedBytes, bookCount = 0, onManagePress }: Stor
             style={styles.manageButton}
             onPress={onManagePress}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Manage downloads"
           >
             <Text style={[styles.manageText, { color: colors.text.accent }]}>
               Manage

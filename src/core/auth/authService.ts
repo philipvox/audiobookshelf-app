@@ -24,6 +24,14 @@ const USER_KEY = 'user_data';
 /**
  * Cross-platform secure storage wrapper
  *
+ * SECURITY NOTE: On native platforms (iOS/Android), sensitive credentials
+ * (auth tokens, server URL) are stored in expo-secure-store which uses
+ * the OS keychain/keystore. On web or when SecureStore is unavailable,
+ * we fall back to AsyncStorage which is NOT encrypted — this is a known
+ * limitation of React Native. User preferences and non-secret Zustand
+ * stores also use AsyncStorage (unencrypted) by design since they contain
+ * no credentials.
+ *
  * IMPORTANT: SecureStore has a 2048 byte limit on iOS.
  * Only store sensitive credentials (tokens) in SecureStore.
  * User data with large arrays should use AsyncStorage.
@@ -102,11 +110,15 @@ export { User };
  */
 class AuthService {
   /**
-   * Store authentication token securely (in SecureStore)
+   * Store authentication token securely (in SecureStore + AsyncStorage fallback)
+   * Android KeyStore can fail to read on cold start, so we store in both locations.
    */
   async storeToken(token: string): Promise<void> {
     try {
-      await storage.setSecureItem(TOKEN_KEY, token);
+      await Promise.all([
+        storage.setSecureItem(TOKEN_KEY, token),
+        storage.setItem(`${TOKEN_KEY}_fallback`, token),
+      ]);
     } catch (error) {
       log.error('Failed to store token:', error);
       throw new Error('Failed to store authentication token');
@@ -114,23 +126,43 @@ class AuthService {
   }
 
   /**
-   * Get stored authentication token (from SecureStore)
+   * Get stored authentication token (from SecureStore, with AsyncStorage fallback)
+   * Android KeyStore can be slow/unreliable on cold start.
    */
   async getStoredToken(): Promise<string | null> {
     try {
-      return await storage.getSecureItem(TOKEN_KEY);
+      const token = await storage.getSecureItem(TOKEN_KEY);
+      if (token) return token;
+
+      // Fallback: try AsyncStorage if SecureStore failed
+      log.warn('SecureStore returned null for token, trying AsyncStorage fallback');
+      const fallback = await storage.getItem(`${TOKEN_KEY}_fallback`);
+      if (fallback) {
+        // Re-store in SecureStore for next time
+        storage.setSecureItem(TOKEN_KEY, fallback).catch(() => {});
+        return fallback;
+      }
+      return null;
     } catch (error) {
       log.error('Failed to get stored token:', error);
-      return null;
+      // Last resort: try AsyncStorage fallback
+      try {
+        return await storage.getItem(`${TOKEN_KEY}_fallback`);
+      } catch {
+        return null;
+      }
     }
   }
 
   /**
-   * Store server URL (in SecureStore - small and somewhat sensitive)
+   * Store server URL (in SecureStore + AsyncStorage fallback)
    */
   async storeServerUrl(url: string): Promise<void> {
     try {
-      await storage.setSecureItem(SERVER_URL_KEY, url);
+      await Promise.all([
+        storage.setSecureItem(SERVER_URL_KEY, url),
+        storage.setItem(`${SERVER_URL_KEY}_fallback`, url),
+      ]);
     } catch (error) {
       log.error('Failed to store server URL:', error);
       throw new Error('Failed to store server URL');
@@ -138,14 +170,27 @@ class AuthService {
   }
 
   /**
-   * Get stored server URL (from SecureStore)
+   * Get stored server URL (from SecureStore, with AsyncStorage fallback)
    */
   async getStoredServerUrl(): Promise<string | null> {
     try {
-      return await storage.getSecureItem(SERVER_URL_KEY);
+      const url = await storage.getSecureItem(SERVER_URL_KEY);
+      if (url) return url;
+
+      log.warn('SecureStore returned null for server URL, trying AsyncStorage fallback');
+      const fallback = await storage.getItem(`${SERVER_URL_KEY}_fallback`);
+      if (fallback) {
+        storage.setSecureItem(SERVER_URL_KEY, fallback).catch(() => {});
+        return fallback;
+      }
+      return null;
     } catch (error) {
       log.error('Failed to get stored server URL:', error);
-      return null;
+      try {
+        return await storage.getItem(`${SERVER_URL_KEY}_fallback`);
+      } catch {
+        return null;
+      }
     }
   }
 
@@ -154,7 +199,9 @@ class AuthService {
    */
   async storeUser(user: User): Promise<void> {
     try {
-      await storage.setItem(USER_KEY, JSON.stringify(user));
+      // Strip token before persisting — token is stored separately in SecureStore
+      const { token: _token, ...userWithoutToken } = user;
+      await storage.setItem(USER_KEY, JSON.stringify(userWithoutToken));
     } catch (error) {
       log.error('Failed to store user:', error);
       throw new Error('Failed to store user data');
@@ -184,9 +231,11 @@ class AuthService {
     try {
       log.info('Clearing all user data on logout...');
 
-      // 1. Clear secure storage (auth tokens)
+      // 1. Clear secure storage (auth tokens) + AsyncStorage fallbacks
       await storage.deleteSecureItem(TOKEN_KEY);
       await storage.deleteSecureItem(SERVER_URL_KEY);
+      await storage.deleteItem(`${TOKEN_KEY}_fallback`);
+      await storage.deleteItem(`${SERVER_URL_KEY}_fallback`);
 
       // 2. Clear AsyncStorage items (user data)
       await storage.deleteItem(USER_KEY);
@@ -208,34 +257,62 @@ class AuthService {
       // between accounts. Each require uses a static string (Metro requirement).
       // Individual try/catch so one failure doesn't block others.
       // Skip in test environment — native modules crash Jest workers.
+      //
+      // ────────────────────────────────────────────────────────────────────
+      // STORE RESET REFERENCE — expected exports and property names
+      //
+      // When editing these lines, verify the export name and property names
+      // against the actual store file. Three bugs were previously caused by
+      // wrong property names in setState() calls.
+      //
+      // Store                              Export                          Method / Properties
+      // ──────────────────────────────────  ──────────────────────────────  ────────────────────────────────────────────
+      // playerStore                        usePlayerStore                  .cleanup()
+      // sleepTimerStore                    useSleepTimerStore              .clearSleepTimer()
+      // seekingStore                       useSeekingStore                 .resetSeekingState()
+      // bookmarksStore                     useBookmarksStore               .clearBookmarks()
+      // speedStore                         useSpeedStore                   { bookSpeedMap, playbackRate, globalDefaultRate }
+      // completionStore                    useCompletionStore              { completedBooks }
+      // completionSheetStore               useCompletionSheetStore         { showCompletionSheet, completionSheetBook }
+      // myLibraryStore                     useMyLibraryStore               { libraryIds, favoriteSeriesNames }
+      // progressStore                      useProgressStore                { progressMap, librarySet, version }
+      // queueStore                         useQueueStore                   { queue, autoplayEnabled, autoSeriesBookId }
+      // dismissedItemsStore                useDismissedItemsStore          .clearAllDismissals()
+      // starPositionStore                  useStarPositionStore            { positions }
+      // librarySyncStore                   useLibrarySyncStore             .reset()
+      // syncStatusStore                    useSyncStatusStore              { pendingCount, lastSyncedAt, isSyncing, lastError }
+      // recommendationsCacheStore          useRecommendationsCacheStore    .invalidateCache()
+      // spineCache                         useSpineCacheStore              { serverSpineDimensions, accentColors, cachedManifestBookIds }
+      // preferencesStore                   usePreferencesStore             .resetPreferences()
+      // contentFilterStore                 useContentFilterStore           .reset()
+      // playlistSettingsStore              usePlaylistSettingsStore        { visiblePlaylistIds, playlistOrder }
+      // castStore                          useCastStore                    .cleanup() + { isConnected, deviceName, sessionId, position, duration, isPlaying }
+      // ────────────────────────────────────────────────────────────────────
       if (process.env.NODE_ENV !== 'test') {
-        try { require('@/features/player/stores/playerStore').usePlayerStore.getState().cleanup?.(); } catch {}
-        try { require('@/features/player/stores/sleepTimerStore').useSleepTimerStore.getState().clearSleepTimer?.(); } catch {}
-        try { require('@/features/player/stores/seekingStore').useSeekingStore.getState().cancelSeeking?.(); } catch {}
-        try { require('@/features/player/stores/bookmarksStore').useBookmarksStore.getState().clearBookmarks?.(); } catch {}
-        try { require('@/features/player/stores/speedStore').useSpeedStore.setState({ bookSpeedMap: {}, playbackRate: 1, globalDefaultRate: 1 }); } catch {}
-        try { require('@/features/completion/stores/completionStore').useCompletionStore.setState({ completedBooks: new Map() }); } catch {}
-        try { require('@/features/player/stores/completionSheetStore').useCompletionSheetStore.setState({ showCompletionSheet: false, completionSheetBook: null }); } catch {}
-        try { require('@/shared/stores/myLibraryStore').useMyLibraryStore.setState({ libraryIds: new Set(), favoriteSeriesNames: new Set(), selectedIds: new Set(), isSelecting: false }); } catch {}
-        try { require('@/core/stores/progressStore').useProgressStore.setState({ progressMap: new Map(), librarySet: new Set(), version: 0 }); } catch {}
-        try { require('@/features/queue/stores/queueStore').useQueueStore.setState({ queue: [], autoplayEnabled: true, autoSeriesBookId: null }); } catch {}
-        try { require('@/features/wishlist/stores/wishlistStore').useWishlistStore.setState({ items: [], followedAuthors: [], trackedSeries: [] }); } catch {}
-        try { require('@/features/recommendations/stores/dismissedItemsStore').useDismissedItemsStore.getState().clearAllDismissals?.(); } catch {}
-        try { require('@/features/book-detail/stores/starPositionStore').useStarPositionStore.setState({ positions: {} }); } catch {}
-        try { require('@/shared/stores/librarySyncStore').useLibrarySyncStore.getState().reset?.(); } catch {}
-        try { require('@/core/stores/syncStatusStore').useSyncStatusStore.setState({ pendingCount: 0, lastSyncedAt: null, isSyncing: false, lastError: null }); } catch {}
-        try { require('@/features/recommendations/stores/recommendationsCacheStore').useRecommendationsCacheStore.getState().invalidateCache?.(); } catch {}
-        try { require('@/features/home/stores/spineCache').useSpineCacheStore.setState({ serverSpineDimensions: {}, accentColors: {}, cachedManifestBookIds: [] }); } catch {}
-        try { require('@/features/recommendations/stores/preferencesStore').usePreferencesStore.getState().resetPreferences?.(); } catch {}
-        try { require('@/features/browse/stores/contentFilterStore').useContentFilterStore.getState().reset?.(); } catch {}
-        try { require('@/features/reading-history-wizard/stores/galleryStore').useGalleryStore.getState().reset?.(); } catch {}
-        try { require('@/features/playlists/stores/playlistSettingsStore').usePlaylistSettingsStore.setState({ visiblePlaylistIds: [], playlistOrder: [] }); } catch {}
-        try { require('@/shared/stores/kidModeStore').useKidModeStore.setState({ isEnabled: false, pin: null, pinFailedAttempts: 0, pinLockoutUntil: null }); } catch {}
+        try { require('@/features/player/stores/playerStore').usePlayerStore.getState().cleanup?.(); } catch (e) { log.debug('[Auth] Reset playerStore failed', e); }
+        try { require('@/features/player/stores/sleepTimerStore').useSleepTimerStore.getState().clearSleepTimer?.(); } catch (e) { log.debug('[Auth] Reset sleepTimerStore failed', e); }
+        try { require('@/features/player/stores/seekingStore').useSeekingStore.getState().resetSeekingState?.(); } catch (e) { log.debug('[Auth] Reset seekingStore failed', e); }
+        try { require('@/features/player/stores/bookmarksStore').useBookmarksStore.getState().clearBookmarks?.(); } catch (e) { log.debug('[Auth] Reset bookmarksStore failed', e); }
+        try { require('@/features/player/stores/speedStore').useSpeedStore.setState({ bookSpeedMap: {}, playbackRate: 1, globalDefaultRate: 1 }); } catch (e) { log.debug('[Auth] Reset speedStore failed', e); }
+        try { require('@/features/completion/stores/completionStore').useCompletionStore.setState({ completedBooks: new Map() }); } catch (e) { log.debug('[Auth] Reset completionStore failed', e); }
+        try { require('@/features/player/stores/completionSheetStore').useCompletionSheetStore.setState({ showCompletionSheet: false, completionSheetBook: null }); } catch (e) { log.debug('[Auth] Reset completionSheetStore failed', e); }
+        try { require('@/shared/stores/myLibraryStore').useMyLibraryStore.setState({ libraryIds: [], favoriteSeriesNames: [] }); } catch (e) { log.debug('[Auth] Reset myLibraryStore failed', e); }
+        try { require('@/core/stores/progressStore').useProgressStore.setState({ progressMap: new Map(), librarySet: new Set(), version: 0 }); } catch (e) { log.debug('[Auth] Reset progressStore failed', e); }
+        try { require('@/features/queue/stores/queueStore').useQueueStore.setState({ queue: [], autoplayEnabled: true, autoSeriesBookId: null }); } catch (e) { log.debug('[Auth] Reset queueStore failed', e); }
+        try { require('@/features/recommendations/stores/dismissedItemsStore').useDismissedItemsStore.getState().clearAllDismissals?.(); } catch (e) { log.debug('[Auth] Reset dismissedItemsStore failed', e); }
+        try { require('@/features/book-detail/stores/starPositionStore').useStarPositionStore.setState({ positions: {} }); } catch (e) { log.debug('[Auth] Reset starPositionStore failed', e); }
+        try { require('@/shared/stores/librarySyncStore').useLibrarySyncStore.getState().reset?.(); } catch (e) { log.debug('[Auth] Reset librarySyncStore failed', e); }
+        try { require('@/core/stores/syncStatusStore').useSyncStatusStore.setState({ pendingCount: 0, lastSyncedAt: null, isSyncing: false, lastError: null }); } catch (e) { log.debug('[Auth] Reset syncStatusStore failed', e); }
+        try { require('@/features/recommendations/stores/recommendationsCacheStore').useRecommendationsCacheStore.getState().invalidateCache?.(); } catch (e) { log.debug('[Auth] Reset recommendationsCacheStore failed', e); }
+        try { require('@/features/home/stores/spineCache').useSpineCacheStore.setState({ serverSpineDimensions: {}, accentColors: {}, cachedManifestBookIds: [] }); } catch (e) { log.debug('[Auth] Reset spineCacheStore failed', e); }
+        try { require('@/features/recommendations/stores/preferencesStore').usePreferencesStore.getState().resetPreferences?.(); } catch (e) { log.debug('[Auth] Reset preferencesStore failed', e); }
+        try { require('@/features/browse/stores/contentFilterStore').useContentFilterStore.getState().reset?.(); } catch (e) { log.debug('[Auth] Reset contentFilterStore failed', e); }
+        try { require('@/features/playlists/stores/playlistSettingsStore').usePlaylistSettingsStore.setState({ visiblePlaylistIds: [], playlistOrder: [] }); } catch (e) { log.debug('[Auth] Reset playlistSettingsStore failed', e); }
         try {
           const castStore = require('@/features/chromecast/stores/castStore').useCastStore;
           castStore.getState().cleanup?.();
           castStore.setState({ isConnected: false, deviceName: null, sessionId: null, position: 0, duration: 0, isPlaying: false });
-        } catch {}
+        } catch (e) { log.debug('[Auth] Reset castStore failed', e); }
         log.info('All Zustand stores reset');
       }
 
@@ -265,6 +342,7 @@ class AuthService {
       apiClient.configure({ baseURL: serverUrl });
 
       // Make login request using the API client's login method
+      // Note: apiClient.login() internally calls setAuthToken() on success
       const response = await apiClient.login(username, password);
 
       if (!response.user) {
@@ -273,10 +351,34 @@ class AuthService {
 
       const user = response.user;
 
-      // Store credentials
-      await this.storeToken(user.token);
-      await this.storeServerUrl(serverUrl);
-      await this.storeUser(user);
+      // Clear the token that apiClient.login() set prematurely.
+      // We must persist credentials to storage BEFORE setting the in-memory
+      // token, so that a storage failure doesn't leave the user appearing
+      // logged in for this session but with no persisted session for restart.
+      apiClient.clearAuthToken();
+
+      // Persist all credentials to storage first
+      try {
+        await this.storeToken(user.token);
+        await this.storeServerUrl(serverUrl);
+        await this.storeUser(user);
+      } catch (storageError) {
+        // Storage failed — clean up any partially-stored data
+        log.error('Failed to persist credentials, cleaning up:', storageError);
+        try {
+          await storage.deleteSecureItem(TOKEN_KEY);
+          await storage.deleteSecureItem(SERVER_URL_KEY);
+          await storage.deleteItem(`${TOKEN_KEY}_fallback`);
+          await storage.deleteItem(`${SERVER_URL_KEY}_fallback`);
+          await storage.deleteItem(USER_KEY);
+        } catch (cleanupError) {
+          log.error('Cleanup after storage failure also failed:', cleanupError);
+        }
+        throw new Error('Failed to save login credentials. Please try again.');
+      }
+
+      // Storage succeeded — now set the in-memory auth token
+      apiClient.setAuthToken(user.token);
 
       return user;
     } catch (error) {
@@ -321,7 +423,7 @@ class AuthService {
    */
   async loginWithToken(serverUrl: string, token: string): Promise<User> {
     try {
-      // Configure API client with server URL and token
+      // Configure API client with server URL and token so we can verify the token
       apiClient.configure({ baseURL: serverUrl, token });
 
       // Fetch user data to verify token and get full user object
@@ -334,10 +436,33 @@ class AuthService {
       // Attach token to user object (same shape as login response)
       const userWithToken: User = { ...user, token };
 
-      // Store credentials
-      await this.storeToken(token);
-      await this.storeServerUrl(serverUrl);
-      await this.storeUser(userWithToken);
+      // Clear the token before persisting. We must store credentials to disk
+      // BEFORE setting the in-memory token, so that a storage failure doesn't
+      // leave the user appearing logged in with no persisted session.
+      apiClient.clearAuthToken();
+
+      // Persist all credentials to storage first
+      try {
+        await this.storeToken(token);
+        await this.storeServerUrl(serverUrl);
+        await this.storeUser(userWithToken);
+      } catch (storageError) {
+        // Storage failed — clean up any partially-stored data
+        log.error('Failed to persist credentials, cleaning up:', storageError);
+        try {
+          await storage.deleteSecureItem(TOKEN_KEY);
+          await storage.deleteSecureItem(SERVER_URL_KEY);
+          await storage.deleteItem(`${TOKEN_KEY}_fallback`);
+          await storage.deleteItem(`${SERVER_URL_KEY}_fallback`);
+          await storage.deleteItem(USER_KEY);
+        } catch (cleanupError) {
+          log.error('Cleanup after storage failure also failed:', cleanupError);
+        }
+        throw new Error('Failed to save login credentials. Please try again.');
+      }
+
+      // Storage succeeded — now set the in-memory auth token
+      apiClient.setAuthToken(token);
 
       return userWithToken;
     } catch (error) {
@@ -406,22 +531,24 @@ class AuthService {
       try {
         log.debug(`Restoring session (attempt ${attempt}/${MAX_RETRIES})...`);
 
-        // Read all three values in parallel (token/serverUrl from SecureStore, user from AsyncStorage)
-        const [token, serverUrl, userJson] = await Promise.all([
-          storage.getSecureItem(TOKEN_KEY),
-          storage.getSecureItem(SERVER_URL_KEY),
-          storage.getItem(USER_KEY),
+        // Use fallback-aware getters that try SecureStore first, then AsyncStorage.
+        // CRITICAL FIX: Previously used storage.getSecureItem() directly, which meant
+        // Android KeyStore cold-start failures returned null for token/serverUrl,
+        // causing "partial data" detection → 3 retries (all hitting SecureStore) → wipe.
+        // Now getStoredToken()/getStoredServerUrl() automatically fall back to AsyncStorage.
+        const [token, serverUrl, user] = await Promise.all([
+          this.getStoredToken(),
+          this.getStoredServerUrl(),
+          this.getStoredUser(),
         ]);
 
         log.debug('Storage read complete:', {
           hasToken: !!token,
           hasServerUrl: !!serverUrl,
-          hasUserJson: !!userJson,
+          hasUser: !!user,
         });
 
-        if (token && serverUrl && userJson) {
-          const user = JSON.parse(userJson) as User;
-
+        if (token && serverUrl && user) {
           // Configure API client with stored credentials
           apiClient.configure({
             baseURL: serverUrl,
@@ -433,21 +560,30 @@ class AuthService {
         }
 
         // Values missing - this is not a failure, user may not be logged in
-        if (!token && !serverUrl && !userJson) {
+        if (!token && !serverUrl && !user) {
           log.debug('No stored session found (user not logged in)');
           return { user: null, serverUrl: null };
         }
 
-        // Partial values - something might be corrupted
-        log.warn('Partial session data found, clearing:', {
+        // Partial values - retry with delay (Android KeyStore can be slow)
+        log.warn(`Partial session data (attempt ${attempt}/${MAX_RETRIES}):`, {
           hasToken: !!token,
           hasServerUrl: !!serverUrl,
-          hasUserJson: !!userJson,
+          hasUser: !!user,
         });
 
-        // Clear corrupted data and return null
-        await this.clearStorage();
-        return { user: null, serverUrl: null };
+        if (attempt >= MAX_RETRIES) {
+          // All retries exhausted with partial data.
+          // DO NOT clear storage — the data may still be valid but one reader
+          // is intermittently failing. Clearing would make the problem permanent.
+          // Instead, return null and let the user log in again. Their stored
+          // credentials will survive for the next startup attempt.
+          log.error('Partial session data persists after retries — returning null (storage preserved)');
+          return { user: null, serverUrl: null };
+        }
+
+        // Wait before retry (gives Android KeyStore time to initialize)
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
       } catch (error) {
         log.error(`Session restore attempt ${attempt} failed:`, getErrorMessage(error));
 

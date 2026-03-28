@@ -16,17 +16,12 @@ interface MyLibraryState {
   // Favorite series (series names)
   favoriteSeriesNames: string[];
 
-  // Selection mode
-  isSelecting: boolean;
-  selectedIds: string[];
-
   // Preferences
   hideSingleBookSeries: boolean;
 
   // Actions
   addToLibrary: (bookId: string) => void;
   removeFromLibrary: (bookId: string) => void;
-  removeMultiple: (bookIds: string[]) => void;
   isInLibrary: (bookId: string) => boolean;
 
   // Series favorites
@@ -37,12 +32,6 @@ interface MyLibraryState {
   // Preferences
   setHideSingleBookSeries: (hide: boolean) => void;
 
-  // Selection actions
-  startSelecting: () => void;
-  stopSelecting: () => void;
-  toggleSelection: (bookId: string) => void;
-  selectAll: (bookIds: string[]) => void;
-  clearSelection: () => void;
   clearAll: () => void;
 }
 
@@ -51,8 +40,6 @@ export const useMyLibraryStore = create<MyLibraryState>()(
     (set, get) => ({
       libraryIds: [],
       favoriteSeriesNames: [],
-      isSelecting: false,
-      selectedIds: [],
       hideSingleBookSeries: true, // Default to hiding single-book series
 
       addToLibrary: (bookId: string) => {
@@ -68,35 +55,15 @@ export const useMyLibraryStore = create<MyLibraryState>()(
       },
 
       removeFromLibrary: (bookId: string) => {
-        const { libraryIds, selectedIds } = get();
+        const { libraryIds } = get();
         set({
           libraryIds: libraryIds.filter(id => id !== bookId),
-          selectedIds: selectedIds.filter(id => id !== bookId),
         });
         // Sync: record tombstone and push to server
         useLibrarySyncStore.getState().addBookTombstone(bookId);
         import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
           librarySyncService.pushBookChange(bookId, 'remove');
         }).catch(err => console.warn('Failed to sync library remove:', err));
-      },
-
-      removeMultiple: (bookIds: string[]) => {
-        const { libraryIds } = get();
-        set({
-          libraryIds: libraryIds.filter(id => !bookIds.includes(id)),
-          selectedIds: [],
-          isSelecting: false,
-        });
-        // Sync: record tombstones and push to server
-        const syncStore = useLibrarySyncStore.getState();
-        for (const bookId of bookIds) {
-          syncStore.addBookTombstone(bookId);
-        }
-        import('@/core/services/librarySyncService').then(({ librarySyncService }) => {
-          for (const bookId of bookIds) {
-            librarySyncService.pushBookChange(bookId, 'remove');
-          }
-        }).catch(err => console.warn('Failed to sync library bulk remove:', err));
       },
 
       isInLibrary: (bookId: string) => {
@@ -157,8 +124,6 @@ export const useMyLibraryStore = create<MyLibraryState>()(
         set({
           libraryIds: [],
           favoriteSeriesNames: [],
-          selectedIds: [],
-          isSelecting: false,
         });
         // Clear progressStore librarySet + SQLite
         import('@/core/stores/progressStore').then(({ useProgressStore }) => {
@@ -173,7 +138,7 @@ export const useMyLibraryStore = create<MyLibraryState>()(
             progressMap: newMap,
             version: state.version + 1,
           });
-        });
+        }).catch(() => { /* silently ignore cleanup failure */ });
         // Clear is_in_library in SQLite for all books
         import('@/core/services/sqliteCache').then(({ sqliteCache }) => {
           (sqliteCache as any).ensureReady().then((db: any) => {
@@ -182,33 +147,9 @@ export const useMyLibraryStore = create<MyLibraryState>()(
               [new Date().toISOString()]
             ).catch((err: any) => console.warn('Failed to clear SQLite library:', err));
           });
-        });
+        }).catch(() => { /* silently ignore cleanup failure */ });
       },
 
-      startSelecting: () => {
-        set({ isSelecting: true, selectedIds: [] });
-      },
-
-      stopSelecting: () => {
-        set({ isSelecting: false, selectedIds: [] });
-      },
-
-      toggleSelection: (bookId: string) => {
-        const { selectedIds } = get();
-        if (selectedIds.includes(bookId)) {
-          set({ selectedIds: selectedIds.filter(id => id !== bookId) });
-        } else {
-          set({ selectedIds: [...selectedIds, bookId] });
-        }
-      },
-
-      selectAll: (bookIds: string[]) => {
-        set({ selectedIds: bookIds });
-      },
-
-      clearSelection: () => {
-        set({ selectedIds: [] });
-      },
     }),
     {
       name: 'my-library-storage',

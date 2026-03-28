@@ -63,7 +63,7 @@ export function LocalStorageNoticeModal({ visible, onDismiss }: LocalStorageNoti
             <View style={[styles.iconContainer, { backgroundColor: colors.accent.primary + '20' }]}>
               <Info size={24} color={colors.accent.primary} strokeWidth={2} />
             </View>
-            <TouchableOpacity onPress={handleDismiss} style={styles.closeButton}>
+            <TouchableOpacity onPress={handleDismiss} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close">
               <X size={20} color={colors.text.secondary} strokeWidth={2} />
             </TouchableOpacity>
           </View>
@@ -89,6 +89,9 @@ export function LocalStorageNoticeModal({ visible, onDismiss }: LocalStorageNoti
             style={styles.checkboxRow}
             onPress={toggleNeverShow}
             activeOpacity={0.7}
+            accessibilityRole="checkbox"
+            accessibilityLabel="Don't show this again"
+            accessibilityState={{ checked: neverShowAgain }}
           >
             <View style={[
               styles.checkbox,
@@ -109,12 +112,16 @@ export function LocalStorageNoticeModal({ visible, onDismiss }: LocalStorageNoti
             <TouchableOpacity
               style={[styles.button, styles.secondaryButton, { borderColor: colors.border.default }]}
               onPress={handleDismiss}
+              accessibilityRole="button"
+              accessibilityLabel="Got it, dismiss"
             >
               <Text style={[styles.buttonText, { color: colors.text.primary }]}>Got it</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, styles.primaryButton, { backgroundColor: colors.text.primary }]}
               onPress={handleGoToSettings}
+              accessibilityRole="button"
+              accessibilityLabel="Go to storage settings"
             >
               <Settings size={16} color={colors.background.primary} strokeWidth={2} />
               <Text style={[styles.buttonText, { color: colors.background.primary, marginLeft: spacing.xs }]}>

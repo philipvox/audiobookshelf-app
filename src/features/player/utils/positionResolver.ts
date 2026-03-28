@@ -90,6 +90,10 @@ export function resolvePosition(
   const conflictThreshold = options.conflictThreshold ?? DEFAULT_CONFLICT_THRESHOLD;
   const sameSessionWindow = options.sameSessionWindow ?? DEFAULT_SAME_SESSION_WINDOW;
 
+  // Coerce positions to numbers (SQLite may return strings)
+  if (local && local.position != null) local = { ...local, position: Number(local.position) };
+  if (server && server.position != null) server = { ...server, position: Number(server.position) };
+
   log('Resolving position:');
   log(`  Local:  ${local && local.position != null ? `${local.position.toFixed(1)}s @ ${new Date(local.updatedAt).toISOString()}` : 'none'}`);
   log(`  Server: ${server && server.position != null ? `${server.position.toFixed(1)}s @ ${new Date(server.updatedAt).toISOString()}` : 'none'}`);
@@ -160,7 +164,28 @@ export function resolvePosition(
     };
   }
 
-  // Case 4b: Different sessions - trust the more recent timestamp
+  // Case 4b: Different sessions
+  // SAFETY NET: If local position is ahead of server, always prefer local.
+  // The server's "updatedAt" often reflects session creation time (NOW), not when
+  // the position was last synced. This means the server timestamp appears newest
+  // even though its position could be minutes/hours stale. Preferring local when
+  // it's ahead prevents progress regression on app restart/update.
+  if (localPos > serverPos) {
+    const diff = localPos - serverPos;
+    if (diff > 5) {
+      log(`  Resolution: Local is ahead by ${diff.toFixed(1)}s — using local = ${localPos.toFixed(1)}s (safety net: never regress)`);
+      return {
+        position: localPos,
+        source: 'local',
+        isConflict,
+        localPosition: localPos,
+        serverPosition: serverPos,
+        reason: `Local is ${formatTimeDiff(diff * 1000)} ahead — using local to prevent regression`,
+      };
+    }
+  }
+
+  // Server position is ahead or within 5s — trust the more recent timestamp
   // This preserves intentional rewinds from another device
   if (serverTime > localTime) {
     log(`  Resolution: Server is newer (${serverTime - localTime}ms ahead), using server = ${serverPos.toFixed(1)}s`);
@@ -215,4 +240,33 @@ export function createServerSource(position: number, updatedAt: number): Positio
     updatedAt,
     source: 'server',
   };
+}
+
+/**
+ * Get the best initial position for a book, using local progress with server fallback.
+ *
+ * Centralizes the "fresh install" fallback pattern that was previously duplicated in
+ * preloadBookState, loadBook (4 places), and viewBook. On a fresh install, local
+ * SQLite is empty so local progress returns 0. This function falls back to the
+ * book's userMediaProgress.currentTime from the server (already populated from
+ * getItemsInProgress) to avoid starting at position 0.
+ *
+ * @param localPosition - Position from local SQLite/cache (0 if empty)
+ * @param book - The LibraryItem with optional userMediaProgress/mediaProgress
+ * @returns The best available position (local if > 0, else server, else 0)
+ */
+export function getInitialPosition(localPosition: number, book: any): number {
+  if (localPosition > 0) return localPosition;
+
+  const serverProgress = book?.userMediaProgress || book?.mediaProgress;
+  if (
+    serverProgress &&
+    typeof serverProgress.currentTime === 'number' &&
+    serverProgress.currentTime > 0
+  ) {
+    log('Using server progress (local empty):', serverProgress.currentTime.toFixed(1) + 's');
+    return serverProgress.currentTime;
+  }
+
+  return 0;
 }

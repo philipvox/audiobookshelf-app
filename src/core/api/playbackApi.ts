@@ -5,7 +5,9 @@
  * Uses the proper /api/items/{id}/play endpoint for streaming
  */
 
+import { Platform } from 'react-native';
 import { apiClient } from './apiClient';
+import { APP_VERSION } from '@/constants/version';
 
 export interface AudioTrack {
   index: number;
@@ -81,9 +83,9 @@ export async function startPlaybackSession(
 
   const request: StartSessionRequest = {
     deviceInfo: {
-      clientName: 'AudiobookShelf-RN',
-      clientVersion: '1.0.0',
-      deviceId: 'expo-mobile',
+      clientName: 'Secret Library',
+      clientVersion: APP_VERSION,
+      deviceId: `${Platform.OS}-secret-library`,
       deviceType: 'mobile',
     },
     forceDirectPlay: true, // Prefer direct play for mobile
@@ -150,7 +152,7 @@ export function buildStreamUrl(
   
   // Add token as query param
   const separator = contentUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${contentUrl}${separator}token=${token}`;
+  return `${baseUrl}${contentUrl}${separator}token=${encodeURIComponent(token)}`;
 }
 
 /**

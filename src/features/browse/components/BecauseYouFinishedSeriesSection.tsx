@@ -12,11 +12,11 @@ import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, wp, useSecretLibraryColors } from '@/shared/theme';
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
-import { CompleteBadgeOverlay } from '@/features/completion';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { SectionHeader } from './SectionHeader';
 import { useRecentlyCompletedSeries } from '../hooks/useRecentlyCompletedSeries';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 
 // Layout constants for 2-row horizontal scroll
 const PADDING = 24;
@@ -55,7 +55,7 @@ const CoverCard = React.memo(function CoverCard({
   const colors = useSecretLibraryColors();
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8} accessibilityLabel={`Open ${title} by ${author}`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -63,6 +63,7 @@ const CoverCard = React.memo(function CoverCard({
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={200}
+          accessibilityLabel={`Cover art for ${title}`}
         />
         <CoverStars bookId={item.id} starSize={scale(20)} />
         <CompleteBadgeOverlay bookId={item.id} size="small" />

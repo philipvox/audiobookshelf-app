@@ -63,6 +63,9 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
           style={styles.sortButton}
           onPress={() => setIsOpen(true)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${selectedLabel}`}
+          accessibilityHint="Opens sort options"
         >
           <Text style={[styles.sortLabel, { color: colors.text.tertiary }]}>Sort: </Text>
           <Text style={[styles.sortValue, { color: colors.text.secondary }]}>{selectedLabel}</Text>
@@ -80,7 +83,7 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
         animationType="fade"
         onRequestClose={() => setIsOpen(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)} accessibilityRole="button" accessibilityLabel="Close sort options">
           <View style={[styles.modalContent, { backgroundColor: colors.background.elevated, paddingBottom: insets.bottom + 20 }]}>
             <View style={[styles.modalHandle, { backgroundColor: colors.text.tertiary }]} />
             <Text style={[styles.modalTitle, { color: colors.text.primary }]}>Sort By</Text>
@@ -94,6 +97,9 @@ export function SortPicker({ selected, onSelect, bookCount }: SortPickerProps) {
                   style={[styles.optionRow, isSelected && { backgroundColor: `${accent}20` }]}
                   onPress={() => handleSelect(option.value)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${option.label}${isSelected ? ', currently selected' : ''}`}
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[styles.optionText, { color: colors.text.secondary }, isSelected && { color: accent, fontWeight: '600' }]}>
                     {option.label}

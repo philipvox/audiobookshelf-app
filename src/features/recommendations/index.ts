@@ -1,5 +1,11 @@
-export { usePreferencesStore } from './stores/preferencesStore';
+export { usePreferencesStore, type UserPreferences } from './stores/preferencesStore';
 export { useRecommendationsCacheStore } from './stores/recommendationsCacheStore';
 export { useRecommendations } from './hooks/useRecommendations';
-export { PreferencesOnboardingScreen } from './screens/PreferencesOnboardingScreen';
-export { PreferencesScreen } from './screens/PreferencesScreen';
+// Re-export dismissed items store (canonical location: @/shared/stores/dismissedItemsStore)
+export {
+  useDismissedItemsStore,
+  useDismissedIds,
+  useIsDismissed,
+  useLastDismissed,
+  useDismissedCount,
+} from './stores/dismissedItemsStore';

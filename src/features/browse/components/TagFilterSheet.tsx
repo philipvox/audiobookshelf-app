@@ -99,7 +99,7 @@ function LengthRangeSection({ lengthRange, onLengthChange }: LengthRangeSectionP
 
   return (
     <View style={[styles.lengthContainer, { borderBottomColor: colors.grayLine }]}>
-      <TouchableOpacity style={styles.lengthHeader} onPress={handleToggleExpand}>
+      <TouchableOpacity style={styles.lengthHeader} onPress={handleToggleExpand} accessibilityLabel={`Length filter${isActive ? `, ${formatHours(minValue)} to ${formatHours(maxValue)} hours` : ''}, ${expanded ? 'collapse' : 'expand'}`} accessibilityRole="button">
         <View style={styles.lengthTitleRow}>
           <Timer size={14} color={colors.gray} />
           <Text style={[styles.lengthTitle, { color: colors.black }]}>LENGTH</Text>
@@ -125,7 +125,7 @@ function LengthRangeSection({ lengthRange, onLengthChange }: LengthRangeSectionP
               {formatHours(minValue)} - {formatHours(maxValue)} HOURS
             </Text>
             {isActive && (
-              <TouchableOpacity onPress={handleClear}>
+              <TouchableOpacity onPress={handleClear} accessibilityLabel="Clear length filter" accessibilityRole="button">
                 <Text style={[styles.clearText, { color: colors.gray }]}>CLEAR</Text>
               </TouchableOpacity>
             )}
@@ -142,6 +142,8 @@ function LengthRangeSection({ lengthRange, onLengthChange }: LengthRangeSectionP
               maximumTrackTintColor={colors.grayLine}
               thumbTintColor={colors.black}
               step={1}
+              accessibilityLabel={`Minimum length, ${formatHours(minValue)} hours`}
+              accessibilityRole="adjustable"
             />
             <Text style={[styles.sliderValue, { color: colors.black }]}>{formatHours(minValue)}H</Text>
           </View>
@@ -157,6 +159,8 @@ function LengthRangeSection({ lengthRange, onLengthChange }: LengthRangeSectionP
               maximumTrackTintColor={colors.grayLine}
               thumbTintColor={colors.black}
               step={1}
+              accessibilityLabel={`Maximum length, ${formatHours(maxValue)} hours`}
+              accessibilityRole="adjustable"
             />
             <Text style={[styles.sliderValue, { color: colors.black }]}>{formatHours(maxValue)}H</Text>
           </View>
@@ -201,6 +205,8 @@ function FilterSection({ title, items, selectedKeys, collapsed, onToggleCollapse
       <Pressable
         style={styles.sectionHeaderRow}
         onPress={onToggleCollapsed}
+        accessibilityLabel={`${title}${selectedCount > 0 ? `, ${selectedCount} selected` : ''}, ${collapsed ? 'expand' : 'collapse'}`}
+        accessibilityRole="button"
       >
         <View style={styles.sectionHeaderLeft}>
           <Text style={[styles.sectionHeader, { color: colors.gray }]}>{title}</Text>
@@ -235,6 +241,9 @@ function FilterSection({ title, items, selectedKeys, collapsed, onToggleCollapse
                   Haptics.selectionAsync();
                   onToggle(item.key);
                 }}
+                accessibilityLabel={`${formatLabel ? formatLabel(item.name) : item.name}, ${item.count} books${isSelected ? ', selected' : ''}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
               >
                 <View style={styles.listRowLeft}>
                   {isSelected && (
@@ -255,7 +264,7 @@ function FilterSection({ title, items, selectedKeys, collapsed, onToggleCollapse
 
           {/* Show All / Show Less toggle */}
           {needsExpand && (
-            <Pressable style={styles.expandButton} onPress={onToggleExpanded}>
+            <Pressable style={styles.expandButton} onPress={onToggleExpanded} accessibilityLabel={expanded ? `Show less ${title.toLowerCase()}` : `Show all ${title.toLowerCase()}, ${hiddenCount} more`} accessibilityRole="button">
               <Text style={[styles.expandText, { color: colors.gray }]}>
                 {expanded ? 'SHOW LESS' : `SHOW ALL (${hiddenCount} MORE)`}
               </Text>
@@ -339,13 +348,13 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
         entering={FadeIn.duration(150)}
         exiting={FadeOut.duration(100)}
       >
-        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
+        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} accessibilityLabel="Close filters" accessibilityRole="button" />
 
         <View style={[styles.popup, { backgroundColor: colors.white }]}>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.grayLine }]}>
             <Text style={[styles.headerTitle, { color: colors.black }]}>FILTERS</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityLabel="Close" accessibilityRole="button">
               <Icon name="X" size={18} color={colors.black} />
             </TouchableOpacity>
           </View>
@@ -368,6 +377,8 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
                       key={`g-${genre}`}
                       style={[styles.selectedTag, { backgroundColor: colors.black }]}
                       onPress={() => { Haptics.selectionAsync(); toggleGenre(genre); }}
+                      accessibilityLabel={`Remove genre ${genre}`}
+                      accessibilityRole="button"
                     >
                       <Text style={[styles.selectedTagText, { color: colors.white }]}>
                         {genre.toUpperCase()}
@@ -380,6 +391,8 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
                       key={`t-${tag}`}
                       style={[styles.selectedTag, { backgroundColor: colors.black }]}
                       onPress={() => { Haptics.selectionAsync(); toggleTag(tag); }}
+                      accessibilityLabel={`Remove tag ${formatTagLabel(tag)}`}
+                      accessibilityRole="button"
                     >
                       <Text style={[styles.selectedTagText, { color: colors.white }]}>
                         {formatTagLabel(tag)}
@@ -402,6 +415,9 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
                     key={value}
                     style={[styles.audiencePill, isActive && styles.audiencePillActive]}
                     onPress={() => handleAudienceChange(value)}
+                    accessibilityLabel={`${value} audience${isActive ? ', selected' : ''}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
                   >
                     <Text style={[styles.audiencePillText, isActive && styles.audiencePillTextActive]}>
                       {value.toUpperCase()}
@@ -443,7 +459,7 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: colors.grayLine }]}>
             {hasActiveFilter && (
-              <TouchableOpacity style={styles.resetButton} onPress={handleClear}>
+              <TouchableOpacity style={styles.resetButton} onPress={handleClear} accessibilityLabel="Clear all filters" accessibilityRole="button">
                 <Text style={[styles.resetText, { color: colors.gray }]}>CLEAR ALL</Text>
               </TouchableOpacity>
             )}
@@ -451,6 +467,8 @@ export function TagFilterSheet({ visible, onClose }: TagFilterSheetProps) {
               style={[styles.doneButton, { backgroundColor: colors.black }]}
               onPress={handleDone}
               activeOpacity={0.8}
+              accessibilityLabel={hasActiveFilter ? `Done, ${filterCount} filters active` : 'Done'}
+              accessibilityRole="button"
             >
               <Text style={[styles.doneText, { color: colors.white }]}>
                 DONE{hasActiveFilter ? ` (${filterCount})` : ''}

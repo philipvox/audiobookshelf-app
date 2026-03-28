@@ -16,6 +16,7 @@
 const {
   withAndroidManifest,
   withDangerousMod,
+  withXcodeProject,
 } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
@@ -228,7 +229,7 @@ function withCastIosPod(config) {
 }
 
 /**
- * Step 6: Copy iOS Swift module
+ * Step 6a: Copy iOS Swift/ObjC module files to the app directory
  */
 function withCastIosFiles(config) {
   return withDangerousMod(config, [
@@ -236,20 +237,14 @@ function withCastIosFiles(config) {
     async (config) => {
       const projectRoot = config.modRequest.projectRoot;
       const pluginDir = path.join(projectRoot, 'plugins', 'chromecast', 'ios');
-      const iosDir = path.join(projectRoot, 'ios', 'audiobookshelf-app');
 
+      // Determine the correct iOS app directory (try slug, then default)
+      let iosDir = path.join(projectRoot, 'ios', 'SecretLibrary');
       if (!fs.existsSync(iosDir)) {
-        // Try the app slug name
-        const altDir = path.join(projectRoot, 'ios', 'SecretLibrary');
-        if (fs.existsSync(altDir)) {
-          const iosFiles = ['CastModule.swift', 'CastModule.m', 'CastModule-Bridging-Header.h'];
-          for (const file of iosFiles) {
-            const src = path.join(pluginDir, file);
-            if (fs.existsSync(src)) {
-              fs.copyFileSync(src, path.join(altDir, file));
-            }
-          }
-        }
+        iosDir = path.join(projectRoot, 'ios', 'audiobookshelf-app');
+      }
+      if (!fs.existsSync(iosDir)) {
+        console.warn('[withChromecast] No iOS app directory found, skipping file copy');
         return config;
       }
 
@@ -267,6 +262,59 @@ function withCastIosFiles(config) {
 }
 
 /**
+ * Step 6b: Add CastModule files to the Xcode project so they get compiled.
+ * Without this, the files exist on disk but Xcode doesn't know about them.
+ */
+function withCastXcodeProject(config) {
+  return withXcodeProject(config, (config) => {
+    const project = config.modResults;
+    const appName = config.modRequest.projectName || 'SecretLibrary';
+
+    // Find the main app group by iterating PBXGroup entries
+    const pbxGroupSection = project.hash.project.objects['PBXGroup'];
+    let appGroupKey = null;
+    for (const key of Object.keys(pbxGroupSection)) {
+      if (key.endsWith('_comment')) continue;
+      const grp = pbxGroupSection[key];
+      if (grp.name === appName || grp.path === appName) {
+        appGroupKey = key;
+        break;
+      }
+    }
+
+    if (!appGroupKey) {
+      console.warn(`[withChromecast] Could not find PBXGroup for "${appName}"`);
+      return config;
+    }
+
+    const sourceFiles = ['CastModule.swift', 'CastModule.m'];
+    const headerFiles = ['CastModule-Bridging-Header.h'];
+
+    for (const name of [...sourceFiles, ...headerFiles]) {
+      // Check if already in group
+      const grp = pbxGroupSection[appGroupKey];
+      const alreadyAdded = (grp.children || []).some(
+        (child) => child.comment === name
+      );
+      if (alreadyAdded) continue;
+
+      try {
+        if (sourceFiles.includes(name)) {
+          // addSourceFile with the group key (not name) to avoid variant group lookup
+          project.addSourceFile(`${appName}/${name}`, { target: project.getFirstTarget().uuid }, appGroupKey);
+        } else {
+          project.addHeaderFile(`${appName}/${name}`, {}, appGroupKey);
+        }
+      } catch (e) {
+        console.warn(`[withChromecast] Could not add ${name}: ${e.message}`);
+      }
+    }
+
+    return config;
+  });
+}
+
+/**
  * Main plugin - composes all steps
  */
 function withChromecast(config) {
@@ -276,6 +324,7 @@ function withChromecast(config) {
   config = withCastGradleDeps(config);
   config = withCastIosPod(config);
   config = withCastIosFiles(config);
+  config = withCastXcodeProject(config);
   return config;
 }
 

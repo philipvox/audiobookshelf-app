@@ -20,7 +20,7 @@ import * as Haptics from 'expo-haptics';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { Icon } from '@/shared/components/Icon';
-import { DURATION_RANGES, type DurationRangeId } from '@/features/browse/hooks/useBrowseCounts';
+import { DURATION_RANGES, type DurationRangeId } from '@/shared/hooks/useBrowseCounts';
 
 // =============================================================================
 // TYPES
@@ -140,7 +140,7 @@ export function SearchFilterSheet({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.grayLine }]}>
             <Text style={[styles.headerTitle, { color: colors.black }]}>Filters</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close filters">
               <Icon name="X" size={20} color={colors.black} />
             </TouchableOpacity>
           </View>
@@ -160,6 +160,9 @@ export function SearchFilterSheet({
                     Haptics.selectionAsync();
                     setSelectedGenre(null);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="All genres"
+                  accessibilityState={{ selected: !selectedGenre }}
                 >
                   <Text style={[styles.optionText, { color: !selectedGenre ? colors.white : colors.black }]}>
                     All
@@ -177,6 +180,9 @@ export function SearchFilterSheet({
                       Haptics.selectionAsync();
                       setSelectedGenre(selectedGenre === genre.id ? null : genre.id);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Genre: ${genre.name}`}
+                    accessibilityState={{ selected: selectedGenre === genre.id }}
                   >
                     <Text
                       style={[styles.optionText, { color: selectedGenre === genre.id ? colors.white : colors.black }]}
@@ -203,6 +209,9 @@ export function SearchFilterSheet({
                     Haptics.selectionAsync();
                     setSelectedDuration(null);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Any duration"
+                  accessibilityState={{ selected: !selectedDuration }}
                 >
                   <Text style={[styles.optionText, { color: !selectedDuration ? colors.white : colors.black }]}>
                     Any
@@ -220,6 +229,9 @@ export function SearchFilterSheet({
                       Haptics.selectionAsync();
                       setSelectedDuration(selectedDuration === range.id ? null : range.id);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Duration: ${range.label}`}
+                    accessibilityState={{ selected: selectedDuration === range.id }}
                   >
                     <Text
                       style={[styles.optionText, { color: selectedDuration === range.id ? colors.white : colors.black }]}
@@ -247,6 +259,9 @@ export function SearchFilterSheet({
                       Haptics.selectionAsync();
                       setSelectedAgeRange(range.id);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Age range: ${range.label}`}
+                    accessibilityState={{ selected: selectedAgeRange === range.id }}
                   >
                     <Text
                       style={[styles.optionText, { color: selectedAgeRange === range.id ? colors.white : colors.black }]}
@@ -262,13 +277,15 @@ export function SearchFilterSheet({
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: colors.grayLine }]}>
             {activeFilterCount > 0 && (
-              <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
+              <TouchableOpacity style={styles.resetButton} onPress={handleReset} accessibilityRole="button" accessibilityLabel="Clear all filters">
                 <Text style={[styles.resetText, { color: colors.gray }]}>Clear all</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               style={[styles.applyButton, { backgroundColor: colors.black }]}
               onPress={handleApply}
+              accessibilityRole="button"
+              accessibilityLabel={`Apply${activeFilterCount > 0 ? ` ${activeFilterCount}` : ''} filters`}
             >
               <Text style={[styles.applyText, { color: colors.white }]}>
                 Apply{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}

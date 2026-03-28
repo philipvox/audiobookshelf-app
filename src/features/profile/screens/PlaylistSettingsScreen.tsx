@@ -38,12 +38,12 @@ import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
 import { haptics } from '@/core/native/haptics';
 import { SettingsHeader } from '../components/SettingsHeader';
+import { usePlaylists } from '@/features/playlists';
 import {
-  usePlaylists,
   usePlaylistSettingsStore,
   type DefaultViewType,
   type BuiltInViewKey,
-} from '@/features/playlists';
+} from '@/shared/stores/playlistSettingsStore';
 
 // =============================================================================
 // TYPES
@@ -116,6 +116,9 @@ function UnifiedViewRow({
         style={styles.dragHandle}
         onLongPress={drag}
         delayLongPress={100}
+        accessibilityRole="button"
+        accessibilityLabel={`Reorder ${item.label}, long press and drag`}
+        accessibilityHint="Long press to start dragging"
       >
         <GripVertical
           size={scale(16)}
@@ -153,6 +156,9 @@ function UnifiedViewRow({
           onPress={handleSetDefault}
           disabled={!isVisible}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Set ${item.label} as default view${isDefault ? ', currently default' : ''}`}
+          accessibilityState={{ selected: isDefault }}
         >
           {isDefault ? (
             <CheckCircle2
@@ -178,6 +184,9 @@ function UnifiedViewRow({
           thumbColor={colors.white}
           ios_backgroundColor={colors.borderLight}
           style={styles.toggle}
+          accessibilityRole="switch"
+          accessibilityLabel={`Show ${item.label} in library views`}
+          accessibilityState={{ checked: isVisible }}
         />
       </View>
     </View>

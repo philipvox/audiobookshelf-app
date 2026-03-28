@@ -5,7 +5,7 @@
  * Tests the synchronous parts of the store.
  */
 
-import { LibraryItem } from '@/core/types';
+import { QueueBookMeta } from '../queueStore';
 
 // Mock all dependencies before importing the store
 jest.mock('@/core/services/sqliteCache', () => ({
@@ -26,45 +26,26 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 jest.mock('@/core/cache/libraryCache', () => ({
   getNextBookInSeries: jest.fn().mockReturnValue(null),
+  useLibraryCache: {
+    getState: jest.fn().mockReturnValue({
+      getItem: jest.fn().mockReturnValue(undefined),
+    }),
+  },
 }));
 
 describe('queueStore - state management', () => {
   // Create a fresh store for each test to avoid state pollution
   let useQueueStore: any;
 
-  const createMockBook = (id: string, title: string): LibraryItem => ({
-    id,
-    ino: `ino-${id}`,
-    libraryId: 'lib-1',
-    folderId: 'folder-1',
-    path: `/path/to/${id}`,
-    relPath: id,
-    isFile: false,
-    mtimeMs: Date.now(),
-    ctimeMs: Date.now(),
-    birthtimeMs: Date.now(),
-    addedAt: Date.now(),
-    updatedAt: Date.now(),
-    lastScan: Date.now(),
-    scanVersion: '1.0.0',
-    isMissing: false,
-    isInvalid: false,
-    mediaType: 'book',
-    media: {
-      id: `media-${id}`,
-      metadata: { title, authorName: 'Test Author' } as any,
-      audioFiles: [],
-      chapters: [],
-      duration: 3600,
-      size: 100000000,
-      tags: [],
-    },
-    libraryFiles: [],
+  const createMockMeta = (title: string): QueueBookMeta => ({
+    title,
+    authorName: 'Test Author',
+    duration: 3600,
   });
 
-  const book1 = createMockBook('book-1', 'First Book');
-  const book2 = createMockBook('book-2', 'Second Book');
-  const book3 = createMockBook('book-3', 'Third Book');
+  const meta1 = createMockMeta('First Book');
+  const meta2 = createMockMeta('Second Book');
+  const meta3 = createMockMeta('Third Book');
 
   beforeEach(() => {
     // Clear module cache to get fresh store
@@ -96,9 +77,10 @@ describe('queueStore - state management', () => {
         queue: [{
           id: 'q1',
           bookId: 'book-1',
-          book: book1,
+          meta: meta1,
           position: 0,
           addedAt: Date.now(),
+          played: false,
         }],
       });
 
@@ -110,9 +92,10 @@ describe('queueStore - state management', () => {
         queue: [{
           id: 'q1',
           bookId: 'book-1',
-          book: book1,
+          meta: meta1,
           position: 0,
           addedAt: Date.now(),
+          played: false,
         }],
       });
 
@@ -128,8 +111,8 @@ describe('queueStore - state management', () => {
     it('returns first book in queue', () => {
       useQueueStore.setState({
         queue: [
-          { id: 'q1', bookId: 'book-1', book: book1, position: 0, addedAt: Date.now() },
-          { id: 'q2', bookId: 'book-2', book: book2, position: 1, addedAt: Date.now() },
+          { id: 'q1', bookId: 'book-1', meta: meta1, position: 0, addedAt: Date.now(), played: false },
+          { id: 'q2', bookId: 'book-2', meta: meta2, position: 1, addedAt: Date.now(), played: false },
         ],
       });
 
@@ -141,7 +124,7 @@ describe('queueStore - state management', () => {
     it('does not remove book from queue', () => {
       useQueueStore.setState({
         queue: [
-          { id: 'q1', bookId: 'book-1', book: book1, position: 0, addedAt: Date.now() },
+          { id: 'q1', bookId: 'book-1', meta: meta1, position: 0, addedAt: Date.now(), played: false },
         ],
       });
 
@@ -154,7 +137,7 @@ describe('queueStore - state management', () => {
     it('can manually add items to queue', () => {
       useQueueStore.setState({
         queue: [
-          { id: 'q1', bookId: 'book-1', book: book1, position: 0, addedAt: Date.now() },
+          { id: 'q1', bookId: 'book-1', meta: meta1, position: 0, addedAt: Date.now(), played: false },
         ],
       });
 
@@ -164,8 +147,8 @@ describe('queueStore - state management', () => {
     it('can manually clear queue', () => {
       useQueueStore.setState({
         queue: [
-          { id: 'q1', bookId: 'book-1', book: book1, position: 0, addedAt: Date.now() },
-          { id: 'q2', bookId: 'book-2', book: book2, position: 1, addedAt: Date.now() },
+          { id: 'q1', bookId: 'book-1', meta: meta1, position: 0, addedAt: Date.now(), played: false },
+          { id: 'q2', bookId: 'book-2', meta: meta2, position: 1, addedAt: Date.now(), played: false },
         ],
       });
 
@@ -176,9 +159,9 @@ describe('queueStore - state management', () => {
     it('maintains order when set', () => {
       useQueueStore.setState({
         queue: [
-          { id: 'q1', bookId: 'book-1', book: book1, position: 0, addedAt: 1 },
-          { id: 'q2', bookId: 'book-2', book: book2, position: 1, addedAt: 2 },
-          { id: 'q3', bookId: 'book-3', book: book3, position: 2, addedAt: 3 },
+          { id: 'q1', bookId: 'book-1', meta: meta1, position: 0, addedAt: 1, played: false },
+          { id: 'q2', bookId: 'book-2', meta: meta2, position: 1, addedAt: 2, played: false },
+          { id: 'q3', bookId: 'book-3', meta: meta3, position: 2, addedAt: 3, played: false },
         ],
       });
 
@@ -250,9 +233,10 @@ describe('queueStore - state management', () => {
       const queueItem = {
         id: 'q1',
         bookId: 'book-1',
-        book: book1,
+        meta: meta1,
         position: 0,
         addedAt: Date.now(),
+        played: false,
       };
 
       useQueueStore.setState({ queue: [queueItem] });
@@ -260,25 +244,27 @@ describe('queueStore - state management', () => {
       const item = useQueueStore.getState().queue[0];
       expect(item).toHaveProperty('id');
       expect(item).toHaveProperty('bookId');
-      expect(item).toHaveProperty('book');
+      expect(item).toHaveProperty('meta');
       expect(item).toHaveProperty('position');
       expect(item).toHaveProperty('addedAt');
     });
 
-    it('book property contains full LibraryItem', () => {
+    it('meta property contains slim metadata', () => {
       useQueueStore.setState({
         queue: [{
           id: 'q1',
           bookId: 'book-1',
-          book: book1,
+          meta: meta1,
           position: 0,
           addedAt: Date.now(),
+          played: false,
         }],
       });
 
-      const queuedBook = useQueueStore.getState().queue[0].book;
-      expect(queuedBook.id).toBe('book-1');
-      expect(queuedBook.media.metadata.title).toBe('First Book');
+      const queuedMeta = useQueueStore.getState().queue[0].meta;
+      expect(queuedMeta.title).toBe('First Book');
+      expect(queuedMeta.authorName).toBe('Test Author');
+      expect(queuedMeta.duration).toBe(3600);
     });
   });
 });

@@ -9,6 +9,1235 @@ All notable changes to the AudiobookShelf app are documented in this file.
 
 ---
 
+## [0.9.262] - 2026-03-28
+
+### Added — Car Mode for Player
+Full-screen driving-friendly interface with blurred cover background, dark overlay, large countdown
+timer, pill-shaped skip/play controls, and simplified title/chapter display. Toggle via car icon
+in the player settings row.
+
+### Changed — Book Detail & Series Swipe Typography
+Matched book detail hero typography to the player screen: fontWeight 400, removed "By" and
+"Narrated by" prefixes, removed underlines from author/narrator/series links, series uses system
+font instead of Georgia italic. Updated series swipe adjacent pages to match.
+
+### Changed — Dark Bookmarks Sheet
+Converted the bookmarks sheet from light theme to dark theme matching the rest of the app.
+
+### Changed — Library Icon Simplified
+Removed the "+" from the "Add to Library" icon on book detail — now shows spines-only icon
+matching the "In Library" state.
+
+### Fixed — Bookmark Markers Aligned to Slider
+Bookmark flag markers were misaligned from the progress slider. Moved markers to render as
+siblings of the slider so they overlay the track correctly, behind the thumb (zIndex -1).
+
+### Fixed — Android Settings Pills Clipping
+Removed `flex: 1` from the settings row animated wrapper that caused bottom pills to clip on Android.
+
+### Fixed — Version Numbers Synced
+Synced version 0.9.261/build 1261 across app.json, build.gradle, and project.pbxproj (were stale at 1.0.4).
+
+### Fixed — FPS Overlay Auto-Disable
+FPS overlay persisted state now auto-disables on app load to prevent it from staying on across restarts.
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — car mode, bookmark alignment, pill clipping, time spacing
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` — typography, library icon
+- `src/features/book-detail/components/SeriesSwipeContainer.tsx` — typography match
+- `src/features/player/sheets/BookmarksSheet.tsx` — dark theme
+- `src/shared/components/FpsOverlay.tsx` — auto-disable
+- `app.json` — version sync
+- `android/app/build.gradle` — version sync
+- `ios/SecretLibrary.xcodeproj/project.pbxproj` — version sync
+- `src/constants/version.ts` — v0.9.262
+
+---
+
+## [0.9.261] - 2026-03-26
+
+### Added — Grid view rendering on all detail screens
+
+Added 2-column grid view (BookGrid component) to all 6 detail screens that received the
+ViewModePicker in v0.9.260. Grid mode now renders cover art, title, author, and duration
+in a responsive 2-column layout across all tabs on each screen.
+
+### Files Modified
+- `src/shared/components/BookGrid.tsx` — new shared 2-column grid component
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx`
+- `src/features/collections/screens/CollectionDetailScreen.tsx`
+- `src/features/library/screens/GenreDetailScreen.tsx`
+- `src/features/library/screens/FilteredBooksScreen.tsx`
+
+---
+
+## [0.9.260] - 2026-03-26
+
+### Changed — Shared ViewModePicker on all detail screens
+
+Replaced the text-based "BOOK" toggle on 6 detail screens with the icon-based ViewModePicker
+(shelf/grid/list icons with long-press capsule overlay), matching the home screen.
+
+**Screens updated:** Series Detail, Author Detail, Narrator Detail, Collection Detail,
+Genre Detail, Filtered Books
+
+**Extracted shared component:** `src/shared/components/ViewModePicker.tsx` — previously
+duplicated inside `LibraryScreen.tsx`, now shared across all screens.
+
+### Files Modified
+- `src/shared/components/ViewModePicker.tsx` — new shared component
+- `src/features/home/screens/LibraryScreen.tsx` — uses shared ViewModePicker
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx`
+- `src/features/collections/screens/CollectionDetailScreen.tsx`
+- `src/features/library/screens/GenreDetailScreen.tsx`
+- `src/features/library/screens/FilteredBooksScreen.tsx`
+- `src/constants/version.ts` — v0.9.260
+
+---
+
+## [0.9.259] - 2026-03-25
+
+### Added — Info Tab on Book Detail
+
+Added an "Info" tab next to Chapters and Series on the book detail screen. Shows:
+- **Position comparison**: Local, server, memory cache, and active position with percentages
+- **Tags**: Book tags in collapsible pill layout (collapsed by default)
+- **Full metadata**: Narrator, publisher, year, language, duration, chapters, file count, size, ISBN, ASIN, genres
+
+### Files Modified
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` — Info tab button + content + styles
+- `src/constants/version.ts` — v0.9.259
+
+---
+
+## [0.9.257] - 2026-03-25
+
+### Fixed — Device Info & Cleanup (Phase 3)
+
+**Device info now shows correctly on server**
+Sessions were sending `deviceName` and `deviceVersion` fields, but the ABS server expects `model` and
+`sdkVersion`. Server displayed "Device: null null / null" because it couldn't find the expected fields.
+Now sends correct field names: `model` (device model), `sdkVersion` (Android SDK version),
+`manufacturer`, `clientName`, `clientVersion`.
+
+**Deleted dead `audioService.ts` (83KB / 2149 lines)**
+The generic `audioService.ts` was superseded by platform-specific files (`audioService.android.ts`
+and `audioService.ios.ts`). Metro's platform resolution picks the correct file automatically.
+The generic fallback was never used since both platforms have dedicated implementations.
+
+**Capped highWaterMark Map (unbounded store growth)**
+`sessionService.highWaterMark` Map grew without limit — one entry per book ever played, never evicted.
+Now capped at 200 entries with LRU eviction (oldest entry removed when capacity exceeded).
+
+### Files Modified
+- `src/features/player/services/sessionService.ts` — fix device info fields, cap HWM Map
+- `src/features/player/services/audioService.ts` — DELETED (83KB dead code)
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.256] - 2026-03-25
+
+### Fixed — Auth Persistence (Critical)
+
+**Root cause: `handleAuthFailure` wiped persistent storage**
+When any API call received a confirmed 401 during a session, `handleAuthFailure` called
+`authService.clearStorage()` which destroyed ALL persistent credentials (SecureStore +
+AsyncStorage fallbacks). The user stayed logged in (in-memory state) but on next cold start,
+`restoreSessionOptimized()` found nothing in storage → forced back to login screen.
+
+**Fix:** `handleAuthFailure` now only clears in-memory state (apiClient token, React state).
+Persistent storage is only cleared on explicit `logout()`. This means:
+- Transient 401s no longer destroy credentials
+- Next cold start will find stored credentials and restore the session
+- If token is genuinely expired, user sees login screen but credentials survive for retry
+
+**Fix 2: `restoreSessionOptimized` no longer nukes storage on partial data**
+Previously called `clearStorage()` after 3 retries with partial session data. Now returns
+null without clearing — the data may still be valid (intermittent reader failure) and clearing
+makes the problem permanent. Also added delay between partial-data retries (was missing).
+
+### Files Modified
+- `src/core/auth/authContext.tsx` — handleAuthFailure no longer calls clearStorage()
+- `src/core/auth/authService.ts` — restoreSessionOptimized no longer clears on partial data, added retry delay
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.255] - 2026-03-25
+
+### Fixed — Phase 2: Reliability
+
+**2A-1. Remove Duplicate Foreground Sync**
+`appStateListener.ts` and `backgroundSyncService` both called `syncUnsyncedFromStorage()` on
+app foreground, causing duplicate API calls. Removed the redundant call from `appStateListener`
+— `backgroundSyncService` already handles this via its own `AppState` listener.
+
+**2A-2. Auth Persistence Fix (`restoreSessionOptimized`)**
+`restoreSessionOptimized()` read token/serverUrl directly from `storage.getSecureItem()` instead
+of the fallback-aware `getStoredToken()`/`getStoredServerUrl()` methods. This meant the
+AsyncStorage fallback (added for Android KeyStore cold-start reliability) was never used during
+session restore, causing repeated forced re-logins. Now uses the fallback-aware getters.
+
+**2A-3. Wire Token Health Service Callbacks**
+`tokenHealthService.setOnTokenInvalid()` was never called, so if consecutive health checks
+failed (genuine token expiry), the user stayed in a broken state with no feedback. Now wired
+to `handleAuthFailure` in `authContext.tsx` to trigger proper re-auth flow.
+
+### Files Modified
+- `src/core/lifecycle/appStateListener.ts` — removed duplicate sync call
+- `src/core/auth/authService.ts` — use fallback-aware getters in restoreSessionOptimized
+- `src/core/auth/authContext.tsx` — wire tokenHealthService.onTokenInvalid callback
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.254] - 2026-03-25
+
+### Fixed — Phase 1: Auth Safety, Position Integrity, Listening Stats
+
+**1A. 401 Logout Nuclear Option Fixed**
+A single transient 401 + network blip during token verification used to trigger permanent logout,
+wiping ALL local state (progress, downloads, preferences). Now `tryVerifyAuth` retries 3 times
+with backoff and distinguishes between "token genuinely invalid" (server confirms 401) vs
+"network error" (timeout/connection reset). Network errors no longer trigger logout.
+
+**1B. Position Regression Protection (no extra API call)**
+`backgroundSyncService.syncToServer()` previously made an extra `getMediaProgress()` API call on
+every sync just to check if the server was ahead. Replaced with local-only check using
+`sessionService.getHighWaterMark()` + SQLite position. Uses 30s threshold (not 5s) to allow
+intentional rewinds while still blocking stale data.
+
+**1B. Listening Stats Now Tracked (`timeListened`)**
+All session sync and close calls previously sent `timeListened: 0`, which meant ABS server
+never counted listening time in stats. Now `sessionService` tracks `lastSyncTimestamp` and
+calculates actual elapsed time between syncs. `timeListened` is sent in every sync and close.
+
+**1C. Centralized Position Resolution for Fresh Install**
+The server-progress fallback for fresh installs was duplicated in 5 places in `playerStore.ts`.
+Extracted into `getInitialPosition()` in `positionResolver.ts`. All callers now use this single
+function, ensuring consistent behavior across `preloadBookState`, `loadBook` (3 paths), and `viewBook`.
+
+### Files Modified
+- `src/core/api/baseClient.ts` — 401 verification retry with backoff
+- `src/features/player/services/sessionService.ts` — timeListened tracking, getHighWaterMark()
+- `src/features/player/services/backgroundSyncService.ts` — local-only HWM check, removed getMediaProgress import
+- `src/features/player/utils/positionResolver.ts` — getInitialPosition() helper
+- `src/features/player/stores/playerStore.ts` — use centralized getInitialPosition()
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.253] - 2026-03-25
+
+### Fixed — Fresh Install Auto-Resume Starting at Position 0
+
+**Problem:** After reinstalling the app, the most recent book was preloaded into the player with
+`currentTime: 0` because local SQLite was empty. When the user tapped play, `loadBook` started a
+new ABS session which closed any existing session on the server. The session was created with
+position 0 instead of the server's known progress, resetting the book.
+
+**Root Cause:** `preloadBookState`, `loadBook` (early position), and `viewBook` all read position
+from local cache/SQLite only. On fresh install, local is empty → position defaults to 0. The book
+object from `getItemsInProgress()` already contains `userMediaProgress.currentTime` from the server,
+but it was never used as a fallback.
+
+**Fix:** Added server progress fallback (`book.userMediaProgress.currentTime`) in four places:
+1. `preloadBookState` — sets correct position in mini player on startup
+2. `loadBook` early position — shows correct time immediately while session loads
+3. `loadBook` offline cached session path — uses server progress when local is empty
+4. `loadBook` offline session timeout path — same fallback
+5. `viewBook` — shows correct position when opening player without playback
+
+**Files Modified:**
+- `src/features/player/stores/playerStore.ts` — server progress fallback in 5 code paths
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.252] - 2026-03-24
+
+### Fixed — Session Close Writing currentTime: 0 on Stream Reconnection
+
+When an audio stream dropped (broken pipe, connection reset), the old session was closed without
+a position — `closeSessionAsync()` was called with no `finalTime` parameter. Since `finalTime` was
+`undefined`, it was serialized as JSON `null`/missing, causing the ABS server to record `currentTime: 0`
+for that session. This wiped out all progress for the book.
+
+**Fix:** Both `closeSessionAsync()` and `closeSession()` now fall back to the highest known position
+when no `finalTime` is provided: `Math.max(highWaterMark, session.currentTime)`. The high water mark
+is always maintained during playback, so even during reconnections the correct position is preserved.
+
+### Fixed — Device Info Showing as "null null / null" on Server
+
+ABS server showed the Android device as "null null / null" because `deviceInfo` only included
+`clientName`, `clientVersion`, and a generic `deviceId` string. Now sends `deviceName` (from
+`Platform.constants.Model`, e.g. "Pixel 10 Pro XL") and `manufacturer` (from
+`Platform.constants.Manufacturer`, e.g. "Google").
+
+### Files Modified
+- `src/features/player/services/sessionService.ts` — Fallback position on session close, device info
+- `src/constants/version.ts` — 0.9.252 (build 1252)
+
+---
+
+## [0.9.251] - 2026-03-24
+
+### Fixed — Downloads Silently Failing
+
+Pressing the download button appeared to do nothing when:
+- **WiFi-only mode enabled + on cellular**: Download was queued as `waiting_wifi` but the UI didn't
+  recognize that status, so the button showed "Download" as if nothing happened.
+- **No internet**: `queueDownload()` returned `{ success: false }` but the result was silently ignored.
+
+**Fixes:**
+1. `useDownloadStatus` now exposes `isWaitingWifi` flag
+2. Download button shows "Waiting for WiFi" state (tap to cancel)
+3. `handleDownload` checks the return value and shows an Alert when download is blocked
+4. `queueDownload` hook now returns the result from `downloadManager.queueDownload()`
+
+### Files Modified
+- `src/core/hooks/useDownloads.ts` — Added `isWaitingWifi`, return result from queueDownload
+- `src/features/book-detail/screens/SecretLibraryBookDetailScreen.tsx` — Show feedback on blocked downloads
+- `src/constants/version.ts` — 0.9.251 (build 1251)
+
+---
+
+## [0.9.250] - 2026-03-24
+
+### Fixed — Spine Images Loading from Wrong IP Address
+
+The `spineServerUrl` in the persisted spine cache store had an IP address saved, causing all spine
+image requests to go to the wrong server. Bumped persist version from 12 to 13 with a migration
+that resets `spineServerUrl` to empty string, so spines load from the normal ABS server.
+
+### Files Modified
+- `src/features/home/stores/spineCache.ts` — Persist version 12→13, migration clears spineServerUrl
+- `src/constants/version.ts` — 0.9.250 (build 1250)
+
+---
+
+## [0.9.249] - 2026-03-24
+
+### Fixed — Android Chromecast "Must be called from the main thread"
+
+Cast SDK requires all calls on the Android UI thread. Two fixes:
+
+1. **`CastModule.kt` `initialize()`** — wrapped `CastContext.getSharedInstance()` in `handler.post { }`
+   (React Native calls module `initialize()` from a background thread)
+2. **`CastModule.kt` `showCastPicker()`** — moved entire method body inside `activity.runOnUiThread { }`
+   (the synchronous CastContext fallback was also running off-thread)
+
+Also added a native `diagnose()` method that reports Play Services status, CastContext state,
+and activity availability — surfaced in the error alert when casting fails.
+
+### Fixed — Progress Loss on App Update/Restart
+
+Users could lose up to 15+ minutes of progress when the app was killed (e.g., APK update).
+
+**Root cause:** The position resolver compared `local_updated_at` (SQLite, set during playback)
+against `session.updatedAt` (server, set when a NEW session is created). Since session creation
+always returns NOW as `updatedAt`, the server timestamp always appeared newest, causing the
+resolver to pick the server's stale position over the local (more recent) position.
+
+**Fix:** Added a safety net in `positionResolver.ts` — when local position is ahead of server
+by more than 5 seconds, always prefer local. This prevents regression regardless of timestamp
+quirks. Cross-device sync still works: if another device's position is ahead, server wins normally.
+
+### Files Modified
+- `android/app/src/main/java/com/.../chromecast/CastModule.kt` — Main thread fixes + diagnose()
+- `plugins/chromecast/src/CastModule.kt` — Synced with android copy
+- `src/features/player/utils/positionResolver.ts` — Safety net for local-ahead scenario
+- `src/features/chromecast/stores/castStore.ts` — Diagnostic info in error alerts
+- `android/app/proguard-rules.pro` — Keep rules for Cast classes
+- `src/constants/version.ts` — 0.9.249
+
+---
+
+## [0.9.248] - 2026-03-24
+
+### Fixed — Chromecast Button Does Nothing
+
+The Chromecast button on the player screen was completely non-functional on iOS because the native
+CastModule files (Swift/ObjC) existed on disk but were never added to the Xcode project file,
+so they were never compiled into the app binary.
+
+**Root cause:** `withChromecast.js` config plugin copied `CastModule.swift`, `CastModule.m`, and
+`CastModule-Bridging-Header.h` to `ios/SecretLibrary/` but did not add them to the `.pbxproj` file.
+Xcode ignored the files, `NativeModules.CastModule` was `undefined`, `castService.isAvailable`
+returned `false`, and the cast button was hidden from the UI entirely.
+
+**Fixes applied:**
+
+1. **Added CastModule files to pbxproj** (`project.pbxproj`)
+   - Added PBXBuildFile, PBXFileReference, PBXGroup, and PBXSourcesBuildPhase entries
+   - CastModule.swift and CastModule.m will now be compiled during iOS builds
+
+2. **Updated withChromecast.js plugin** (`plugins/chromecast/withChromecast.js`)
+   - Added `withXcodeProject` step that uses Expo's Xcode project API to properly add
+     source files to the project during prebuild — prevents the issue from recurring
+
+3. **Cast button always visible** (`SecretLibraryPlayerScreen.tsx`)
+   - Previously hidden when `castAvailable` was false (which it always was on iOS)
+   - Now always shown — tapping when unavailable shows an explanatory alert
+
+4. **User feedback on failure** (`castStore.ts`)
+   - `showPicker()` now shows an Alert when the native module is unavailable
+   - Shows a separate alert if the picker fails to open for other reasons
+
+### Files Modified
+- `ios/SecretLibrary.xcodeproj/project.pbxproj` — Added CastModule to build phases
+- `plugins/chromecast/withChromecast.js` — Added withXcodeProject step
+- `src/features/chromecast/stores/castStore.ts` — Alert on unavailable/failure
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Always show cast button
+- `src/constants/version.ts` — 0.9.248
+
+---
+
+## [0.9.247] - 2026-03-24
+
+### Fixed — Progress Regression Prevention (CRITICAL)
+
+Multiple users lost ~16 hours of combined listening progress due to stale clients sending
+lower positions to the server. This update adds a multi-layer high water mark system to
+prevent progress from ever going backwards unintentionally.
+
+**Root cause:** When a user taps a chapter, the app sends `currentTime` set to the chapter's
+start timestamp. ABS accepts it blindly, overwriting the real furthest position. Also occurs
+when stale sessions close with old positions, or when multi-device sync races.
+
+**Fixes applied:**
+
+1. **Session-level high water mark** (`sessionService.ts`)
+   - Tracks highest known position per book in a `highWaterMark` Map
+   - `syncProgress()` and `syncProgressAsync()` block any sync that would regress >5s below HWM
+   - `closeSession()` and `closeSessionAsync()` upgrade stale final positions to HWM
+   - HWM initialized from server response on session start and from position resolution
+
+2. **Background sync high water mark** (`backgroundSyncService.ts`)
+   - Before sending progress to server, fetches current server progress via `GET /api/me/progress/{id}`
+   - If server position is higher (and book not finished), skips the sync and updates local to match
+   - Prevents stale queued syncs from overwriting newer server data
+
+3. **Position resolution seeds HWM** (`playerStore.ts`)
+   - After resolving local vs server position during `loadBook()`, the highest known value
+     (from local, server, or resolution) is pushed to `sessionService.updateHighWaterMark()`
+   - Ensures HWM is set before any playback or sync begins
+
+4. **Proper device identification** (3 files)
+   - `sessionService.ts`: `clientName: 'Secret Library'`, `clientVersion: APP_VERSION`, `deviceId: '{platform}-secret-library'`
+   - `finishedBooksSync.ts`: Same pattern with `-prefetch` suffix
+   - `playbackApi.ts`: Same pattern
+   - Replaces hardcoded `'AudiobookShelf-RN' / '1.0.0' / 'rn-mobile-app'` — sessions now identifiable in ABS logs
+
+**Affected users (from regression report):**
+- christine: -13.1 hours across "Twelve Months"
+- philip: -1h 15m on "Slaughterhouse-Five" (manually restored)
+- Teagan: -1h 27m across "Harry Potter" and "Dinosaurs Before Dark"
+
+### Files Modified
+- `src/features/player/services/sessionService.ts` (HWM, device info, close protection)
+- `src/features/player/services/backgroundSyncService.ts` (server-side HWM check)
+- `src/features/player/stores/playerStore.ts` (HWM seed from position resolution)
+- `src/core/services/finishedBooksSync.ts` (device info)
+- `src/core/api/playbackApi.ts` (device info)
+
+---
+
+## [0.9.246] - 2026-03-24
+
+### Fixed — Second Audit Pass (35 findings)
+
+**P0 Crashes Fixed (4):**
+- playerStore: Array bounds checks on `bookAudioFiles[index]` and `sessionTracks[index]` in track mapping
+- playerStore: Validate `session.audioTracks[0]` exists and has `contentUrl` before cast
+- playerStore: Wrapped `.then()` callback body in try/catch to prevent unhandled rejections
+- speedStore: Per-entry validation on bookSpeedMap values and speedPresets (type, finiteness, range)
+
+**P1 Crashes Fixed (1 new, 4 already fixed):**
+- sessionService: Wrapped `JSON.parse(rawResponse.text())` in dedicated try/catch with descriptive error
+
+**Security HIGH Fixed (1 new, 2 already fixed):**
+- SearchScreen: JSON.parse of search history now has try/catch + Array.isArray validation + corrupt data cleanup
+
+**Performance (4):**
+- QueueItem, DownloadItem, BookCard wrapped with React.memo
+- DownloadItem getStatusInfo() moved to useMemo
+- FilteredBooksScreen: 4 separate array iterations combined into single pass
+
+**P2 Fixes (2):**
+- playerStore: Background sync init now retries 3x with exponential backoff (1s/2s/4s)
+- speedStore: Enhanced fallback warning message with explicit default values
+
+**Error States (2):**
+- SearchScreen: Added error UI with retry button when library cache fails
+- AuthorDetailScreen: Added loading/error states for book fetch with retry
+
+**Type Safety (4):**
+- PlayerScreen, MyLibraryScreen, BookContextMenu: `useNavigation<any>()` → `<RootStackNavigationProp>()`
+- AppNavigator: Replaced `route.params as any` with proper type assertion
+
+**Accessibility (4):**
+- BookCard: Cover image marked `accessible={false}` (decorative)
+- PlayerScreen: Added accessibilityHint to play/pause button and progress slider
+- ProfileScreen: Badge text included in parent accessibilityLabel, children marked non-accessible
+- DownloadsScreen: Disk query failure shows accessible error message
+
+**Consistency (2):**
+- BookContextMenu: Replaced hardcoded colors with theme references
+- BookCard: Queue button hitSlop increased to meet 44pt touch target minimum
+
+### Audit Notes (not bugs)
+- `expo-audio` and `react-native-draggable-flatlist` confirmed actively used — not dead code
+- `network:online`/`network:offline` events confirmed emitted and subscribed — not dead code
+- castStore token-in-URL is unavoidable Cast SDK limitation (documented with comment)
+
+### Files Modified
+- `src/features/player/stores/playerStore.ts`
+- `src/features/player/stores/speedStore.ts`
+- `src/features/player/services/sessionService.ts`
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx`
+- `src/features/search/screens/SearchScreen.tsx`
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/chromecast/stores/castStore.ts`
+- `src/features/queue/components/QueueItem.tsx`
+- `src/features/downloads/components/DownloadItem.tsx`
+- `src/features/downloads/screens/DownloadsScreen.tsx`
+- `src/features/library/screens/FilteredBooksScreen.tsx`
+- `src/features/library/screens/MyLibraryScreen.tsx`
+- `src/features/profile/screens/ProfileScreen.tsx`
+- `src/shared/components/BookCard.tsx`
+- `src/shared/components/BookContextMenu.tsx`
+- `src/navigation/AppNavigator.tsx`
+
+---
+
+## [0.9.245] - 2026-03-24
+
+### Fixed — Dead Code Cleanup & Remaining Audit Items
+- **Dead code**: Deleted joystick seek store (261 lines) and removed all 10 exports from playerFacade/playerHooks/index
+- **Dead code**: Removed 5 dead event bus events (book:paused, book:resumed, download:file_complete, app:foreground, app:background) and their emit sites
+- **Dead code**: Removed dead playerStore properties (isOffline, playbackError, clearPlaybackError, cancelSeek)
+- **Dead code**: Removed 4 unused queueStore selectors and their re-exports
+- **Dead code**: Removed myLibraryStore selection system (6 unused actions + 2 state props)
+- **Type safety**: Fixed AllBooks nav param type (added optional `filter` param)
+- **Type safety**: Fixed AuthorDetail nav param type (added `authorId`)
+- **Dependencies**: Updated axios to 1.13.6 (DoS fix), socket.io-parser to 4.2.6, plus 6 other transitive dep fixes
+- **Dependencies**: Reduced npm audit vulnerabilities from 19 to 11 (remaining are dev-only, non-fixable without breaking changes)
+
+### Files Deleted
+- `src/features/player/stores/joystickSeekStore.ts`
+
+### Files Modified
+- `src/shared/stores/playerFacade.ts`
+- `src/features/player/stores/playerHooks.ts`
+- `src/features/player/stores/index.ts`
+- `src/features/player/stores/playerStore.ts`
+- `src/features/queue/stores/queueStore.ts`
+- `src/features/queue/index.ts`
+- `src/shared/stores/queueFacade.ts`
+- `src/shared/stores/myLibraryStore.ts`
+- `src/core/events/types.ts`
+- `src/core/services/downloadManager.ts`
+- `src/core/lifecycle/appStateListener.ts`
+- `src/core/auth/authService.ts`
+- `src/navigation/types.ts`
+- `src/__tests__/smoke.test.ts`
+- `package.json`, `package-lock.json`
+
+---
+
+## [0.9.244] - 2026-03-24
+
+### Fixed — Full Audit Remediation
+- **Security**: OAuth state parameter CSRF validation in deep link handler
+- **Security**: Token encoding with `encodeURIComponent()` in 6 files (playbackApi, playerStore, sessionService, castStore)
+- **Security**: HTTP fallback now requires explicit user consent via alert dialog
+- **Security**: JSON.parse guards with try/catch + type validation in speedStore
+- **Security**: Sanitized error messages — no more raw server errors shown to users (baseClient, DataStorageSettings)
+- **Crash P1**: castStore audioFiles bounds checking and type validation
+- **Crash P2**: Unhandled promise rejection in castStore session start handler
+- **Crash P2**: Unhandled promise rejection in BrowseScreen dynamic import
+- **Performance**: Eliminated duplicate API call in useHomeData (was double-fetching items-in-progress)
+- **Performance**: Seeking safety timeout (5s) applied consistently across all 3 seeking code paths
+- **Performance**: Added React.memo to 4 browse section components (BecauseYouListened, ListenAgain, RecentSeries, Collections)
+- **Dead code**: Removed 11 unused event bus event types
+- **Dead code**: Trimmed ~60 unused barrel re-exports from shared/components/index.ts (298→118 lines)
+- **Type safety**: Replaced 8 `as never` navigation casts with proper RootStackParamList typing
+
+### Files Added
+- `src/navigation/types.ts` — RootStackParamList type definitions for type-safe navigation
+
+### Files Modified
+- `src/features/auth/services/oauthService.ts`
+- `src/features/auth/screens/LoginScreen.tsx`
+- `src/core/api/baseClient.ts`
+- `src/core/api/playbackApi.ts`
+- `src/core/events/types.ts`
+- `src/features/chromecast/stores/castStore.ts`
+- `src/features/browse/screens/SecretLibraryBrowseScreen.tsx`
+- `src/features/browse/components/BecauseYouListenedSection.tsx`
+- `src/features/browse/components/ListenAgainSection.tsx`
+- `src/features/browse/components/RecentSeriesSection.tsx`
+- `src/features/browse/components/CollectionsSection.tsx`
+- `src/features/home/hooks/useHomeData.ts`
+- `src/features/player/stores/playerStore.ts`
+- `src/features/player/stores/seekingStore.ts`
+- `src/features/player/stores/speedStore.ts`
+- `src/features/player/services/sessionService.ts`
+- `src/features/profile/screens/DataStorageSettingsScreen.tsx`
+- `src/features/profile/screens/DisplaySettingsScreen.tsx`
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx`
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx`
+- `src/features/library/screens/GenreDetailScreen.tsx`
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx`
+- `src/shared/components/index.ts`
+- `src/core/auth/authService.ts`
+
+---
+
+## [0.9.243] - 2026-03-23
+
+### Added
+- **Coach marks overlay**: First-run onboarding walkthrough highlighting hidden interactions
+  - Hold the skull logo for settings
+  - Tap/hold bookmark pill for quick-save vs. full list
+  - Double-tap covers for star ratings
+  - Swipe left/right through series books
+  - Shake to extend sleep timer
+- Animated gesture illustrations (pulse rings, swipe arrows, shake wobble, star bursts)
+- Persisted `coachMarksStore` (shows once, never again unless reset)
+- **"Show Tips" row in Profile Settings** — replays the walkthrough (resets store & navigates home)
+- "Reset Coach Marks" option in Developer Settings for testing
+- Orange (#FF6B35) accent color for coach marks UI
+
+### Files Added
+- `src/shared/stores/coachMarksStore.ts`
+- `src/shared/components/CoachMarksOverlay.tsx`
+
+### Files Modified
+- `src/shared/stores/index.ts` — export coachMarksStore
+- `src/shared/components/index.ts` — export CoachMarksOverlay
+- `src/navigation/AppNavigator.tsx` — render overlay after cache prompt
+- `src/features/profile/screens/ProfileScreen.tsx` — "Show Tips" setting
+- `src/features/profile/screens/DeveloperSettingsScreen.tsx` — reset option
+- `src/constants/version.ts` — version bump
+
+---
+
+## [0.9.241] - 2026-03-23
+
+### Fixed (Production Readiness Audit)
+
+**P0 — Crash & Security Fixes:**
+- **myLibraryStore**: Added `.catch(() => {})` to 2 fire-and-forget dynamic imports in `clearAll` that could crash with unhandled rejections
+- **authService**: Stripped `token` field from user object before writing to AsyncStorage (token stays in SecureStore only)
+- **castStore**: Added `encodeURIComponent()` to token in Chromecast stream URL to prevent injection via malformed tokens
+- **audioDebug**: Production builds now log message-only (no stack traces leaked via `error`/`warn`)
+
+**P1 — Stability & Performance:**
+- **7 useLibraryCache selector fixes**: Wrapped with `useShallow()` to prevent unnecessary re-renders across SearchScreen, AllBooksScreen, FilteredBooksScreen, useBrowseCounts, useLibraryStats, useDurationBooks, useLibraryData
+- **18 ErrorBoundary wrappers** added to all screens in AppNavigator (crash isolation per screen)
+- **sqliteCache**: Added `safeJsonParse` helper — 6 `JSON.parse` crash sites now return `[]` on malformed data instead of crashing
+
+**P2 — Performance Optimization:**
+- **automotiveService playerStore subscription**: Reduced from ~10Hz to ~0.1Hz using position quantization (10-second buckets) with `shallow` equality
+- **automotiveService libraryCache subscription**: Changed to selector-based subscription (fires only when items array reference changes)
+- **libraryCache**: Added `subscribeWithSelector` middleware to support selector-based subscriptions
+
+**Removed (Unused Dependencies):**
+- `@shopify/flash-list`, `expo-blur`, `react-native-web`, `@expo/metro-runtime` (`react-native-worklets` kept — required by `react-native-reanimated`)
+
+### Files Modified
+- `src/shared/stores/myLibraryStore.ts`, `src/core/auth/authService.ts`, `src/features/chromecast/stores/castStore.ts`, `src/shared/utils/audioDebug.ts`
+- `src/features/search/screens/SearchScreen.tsx`, `src/features/library/screens/AllBooksScreen.tsx`, `src/features/library/screens/FilteredBooksScreen.tsx`, `src/shared/hooks/useBrowseCounts.ts`, `src/features/browse/hooks/useLibraryStats.ts`, `src/features/browse/hooks/useDurationBooks.ts`, `src/features/library/hooks/useLibraryData.ts`
+- `src/navigation/AppNavigator.tsx`, `src/core/services/sqliteCache.ts`
+- `src/features/automotive/automotiveService.ts`, `src/core/cache/libraryCache.ts`
+- `package.json`, `package-lock.json`
+
+---
+
+## [0.9.240] - 2026-03-23
+
+### Fixed (TypeScript Errors)
+
+- **SecretLibraryPlayerScreen**: Fixed null-unsafe `metadata.series.length` and `metadata.narrators.length` checks; removed non-existent `metadata.narrator` property (narrators are `string[]` per ABS API, not objects)
+- **automotiveService**: Fixed `Set<unknown>` → `Set<string>` for CarPlay download IDs; replaced non-existent `state.currentChapterIndex` with computed chapter lookup from position
+- **completionSheetStore**: Fixed `narrators[0].name` → `narrators[0]` (narrators are strings, not objects)
+- **playerStore**: Added `: unknown` type annotations to 3 Chromecast catch clause parameters
+- **smoke.test.ts**: Fixed Chapter mock `id` fields from strings to numbers matching `Chapter` type
+
+---
+
+## [0.9.239] - 2026-03-23
+
+### Removed (Dead Code Cleanup — Round 2)
+
+- **22 dead component files deleted** (3,762 lines):
+  - 12 browse components: ForYouTabContent, DiscoverTabContent, CollectionsTabContent, BrowseTabBar, BrowseHero, AuthorsListContent, NarratorsListContent, SeriesListContent, CollectionsListContent, AuthorsTextList, TasteTextList, SeriesSpineCard
+  - 2 home components: CassettePlayer (698 lines), CoverArtwork
+  - book-detail/StarRatingSheet, profile/AccordionSection, queue/SwipeableQueueItem
+  - 5 shared components: PinInput, HyphenatedText, LoadingSpinner, PlayPauseButton, StackedCovers
+- **2 dead re-export shims deleted**: home/SectionHeader.tsx, home/SeriesCard.tsx
+- **Dead barrel exports cleaned** from 7 index files (browse, home, home/components, shared/components, shared/components/feedback, profile/components)
+- **6 dead API endpoint definitions** removed: server.healthCheck, user.listeningStats, libraries.recent, items.download, items.play, items.playEpisode
+- **Stale string references fixed**:
+  - GlobalMiniPlayer.tsx: removed 'ReadingHistoryWizard' and 'PreferencesOnboarding' from hiddenRoutes
+  - performanceBudgets.ts: removed QueueScreen budget entry
+  - apiClient.test.ts: removed test for deleted items.play endpoint
+
+---
+
+## [0.9.238] - 2026-03-23
+
+### Removed (Dead Code Cleanup)
+
+- **11 dead files deleted** (3,586 lines):
+  - `src/core/services/databaseRecoveryService.ts` (499 lines) — never imported
+  - `src/features/recommendations/utils/comprehensiveScoring.ts` (844 lines) — only referenced by barrel exports
+  - `src/features/browse/components/BrowseBookSheet.tsx` (387 lines) — never rendered
+  - `src/features/browse/components/FeelingChips.tsx` (109 lines) — never rendered
+  - `src/features/browse/components/FeelingResultsCarousel.tsx` (156 lines) — never rendered
+  - `src/features/player/components/NumericInputModal.tsx` (500 lines) — never rendered
+  - `src/features/chromecast/components/CastButton.tsx` (54 lines) — never rendered
+  - `src/features/home/components/InfoTiles.tsx` (323 lines) — never rendered
+  - `src/features/home/components/PlaybackControls.tsx` (179 lines) — never rendered
+  - `src/features/series/components/SeriesCard.tsx` (394 lines) — shadowed by browse/shared SeriesCard
+  - `src/shared/hooks/useViewportPrefetch.ts` (141 lines) — never called
+- **Dead barrel exports cleaned** from 7 index files (home, chromecast, series, player, recommendations, shared/hooks, home/components)
+- **3 dead event types** removed from eventBus: `progress:conflict`, `auth:token_expired`, `app:cold_start` (defined + listeners registered but never emitted)
+- **3 dead searchIndex methods** removed: `getByExactMatch`, `getById`, `getStats` (zero external callers)
+- **22 dead API endpoint definitions** removed: podcasts (5), notifications (6), rss (3), search.covers/podcast/author (3), tools (2) — only `search.books` retained
+- Fixed stale comments in `sqliteCache.ts` referencing deleted databaseRecoveryService
+
+---
+
+## [0.9.237] - 2026-03-23
+
+### Removed (Features)
+
+- **Wishlist feature** — Removed entire `src/features/wishlist/` directory (screens, stores, components, hooks, types)
+  - Removed WishlistScreen and ManualAddScreen routes from AppNavigator
+  - Removed wishlist bookmark button from BookCard
+  - Removed author follow/unfollow from AuthorDetailScreen
+  - Removed wishlist link from ProfileScreen
+  - Removed wishlistStore reset from authService
+- **Kid Mode feature** — Removed KidModeSettingsScreen, kidModeStore, kidModeFilter utility, and all integration points
+  - Removed Kid Mode content filtering from HomeScreen (useHomeData), MyLibrary (useLibraryData), Search (SearchScreen, SearchHeroCard)
+  - Removed Kid Mode link from ProfileScreen
+  - Removed kidModeStore reset from authService
+  - Removed kidModeFilter unit tests
+  - Removed kidModeStore smoke test
+
+### Files Deleted
+- `src/features/wishlist/` (entire directory)
+- `src/features/profile/screens/KidModeSettingsScreen.tsx`
+- `src/shared/stores/kidModeStore.ts`
+- `src/shared/utils/kidModeFilter.ts`
+- `src/shared/utils/__tests__/kidModeFilter.test.ts`
+
+### Files Modified
+- `src/navigation/AppNavigator.tsx` — Removed Wishlist, ManualAdd, KidModeSettings routes and imports
+- `src/features/profile/screens/ProfileScreen.tsx` — Removed Wishlist and Kid Mode links
+- `src/features/profile/index.ts` — Removed KidModeSettingsScreen export
+- `src/shared/stores/index.ts` — Removed kidModeStore re-export
+- `src/shared/components/BookCard.tsx` — Removed wishlist button, state, styles
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` — Removed follow/unfollow
+- `src/features/home/hooks/useHomeData.ts` — Removed Kid Mode filtering
+- `src/features/library/hooks/useLibraryData.ts` — Removed Kid Mode filtering
+- `src/features/search/screens/SearchScreen.tsx` — Removed Kid Mode filtering
+- `src/features/search/components/SearchHeroCard.tsx` — Removed Kid Mode filtering
+- `src/core/auth/authService.ts` — Removed wishlistStore and kidModeStore resets
+- `src/__tests__/smoke.test.ts` — Removed kidModeStore test
+
+---
+
+## [0.9.236] - 2026-03-23
+
+### Removed (Dead Code Cleanup)
+
+- **11 dead screens** — Removed route registrations, imports, and screen files for screens never navigated to:
+  - `CassetteTestScreen`, `SpineTemplatePreviewScreen` (dev test screens)
+  - `PreferencesScreen`, `PreferencesOnboardingScreen` (recommendations)
+  - `QueueScreen` (standalone queue, replaced by QueuePanel)
+  - `JoystickSeekSettingsScreen`, `HiddenItemsScreen`, `AppearanceSettingsScreen`, `LibrarySyncSettingsScreen` (unreachable settings)
+  - `MarkBooksScreen`, `ReadingHistoryScreen` (entire reading-history-wizard feature)
+- **5 dead shared components** — Removed barrel exports and files:
+  - `CircularDownloadButton`, `CoverPlayButton`, `HolographicSticker`, `SyncStatusBanner`, `SearchInput`
+- **2 dead home components** — `EmptySection`, `SeriesBookStack`
+- **1 dead feature directory** — Entire `src/features/reading-history-wizard/` removed (screens, components, hooks, stores)
+- **Cleaned authService.ts** — Removed galleryStore reset reference for deleted reading-history-wizard
+
+### Files Deleted
+- `src/features/profile/screens/JoystickSeekSettingsScreen.tsx`
+- `src/features/profile/screens/HiddenItemsScreen.tsx`
+- `src/features/profile/screens/AppearanceSettingsScreen.tsx`
+- `src/features/profile/screens/LibrarySyncSettingsScreen.tsx`
+- `src/features/recommendations/screens/PreferencesScreen.tsx`
+- `src/features/recommendations/screens/PreferencesOnboardingScreen.tsx`
+- `src/features/queue/screens/QueueScreen.tsx`
+- `src/features/home/screens/CassetteTestScreen.tsx`
+- `src/features/home/screens/SpineTemplatePreviewScreen.tsx`
+- `src/features/home/components/EmptySection.tsx`
+- `src/features/home/components/SeriesBookStack.tsx`
+- `src/shared/components/CircularDownloadButton.tsx`
+- `src/shared/components/CoverPlayButton.tsx`
+- `src/shared/components/HolographicSticker.tsx`
+- `src/shared/components/SyncStatusBanner.tsx`
+- `src/shared/components/inputs/SearchInput.tsx`
+- `src/features/reading-history-wizard/` (entire directory)
+
+### Files Modified
+- `src/navigation/AppNavigator.tsx` — Removed 11 dead routes, imports, ErrorBoundary wrappers
+- `src/features/profile/index.ts` — Removed 4 dead screen exports
+- `src/features/queue/index.ts` — Removed QueueScreen export
+- `src/features/recommendations/index.ts` — Removed 2 dead screen exports
+- `src/features/home/index.ts` — Removed EmptySection, SeriesBookStack exports
+- `src/features/home/components/index.ts` — Removed EmptySection export
+- `src/shared/components/index.ts` — Removed 5 dead component exports
+- `src/shared/components/inputs/index.ts` — Removed SearchInput export
+- `src/core/auth/authService.ts` — Removed galleryStore reset
+
+---
+
+## [0.9.235] - 2026-03-23
+
+### Fixed
+
+- **Security: OAuth CSRF tokens now cryptographically secure** — Replaced `Math.random()` with `expo-crypto` `randomUUID()` for CSRF state parameter generation
+- **Security: OAuth state validation** — Separate error messages for missing vs mismatched state parameters (was conflating malformed URLs with CSRF attacks)
+- **ExoPlayer: prepareCallback race condition** — Rapid `loadTracks` calls now cancel the previous callback before setting a new one, preventing stale callbacks from firing
+- **Seeking: Stale interval callbacks** — Added generation counter (`seekIntervalGeneration`) to continuous seeking; late-firing interval callbacks from a previous seek session are now discarded
+- **Downloads: Pause/resume race condition** — `pauseAllForNetwork()` now clears `activeDownloads` synchronously before async pause operations, preventing `processQueue()` from seeing stale entries
+- **BrowseBookSheet: Play dismisses sheet** — Play button now closes the popup and shows mini player instead of keeping the sheet open
+
+### Files Modified
+- `src/features/auth/services/oauthService.ts` — crypto RNG + null state check
+- `plugins/exo-player/src/AudioPlaybackService.kt` — cancel stale prepareCallback
+- `src/features/player/stores/seekingStore.ts` — interval generation tracking
+- `src/core/services/downloadManager.ts` — synchronous activeDownloads clear
+- `src/features/browse/components/BrowseBookSheet.tsx` — close sheet on play
+
+---
+
+## [0.9.234] - 2026-03-23
+
+### Added
+
+- **CarPlay: Full 4-tab interface** — Continue Listening, Library (A-Z), Authors (drill-in), Downloads
+  - Continue tab shows current book with chapter drill-in + recently played with progress bars
+  - Library tab groups all books alphabetically by first letter
+  - Authors tab lists all authors, tap to see their books
+  - Downloads tab shows offline books from completed downloads
+  - Now Playing system screen enabled for playback controls
+  - `playbackProgress` and `isPlaying` indicators on list items
+
+### Fixed
+
+- **CarPlay: Race condition fix** — Guard against double `didConnect` events causing duplicate template setup
+- **CarPlay: Stale closure fix** — `onItemSelect` callbacks now reference instance-level `itemIds` arrays that stay in sync when `updateCarPlayLists` refreshes data
+- **CarPlay: Chapter index validation** — Bounds check before `jumpToChapter` prevents silent failures
+- **CarPlay: Author drill-in stale data** — Reads current library at tap time instead of captured reference
+- **PhoneSceneDelegate: Window visibility** — Added `makeKeyAndVisible()` and frame update to scene bounds
+- **CarPlaySceneDelegate: Thread safety** — Dispatch bridge calls to main thread; null check on `carWindow`
+- **Player: Seeking + progress save** — `pause()` now uses `seekPosition` if mid-seek, preventing stale position saves
+- **MiniPlayer: Touch targets** — Added `hitSlop` to skip buttons (38px visual + 8px padding = 54px touch area)
+- **Printf-style log** — Fixed format string in CarPlay setup log (was printing literal `%d`)
+
+### Files Modified
+
+- `src/features/automotive/automotiveService.ts` — Full CarPlay pages, stale closure fixes, chapter validation
+- `plugins/carplay/src/PhoneSceneDelegate.swift` — makeKeyAndVisible, frame update, error logging
+- `plugins/carplay/src/CarPlaySceneDelegate.swift` — Main thread dispatch, carWindow null check
+- `src/features/player/stores/playerStore.ts` — Seeking-aware progress save in pause()
+- `src/navigation/components/GlobalMiniPlayer.tsx` — hitSlop on skip buttons
+- `src/constants/version.ts` — v0.9.234
+
+---
+
+## [0.9.233] - 2026-03-22
+
+### Added
+
+- **CarPlay support** — Full native iOS CarPlay integration via Expo config plugin
+  - `plugins/carplay/withCarPlay.js` — Expo config plugin that adds entitlements, Info.plist scene config, copies scene delegate, links CarPlay.framework
+  - `plugins/carplay/src/CarPlaySceneDelegate.swift` — CPTemplateApplicationSceneDelegate using ObjC runtime to bridge to react-native-carplay
+  - Uses `NSClassFromString("RNCarPlay")` to avoid bridging header / CocoaPods header path issues
+  - Plugin added to app.json
+
+### Changed
+
+- **Performance: ScrollView.map → FlatList** — 5 detail screens converted for virtualized rendering:
+  - AuthorDetailScreen, NarratorDetailScreen, SeriesDetailScreen, CollectionDetailScreen, FilteredBooksScreen
+  - Pattern: conditional FlatList (flat book list) / ScrollView (grouped/collapsible views)
+  - `initialNumToRender={15}`, `maxToRenderPerBatch={10}`, `windowSize={7}`
+
+### Removed
+
+- **FloatingTabBar** — Bottom tab navigation removed (TopNav pill navigation handles all screen switching)
+
+### Files Modified
+
+- `plugins/carplay/withCarPlay.js` — New CarPlay Expo config plugin
+- `plugins/carplay/src/CarPlaySceneDelegate.swift` — New CarPlay scene delegate
+- `app.json` — Added CarPlay plugin
+- `src/features/author/screens/SecretLibraryAuthorDetailScreen.tsx` — FlatList conversion
+- `src/features/narrator/screens/SecretLibraryNarratorDetailScreen.tsx` — FlatList conversion
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` — FlatList conversion
+- `src/features/collections/screens/CollectionDetailScreen.tsx` — FlatList conversion
+- `src/features/library/screens/FilteredBooksScreen.tsx` — FlatList conversion
+- `src/constants/version.ts` — v0.9.233
+
+---
+
+## [0.9.232] - 2026-03-22
+
+### Fixed
+
+- **SQLite string coercion crash** — All numeric fields (`currentTime`, `duration`, `progress`, `position`, `currentTrackIndex`) from SQLite queries are now coerced with `Number()` at the source. Fixes `toFixed is not a function` crashes in `audioDebug.ts`, `progressService.ts`, and `playerStore.ts` when loading books.
+- **Defensive Number() in audioDebug.ts** — `logPositionSources` coerces all values before `.toFixed()` calls as a safety net
+
+### Files Modified
+
+- `src/core/services/sqliteCache.ts` — `Number()` coercion in `getPlaybackProgress`, `getAllPlaybackProgress`, `getUnsyncedProgress`, `mapUserBookRow`, and inline `getUserBook` mapping
+- `src/shared/utils/audioDebug.ts` — `logPositionSources` uses `Number()` before `.toFixed()`
+- `src/constants/version.ts` — v0.9.232
+
+---
+
+## [0.9.231] - 2026-03-22
+
+### Removed
+
+- **FloatingTabBar** — Bottom tab navigation bar deleted. TopNav pill navigation ("pnav") handles all screen navigation via skull logo (Home/Profile), search buttons, and per-screen pills. This was redundant UI.
+
+### Changed
+
+- `BOTTOM_NAV_HEIGHT` set to 0 — all 34 screens using this constant automatically get correct bottom padding without the tab bar
+- `SCREEN_BOTTOM_PADDING` reduced (no longer includes tab bar height)
+
+### Files Modified
+
+- `src/navigation/AppNavigator.tsx` — Removed FloatingTabBar import and render
+- `src/navigation/components/FloatingTabBar.tsx` — Deleted
+- `src/navigation/components/__tests__/FloatingTabBar.test.tsx` — Deleted
+- `src/navigation/components/index.ts` — Removed FloatingTabBar export
+- `src/constants/layout.ts` — Updated BOTTOM_NAV_HEIGHT to 0, adjusted derived constants
+- `src/constants/version.ts` — v0.9.231
+
+---
+
+## [0.9.230] - 2026-03-22
+
+### Fixed
+
+- **positionResolver crash** — `local.position.toFixed is not a function` — SQLite returns numbers as strings; added `Number()` coercion before arithmetic
+- **Deleted redundant NavigationBar.tsx** — Was just a re-export shim for FloatingTabBar; AppNavigator now imports FloatingTabBar directly
+- **Deduplicated audio service types (L-03)** — Extracted shared interfaces into `audioServiceTypes.ts`, used by all 3 platform audio services
+
+### Added
+
+- **Integration smoke tests** (`src/__tests__/smoke.test.ts`) — 31 tests that exercise real code paths with minimal mocking:
+  - Position resolver with string/null/NaN inputs from SQLite
+  - Store method/property name verification (catches wrong names like `cancelSeeking` vs `resetSeekingState`)
+  - Re-export shim resolution (old import paths still work)
+  - Facade export verification (playerFacade, queueFacade)
+  - Chapter utility boundary conditions
+- **Fixed jest.config.js** — Image mock mapper order fixed; added missing `__mocks__/fileMock.js`
+
+### Files Modified
+- `src/features/player/utils/positionResolver.ts` — Number coercion for SQLite strings
+- `src/navigation/AppNavigator.tsx` — FloatingTabBar direct import
+- `src/navigation/components/NavigationBar.tsx` — Deleted
+- `src/navigation/components/index.ts` — Removed NavigationBar export
+- `src/features/player/services/audioServiceTypes.ts` — New shared types
+- `src/features/player/services/audioService.ts` — Uses shared types
+- `src/features/player/services/audioService.android.ts` — Uses shared types
+- `src/features/player/services/audioService.ios.ts` — Uses shared types
+- `src/__tests__/smoke.test.ts` — New integration smoke tests
+- `jest.config.js` — Fixed moduleNameMapper order
+- `__mocks__/fileMock.js` — New asset mock
+
+---
+
+## [0.9.229] - 2026-03-22
+
+### Fixed
+
+- **Broken castStore require path** — Fixed `@/core/services/backgroundSyncService` → `@/features/player/services/backgroundSyncService` (was causing Metro bundling failure on iOS simulator)
+- **Deduplicated audio service types** — Extracted `PlaybackState`, `AudioTrackInfo`, `AudioError`, `AudioErrorType` + 3 callback types into `audioServiceTypes.ts`, shared across all 3 platform-specific audio service files
+- **Verified all 28 lazy require paths resolve** — Full audit of `require('@/...')` calls confirms zero broken module paths
+
+### Files Modified
+- `src/features/chromecast/stores/castStore.ts` — Fixed backgroundSyncService import path
+- `src/features/player/services/audioServiceTypes.ts` — New shared types file
+- `src/features/player/services/audioService.ts` — Uses shared types
+- `src/features/player/services/audioService.android.ts` — Uses shared types
+- `src/features/player/services/audioService.ios.ts` — Uses shared types
+
+---
+
+## [0.9.228] - 2026-03-22
+
+### Fixed (Audit 5 — Final Polish)
+
+**Medium:**
+- **Cross-feature imports** — Moved progressCalculator, chapterNavigator, and chapter types from `player/utils/` to `shared/utils/chapters/` with re-export shims
+
+**Low:**
+- **BugReportScreen response validation** — Added try/catch for malformed JSON and type guard for error property access
+- **Font availability documented** — Added comment in genreVisualConfig confirming all fonts are bundled via Expo
+
+### Files Modified
+- `src/shared/utils/chapters/` — New directory with progressCalculator.ts, chapterNavigator.ts, types.ts
+- `src/features/player/utils/` — 3 files replaced with re-export shims
+- `src/features/home/hooks/useHomeData.ts` — Updated imports to shared
+- `src/features/profile/screens/BugReportScreen.tsx` — Safe response parsing
+- `src/features/home/utils/spine/genreVisualConfig.ts` — Documentation comment
+
+---
+
+## [0.9.227] - 2026-03-22
+
+### Fixed (Audit 4 — Final Cleanup)
+
+**Medium:**
+- **Cross-feature imports (4 remaining)** — Moved tickCache to `shared/utils/`, added joystickSeekStore exports to playerFacade, added QueuePanel to queueFacade, moved FeelingChip type to `shared/types/`
+- **Memoized render function** — Wrapped `renderVerticalBookList` in `useCallback` in SecretLibrarySeriesDetailScreen (called 4x per render)
+- **OAuth CSRF protection** — Added state parameter generation and validation to OAuth flow in oauthService.ts
+
+**Low:**
+- **Deduplicated `formatBytes`** — Removed 8 local reimplementations, all now import from `@/shared/utils/format`
+- **Removed unused exports** — `formatFileSize` (duplicate of formatBytes), `hexToRgb` (made private)
+- **Removed unused dependencies** — `nanoid`, `react-dom` removed from package.json
+- **Cleaned TODO comments** — Converted 2 active TODOs to descriptive comments
+
+### Files Modified
+- `src/shared/utils/tickCache.ts` — New (moved from player/services)
+- `src/shared/types/feelingChip.ts` — New (FeelingChip type)
+- `src/shared/stores/playerFacade.ts` — Added joystickSeekStore exports
+- `src/shared/stores/queueFacade.ts` — Added QueuePanel export
+- `src/features/auth/services/oauthService.ts` — OAuth state parameter
+- `src/features/series/screens/SecretLibrarySeriesDetailScreen.tsx` — useCallback
+- 8 files — Replaced local formatBytes with shared import
+- `src/shared/utils/format.ts` — Removed formatFileSize
+- `src/features/player/utils.ts` — Made hexToRgb private
+- `package.json` — Removed nanoid, react-dom
+
+---
+
+## [0.9.226] - 2026-03-22
+
+### Fixed (Architecture — Cross-Feature Imports)
+
+**Medium (M-03):**
+- **Eliminated cross-feature import violations** — Refactored ~76 violations of the "features should NOT import from other features" rule
+- **Shared components** — Moved PlayerIcons, SearchBar, CollectionCard, AuthorCard, NarratorCard to `src/shared/components/`
+- **Shared hooks** — Moved useDefaultLibrary, useReadingHistory, useCollections, useAuthors, useNarrators, useSeries to `src/shared/hooks/`
+- **Shared stores** — Moved starPositionStore, playlistSettingsStore, dismissedItemsStore, preferencesStore, completionStore to `src/shared/stores/`
+- **Player/Queue facades** — Created `src/shared/stores/playerFacade.ts` and `src/shared/stores/queueFacade.ts` for clean cross-feature access
+- **Backward-compatible** — All original locations have re-export shims so existing imports still work
+
+### Files Modified
+- 5 components moved to `src/shared/components/` with re-export shims at original locations
+- 6 hooks moved to `src/shared/hooks/` with re-export shims at original locations
+- 5 stores moved to `src/shared/stores/` with re-export shims at original locations
+- 2 new facade files: `src/shared/stores/playerFacade.ts`, `src/shared/stores/queueFacade.ts`
+- ~37 consumer files updated to import from shared/ paths
+- `src/navigation/components/__tests__/FloatingTabBar.test.tsx` — Updated mock path
+
+---
+
+## [0.9.225] - 2026-03-22
+
+### Fixed (Final Audit Cleanup)
+
+**Medium:**
+- **Reactive window dimensions** — Replaced module-level `Dimensions.get('window')` with `useWindowDimensions()` hook in 12 files for proper iPad split-screen, foldable, and rotation support
+- **Auth store reset documented** — Added reference table above 23 require() calls documenting expected export/property names to prevent wrong-name bugs
+
+**Low:**
+- **Deduplicated formatDuration** — Removed 4 local copies in queue components, now imports from `@/shared/utils/format`
+- **QueueScreen useEffect deps** — Added stable Zustand actions to dependency array
+- **Snackbar cleanup** — Removed unused `Dimensions` import and dead `_SCREEN_WIDTH` variable
+
+### Files Modified
+- 12 files converted from module-level Dimensions to useWindowDimensions (MarkBooksScreen, SwipeableBookCard, DiscoverMoreCard, SeriesListScreen, CollectionsSection, SeriesListContent, FeaturedCollectionCard, BrowseHero, CollectionsListScreen, SeriesSwipeContainer, BrowseSeriesCard, Snackbar)
+- `src/core/auth/authService.ts` — Store reset reference documentation
+- `src/features/queue/screens/QueueScreen.tsx` — Shared formatDuration, useEffect deps
+- `src/features/queue/components/QueuePanel.tsx` — Shared formatDuration
+- `src/features/queue/components/QueueItem.tsx` — Shared formatDuration
+- `src/features/queue/components/SwipeableQueueItem.tsx` — Shared formatDuration
+
+---
+
+## [0.9.224] - 2026-03-22
+
+### Fixed (Audit 3 Regressions + Remaining Issues)
+
+**Critical:**
+- **Logout crash (Set vs Array)** — `authService.clearStorage()` reset myLibraryStore with `new Set()` instead of `[]`, causing TypeError on any array operation after logout
+- **PIN hash migration** — Users with plaintext PINs (set before SHA-256 hashing) were permanently locked out. verifyPin now detects plaintext PINs (4 digits vs 64-char hash), migrates them on successful verification
+
+**High:**
+- **seekingStore cleanup on logout** — `cancelSeeking()` (non-existent) → `resetSeekingState()` in auth cleanup
+- **Kid Mode not reset on logout** — `isEnabled: false` → `enabled: false` (correct property name)
+- **Wishlist unbounded arrays** — Added MAX_FOLLOWED_AUTHORS=100 and MAX_TRACKED_SERIES=100 caps
+
+**Medium:**
+- **Duplicate resetSeekingState call** — Removed redundant second call in playerStore.loadBook
+
+**Low:**
+- **MiniPlayer skip intervals** — Now reads from playerSettingsStore (skipBackInterval/skipForwardInterval) instead of hardcoded 15s/30s
+
+### Files Modified
+- `src/core/auth/authService.ts` — Fixed 3 bugs in clearStorage (Set→Array, method name, property name)
+- `src/shared/stores/kidModeStore.ts` — PIN hash migration path in verifyPin
+- `src/features/wishlist/stores/wishlistStore.ts` — Caps on followedAuthors and trackedSeries
+- `src/features/player/stores/playerStore.ts` — Removed duplicate resetSeekingState
+- `src/navigation/components/GlobalMiniPlayer.tsx` — User-configured skip intervals
+
+---
+
+## [0.9.223] - 2026-03-22
+
+### Fixed (Remaining Audit Issues — 17 more resolved)
+
+**Critical (Config):**
+- **Release signing config** — Added proper `signingConfigs.release` that reads keystore from gradle.properties, falls back to debug if not configured
+- **Apple Team ID** — Added `appleTeamId: "DX7MCA54J8"` and `credentialsSource: "local"` to eas.json production iOS build
+
+**High:**
+- **Kid Mode PIN hashed** — PIN is now SHA-256 hashed (via expo-crypto) before storage in AsyncStorage; plaintext PIN never persisted
+- **Cross-feature import violations resolved** — Moved 7 shared modules from feature directories to `src/shared/`: dnaSettingsStore, CompleteBadgeOverlay, SettingsHeader, BrowseSeriesCard, RecentlyAddedSection, useBrowseCounts/DURATION_RANGES, spineCache utilities. Old locations re-export for backwards compatibility.
+- **Circular dependency `require()` replaced** — seekingStore and castStore now use typed lazy getters instead of raw `require()` calls (compile-time safety)
+
+**Medium:**
+- **Legacy playback_progress table dropped** — Migration in sqliteCache.init() drops the obsolete table after verifying user_books has data
+- **Wishlist store bounded** — MAX_WISHLIST_ITEMS = 200 cap, rejects adds at capacity
+- **StorageCard disk query debounced** — Queries disk space at most every 5 seconds instead of on every download progress tick
+- **Download time estimate removed** — Replaced bogus hardcoded speed estimate with simple "X MB / Y MB" display
+- **Hardcoded colors replaced with theme** — DownloadsScreen and BookSpineVertical now use secretLibraryColors instead of hex literals
+
+**Low:**
+- **Unused variables removed** — `_SERIES_COVER_WIDTH`, `_SERIES_COVER_HEIGHT` (SearchScreen), `_SLEEP_TIMER_*` (playerStore), `_DEBUG` (audioService)
+- **Event bus maxListeners raised** — 10 → 25 to prevent false "memory leak" warnings with 18+ features
+- **SearchScreen reactive dimensions** — Replaced module-level `wp(100)` with `useWindowDimensions()` hook for split-screen/rotation support
+
+### Files Modified
+- `eas.json` — Apple Team ID, credentialsSource
+- `android/app/build.gradle` — Release signing config
+- `src/shared/stores/kidModeStore.ts` — Async PIN hashing with expo-crypto
+- `src/features/profile/screens/KidModeSettingsScreen.tsx` — Async PIN handlers
+- `src/shared/stores/dnaSettingsStore.ts` — New shared location (moved from profile)
+- `src/shared/components/CompleteBadge.tsx` — New shared location (moved from completion)
+- `src/shared/components/SettingsHeader.tsx` — New shared location (moved from profile)
+- `src/shared/components/BrowseSeriesCard.tsx` — New shared location (moved from browse)
+- `src/shared/components/RecentlyAddedSection.tsx` — New shared location (moved from browse)
+- `src/shared/hooks/useBrowseCounts.ts` — New shared location (moved from browse)
+- `src/features/player/stores/seekingStore.ts` — Typed lazy getter for playerStore
+- `src/features/chromecast/stores/castStore.ts` — Typed lazy getters for all cross-deps
+- `src/core/services/sqliteCache.ts` — Legacy table migration
+- `src/core/services/finishedBooksSync.ts` — Updated TODO → NOTE
+- `src/features/wishlist/stores/wishlistStore.ts` — Capacity limit
+- `src/features/downloads/screens/DownloadsScreen.tsx` — Debounced disk query, removed time estimate, theme colors
+- `src/features/home/components/BookSpineVertical.tsx` — Theme colors
+- `src/features/search/screens/SearchScreen.tsx` — useWindowDimensions, removed unused vars
+- `src/features/player/stores/playerStore.ts` — Removed unused constants
+- `src/features/player/services/audioService.ts` — Removed unused _DEBUG
+- `src/core/events/eventBus.ts` — maxListeners 10 → 25
+- 20+ import updates across browse, search, library, recommendations, downloads, profile
+
+---
+
+## [0.9.222] - 2026-03-21
+
+### Fixed (Comprehensive Audit — 108 issues resolved)
+
+**Critical Fixes:**
+- **Auth token race condition** — Login now persists token to storage before setting in-memory, with rollback on failure
+- **Library 500ms artificial delay** — Removed settle timer; per-tab `isTabDataReady` replaces monolithic blocking
+- **Player seek position overwrite** — Added `positionGeneration` counter to reject stale position updates during seeking
+- **Queue race condition** — Atomic `set((state) => ...)` callbacks prevent concurrent add/remove corruption
+- **Queue serialization bloat** — Stores slim `QueueBookMeta` (~200 bytes) instead of full `LibraryItem` objects
+- **Cache prompt stale state** — Replaced 20×500ms polling with reactive `useLibraryCache.subscribe()`
+- **Unbounded home data cache** — LRU eviction at `BOOK_CACHE_MAX = 500`
+- **Error boundary infinite retry** — Added `MAX_RETRIES = 3` limit
+- **Tab bar loses active state** — `lastActiveTabRef` persists selection across detail screen navigation
+
+**Performance:**
+- **MiniPlayer over-rendering** — Reduced Zustand subscription from 5 fields to 2 (currentBook, isPlaying)
+- **Library tab virtualization** — Migrated AllBooksTab, FavoritesTab, InProgressTab, DownloadedTab from ScrollView+.map() to FlatList
+- **MyLibraryScreen optimization** — Extracted tab content into separate components to prevent full re-render on tab switch
+
+**Error Handling:**
+- **15+ screens wrapped with error boundaries** — GenreDetail, CollectionDetail, Downloads, Stats, QueueScreen, Wishlist, FilteredBooks, ReadingHistoryWizard, ReadingHistory, and more
+- **Async hang protection** — 10-second `withTimeout` on startup operations and session service
+- **NavigationBar restored** — Was commented out, now rendered in overlay section
+
+**Build & Config:**
+- **ProGuard & minification enabled** — `enableProguardInReleaseBuilds: true`, `enableMinifyInReleaseBuilds: true`
+- **Duplicate AndroidManifest permissions removed** — FOREGROUND_SERVICE, WAKE_LOCK
+- **Placeholder credentials marked** — eas.json Apple ID fields use `REPLACE_WITH_*` instead of fake values
+- **Kid mode filter substring bug** — Exact matching only (`lower === catTag`), prevents "adult" matching "young-adult"
+- **MiniPlayer height constant** — `MINI_PLAYER_HEIGHT` corrected from `scale(130)` to `scale(110)`
+
+### Re-Audit Score: 89/100 (up from 78/100)
+- 108 of 127 issues resolved, 19 remaining (2 critical config-only, 3 high, 8 medium, 6 low)
+- 742 tests passing, 0 failures across 31 suites
+
+### Files Modified
+- `src/core/auth/authService.ts` — Token persistence rollback pattern
+- `src/features/library/hooks/useLibraryData.ts` — Per-tab data readiness, removed settle timer
+- `src/features/library/components/tabs/AllBooksTab.tsx` — FlatList virtualization
+- `src/features/library/components/tabs/FavoritesTab.tsx` — FlatList virtualization
+- `src/features/library/components/tabs/InProgressTab.tsx` — FlatList virtualization
+- `src/features/library/components/tabs/DownloadedTab.tsx` — FlatList virtualization
+- `src/features/library/screens/MyLibraryScreen.tsx` — Extracted tab content components
+- `src/features/player/stores/playerStore.ts` — Generation counter for position updates
+- `src/features/player/stores/seekingStore.ts` — `positionGeneration` state
+- `src/features/player/services/sessionService.ts` — 10s timeout on fetch
+- `src/features/home/hooks/useHomeData.ts` — LRU cache with 500-item cap
+- `src/features/queue/stores/queueStore.ts` — Atomic setState, slim QueueBookMeta
+- `src/features/queue/components/QueueItem.tsx` — Use QueueBookMeta
+- `src/features/queue/components/QueuePanel.tsx` — Use QueueBookMeta
+- `src/features/queue/components/SwipeableQueueItem.tsx` — Use QueueBookMeta
+- `src/features/queue/screens/QueueScreen.tsx` — Use QueueBookMeta
+- `src/features/queue/stores/__tests__/queueStore.test.ts` — Updated for new types
+- `src/navigation/AppNavigator.tsx` — Error boundaries, reactive subscription, timeouts, NavigationBar
+- `src/navigation/components/FloatingTabBar.tsx` — lastActiveTabRef, retry limit
+- `src/navigation/components/GlobalMiniPlayer.tsx` — Slim subscription, dependency fix
+- `src/shared/utils/kidModeFilter.ts` — Exact match only
+- `src/shared/utils/__tests__/kidModeFilter.test.ts` — Updated expectations
+- `src/shared/utils/timeout.ts` — New shared withTimeout utility
+- `src/shared/utils/index.ts` — Export withTimeout
+- `src/constants/layout.ts` — MINI_PLAYER_HEIGHT corrected
+- `android/app/src/main/AndroidManifest.xml` — Removed duplicate permissions
+- `app.json` — Enabled ProGuard and minification
+- `eas.json` — Placeholder credentials
+- `AUDIT_REPORT.md` — Full re-audit report
+
+---
+
+## [0.9.221] - 2026-03-21
+
+### Fixed
+- **Bookmark has no visual feedback** — Added "BOOKMARK SAVED" toast notification when tapping the bookmark button. Previously only haptic vibration with no visual confirmation, causing users to tap repeatedly. Shows error toast if save fails.
+- **Playback stuck at beginning of chapters** — Awaited `seekTo()` in `loadAudio` before calling `play()`. Previously the seek was fire-and-forget, so playback would start at position 0 when auto-advancing tracks.
+- **Position lost after pausing and killing app** — Awaited `saveProgressLocal()` in the pause handler so the SQLite write completes before pause returns. Previously fire-and-forget, meaning a quick app kill could lose the position.
+
+### Files Modified
+- `src/features/player/screens/SecretLibraryPlayerScreen.tsx` — Toast on bookmark save (success/error)
+- `src/features/player/services/audioService.ts` — Await seekTo in loadAudio (2 locations)
+- `src/features/player/stores/playerStore.ts` — Await saveProgressLocal in pause
+- `src/constants/version.ts` — Version bump
+
+---
+
 ## [0.9.220] - 2026-03-20
 
 ### Changed

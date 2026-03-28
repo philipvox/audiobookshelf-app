@@ -60,6 +60,7 @@ import {
   SpineTypography,
   GenreTypographyProfile,
   FontWeight as OldFontWeight,
+  FontFamily as OldFontFamily,
   TextTransform,
 } from '../typography/types';
 
@@ -288,14 +289,14 @@ function convertToSpineTypography(profile: GenreProfile): SpineTypography {
 
   return {
     title: {
-      fontFamily: profile.title.fontFamily as any,
+      fontFamily: profile.title.fontFamily as unknown as OldFontFamily,
       weight: weightMap[profile.title.weight] || 'medium',
       style: 'normal',
       transform: caseToTransform[profile.title.case] || 'capitalize',
       letterSpacing: profile.title.letterSpacing || 0.02,
     },
     author: {
-      fontFamily: profile.author.fontFamily as any,
+      fontFamily: profile.author.fontFamily as unknown as OldFontFamily,
       weight: weightMap[profile.author.weight] || 'regular',
       style: 'normal',
       transform: caseToTransform[profile.author.case] || 'capitalize',

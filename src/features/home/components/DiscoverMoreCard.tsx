@@ -10,7 +10,7 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import {
   secretLibraryColors as staticColors,
   secretLibraryFonts,
@@ -46,10 +46,7 @@ interface DiscoverMoreCardProps {
 // CONSTANTS
 // =============================================================================
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_MARGIN = 12;
-// The row height (spine height) becomes on-screen width after rotation
-const SPINE_HEIGHT = SCREEN_WIDTH - CARD_MARGIN * 2;
 
 // =============================================================================
 // SPINE ITEM (renders in natural vertical orientation)
@@ -126,11 +123,16 @@ export function DiscoverMoreCard({
   onPress,
   onBookPress,
 }: DiscoverMoreCardProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  // The row height (spine height) becomes on-screen width after rotation
+  const SPINE_HEIGHT = screenWidth - CARD_MARGIN * 2;
   const colors = useSecretLibraryColors();
   const useServerSpines = useSpineCacheStore((s) => s.useServerSpines);
+  const useCommunitySpines = useSpineCacheStore((s) => s.useCommunitySpines);
   const serverSpineDimensions = useSpineCacheStore((s) => s.serverSpineDimensions);
   const _spineDimVersion = useSpineCacheStore((s) => s.serverSpineDimensionsVersion);
   const booksWithServerSpines = useLibraryCache((s) => s.booksWithServerSpines);
+  const booksWithCommunitySpines = useLibraryCache((s) => s.booksWithCommunitySpines);
 
   const handleDiscoverPress = useCallback(() => {
     haptics.buttonPress();
@@ -179,9 +181,10 @@ export function DiscoverMoreCard({
       // If this book has a server spine with cached dimensions,
       // compute the actual width BookSpineVertical will render
       const bookId = booksToShow[i].id;
-      const hasServer = useServerSpines && booksWithServerSpines.has(bookId);
+      const hasSpineImage = (useServerSpines && booksWithServerSpines.has(bookId)) ||
+        (useCommunitySpines && booksWithCommunitySpines.has(bookId));
       const cached = serverSpineDimensions[bookId];
-      if (hasServer && cached && (Date.now() - cached.cachedAt < 24 * 60 * 60 * 1000)) {
+      if (hasSpineImage && cached && (Date.now() - cached.cachedAt < 24 * 60 * 60 * 1000)) {
         const sFit = Math.min(propW / cached.width, propH / cached.height);
         return {
           width: Math.round(cached.width * sFit),
@@ -191,7 +194,7 @@ export function DiscoverMoreCard({
 
       return { width: propW, height: propH };
     });
-  }, [booksToShow, useServerSpines, booksWithServerSpines, serverSpineDimensions, _spineDimVersion]);
+  }, [booksToShow, useServerSpines, useCommunitySpines, booksWithServerSpines, booksWithCommunitySpines, serverSpineDimensions, _spineDimVersion, SPINE_HEIGHT]);
 
   const SPINE_GAP = 5;
   const totalRowWidth = useMemo(
@@ -210,7 +213,7 @@ export function DiscoverMoreCard({
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.titleSection} onPress={handleDiscoverPress}>
+      <Pressable style={styles.titleSection} onPress={handleDiscoverPress} accessibilityLabel="Discover more books" accessibilityRole="button">
         <Text style={[styles.title, { color: colors.black }]}>Discover</Text>
         <Text style={[styles.titleItalic, { color: colors.black }]}>More →</Text>
       </Pressable>

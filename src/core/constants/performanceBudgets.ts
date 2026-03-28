@@ -46,7 +46,6 @@ export const PERFORMANCE_BUDGETS = {
 
     // Feature screens
     DownloadsScreen: { warn: 250, error: 450 },
-    QueueScreen: { warn: 250, error: 400 },
   } as Record<string, { warn: number; error: number }>,
 
   /**

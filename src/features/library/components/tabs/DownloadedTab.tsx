@@ -3,10 +3,15 @@
  *
  * Downloaded books tab content for MyLibraryScreen.
  * Shows downloading section, downloaded books, series, and storage summary.
+ *
+ * Uses FlatList for proper virtualization - only renders visible items.
+ * Downloads section is rendered as ListHeaderComponent, series and
+ * storage summary as ListFooterComponent.
  */
 
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, FlatList, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SectionHeader } from '@/shared/components/SectionHeader';
 import { LibraryEmptyState } from '../LibraryEmptyState';
 import { BookRow } from '../BookRow';
@@ -14,6 +19,7 @@ import { FannedSeriesCard } from '../FannedSeriesCard';
 import { StorageSummary } from '../StorageSummary';
 import { DownloadItem } from '@/features/downloads/components/DownloadItem';
 import { scale } from '@/shared/theme';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { EnrichedBook, SeriesGroup } from '../../types';
 
 interface DownloadedTabProps {
@@ -34,6 +40,9 @@ interface DownloadedTabProps {
   hasDownloading: boolean;
   hasPaused: boolean;
   onBrowse: () => void;
+  // Refresh control props passed from parent
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 export function DownloadedTab({
@@ -50,14 +59,26 @@ export function DownloadedTab({
   onManageStorage,
   isMarkedFinished,
   onBrowse,
+  refreshing = false,
+  onRefresh,
 }: DownloadedTabProps) {
+  const insets = useSafeAreaInsets();
   const hasContent = books.length > 0 || activeDownloads.length > 0;
 
-  if (!hasContent) {
-    return <LibraryEmptyState tab="downloaded" onAction={onBrowse} />;
-  }
+  // Memoized render function for FlatList
+  const renderItem = useCallback(({ item: book }: { item: EnrichedBook }) => (
+    <BookRow
+      book={book}
+      onPress={() => onBookPress(book.id)}
+      onPlay={() => onBookPlay(book)}
+      isMarkedFinished={isMarkedFinished(book.id)}
+    />
+  ), [onBookPress, onBookPlay, isMarkedFinished]);
 
-  return (
+  const keyExtractor = useCallback((item: EnrichedBook) => item.id, []);
+
+  // Header: active downloads + books section header
+  const ListHeader = useCallback(() => (
     <View>
       {/* Downloading Section */}
       {activeDownloads.length > 0 && (
@@ -80,22 +101,16 @@ export function DownloadedTab({
         </View>
       )}
 
-      {/* Downloaded Books Section */}
+      {/* Books section header */}
       {books.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader title={`Downloaded Books (${books.length})`} showViewAll={false} />
-          {books.map(book => (
-            <BookRow
-              key={book.id}
-              book={book}
-              onPress={() => onBookPress(book.id)}
-              onPlay={() => onBookPlay(book)}
-              isMarkedFinished={isMarkedFinished(book.id)}
-            />
-          ))}
-        </View>
+        <SectionHeader title={`Downloaded Books (${books.length})`} showViewAll={false} />
       )}
+    </View>
+  ), [activeDownloads, onDownloadPause, onDownloadResume, onDownloadDelete, books.length]);
 
+  // Footer: series groups + storage summary
+  const ListFooter = useCallback(() => (
+    <View>
       {/* Downloaded Series Section */}
       {seriesGroups.length > 0 && (
         <View style={styles.section}>
@@ -119,6 +134,35 @@ export function DownloadedTab({
         onManagePress={onManageStorage}
       />
     </View>
+  ), [seriesGroups, totalStorageUsed, books.length, onSeriesPress, onManageStorage]);
+
+  if (!hasContent) {
+    return <LibraryEmptyState tab="downloaded" onAction={onBrowse} />;
+  }
+
+  return (
+    <FlatList
+      data={books}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      ListHeaderComponent={ListHeader}
+      ListFooterComponent={ListFooter}
+      // Performance optimizations
+      removeClippedSubviews={Platform.OS === 'android'}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      initialNumToRender={10}
+      windowSize={5}
+      // Pull to refresh
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      // Content styling
+      contentContainerStyle={[
+        styles.listContent,
+        { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+      ]}
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -134,6 +178,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: scale(16),
     gap: scale(12),
+  },
+  listContent: {
+    flexGrow: 1,
   },
 });
 

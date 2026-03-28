@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { CoverStars } from '@/shared/components/CoverStars';
@@ -54,9 +55,11 @@ export function BookSimpleRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
+      accessibilityRole="button"
+      accessibilityLabel={`Open book ${title}${subtitle ? `, ${subtitle}` : ''}`}
     >
-      <View style={{ width: scale(48), height: scale(48), borderRadius: 4, overflow: 'hidden' }}>
-        <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.grayLight }]} />
+      <View style={styles.coverContainer}>
+        <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.grayLight }]} cachePolicy="memory-disk" />
         <CoverStars bookId={id} starSize={scale(14)} />
       </View>
       <View style={styles.info}>
@@ -85,6 +88,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 24,
+  },
+  coverContainer: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   cover: {
     width: scale(48),

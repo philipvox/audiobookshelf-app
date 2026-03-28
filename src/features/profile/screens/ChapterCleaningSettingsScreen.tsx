@@ -58,6 +58,9 @@ function LevelOption({ level, isSelected, onSelect, isRecommended }: LevelOption
       ]}
       onPress={() => onSelect(level)}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${info.label} cleaning level${isRecommended ? ', recommended' : ''}${isSelected ? ', currently selected' : ''}`}
+      accessibilityState={{ selected: isSelected }}
     >
       <View style={styles.levelOptionLeft}>
         {/* Radio circle */}

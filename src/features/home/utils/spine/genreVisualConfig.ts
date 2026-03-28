@@ -47,17 +47,21 @@ export function rc(isDark: boolean): string {
 // GENRE VISUAL CONFIGS
 // =============================================================================
 
+// All fonts referenced below (GravitasOne, LibreBaskerville, PlayfairDisplay, etc.)
+// are bundled with the app via Expo's font loading and are guaranteed to be available
+// at runtime. No platform fallback is needed since they are loaded before any spine
+// rendering occurs.
 const GENRE_VISUALS: Record<string, GenreVisualConfig> = {
   // Fantasy
   'fantasy': {
     backgrounds: ['#F5F0E8', '#EDE6D6', '#F0E8D8', '#E8E0D0'],
-    titleFonts: ['GravitasOne-Regular', 'AlmendraSC-Regular', 'PlayfairDisplay-Bold'],
+    titleFonts: ['GravitasOne-Regular', 'LibreBaskerville-Bold', 'PlayfairDisplay-Bold'],
     authorFonts: ['LibreBaskerville-Regular', 'Lora-Regular'],
     isDark: false,
   },
   'epic-fantasy': {
     backgrounds: ['#F3EDE2', '#EAE2D4', '#F0E6D6', '#E6DED0'],
-    titleFonts: ['GravitasOne-Regular', 'AlmendraSC-Regular'],
+    titleFonts: ['GravitasOne-Regular', 'LibreBaskerville-Bold'],
     authorFonts: ['LibreBaskerville-Regular', 'Lora-Regular'],
     isDark: false,
   },

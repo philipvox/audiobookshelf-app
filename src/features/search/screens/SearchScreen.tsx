@@ -21,16 +21,17 @@ import {
   ScrollView,
   Keyboard,
   Pressable,
-  Dimensions,
   PanResponder,
+  useWindowDimensions,
   type GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryCache, getAllGenres, getAllAuthors, getAllSeries, getAllNarrators, type FilterOptions } from '@/core/cache';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { apiClient } from '@/core/api';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { Icon } from '@/shared/components/Icon';
@@ -38,23 +39,20 @@ import { SearchResultsSkeleton, AuthorRowSkeleton, TopNav, TopNavBackIcon, useBo
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { fuzzyMatch, findSuggestions, expandAbbreviations } from '../utils/fuzzySearch';
-import { wp, spacing, radius, scale, useSecretLibraryColors } from '@/shared/theme';
+import { spacing, radius, scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { useIsDarkMode } from '@/shared/theme/themeStore';
-import { useKidModeStore } from '@/shared/stores/kidModeStore';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
-import { filterForKidMode } from '@/shared/utils/kidModeFilter';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 import { logger } from '@/shared/utils/logger';
 import { useToast } from '@/shared/hooks/useToast';
-import { useBrowseCounts } from '@/features/browse';
+import { useBrowseCounts, DURATION_RANGES, type DurationRangeId } from '@/shared/hooks/useBrowseCounts';
 import type { QuickBrowseCategory } from '@/features/search/components/QuickBrowseGrid';
-import { SeriesCard } from '@/features/browse/components/SeriesCard';
+import { SeriesCard } from '@/shared/components/BrowseSeriesCard';
 import { BookSimpleRow } from '../components/BookSimpleRow';
 import { SearchFilterSheet, type SearchFilterState, type AvailableFilters, type AgeRange } from '../components/SearchFilterSheet';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { SearchHeroCard } from '../components/SearchHeroCard';
-import { RecentlyAddedSection } from '@/features/browse/components/RecentlyAddedSection';
-import { DURATION_RANGES, type DurationRangeId } from '@/features/browse/hooks/useBrowseCounts';
+import { RecentlyAddedSection } from '@/shared/components/RecentlyAddedSection';
 
 // Type guard for book media
 function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
@@ -67,7 +65,6 @@ function getBookMetadata(item: LibraryItem): BookMetadata | null {
   return item.media.metadata as BookMetadata;
 }
 
-const SCREEN_WIDTH = wp(100);
 const GAP = spacing.sm;
 const CARD_RADIUS = radius.sm;
 const PADDING = spacing.lg;
@@ -89,10 +86,15 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Series card constants
-const SERIES_CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP) / 2;
-const _SERIES_COVER_WIDTH = 65;
-const _SERIES_COVER_HEIGHT = 95;
+/**
+ * Compute series card width from current window width.
+ * Previously computed once at module load via wp(100) — now a function
+ * so it can be called with the live window width inside components.
+ */
+function getSeriesCardWidth(screenWidth: number): number {
+  return (screenWidth - PADDING * 2 - GAP) / 2;
+}
+
 const COVER_SIZE = 60;
 
 type SortOption = 'title' | 'author' | 'dateAdded' | 'duration';
@@ -207,7 +209,7 @@ const DnaRangeSlider = React.memo(function DnaRangeSlider({
   return (
     <View style={s.dnaScoreBar}>
       <View style={s.dnaScoreHeader}>
-        <TouchableOpacity style={s.dnaScoreHeaderLeft} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+        <TouchableOpacity style={s.dnaScoreHeaderLeft} onPress={() => setExpanded(!expanded)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${filter.label} filter, range ${displayMin} to ${displayMax}`}>
           <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={14} color={staticColors.gray} strokeWidth={1.5} />
           <Text style={s.dnaScoreLabel}>
             <Text style={{ textTransform: 'capitalize' }}>{filter.label}</Text>
@@ -216,7 +218,7 @@ const DnaRangeSlider = React.memo(function DnaRangeSlider({
             {displayMin}–{displayMax}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Remove ${filter.label} filter`}>
           <Icon name="X" size={14} color={staticColors.gray} strokeWidth={1.5} />
         </TouchableOpacity>
       </View>
@@ -244,6 +246,8 @@ const DnaRangeSlider = React.memo(function DnaRangeSlider({
                 <TouchableOpacity
                   key={val}
                   hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Set score to ${val}`}
                   onPress={() => {
                     const f = filterRef.current;
                     if (f.filterMin === f.filterMax) {
@@ -284,6 +288,8 @@ export function SearchScreen() {
   const inputRef = useRef<TextInput>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadBook = usePlayerStore((s) => s.loadBook);
+  const { width: _windowWidth, height: windowHeight } = useWindowDimensions();
+  // Series card width is available via getSeriesCardWidth(_windowWidth) when needed
 
   // Book context menu
   const { showMenu: _showMenu } = useBookContextMenu();
@@ -374,9 +380,6 @@ export function SearchScreen() {
   const [sortBy, setSortBy] = useState<SortOption>('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
-  // Kid Mode filter state
-  const kidModeEnabled = useKidModeStore((state) => state.enabled);
-
   // DNA features toggle
   const dnaEnabled = useDNASettingsStore((s) => s.enableDNAFeatures);
 
@@ -384,7 +387,7 @@ export function SearchScreen() {
   const { showError } = useToast();
 
   // Get cached data
-  const { items: libraryItems, filterItems, isLoaded } = useLibraryCache();
+  const { items: libraryItems, filterItems, isLoaded, error: cacheError, refreshCache } = useLibraryCache(useShallow((s) => ({ items: s.items, filterItems: s.filterItems, isLoaded: s.isLoaded, error: s.error, refreshCache: s.refreshCache })));
 
   // Get filter options from cache
   const allGenres = useMemo(() => getAllGenres(), [isLoaded]);
@@ -419,7 +422,23 @@ export function SearchScreen() {
     try {
       const stored = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
       if (stored) {
-        setPreviousSearches(JSON.parse(stored));
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(stored);
+        } catch {
+          logger.warn('Corrupt search history in storage, resetting to empty');
+          await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+          setPreviousSearches([]);
+          return;
+        }
+        // Validate that parsed data is actually a string array
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+          setPreviousSearches(parsed);
+        } else {
+          logger.warn('Search history had unexpected format, resetting to empty');
+          await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+          setPreviousSearches([]);
+        }
       }
     } catch (err) {
       logger.error('Failed to load search history:', err);
@@ -529,9 +548,6 @@ export function SearchScreen() {
       }
     }
 
-    // Apply Kid Mode filter
-    results = filterForKidMode(results, kidModeEnabled);
-
     // Apply age range filter
     results = filterByAgeRange(results, ageRange);
 
@@ -540,7 +556,7 @@ export function SearchScreen() {
     for (const df of dnaEnabled ? dnaScoreFilters : []) {
       const { baseTag, filterMin, filterMax } = df;
       results = results.filter((item) => {
-        const tags: string[] = (item.media as any)?.tags || [];
+        const tags: string[] = item.media?.tags || [];
         return tags.some((t) => {
           const lower = t.toLowerCase();
           if (!lower.startsWith(baseTag + ':')) return false;
@@ -552,7 +568,7 @@ export function SearchScreen() {
     }
 
     return results.slice(0, 100);
-  }, [filterItems, filters, hasActiveSearch, debouncedQuery, kidModeEnabled, ageRange, filterByAgeRange, dnaScoreFilters, dnaEnabled, libraryItems, selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationFilter]);
+  }, [filterItems, filters, hasActiveSearch, debouncedQuery, ageRange, filterByAgeRange, dnaScoreFilters, dnaEnabled, libraryItems, selectedGenres, selectedAuthors, selectedNarrators, selectedSeries, durationFilter]);
 
   // Filter authors matching query (with fuzzy matching)
   const authorResults = useMemo(() => {
@@ -632,7 +648,7 @@ export function SearchScreen() {
     for (const item of libraryItems) {
       const metadata = getBookMetadata(item);
       const genres = metadata?.genres || [];
-      const tags = (item.media as any)?.tags || [];
+      const tags = item.media?.tags || [];
       for (const t of [...genres, ...tags]) {
         const parsed = parseDnaTag(t);
         const existing = tagMap.get(parsed.baseTag);
@@ -666,8 +682,7 @@ export function SearchScreen() {
     const _lowerQuery = query.toLowerCase();
 
     // Books - simple text, max 2 (per research: 4-6 total suggestions)
-    // Apply Kid Mode filter to autocomplete results
-    const filteredBooks = filterForKidMode(filterItems({ query: query.trim() }), kidModeEnabled);
+    const filteredBooks = filterItems({ query: query.trim() });
     const books = filteredBooks
       .slice(0, 2)
       .map(book => {
@@ -717,7 +732,7 @@ export function SearchScreen() {
       .slice(0, 3);
 
     return { books, authors, series, narrators, tags };
-  }, [query, filterItems, allAuthors, allSeries, allNarrators, allTags, kidModeEnabled, dnaEnabled]);
+  }, [query, filterItems, allAuthors, allSeries, allNarrators, allTags, dnaEnabled]);
 
   // "Did you mean" suggestions when no results
   const spellingSuggestions = useMemo(() => {
@@ -1109,9 +1124,9 @@ export function SearchScreen() {
       {showAutocomplete && (
         <>
           {/* Darkened background per Baymard research */}
-          <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} />
+          <Pressable style={styles.autocompleteBackdrop} onPress={dismissAutocomplete} accessibilityRole="button" accessibilityLabel="Dismiss autocomplete" />
 
-          <View style={[styles.autocompleteContainer, { top: insets.top + 64, maxHeight: Dimensions.get('window').height * 0.6 }]}>
+          <View style={[styles.autocompleteContainer, { top: insets.top + 64, maxHeight: windowHeight * 0.6 }]}>
             <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
               {/* Books */}
               {autocompleteSuggestions.books.length > 0 && (
@@ -1278,12 +1293,37 @@ export function SearchScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Loading state - show skeleton while cache loads */}
-        {!isLoaded && (
+        {!isLoaded && !cacheError && (
           <View style={styles.emptyStateContainer}>
             <SearchResultsSkeleton count={5} />
             <View style={{ marginTop: 24 }}>
               <AuthorRowSkeleton />
               <AuthorRowSkeleton style={{ marginTop: 8 }} />
+            </View>
+          </View>
+        )}
+
+        {/* Error state - library cache failed to load */}
+        {cacheError && !isLoaded && (
+          <View style={styles.emptyStateContainer}>
+            <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 24 }}>
+              <Icon name="AlertTriangle" size={40} color={TEXT_TERTIARY} />
+              <Text style={[styles.noResultsTitle, { marginTop: 16 }]}>
+                Unable to load library
+              </Text>
+              <Text style={{ color: TEXT_SECONDARY, fontSize: scale(12), textAlign: 'center', marginTop: 8 }}>
+                {cacheError}
+              </Text>
+              <TouchableOpacity
+                style={{ marginTop: 20, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8, backgroundColor: ACCENT }}
+                onPress={() => refreshCache()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading library"
+              >
+                <Text style={{ color: TEXT_INVERSE, fontFamily: secretLibraryFonts.jetbrainsMono.regular, fontSize: scale(12) }}>
+                  Try Again
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1298,7 +1338,7 @@ export function SearchScreen() {
                 <View>
                   <View style={styles.dnaTagPickerHeader}>
                     <Text style={styles.dnaAddText}>DNA FILTERS</Text>
-                    <TouchableOpacity onPress={() => setShowDnaTagPicker(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity onPress={() => setShowDnaTagPicker(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Close DNA filter picker">
                       <Icon name="X" size={14} color={TEXT_TERTIARY} strokeWidth={1.5} />
                     </TouchableOpacity>
                   </View>
@@ -1322,6 +1362,8 @@ export function SearchScreen() {
                                 addDnaFilter(tag);
                                 setShowDnaTagPicker(false);
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add ${tag.label} DNA filter`}
                             >
                               <Text style={styles.dnaTagChipText}>{tag.label}</Text>
                             </TouchableOpacity>
@@ -1332,7 +1374,7 @@ export function SearchScreen() {
                   })()}
                 </View>
               ) : (
-                <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)}>
+                <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)} accessibilityRole="button" accessibilityLabel="Add DNA filter">
                   <Icon name="Plus" size={12} color={TEXT_TERTIARY} strokeWidth={1.5} />
                   <Text style={styles.dnaAddText}>DNA filter</Text>
                 </TouchableOpacity>
@@ -1345,7 +1387,7 @@ export function SearchScreen() {
                 <View style={styles.previousSearchesHeader}>
                   <Text style={styles.previousSearchesTitle}>Recent Searches</Text>
 
-                  <TouchableOpacity onPress={clearSearchHistory}>
+                  <TouchableOpacity onPress={clearSearchHistory} accessibilityRole="button" accessibilityLabel="Clear search history">
                     <Text style={styles.clearHistoryText}>Clear</Text>
                   </TouchableOpacity>
                 </View>
@@ -1354,12 +1396,16 @@ export function SearchScreen() {
                     key={idx}
                     style={styles.previousSearchItem}
                     onPress={() => handlePreviousSearchPress(search)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search for ${search}`}
                   >
                     <Icon name="Clock" size={16} color={TEXT_TERTIARY} strokeWidth={1.5} />
                     <Text style={styles.previousSearchText}>{search}</Text>
                     <TouchableOpacity
                       style={styles.removeSearchButton}
                       onPress={() => removeFromHistory(search)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${search} from search history`}
                     >
                       <Icon name="X" size={14} color={TEXT_TERTIARY} strokeWidth={1.5} />
                     </TouchableOpacity>
@@ -1388,6 +1434,8 @@ export function SearchScreen() {
               <TouchableOpacity
                 style={styles.bigBrowseButton}
                 onPress={() => { navigation.navigate('BrowsePage'); }}
+                accessibilityRole="link"
+                accessibilityLabel="Discover"
               >
                 <Icon name="Globe" size={18} color={colors.black} strokeWidth={1} />
                 <Text style={[styles.bigBrowseButtonText, { color: colors.black }]}>Discover</Text>
@@ -1396,6 +1444,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('GenresList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse genres"
                 >
                   <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Genres</Text>
@@ -1403,6 +1453,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('AuthorsList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse authors"
                 >
                   <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Authors</Text>
@@ -1410,6 +1462,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('SeriesList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse series"
                 >
                   <Icon name="Library" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Series</Text>
@@ -1417,6 +1471,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('DurationFilter')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse by duration"
                 >
                   <Icon name="Timer" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Duration</Text>
@@ -1460,14 +1516,14 @@ export function SearchScreen() {
                       if (!t.hasScore) return false;
                       if (dnaScoreFilters.some((f) => f.baseTag === t.baseTag)) return false;
                       return bookResults.some((book) => {
-                        const tags: string[] = (book.media as any)?.tags || [];
+                        const tags: string[] = book.media?.tags || [];
                         return tags.some((bt) => bt.toLowerCase().startsWith(t.baseTag + ':'));
                       });
                     });
                     return candidates
                       .map((tag) => {
                         const matchCount = bookResults.filter((book) => {
-                          const tags: string[] = (book.media as any)?.tags || [];
+                          const tags: string[] = book.media?.tags || [];
                           return tags.some((bt) => {
                             const lower = bt.toLowerCase();
                             if (!lower.startsWith(tag.baseTag + ':')) return false;
@@ -1489,6 +1545,8 @@ export function SearchScreen() {
                           addDnaFilter(tag);
                           setShowDnaTagPicker(false);
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${tag.label} DNA filter, ${matchCount} matches`}
                       >
                         <Text style={styles.dnaTagChipText}>
                           {tag.label} <Text style={styles.dnaTagChipCount}>{matchCount}</Text>
@@ -1498,7 +1556,7 @@ export function SearchScreen() {
                 </View>
               </View>
             ) : (
-              <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)}>
+              <TouchableOpacity style={styles.dnaAddButton} onPress={() => setShowDnaTagPicker(true)} accessibilityRole="button" accessibilityLabel="Add DNA filter">
                 <Icon name="Plus" size={12} color={TEXT_TERTIARY} strokeWidth={1.5} />
                 <Text style={styles.dnaAddText}>Add filter</Text>
               </TouchableOpacity>
@@ -1523,6 +1581,8 @@ export function SearchScreen() {
                     key={idx}
                     style={styles.suggestionItem}
                     onPress={() => handleSpellingSuggestion(suggestion.text)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search for ${suggestion.text}`}
                   >
                     <Text style={styles.suggestionText}>{suggestion.text}</Text>
                     <Icon name="ArrowRight" size={16} color={ACCENT} />
@@ -1536,6 +1596,8 @@ export function SearchScreen() {
               <TouchableOpacity
                 style={styles.bigBrowseButton}
                 onPress={() => { navigation.navigate('BrowsePage'); }}
+                accessibilityRole="link"
+                accessibilityLabel="Discover"
               >
                 <Icon name="Globe" size={18} color={colors.black} strokeWidth={1} />
                 <Text style={[styles.bigBrowseButtonText, { color: colors.black }]}>Discover</Text>
@@ -1544,6 +1606,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('GenresList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse genres"
                 >
                   <Icon name="Sparkles" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Genres</Text>
@@ -1551,6 +1615,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('AuthorsList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse authors"
                 >
                   <Icon name="CircleUser" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Authors</Text>
@@ -1558,6 +1624,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('SeriesList')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse series"
                 >
                   <Icon name="Library" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Series</Text>
@@ -1565,6 +1633,8 @@ export function SearchScreen() {
                 <TouchableOpacity
                   style={styles.browseRecoveryItem}
                   onPress={() => navigation.navigate('DurationFilter')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Browse by duration"
                 >
                   <Icon name="Timer" size={24} color={colors.black} strokeWidth={1} />
                   <Text style={[styles.browseRecoveryText, { color: colors.black }]}>Duration</Text>
@@ -1618,7 +1688,7 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Series</Text>
               {seriesResults.length > 3 && (
-                <TouchableOpacity onPress={() => navigation.navigate('SeriesList')}>
+                <TouchableOpacity onPress={() => navigation.navigate('SeriesList')} accessibilityRole="link" accessibilityLabel="View all series">
                   <Text style={styles.viewAllText}>VIEW ALL</Text>
                 </TouchableOpacity>
               )}
@@ -1657,7 +1727,7 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Authors</Text>
               {authorResults.length > 2 && (
-                <TouchableOpacity onPress={() => navigation.navigate('AuthorsList')}>
+                <TouchableOpacity onPress={() => navigation.navigate('AuthorsList')} accessibilityRole="link" accessibilityLabel="View all authors">
                   <Text style={styles.viewAllText}>View All</Text>
                 </TouchableOpacity>
               )}
@@ -1701,7 +1771,7 @@ export function SearchScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Narrators</Text>
               {narratorResults.length > 2 && (
-                <TouchableOpacity onPress={() => navigation.navigate('NarratorsList')}>
+                <TouchableOpacity onPress={() => navigation.navigate('NarratorsList')} accessibilityRole="link" accessibilityLabel="View all narrators">
                   <Text style={styles.viewAllText}>View All</Text>
                 </TouchableOpacity>
               )}
@@ -2115,7 +2185,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: GAP,
   },
   seriesCard: {
-    width: SERIES_CARD_WIDTH,
+    // Width is set dynamically via getSeriesCardWidth() using useWindowDimensions
     padding: spacing.md,
     backgroundColor: colors.isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
     borderRadius: radius.lg,

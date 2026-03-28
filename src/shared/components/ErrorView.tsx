@@ -187,6 +187,9 @@ export function ErrorView({
             style={[styles.primaryButton, { backgroundColor: colors.accent.primary }, isRetrying && styles.buttonDisabled]}
             onPress={onRetry}
             disabled={isRetrying}
+            accessibilityRole="button"
+            accessibilityLabel={isRetrying ? 'Retrying' : retryLabel}
+            accessibilityState={{ disabled: isRetrying }}
           >
             <Text style={[styles.primaryButtonText, { color: colors.background.primary }]}>
               {isRetrying ? 'Retrying...' : retryLabel}
@@ -198,6 +201,8 @@ export function ErrorView({
           <Pressable
             style={[styles.secondaryButton, { backgroundColor: colors.background.secondary }]}
             onPress={onSecondaryAction}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryLabel}
           >
             <Text style={[styles.secondaryButtonText, { color: colors.text.secondary }]}>{secondaryLabel}</Text>
           </Pressable>

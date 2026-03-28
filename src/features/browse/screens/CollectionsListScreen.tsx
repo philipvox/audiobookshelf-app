@@ -6,11 +6,11 @@
  */
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, StatusBar, FlatList, Text, TextInput, Dimensions } from 'react-native';
+import { View, StyleSheet, StatusBar, FlatList, Text, TextInput, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Folder } from 'lucide-react-native';
-import { useCollections } from '@/features/collections';
+import { useCollections } from '@/shared/hooks/useCollections';
 import { CollectionSquareCard } from '../components/CollectionSquareCard';
 import { TopNav, TopNavBackIcon, ScreenLoadingOverlay, SkullRefreshControl } from '@/shared/components';
 import { globalLoading } from '@/shared/stores/globalLoadingStore';
@@ -19,14 +19,14 @@ import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLi
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { Collection } from '@/core/types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HORIZONTAL_PADDING = 24;
 const CARD_GAP = 12;
-const CARD_SIZE = (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - CARD_GAP) / 2;
 
 export function CollectionsListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const cardSize = (screenWidth - HORIZONTAL_PADDING * 2 - CARD_GAP) / 2;
   const inputRef = useRef<TextInput>(null);
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,15 +68,15 @@ export function CollectionsListScreen() {
   const renderItem = useCallback(({ item, index }: { item: Collection; index: number }) => {
     const isLeftColumn = index % 2 === 0;
     return (
-      <View style={[styles.cardWrapper, isLeftColumn ? styles.leftCard : styles.rightCard]}>
+      <View style={[styles.cardWrapper, { width: cardSize }, isLeftColumn ? styles.leftCard : styles.rightCard]}>
         <CollectionSquareCard
           collection={item}
-          size={CARD_SIZE}
+          size={cardSize}
           onPress={() => handleCollectionPress(item.id)}
         />
       </View>
     );
-  }, [handleCollectionPress]);
+  }, [handleCollectionPress, cardSize]);
 
   const keyExtractor = useCallback((item: Collection) => item.id, []);
 
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   cardWrapper: {
-    width: CARD_SIZE,
+    // width set inline via useWindowDimensions
   },
   leftCard: {
     // Left column

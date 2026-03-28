@@ -37,7 +37,7 @@ export function FilterSortBar({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={[styles.button, { backgroundColor: colors.background.secondary }]} onPress={() => setShowSortModal(true)}>
+      <TouchableOpacity style={[styles.button, { backgroundColor: colors.background.secondary }]} onPress={() => setShowSortModal(true)} accessibilityRole="button" accessibilityLabel={`Sort by ${currentSortLabel}`}>
         <Icon name="ArrowUpDown" size={18} color={colors.text.secondary} />
         <Text style={[styles.buttonText, { color: colors.text.secondary }]}>{currentSortLabel}</Text>
         <Icon name="ChevronDown" size={16} color={colors.text.tertiary} />
@@ -47,6 +47,8 @@ export function FilterSortBar({
         <TouchableOpacity
           style={[styles.button, { backgroundColor: selectedGenre ? colors.accent.primary : colors.background.secondary }]}
           onPress={() => setShowGenreModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by genre: ${selectedGenre || 'All'}`}
         >
           <Icon name="Filter" size={18} color={selectedGenre ? colors.background.primary : colors.text.secondary} />
           <Text style={[styles.buttonText, { color: selectedGenre ? colors.background.primary : colors.text.secondary }]}>
@@ -68,6 +70,9 @@ export function FilterSortBar({
                   onSortChange(option.value);
                   setShowSortModal(false);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort ${option.label}`}
+                accessibilityState={{ selected: sortBy === option.value }}
               >
                 <Text style={[styles.modalOptionText, { color: colors.text.primary }, sortBy === option.value && { color: colors.accent.primary, fontWeight: '600' }]}>
                   {option.label}
@@ -92,6 +97,9 @@ export function FilterSortBar({
                   onGenreChange?.(null);
                   setShowGenreModal(false);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="All Genres"
+                accessibilityState={{ selected: !selectedGenre }}
               >
                 <Text style={[styles.modalOptionText, { color: colors.text.primary }, !selectedGenre && { color: colors.accent.primary, fontWeight: '600' }]}>All Genres</Text>
                 {!selectedGenre && <Icon name="Check" size={20} color={colors.accent.primary} />}
@@ -104,6 +112,9 @@ export function FilterSortBar({
                     onGenreChange?.(genre);
                     setShowGenreModal(false);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={genre}
+                  accessibilityState={{ selected: selectedGenre === genre }}
                 >
                   <Text style={[styles.modalOptionText, { color: colors.text.primary }, selectedGenre === genre && { color: colors.accent.primary, fontWeight: '600' }]}>
                     {genre}

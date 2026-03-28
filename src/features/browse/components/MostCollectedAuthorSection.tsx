@@ -14,7 +14,7 @@ import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { useCoverUrl } from '@/core/cache';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
-import { CompleteBadgeOverlay } from '@/features/completion';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { SectionHeader } from './SectionHeader';
 
@@ -46,8 +46,8 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 }
 
 function getAuthorName(item: LibraryItem): string {
-  const metadata = getMetadata(item);
-  return (metadata as any)?.authorName || (metadata as any)?.authors?.[0]?.name || '';
+  const metadata = getMetadata(item) as BookMetadata | undefined;
+  return metadata?.authorName || metadata?.authors?.[0]?.name || '';
 }
 
 // Cover card
@@ -66,7 +66,7 @@ const CoverCard = React.memo(function CoverCard({
   const colors = useSecretLibraryColors();
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8} accessibilityLabel={`Open ${title}`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -74,6 +74,7 @@ const CoverCard = React.memo(function CoverCard({
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={200}
+          accessibilityLabel={`Cover art for ${title}`}
         />
         <CoverStars bookId={item.id} starSize={scale(20)} />
         <CompleteBadgeOverlay bookId={item.id} size="small" />

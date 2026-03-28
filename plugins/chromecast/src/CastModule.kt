@@ -9,6 +9,8 @@ import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.*
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.images.WebImage
 import android.net.Uri
 import java.util.concurrent.Executors
@@ -30,6 +32,8 @@ class CastModule(reactContext: ReactApplicationContext) :
     private var castContext: CastContext? = null
     private var sessionManager: SessionManager? = null
     private var mediaClientCallback: RemoteMediaClient.Callback? = null
+    private var initError: String? = null
+    private var initCompleted = false
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) {}
@@ -83,32 +87,39 @@ class CastModule(reactContext: ReactApplicationContext) :
 
     override fun initialize() {
         super.initialize()
-        // Use async initialization (Cast SDK 22+ requirement)
-        try {
-            CastContext.getSharedInstance(reactApplicationContext, Executors.newSingleThreadExecutor())
-                .addOnSuccessListener { ctx ->
-                    Log.d(TAG, "CastContext initialized successfully")
-                    castContext = ctx
-                    sessionManager = ctx.sessionManager
-                    sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+        // Cast SDK requires initialization on the main thread
+        handler.post {
+            try {
+                CastContext.getSharedInstance(reactApplicationContext, Executors.newSingleThreadExecutor())
+                    .addOnSuccessListener { ctx ->
+                        Log.d(TAG, "CastContext initialized successfully")
+                        initCompleted = true
+                        castContext = ctx
+                        sessionManager = ctx.sessionManager
+                        sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
 
-                    // Check if there's an existing session (app restart while casting)
-                    val existingSession = ctx.sessionManager.currentCastSession
-                    if (existingSession?.isConnected == true) {
-                        Log.d(TAG, "Found existing Cast session on init")
-                        registerMediaClientCallback(existingSession)
-                        sendEvent("onSessionStarted", Arguments.createMap().apply {
-                            putString("sessionId", existingSession.sessionId ?: "")
-                            putString("deviceName", existingSession.castDevice?.friendlyName ?: "Unknown")
-                        })
-                        startMediaStatusPolling()
+                        // Check if there's an existing session (app restart while casting)
+                        val existingSession = ctx.sessionManager.currentCastSession
+                        if (existingSession?.isConnected == true) {
+                            Log.d(TAG, "Found existing Cast session on init")
+                            registerMediaClientCallback(existingSession)
+                            sendEvent("onSessionStarted", Arguments.createMap().apply {
+                                putString("sessionId", existingSession.sessionId ?: "")
+                                putString("deviceName", existingSession.castDevice?.friendlyName ?: "Unknown")
+                            })
+                            startMediaStatusPolling()
+                        }
                     }
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "CastContext initialization failed", e)
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Cast context initialization", e)
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "CastContext initialization failed", e)
+                        initCompleted = true
+                        initError = "CastContext init failed: ${e.message}"
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start Cast context initialization", e)
+                initCompleted = true
+                initError = "Cast init exception: ${e.message}"
+            }
         }
     }
 
@@ -207,44 +218,36 @@ class CastModule(reactContext: ReactApplicationContext) :
             return
         }
 
-        // If async init hasn't completed yet, try synchronous fallback
-        var ctx = castContext
-        if (ctx == null) {
-            Log.w(TAG, "showCastPicker: CastContext not ready, trying synchronous init")
-            try {
-                @Suppress("DEPRECATION")
-                ctx = CastContext.getSharedInstance(activity)
-                castContext = ctx
-                // Only register listener if initialize() hasn't done it yet
-                if (sessionManager == null) {
-                    sessionManager = ctx.sessionManager
-                    sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
-                }
-                Log.d(TAG, "showCastPicker: Synchronous CastContext init succeeded")
-            } catch (e: Exception) {
-                Log.e(TAG, "showCastPicker: CastContext not available", e)
-                promise.reject("NO_CAST_CONTEXT", "Cast not initialized yet", e)
-                return
-            }
-        }
-
-        val selector = ctx!!.mergedSelector
-        if (selector == null) {
-            Log.w(TAG, "showCastPicker: No route selector — Cast SDK may not be configured")
-            promise.reject("NO_SELECTOR", "No route selector available")
-            return
-        }
-
+        // Everything must run on the main thread — Cast SDK requirement
         activity.runOnUiThread {
             try {
+                // If async init hasn't completed yet, try synchronous fallback
+                var ctx = castContext
+                if (ctx == null) {
+                    Log.w(TAG, "showCastPicker: CastContext not ready, trying synchronous init on UI thread")
+                    @Suppress("DEPRECATION")
+                    ctx = CastContext.getSharedInstance(activity)
+                    castContext = ctx
+                    if (sessionManager == null) {
+                        sessionManager = ctx.sessionManager
+                        sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+                    }
+                    Log.d(TAG, "showCastPicker: Synchronous CastContext init succeeded")
+                }
+
+                val selector = ctx.mergedSelector
+                if (selector == null) {
+                    Log.w(TAG, "showCastPicker: No route selector — Cast SDK may not be configured")
+                    promise.reject("NO_SELECTOR", "No route selector available")
+                    return@runOnUiThread
+                }
+
                 val session = sessionManager?.currentCastSession
                 if (session?.isConnected == true) {
-                    // Already connected — show controller dialog
                     Log.d(TAG, "showCastPicker: Showing controller dialog (connected to ${session.castDevice?.friendlyName})")
                     val dialog = androidx.mediarouter.app.MediaRouteControllerDialog(activity)
                     dialog.show()
                 } else {
-                    // Not connected — show device chooser
                     Log.d(TAG, "showCastPicker: Showing chooser dialog")
                     val dialog = androidx.mediarouter.app.MediaRouteChooserDialog(activity)
                     dialog.routeSelector = selector
@@ -410,6 +413,51 @@ class CastModule(reactContext: ReactApplicationContext) :
             promise.resolve(session?.isConnected == true)
         } catch (e: Exception) {
             promise.resolve(false)
+        }
+    }
+
+    /**
+     * Returns detailed diagnostic info about Cast SDK state.
+     * Helps debug "cast does nothing" issues.
+     */
+    @ReactMethod
+    fun diagnose(promise: Promise) {
+        try {
+            val result = Arguments.createMap()
+
+            // Check Google Play Services availability
+            val gpa = GoogleApiAvailability.getInstance()
+            val playServicesStatus = gpa.isGooglePlayServicesAvailable(reactApplicationContext)
+            result.putBoolean("playServicesAvailable", playServicesStatus == ConnectionResult.SUCCESS)
+            result.putInt("playServicesStatus", playServicesStatus)
+            result.putString("playServicesMessage",
+                if (playServicesStatus == ConnectionResult.SUCCESS) "OK"
+                else gpa.getErrorString(playServicesStatus)
+            )
+
+            // Cast SDK state
+            result.putBoolean("initCompleted", initCompleted)
+            result.putString("initError", initError)
+            result.putBoolean("castContextAvailable", castContext != null)
+            result.putBoolean("sessionManagerAvailable", sessionManager != null)
+
+            // Activity state
+            val activity = reactApplicationContext.currentActivity
+            result.putBoolean("activityAvailable", activity != null)
+            result.putString("activityName", activity?.javaClass?.simpleName ?: "null")
+
+            // Route selector (needed for device discovery)
+            result.putBoolean("routeSelectorAvailable", castContext?.mergedSelector != null)
+
+            // Current session
+            val session = sessionManager?.currentCastSession
+            result.putBoolean("hasCurrentSession", session != null)
+            result.putBoolean("sessionConnected", session?.isConnected == true)
+            result.putString("connectedDevice", session?.castDevice?.friendlyName)
+
+            promise.resolve(result)
+        } catch (e: Exception) {
+            promise.reject("DIAGNOSE_ERROR", "Diagnosis failed: ${e.message}", e)
         }
     }
 

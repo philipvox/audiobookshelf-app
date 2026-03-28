@@ -10,13 +10,13 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
 import { apiClient } from '@/core/api';
-import { queryKeys } from '@/core/queryClient';
+// queryKeys no longer needed here - useContinueListening handles the inProgress query internally
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useLibraryCache } from '@/core/cache';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { preWarmTickCache, ChapterInput } from '@/features/player/services/tickCache';
+import { preWarmTickCache, ChapterInput } from '@/shared/utils/tickCache';
 import {
   UseHomeDataReturn,
   PlaybackProgress,
@@ -28,12 +28,10 @@ import {
   BookStatus,
   HomeViewMode,
 } from '../types';
-import { useKidModeStore } from '@/shared/stores/kidModeStore';
-import { filterForKidMode } from '@/shared/utils/kidModeFilter';
-import { calculateTimeRemaining, isBookComplete } from '@/features/player/utils/progressCalculator';
-import { findChapterForPosition } from '@/features/player/utils/chapterNavigator';
+import { calculateTimeRemaining, isBookComplete } from '@/shared/utils/chapters/progressCalculator';
+import { findChapterForPosition } from '@/shared/utils/chapters/chapterNavigator';
 import { getNarratorName, getTitle } from '@/shared/utils/metadata';
-import { Chapter } from '@/features/player/utils/types';
+import { Chapter } from '@/shared/utils/chapters/types';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
 
 // Type guard for FULL book media with audioFiles (needed for chapters)
@@ -79,9 +77,6 @@ export function useHomeData(): UseHomeDataReturn {
   const libraryIds = useMyLibraryStore((state) => state.libraryIds);
   const favoriteSeriesNames = useMyLibraryStore((state) => state.favoriteSeriesNames);
 
-  // Kid Mode filter state
-  const kidModeEnabled = useKidModeStore((state) => state.enabled);
-
   // Get series data and all items from library cache - PERF: use selector to avoid re-renders
   const { getSeries, getItem, isLoaded: isCacheLoaded, items: allLibraryItems } = useLibraryCache(
     useShallow((state) => ({
@@ -101,9 +96,24 @@ export function useHomeData(): UseHomeDataReturn {
 
   // Get books from local library (includes both in-progress AND explicitly added)
   // This is the source of truth for "Continue Listening" and shows instant updates
-  const { items: continueListeningItems } = useContinueListening();
+  // PERF FIX: useContinueListening already queries queryKeys.user.inProgress() internally,
+  // so we reuse its refetch instead of creating a duplicate useQuery with the same key.
+  const { items: continueListeningItems, isLoading: isContinueListeningLoading, refetch: refetchProgress } = useContinueListening();
+
+  // Derive inProgressItems from continueListeningItems (already sorted by most recent)
+  // This replaces the duplicate useQuery that previously fetched the same endpoint
+  const inProgressItems = useMemo(() => {
+    return continueListeningItems.filter(item => {
+      const progress = item.userMediaProgress?.progress ?? 0;
+      return progress > 0 && progress < 1;
+    });
+  }, [continueListeningItems]);
+
+  const isLoadingProgress = isContinueListeningLoading;
 
   // Local cache of book data - persists across re-renders to avoid flicker
+  // Capped at 500 entries to prevent unbounded memory growth
+  const BOOK_CACHE_MAX = 500;
   const bookCacheRef = useRef<Map<string, LibraryItem>>(new Map());
 
   // Initialize library books from continueListeningItems to prevent empty flash
@@ -112,28 +122,6 @@ export function useHomeData(): UseHomeDataReturn {
     // Use continueListeningItems if available and libraryIds match
     // This provides instant content on first render instead of empty state
     return [];
-  });
-
-  // Fetch items in progress
-  const {
-    data: inProgressItems = [],
-    isLoading: isLoadingProgress,
-    refetch: refetchProgress,
-  } = useQuery({
-    queryKey: queryKeys.user.inProgress(),
-    queryFn: async () => {
-      const items = await apiClient.getItemsInProgress();
-
-      // Sort by most recently updated
-      return items.sort((a, b) => {
-        const aTime = a.mediaProgress?.lastUpdate || a.userMediaProgress?.lastUpdate || 0;
-        const bTime = b.mediaProgress?.lastUpdate || b.userMediaProgress?.lastUpdate || 0;
-        return bTime - aTime;
-      });
-    },
-    staleTime: 1000 * 60 * 2, // 2 minutes
-    // Keep showing previous data while refetching for instant display
-    placeholderData: (previousData) => previousData,
   });
 
   // Fetch playlists
@@ -163,12 +151,21 @@ export function useHomeData(): UseHomeDataReturn {
     // Cache in-progress items
     inProgressItems.forEach(item => {
       if (!cache.has(item.id)) {
+        // Evict oldest entry if cache is full (Maps maintain insertion order)
+        if (cache.size >= BOOK_CACHE_MAX) {
+          const oldestKey = cache.keys().next().value;
+          if (oldestKey !== undefined) cache.delete(oldestKey);
+        }
         cache.set(item.id, item);
       }
     });
 
     // Cache current player book
     if (playerCurrentBook && !cache.has(playerCurrentBook.id)) {
+      if (cache.size >= BOOK_CACHE_MAX) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey !== undefined) cache.delete(oldestKey);
+      }
       cache.set(playerCurrentBook.id, playerCurrentBook);
     }
   }, [inProgressItems, playerCurrentBook]);
@@ -204,6 +201,11 @@ export function useHomeData(): UseHomeDataReturn {
         const fetchPromises = idsToFetch.map(async (id) => {
           try {
             const book = await apiClient.getItem(id);
+            // Evict oldest entry if cache is full
+            if (cache.size >= BOOK_CACHE_MAX) {
+              const oldestKey = cache.keys().next().value;
+              if (oldestKey !== undefined) cache.delete(oldestKey);
+            }
             cache.set(id, book);
             return book;
           } catch {
@@ -239,6 +241,11 @@ export function useHomeData(): UseHomeDataReturn {
     const fetchPromises = libraryIds.map(async (id) => {
       try {
         const book = await apiClient.getItem(id);
+        // Evict oldest entry if cache is full
+        if (cache.size >= BOOK_CACHE_MAX) {
+          const oldestKey = cache.keys().next().value;
+          if (oldestKey !== undefined) cache.delete(oldestKey);
+        }
         cache.set(id, book);
         return book;
       } catch {
@@ -323,9 +330,8 @@ export function useHomeData(): UseHomeDataReturn {
       }
     });
 
-    // Convert to array and apply Kid Mode filter
-    const allBooks = Array.from(bookMap.values());
-    const filtered = filterForKidMode(allBooks, kidModeEnabled);
+    // Convert to array
+    const filtered = Array.from(bookMap.values());
 
     // If a book is currently playing, ensure it's at the top of the list
     // This provides instant feedback when starting playback, without waiting for API refresh
@@ -339,7 +345,7 @@ export function useHomeData(): UseHomeDataReturn {
     }
 
     return filtered.slice(0, 20);
-  }, [continueListeningItems, inProgressItems, kidModeEnabled, playerCurrentBook]);
+  }, [continueListeningItems, inProgressItems, playerCurrentBook]);
 
   // Your Books - from library store (live updates when adding/removing)
   // Exclude current book from the list, apply Kid Mode filter
@@ -348,8 +354,8 @@ export function useHomeData(): UseHomeDataReturn {
     if (currentBook) {
       books = books.filter((item) => item.id !== currentBook.id);
     }
-    return filterForKidMode(books, kidModeEnabled);
-  }, [libraryBooks, currentBook, kidModeEnabled]);
+    return books;
+  }, [libraryBooks, currentBook]);
 
   // Extract series from downloaded books + in-progress books + favorites
   const userSeries: SeriesWithBooks[] = useMemo(() => {
@@ -677,9 +683,8 @@ export function useHomeData(): UseHomeDataReturn {
       return bAdded - aAdded;
     });
 
-    // Apply Kid Mode filter and limit
-    return filterForKidMode(sorted, kidModeEnabled).slice(0, 20);
-  }, [libraryBooks, kidModeEnabled]);
+    return sorted.slice(0, 20);
+  }, [libraryBooks]);
 
   /**
    * Discover Books - Books not yet in user's listening history
@@ -711,9 +716,8 @@ export function useHomeData(): UseHomeDataReturn {
       return bAdded - aAdded;
     });
 
-    // Apply Kid Mode filter and limit
-    return filterForKidMode(sorted, kidModeEnabled).slice(0, 30);
-  }, [allLibraryItems, inProgressItems, libraryIds, isCacheLoaded, kidModeEnabled]);
+    return sorted.slice(0, 30);
+  }, [allLibraryItems, inProgressItems, libraryIds, isCacheLoaded]);
 
   // Combined loading state (library books load instantly from cache, no loading state needed)
   const isLoading = isLoadingProgress || isLoadingPlaylists;

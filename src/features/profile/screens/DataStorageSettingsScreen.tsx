@@ -43,7 +43,7 @@ import { downloadManager } from '@/core/services/downloadManager';
 import { useLibraryCache } from '@/core/cache';
 import { networkMonitor } from '@/core/services/networkMonitor';
 import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
-import { useDefaultLibrary } from '@/features/library';
+import { useDefaultLibrary } from '@/shared/hooks/useDefaultLibrary';
 import { librarySyncService } from '@/core/services/librarySyncService';
 import { playlistsApi } from '@/core/api/endpoints/playlists';
 import { Playlist } from '@/core/types/library';
@@ -54,16 +54,8 @@ import { SettingsHeader } from '../components/SettingsHeader';
 import { SettingsRow } from '../components/SettingsRow';
 import { SectionHeader } from '../components/SectionHeader';
 import { logger } from '@/shared/utils/logger';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-
-// Format bytes to human readable
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
+import { formatBytes } from '@/shared/utils/format';
+import { useSpineCacheStore } from '@/shared/spine';
 
 // =============================================================================
 // PLAYLIST PICKER MODAL
@@ -108,6 +100,9 @@ function PlaylistPickerModal({
         ]}
         onPress={() => onSelect(item)}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${displayName}, ${itemCount} book${itemCount !== 1 ? 's' : ''}${isSelected ? ', currently selected' : ''}`}
+        accessibilityState={{ selected: isSelected }}
       >
         <View style={styles.playlistInfo}>
           <Text style={[styles.playlistName, { color: colors.black }]}>{displayName}</Text>
@@ -131,7 +126,7 @@ function PlaylistPickerModal({
         {/* Header */}
         <View style={[styles.modalHeader, { borderBottomColor: colors.grayLight }]}>
           <Text style={[styles.modalTitle, { color: colors.black }]}>Choose Playlist</Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+          <TouchableOpacity onPress={onClose} style={styles.modalCloseButton} accessibilityRole="button" accessibilityLabel="Close playlist picker">
             <X size={scale(24)} color={colors.black} strokeWidth={1.5} />
           </TouchableOpacity>
         </View>
@@ -141,7 +136,7 @@ function PlaylistPickerModal({
         </Text>
 
         {/* Create New Button */}
-        <TouchableOpacity style={[styles.createNewButton, { borderBottomColor: colors.grayLight }]} onPress={onCreateNew}>
+        <TouchableOpacity style={[styles.createNewButton, { borderBottomColor: colors.grayLight }]} onPress={onCreateNew} accessibilityRole="button" accessibilityLabel="Create new playlist">
           <Plus size={scale(18)} color={colors.black} strokeWidth={1.5} />
           <Text style={[styles.createNewText, { color: colors.black }]}>Create New Playlist</Text>
         </TouchableOpacity>
@@ -308,7 +303,7 @@ export function DataStorageSettingsScreen() {
 
       Alert.alert('Playlist Linked', `Your library is now syncing with "${playlist.name.startsWith('__sl_') ? 'My Library' : playlist.name}".`);
     } catch (err: any) {
-      Alert.alert('Error', `Could not link playlist: ${err?.message || 'Please try again.'}`);
+      Alert.alert('Error', 'Could not link playlist. Please try again.');
     } finally {
       setIsEnablingSync(false);
     }
@@ -337,7 +332,7 @@ export function DataStorageSettingsScreen() {
 
       Alert.alert('Cloud Sync Enabled', 'Created a new playlist and started syncing.');
     } catch (err: any) {
-      Alert.alert('Error', `Could not create playlist: ${err?.message || 'Please try again.'}`);
+      Alert.alert('Error', 'Could not create playlist. Please try again.');
     } finally {
       setIsEnablingSync(false);
     }
@@ -375,7 +370,7 @@ export function DataStorageSettingsScreen() {
       await librarySyncService.fullSync();
       setIsSyncing(false);
     } catch (err: any) {
-      Alert.alert('Error', `Could not create series playlist: ${err?.message || 'Please try again.'}`);
+      Alert.alert('Error', 'Could not create series playlist. Please try again.');
     }
   }, [library?.id]);
 
@@ -529,7 +524,7 @@ export function DataStorageSettingsScreen() {
               const count = await librarySyncService.resetAndPull();
               Alert.alert('Done', `Restored ${count} books from server.`);
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Could not reset. Please try again.');
+              Alert.alert('Error', 'Could not reset. Please try again.');
             } finally {
               setIsSyncing(false);
             }
@@ -564,6 +559,8 @@ export function DataStorageSettingsScreen() {
           style={[styles.storageOverview, { backgroundColor: colors.white }]}
           onPress={handleManageDownloads}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${formatBytes(totalStorage)} used, ${downloadCount} book${downloadCount !== 1 ? 's' : ''} downloaded, tap to manage`}
         >
           <View style={[styles.storageIcon, { backgroundColor: colors.grayLight }]}>
             <Folder size={scale(24)} color={colors.black} strokeWidth={1.5} />

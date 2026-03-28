@@ -20,6 +20,7 @@ import { BookOpen, CheckCircle, Check, RotateCcw } from 'lucide-react-native';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCompletionSheetStore } from '../stores/completionSheetStore';
+import type { BookMetadata } from '@/core/types';
 import { getCoverUrl } from '@/core/cache';
 import { scale, useTheme } from '@/shared/theme';
 
@@ -49,7 +50,7 @@ export function BookCompletionSheet() {
   }
 
   // Get book metadata
-  const metadata = completionSheetBook.media?.metadata as any;
+  const metadata = completionSheetBook.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
   const coverUrl = getCoverUrl(completionSheetBook.id);
@@ -61,10 +62,11 @@ export function BookCompletionSheet() {
       animationType="slide"
       onRequestClose={dismissCompletionSheet}
     >
-      <Pressable style={styles.overlay} onPress={dismissCompletionSheet}>
+      <Pressable style={styles.overlay} onPress={dismissCompletionSheet} accessibilityRole="button" accessibilityLabel="Close completion sheet">
         <Pressable
           style={[styles.sheet, { paddingBottom: insets.bottom + 16, backgroundColor: colors.background.elevated }]}
           onPress={() => {}}
+          accessibilityRole="none"
         >
           {/* Handle */}
           <View style={styles.handleContainer}>
@@ -75,9 +77,9 @@ export function BookCompletionSheet() {
           <View style={styles.bookInfo}>
             <View style={{ width: scale(72), height: scale(72), borderRadius: scale(8), overflow: 'hidden' }}>
               {coverUrl ? (
-                <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.background.secondary }]} />
+                <Image source={{ uri: coverUrl }} style={[styles.cover, { backgroundColor: colors.background.secondary }]} accessibilityLabel={`Cover of ${title}`} />
               ) : (
-                <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: colors.background.secondary }]}>
+                <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: colors.background.secondary }]} accessible={false}>
                   <BookOpen size={scale(32)} color={colors.text.tertiary} strokeWidth={1.5} />
                 </View>
               )}
@@ -103,6 +105,8 @@ export function BookCompletionSheet() {
               style={[styles.primaryButton, { backgroundColor: colors.accent.primary }]}
               onPress={handleMarkFinished}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Mark as Finished"
             >
               <Check size={scale(20)} color={colors.background.primary} strokeWidth={2.5} />
               <Text style={[styles.primaryButtonText, { color: colors.background.primary }]}>Mark as Finished</Text>
@@ -112,6 +116,8 @@ export function BookCompletionSheet() {
               style={styles.secondaryButton}
               onPress={handleKeepListening}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Listen Again"
             >
               <RotateCcw size={scale(18)} color={colors.accent.primary} strokeWidth={2} />
               <Text style={[styles.secondaryButtonText, { color: colors.accent.primary }]}>Listen Again</Text>
@@ -121,6 +127,8 @@ export function BookCompletionSheet() {
               style={styles.dismissButton}
               onPress={dismissCompletionSheet}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <Text style={[styles.dismissButtonText, { color: colors.text.tertiary }]}>Close</Text>
             </TouchableOpacity>

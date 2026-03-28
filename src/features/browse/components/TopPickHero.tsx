@@ -17,16 +17,16 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
-import { PlayIcon, PauseIcon } from '@/features/player/components/PlayerIcons';
+import { PlayIcon, PauseIcon } from '@/shared/components/PlayerIcons';
 import { useNavigation } from '@react-navigation/native';
 import { secretLibraryColors, secretLibraryDarkColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale } from '@/shared/theme';
 import { apiClient } from '@/core/api';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { haptics } from '@/core/native/haptics';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { usePersonalizedContent } from '@/features/discover/hooks/usePersonalizedContent';
-import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useReadingHistory } from '@/shared/hooks/useReadingHistory';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
@@ -95,11 +95,12 @@ function getBookMetadata(item: LibraryItem | null | undefined): ExtendedBookMeta
 }
 
 function getBookDuration(item: LibraryItem): number {
-  return (item.media as any)?.duration || 0;
+  return item.media?.duration || 0;
 }
 
 function getChapterCount(item: LibraryItem): number {
-  return (item.media as any)?.chapters?.length || 0;
+  if (!item.media || !('chapters' in item.media)) return 0;
+  return item.media.chapters?.length || 0;
 }
 
 function _formatDuration(seconds: number): string {
@@ -459,7 +460,7 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
       {/* Hero Section - Centered like book detail */}
       <View style={[styles.hero, headerHeight ? { paddingTop: headerHeight + scale(20) } : undefined]}>
         {/* Centered Cover */}
-        <TouchableOpacity style={styles.heroCover} onPress={handleCoverPress} onLongPress={handleCoverLongPress} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.heroCover} onPress={handleCoverPress} onLongPress={handleCoverLongPress} activeOpacity={0.9} accessibilityLabel={`Cover art for ${displayLine1}${displayLine2 ? ` ${displayLine2}` : ''}`} accessibilityRole="button">
           <Image source={{ uri: coverUrl }} style={styles.coverImage} contentFit="cover" cachePolicy="memory-disk" />
           <CoverStars bookId={bookId} starSize={scale(28)} />
         </TouchableOpacity>
@@ -473,17 +474,17 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
             {displayLine1}{displayLine2 ? ` ${displayLine2}` : ''}
           </Text>
           <Text style={styles.authorNarratorText} numberOfLines={1}>
-            <Text style={styles.authorText} onPress={handleAuthorPress}>{author}</Text>
+            <Text style={styles.authorText} onPress={handleAuthorPress} accessibilityLabel={`Author ${author}`} accessibilityRole="link">{author}</Text>
             {narrator ? (
               <>
                 <Text style={styles.authorSeparator}>  •  </Text>
-                <Text style={styles.narratorText} onPress={() => handleNarratorPress(narrator)}>{narrator}</Text>
+                <Text style={styles.narratorText} onPress={() => handleNarratorPress(narrator)} accessibilityLabel={`Narrator ${narrator}`} accessibilityRole="link">{narrator}</Text>
               </>
             ) : null}
           </Text>
           {/* Series Link */}
           {seriesInfo && (
-            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7}>
+            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} accessibilityLabel={`Series ${seriesInfo.name}${seriesInfo.sequence ? `, Book ${seriesInfo.sequence}` : ''}`} accessibilityRole="link">
               <Text style={styles.seriesLink}>
                 {seriesInfo.name}{seriesInfo.sequence ? ` · Book ${seriesInfo.sequence}` : ''}
               </Text>
@@ -494,7 +495,7 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
         {/* Action Buttons — clear hierarchy: Play primary, Download secondary, Library tertiary */}
         <View style={styles.actionButtons}>
           {/* Play Button — Primary (solid fill) */}
-          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={handlePlay}>
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={handlePlay} accessibilityLabel={isCurrentlyPlaying ? 'Pause' : 'Play'} accessibilityRole="button">
             {isCurrentlyPlaying ? (
               <PauseIcon color={secretLibraryColors.black} size={14} />
             ) : (
@@ -514,6 +515,9 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
             ]}
             onPress={handleDownload}
             disabled={isDownloaded}
+            accessibilityLabel={isDownloaded ? 'Saved' : 'Download'}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isDownloaded }}
           >
             {isDownloaded ? (
               <CheckIcon color={secretLibraryColors.black} size={14} />
@@ -529,6 +533,8 @@ export const TopPickHero = React.memo(function TopPickHero({ items, onBookPress,
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnTertiary]}
             onPress={handleLibraryToggle}
+            accessibilityLabel={isInLibrary ? 'Remove from library' : 'Add to library'}
+            accessibilityRole="button"
           >
             <Text style={[styles.actionBtnTertiaryText, isInLibrary && { color: secretLibraryColors.gold }]}>
               {isInLibrary ? 'In Library' : '+ Library'}

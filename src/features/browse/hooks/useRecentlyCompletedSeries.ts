@@ -16,7 +16,7 @@ import { useMemo } from 'react';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
 import { parseBookDNA, BookDNA, getDNAQuality } from '@/shared/utils/bookDNA';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 
 function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
   if (item.mediaType !== 'book' || !item.media?.metadata) return {};
@@ -29,9 +29,9 @@ function getTags(item: LibraryItem): string[] {
 }
 
 function getSeriesName(item: LibraryItem): string | null {
-  const metadata = getMetadata(item);
-  const name = (metadata as any)?.seriesName?.replace(/\s*#[\d.]+$/, '')
-    || (metadata as any)?.series?.[0]?.name;
+  const metadata = getMetadata(item) as BookMetadata | undefined;
+  const name = metadata?.seriesName?.replace(/\s*#[\d.]+$/, '')
+    || metadata?.series?.[0]?.name;
   return name || null;
 }
 

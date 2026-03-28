@@ -5,7 +5,7 @@
  * Extracted from playerStore.ts for modularity.
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
 
 // =============================================================================
@@ -38,7 +38,7 @@ export function startListeningSession(
   position: number,
   log: (msg: string) => void = () => {}
 ): void {
-  const title = (book.media?.metadata as any)?.title || 'Unknown Title';
+  const title = (book.media?.metadata as BookMetadata)?.title || 'Unknown Title';
   activeSession = {
     bookId: book.id,
     bookTitle: title,

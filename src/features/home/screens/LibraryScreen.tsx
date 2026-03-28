@@ -42,6 +42,8 @@ import { useToastStore } from '@/shared/hooks/useToast';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { TopNav, TopNavSearchIcon, SkeletonBox, useBookContextMenu } from '@/shared/components';
 import { CoverStars } from '@/shared/components/CoverStars';
+import { ViewModePicker } from '@/shared/components/ViewModePicker';
+import type { ViewMode } from '@/shared/components/ViewModePicker';
 import { useNavigationWithLoading } from '@/shared/hooks';
 import {
   secretLibraryColors as staticColors,
@@ -57,11 +59,12 @@ import { useHomeData } from '../hooks/useHomeData';
 import { useInProgressBooks, useFinishedBooks } from '@/core/hooks/useUserBooks';
 import { useShallow } from 'zustand/react/shallow';
 import { useProgressStore } from '@/core/stores/progressStore';
-import { usePlayerStore } from '@/features/player/stores';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { GLOBAL_MINI_PLAYER_HEIGHT } from '@/navigation/components/GlobalMiniPlayer';
 import { useAppReadyStore } from '@/core/stores/appReadyStore';
 import { useSpineCacheStore } from '../stores/spineCache';
-import { usePlaylists, usePlaylistSettingsStore } from '@/features/playlists';
+import { usePlaylists } from '@/features/playlists';
+import { usePlaylistSettingsStore, type BuiltInViewKey } from '@/shared/stores/playlistSettingsStore';
 
 // Extended metadata with tags
 interface ExtendedBookMetadata extends BookMetadata {
@@ -102,7 +105,7 @@ const GRID_PADDING_NO_MINI_PLAYER = 40;
 // TYPES
 // =============================================================================
 
-type ViewMode = 'shelf' | 'list' | 'grid';  // Shelf (upright spines), List (vertical), or Grid (2-column cards)
+// ViewMode imported from '@/shared/components/ViewModePicker'
 type SortMode = 'lastPlayed' | 'added' | 'title' | 'author' | 'progress' | 'series' | 'duration';
 type SortDirection = 'asc' | 'desc';
 type ContentMode = 'library' | 'lastPlayed' | 'finished' | string;  // What content to show (includes playlist:${id})
@@ -150,37 +153,7 @@ interface IconProps {
   color?: string;
 }
 
-// Shelf icon - upright books on shelf (filled)
-const ShelfIcon = ({ color = '#000' }: IconProps) => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill={color}>
-    <Rect x={3} y={4} width={4} height={14} rx={1} />
-    <Rect x={9} y={6} width={4} height={12} rx={1} />
-    <Rect x={15} y={3} width={4} height={15} rx={1} />
-    <Rect x={2} y={19} width={20} height={2} rx={0.5} />
-  </Svg>
-);
-
-// List icon - horizontal lines (filled)
-const ListIcon = ({ color = '#000' }: IconProps) => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill={color}>
-    <Circle cx={3} cy={6} r={1.5} />
-    <Circle cx={3} cy={12} r={1.5} />
-    <Circle cx={3} cy={18} r={1.5} />
-    <Rect x={7} y={5} width={14} height={2} rx={1} />
-    <Rect x={7} y={11} width={14} height={2} rx={1} />
-    <Rect x={7} y={17} width={14} height={2} rx={1} />
-  </Svg>
-);
-
-// Grid icon - 2x2 squares (filled)
-const GridIcon = ({ color = '#000' }: IconProps) => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill={color}>
-    <Rect x={3} y={3} width={8} height={8} rx={1.5} />
-    <Rect x={13} y={3} width={8} height={8} rx={1.5} />
-    <Rect x={3} y={13} width={8} height={8} rx={1.5} />
-    <Rect x={13} y={13} width={8} height={8} rx={1.5} />
-  </Svg>
-);
+// View mode icons extracted to shared ViewModePicker component
 
 // Globe icon — discover/browse navigation
 const _GlobeIcon = ({ color = '#000', size = 16 }: IconProps & { size?: number }) => (
@@ -337,225 +310,7 @@ function transformToSpineData(
   };
 }
 
-// =============================================================================
-// VIEW MODE PICKER — single button, long-press reveals overlapping capsule
-// The capsule appears on top of the button with the current mode aligned.
-// A sliding circle indicator animates smoothly as the user drags.
-// =============================================================================
-
-const VIEW_MODES: ViewMode[] = ['shelf', 'grid', 'list'];
-const BUTTON_SIZE = 36;
-const INDICATOR_SIZE = 26;
-const CAPSULE_PADDING = 4;
-const CELL_SIZE = INDICATOR_SIZE + 4;
-const CAPSULE_WIDTH = INDICATOR_SIZE + CAPSULE_PADDING * 2;
-const CAPSULE_HEIGHT = CELL_SIZE * VIEW_MODES.length + CAPSULE_PADDING * 2;
-const CAPSULE_RADIUS = CAPSULE_WIDTH / 2;
-const CAPSULE_GAP = 4; // gap between button and capsule
-// Base top offset for indicator within capsule (index 0 position)
-const INDICATOR_BASE_TOP = CAPSULE_PADDING + (CELL_SIZE - INDICATOR_SIZE) / 2;
-
-interface ViewModePickerProps {
-  mode: ViewMode;
-  onModeChange: (mode: ViewMode) => void;
-  iconColor: string;         // icon color on button (collapsed state)
-  activeIconColor: string;   // icon color on white indicator (dark on white)
-  inactiveIconColor: string; // icon color for non-selected options in capsule
-  borderColor: string;       // button & capsule border
-  indicatorColor: string;    // sliding circle fill (white)
-  capsuleBg: string;         // capsule background (dark)
-}
-
-function ViewModePicker({ mode, onModeChange, iconColor, activeIconColor, inactiveIconColor, borderColor, indicatorColor, capsuleBg }: ViewModePickerProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<View>(null);
-  const containerLayout = useRef({ y: 0 });
-  const didOpen = useRef(false);
-  const highlightedRef = useRef(-1);
-
-  // Animated translateY for indicator (uses native driver for smooth animation)
-  const indicatorTranslateY = useRef(new Animated.Value(0)).current;
-
-  const getModeIcon = (m: ViewMode, color: string) => {
-    switch (m) {
-      case 'shelf': return <ShelfIcon color={color} />;
-      case 'grid': return <GridIcon color={color} />;
-      case 'list': return <ListIcon color={color} />;
-    }
-  };
-
-  // Map pageY to capsule option index (capsule is fixed below button)
-  const getOptionIndex = (pageY: number) => {
-    const capsuleAbsTop = containerLayout.current.y + BUTTON_SIZE + CAPSULE_GAP;
-    const relativeY = pageY - capsuleAbsTop - CAPSULE_PADDING;
-    const index = Math.floor(relativeY / CELL_SIZE);
-    return index >= 0 && index < VIEW_MODES.length ? index : -1;
-  };
-
-  const animateIndicator = useCallback((toIndex: number) => {
-    Animated.spring(indicatorTranslateY, {
-      toValue: toIndex * CELL_SIZE,
-      useNativeDriver: true,
-      tension: 300,
-      friction: 20,
-    }).start();
-  }, [indicatorTranslateY]);
-
-  // Clean up longPressTimer on unmount
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-      }
-    };
-  }, []);
-
-  const handlePressIn = useCallback((_e: GestureResponderEvent) => {
-    didOpen.current = false;
-    containerRef.current?.measureInWindow((_x, y) => {
-      containerLayout.current = { y };
-    });
-    longPressTimer.current = setTimeout(() => {
-      didOpen.current = true;
-      const modeIdx = VIEW_MODES.indexOf(mode);
-      // Set indicator to current mode position (no animation)
-      indicatorTranslateY.setValue(modeIdx * CELL_SIZE);
-      highlightedRef.current = modeIdx;
-      setHighlightedIndex(modeIdx);
-      setIsOpen(true);
-      haptics.selection();
-    }, 300);
-  }, [mode, indicatorTranslateY]);
-
-  const handleMove = useCallback((e: GestureResponderEvent) => {
-    if (!didOpen.current) return;
-    const newIndex = getOptionIndex(e.nativeEvent.pageY);
-    if (newIndex >= 0 && newIndex !== highlightedRef.current) {
-      highlightedRef.current = newIndex;
-      haptics.selection();
-      animateIndicator(newIndex);
-      setHighlightedIndex(newIndex);
-    }
-  }, [animateIndicator]);
-
-  const handlePressOut = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-
-    if (!didOpen.current) {
-      // Short tap — cycle to next mode
-      const currentIndex = VIEW_MODES.indexOf(mode);
-      const nextMode = VIEW_MODES[(currentIndex + 1) % VIEW_MODES.length];
-      onModeChange(nextMode);
-      return;
-    }
-
-    // Long press release — select highlighted
-    const idx = highlightedRef.current;
-    if (idx >= 0) {
-      const selectedMode = VIEW_MODES[idx];
-      if (selectedMode !== mode) {
-        onModeChange(selectedMode);
-      }
-    }
-    setIsOpen(false);
-    setHighlightedIndex(-1);
-    highlightedRef.current = -1;
-    didOpen.current = false;
-  }, [mode, onModeChange]);
-
-  return (
-    <View
-      ref={containerRef}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderGrant={handlePressIn}
-      onResponderMove={handleMove}
-      onResponderRelease={handlePressOut}
-      onResponderTerminate={handlePressOut}
-      style={viewPickerStyles.wrapper}
-    >
-      {/* Button (always rendered to maintain layout size) */}
-      <View style={[viewPickerStyles.button, { borderColor, opacity: isOpen ? 0 : 1 }]}>
-        {getModeIcon(mode, iconColor)}
-      </View>
-
-      {/* Capsule overlapping button — current mode aligned with button center */}
-      {isOpen && (
-        <View style={[viewPickerStyles.capsule, {
-          backgroundColor: capsuleBg,
-          borderColor,
-        }]}>
-          {/* Animated sliding indicator */}
-          <Animated.View style={[
-            viewPickerStyles.indicator,
-            {
-              backgroundColor: indicatorColor,
-              transform: [{ translateY: indicatorTranslateY }],
-            },
-          ]} />
-          {VIEW_MODES.map((m) => {
-            const isActive = (highlightedIndex >= 0 ? VIEW_MODES[highlightedIndex] : mode) === m;
-            return (
-              <View key={m} style={viewPickerStyles.cell}>
-                {getModeIcon(m, isActive ? activeIconColor : inactiveIconColor)}
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const viewPickerStyles = StyleSheet.create({
-  wrapper: {
-    position: 'relative',
-    zIndex: 100,
-  },
-  button: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
-    borderRadius: BUTTON_SIZE / 2,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  capsule: {
-    position: 'absolute',
-    top: BUTTON_SIZE + CAPSULE_GAP,
-    right: 0,
-    width: CAPSULE_WIDTH,
-    height: CAPSULE_HEIGHT,
-    borderRadius: CAPSULE_RADIUS,
-    borderWidth: 1,
-    padding: CAPSULE_PADDING,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  indicator: {
-    position: 'absolute',
-    top: INDICATOR_BASE_TOP,
-    width: INDICATOR_SIZE,
-    height: INDICATOR_SIZE,
-    borderRadius: INDICATOR_SIZE / 2,
-  },
-  cell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+// ViewModePicker extracted to '@/shared/components/ViewModePicker'
 
 // =============================================================================
 // MAIN COMPONENT
@@ -675,8 +430,28 @@ export function LibraryScreen() {
   );
 
   // Load spine manifest on mount to ensure spines render correctly
+  // Also check pending community spine submissions for status updates
   useEffect(() => {
     useLibraryCache.getState().loadSpineManifest();
+
+    // Check if any submitted spines have been approved/denied
+    useSpineCacheStore.getState().checkPendingSubmissions().then((resolved) => {
+      for (const item of resolved) {
+        if (item.status === 'approved') {
+          useToastStore.getState().addToast({
+            type: 'success',
+            message: `Spine approved: ${item.bookTitle}`,
+            duration: 5000,
+          });
+        } else if (item.status === 'denied') {
+          useToastStore.getState().addToast({
+            type: 'info',
+            message: `Spine not accepted: ${item.bookTitle}`,
+            duration: 5000,
+          });
+        }
+      }
+    });
   }, []);
 
   // Note: Auto-refresh now happens during app boot (App.tsx) to prevent library flash
@@ -813,8 +588,8 @@ export function LibraryScreen() {
       for (const id of allItemOrder) {
         if (id in builtInMap) {
           // Built-in view — check if hidden
-          const builtInKey = id.replace('__', '') as string;
-          if (!hiddenSet.has(builtInKey as any)) {
+          const builtInKey = id.replace('__', '') as BuiltInViewKey;
+          if (!hiddenSet.has(builtInKey)) {
             options.push(builtInMap[id]);
             addedKeys.add(id);
           }
@@ -826,8 +601,8 @@ export function LibraryScreen() {
 
       // Add any items not in the stored order (newly added)
       for (const [key, item] of Object.entries(builtInMap)) {
-        const builtInKey = key.replace('__', '') as string;
-        if (!addedKeys.has(key) && !hiddenSet.has(builtInKey as any)) {
+        const builtInKey = key.replace('__', '') as BuiltInViewKey;
+        if (!addedKeys.has(key) && !hiddenSet.has(builtInKey)) {
           options.push(item);
         }
       }
@@ -845,7 +620,7 @@ export function LibraryScreen() {
 
     // Add visible built-in views
     for (const opt of BASE_CONTENT_OPTIONS) {
-      if (!hiddenSet.has(opt.key as any)) {
+      if (!hiddenSet.has(opt.key as BuiltInViewKey)) {
         options.push(opt);
       }
     }
@@ -1219,6 +994,8 @@ export function LibraryScreen() {
         style={[styles.verticalListItem, { borderBottomColor: colors.grayLine }]}
         onPress={() => handleBookPress(book)}
         onLongPress={() => handleBookLongPress(book)}
+        accessibilityLabel={`Open ${book.title} by ${book.author}`}
+        accessibilityRole="button"
       >
         <Image
           source={{ uri: coverUrl }}
@@ -1272,6 +1049,8 @@ export function LibraryScreen() {
         style={styles.gridCard}
         onPress={() => handleBookPress(book)}
         onLongPress={() => handleBookLongPress(book)}
+        accessibilityLabel={`Open ${book.title} by ${book.author}`}
+        accessibilityRole="button"
       >
         <View style={styles.gridCoverContainer}>
           <Image
@@ -1376,6 +1155,8 @@ export function LibraryScreen() {
         <Pressable
           style={[styles.browseButton, { backgroundColor: colors.black }]}
           onPress={handleBrowsePress}
+          accessibilityLabel="Browse library"
+          accessibilityRole="button"
         >
           <Text style={[styles.browseButtonText, { color: colors.white }]}>Browse Library →</Text>
         </Pressable>
@@ -1486,6 +1267,8 @@ export function LibraryScreen() {
                   }
                 }}
                 activeOpacity={group.name === 'No Series' ? 1 : 0.6}
+                accessibilityLabel={`Open series ${group.name}`}
+                accessibilityRole="link"
               >
                 <Text style={[styles.seriesSectionName, { color: colors.gray }]} numberOfLines={1}>
                   {group.name.toUpperCase()}
@@ -1602,6 +1385,8 @@ export function LibraryScreen() {
         <Pressable
           style={styles.dropdownOverlay}
           onPress={() => setShowSortDropdown(false)}
+          accessibilityLabel="Close sort menu"
+          accessibilityRole="button"
         >
           <View style={[styles.dropdownMenuWide, { backgroundColor: isDarkMode ? colors.shelfBg : colors.white }]}>
             {SORT_OPTIONS.map((option) => {
@@ -1611,6 +1396,9 @@ export function LibraryScreen() {
                   key={option.key}
                   style={styles.contentDropdownItem}
                   onPress={() => handleSortSelect(option.key)}
+                  accessibilityLabel={`Sort by ${option.label}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sortMode === option.key }}
                 >
                   <Text
                     style={[
@@ -1643,6 +1431,8 @@ export function LibraryScreen() {
         <Pressable
           style={styles.dropdownOverlay}
           onPress={() => setShowContentDropdown(false)}
+          accessibilityLabel="Close content menu"
+          accessibilityRole="button"
         >
           <View style={[styles.dropdownMenuWide, { backgroundColor: isDarkMode ? colors.shelfBg : colors.white }]}>
             {/* Sync at top */}
@@ -1650,6 +1440,8 @@ export function LibraryScreen() {
               <TouchableOpacity
                 style={styles.contentDropdownSync}
                 onPress={() => { setShowContentDropdown(false); handleSyncPress(); }}
+                accessibilityLabel="Sync library"
+                accessibilityRole="button"
               >
                 <RefreshIcon color={colors.black} />
                 <Text style={[styles.contentDropdownSyncText, { color: colors.black }]}>
@@ -1668,6 +1460,9 @@ export function LibraryScreen() {
                     key={option.key}
                     style={styles.contentDropdownItem}
                     onPress={() => handleContentSelect(option.key)}
+                    accessibilityLabel={`Show ${option.label}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: contentMode === option.key }}
                   >
                     <View style={styles.contentDropdownLeft}>
                       <Text
@@ -1701,6 +1496,8 @@ export function LibraryScreen() {
                 setShowContentDropdown(false);
                 handleCreateNewPlaylist();
               }}
+              accessibilityLabel="Add new playlist"
+              accessibilityRole="button"
             >
               <Text style={styles.contentDropdownActionText}>
                 + Add Playlist
@@ -1741,12 +1538,16 @@ export function LibraryScreen() {
               <TouchableOpacity
                 style={styles.playlistNameModalButton}
                 onPress={() => setShowPlaylistNameModal(false)}
+                accessibilityLabel="Cancel"
+                accessibilityRole="button"
               >
                 <Text style={[styles.playlistNameModalButtonText, { color: colors.black, opacity: 0.5 }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.playlistNameModalButton}
                 onPress={handlePlaylistNameSubmit}
+                accessibilityLabel="Create playlist"
+                accessibilityRole="button"
               >
                 <Text style={[styles.playlistNameModalButtonText, { color: '#F3B60C' }]}>Create</Text>
               </TouchableOpacity>

@@ -49,7 +49,8 @@
       "distribution": "store",
       "ios": {
         "resourceClass": "m-medium",
-        "image": "latest"
+        "image": "latest",
+        "credentialsSource": "local"
       },
       "android": {
         "buildType": "app-bundle",
@@ -68,12 +69,19 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "your-app-store-connect-app-id"
+        "appleId": "REPLACE_WITH_APPLE_ID",
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID",
+        "appleTeamId": "DX7MCA54J8"
       },
       "android": {
         "track": "production",
         "releaseStatus": "completed"
+      }
+    },
+    "internal": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }

@@ -163,9 +163,6 @@ describe('endpoints', () => {
       expect(endpoints.items.cover('item-789')).toBe('/api/items/item-789/cover');
     });
 
-    it('should generate item play endpoint', () => {
-      expect(endpoints.items.play('item-789')).toBe('/api/items/item-789/play');
-    });
   });
 
   describe('playback endpoints', () => {

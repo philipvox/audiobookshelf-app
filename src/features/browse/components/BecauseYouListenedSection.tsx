@@ -14,9 +14,9 @@ import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLi
 import { useCoverUrl } from '@/core/cache';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { scale, wp } from '@/shared/theme';
-import { CompleteBadgeOverlay } from '@/features/completion';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
 import { CoverStars } from '@/shared/components/CoverStars';
-import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useReadingHistory } from '@/shared/hooks/useReadingHistory';
 import { useProgressStore } from '@/core/stores/progressStore';
 
 // Grid layout: 2 columns
@@ -57,7 +57,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress, onLongPre
   const author = metadata.authorName || metadata.authors?.[0]?.name || '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8} accessibilityLabel={`Open ${title}${author ? ` by ${author}` : ''}`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}
@@ -65,6 +65,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress, onLongPre
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={200}
+          accessibilityLabel={`Cover art for ${title}`}
         />
         <CoverStars bookId={item.id} />
         <CompleteBadgeOverlay bookId={item.id} size="small" />
@@ -81,7 +82,7 @@ const GridBookCard = React.memo(function GridBookCard({ item, onPress, onLongPre
   );
 });
 
-export function BecauseYouListenedSection({
+export const BecauseYouListenedSection = React.memo(function BecauseYouListenedSection({
   items,
   onBookPress,
   onBookLongPress,
@@ -183,7 +184,7 @@ export function BecauseYouListenedSection({
           </Text>
         </View>
         {onViewMore && recommendations.length > DISPLAY_LIMIT && (
-          <TouchableOpacity style={styles.viewAllButton} onPress={() => onViewMore(sourceBook.id, sourceTitle)}>
+          <TouchableOpacity style={styles.viewAllButton} onPress={() => onViewMore(sourceBook.id, sourceTitle)} accessibilityLabel={`View all recommendations based on ${sourceTitle}`} accessibilityRole="button">
             <Text style={[styles.viewAllText, { color: colors.gray }]}>View All</Text>
             <ChevronRight size={16} color={colors.gray} />
           </TouchableOpacity>
@@ -203,7 +204,7 @@ export function BecauseYouListenedSection({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

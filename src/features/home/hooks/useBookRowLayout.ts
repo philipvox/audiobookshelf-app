@@ -88,8 +88,9 @@ export function useBookRowLayout(
   // Get spine cache for fast lookups
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
-  // Server spine settings
+  // Server + community spine settings
   const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const useCommunitySpines = useSpineCacheStore((state) => state.useCommunitySpines);
   const isHydrated = useSpineCacheStore((state) => state.isHydrated);
 
   // Per-row dimension fingerprint — only triggers recalc when a book IN THIS ROW
@@ -97,7 +98,7 @@ export function useBookRowLayout(
   // Replaces global serverSpineDimensionsVersion counter that caused all rows to recalc.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rowDimsSelector = useCallback((state: any) => {
-    if (!state.isHydrated || !state.useServerSpines) return 0;
+    if (!state.isHydrated || (!state.useServerSpines && !state.useCommunitySpines)) return 0;
     let hash = 0;
     for (const book of books) {
       const d = state.serverSpineDimensions[book.id];
@@ -167,7 +168,7 @@ export function useBookRowLayout(
         const ratio = baseWidth / baseHeight;
         height = targetHeight;
         width = Math.round(targetHeight * ratio);
-      } else if (useServerSpines && cachedServerDims) {
+      } else if ((useServerSpines || useCommunitySpines) && cachedServerDims) {
         // Server spines: Fit within max bounds preserving aspect ratio
         const { width: serverWidth, height: serverHeight } = cachedServerDims;
 
@@ -184,6 +185,7 @@ export function useBookRowLayout(
         const fitted = fitToBoundingBox(baseWidth, baseHeight, maxW, maxH);
         width = fitted.width;
         height = fitted.height;
+
       }
 
       // Calculate touch padding for small books
@@ -226,7 +228,7 @@ export function useBookRowLayout(
         touchPadding,
       };
     });
-  }, [books, scaleFactor, leanAngle, minTouchTarget, enableLeaning, fixedHeight, getSpineData, useServerSpines, rowDimsFingerprint, isHydrated]);
+  }, [books, scaleFactor, leanAngle, minTouchTarget, enableLeaning, fixedHeight, getSpineData, useServerSpines, useCommunitySpines, rowDimsFingerprint, isHydrated]);
 }
 
 /**

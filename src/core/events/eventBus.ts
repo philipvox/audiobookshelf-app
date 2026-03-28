@@ -24,7 +24,7 @@ class TypedEventBus {
   constructor(options: EventBusOptions = {}) {
     this.options = {
       debug: __DEV__,
-      maxListeners: 10,
+      maxListeners: 25,
       ...options,
     };
   }

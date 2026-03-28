@@ -34,3 +34,4 @@ export {
 } from './audioDebug';
 export * from './format';
 export * from './logger';
+export { withTimeout } from './timeout';

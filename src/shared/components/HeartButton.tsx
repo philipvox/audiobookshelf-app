@@ -136,6 +136,9 @@ export function HeartButton({
       activeOpacity={0.7}
       hitSlop={{ top: hitSlop, bottom: hitSlop, left: hitSlop, right: hitSlop }}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={isFavorite ? 'Remove from library' : 'Add to library'}
+      accessibilityState={{ selected: isFavorite, disabled }}
     >
       {animated ? (
         <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>

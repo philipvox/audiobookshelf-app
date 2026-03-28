@@ -50,10 +50,13 @@ export const userApi = {
    * Sets isFinished=true and progress=1 (100%)
    */
   markAsFinished: async (itemId: string, duration?: number): Promise<MediaProgress> => {
+    if (!duration || duration <= 0) {
+      throw new Error(`markAsFinished: invalid duration=${duration} for ${itemId} — refusing to sync`);
+    }
     return apiClient.updateProgress(itemId, {
       isFinished: true,
       progress: 1,
-      currentTime: duration ?? 0,
+      currentTime: duration,
     });
   },
 

@@ -23,6 +23,17 @@ import { REWIND_STEP, REWIND_INTERVAL, FF_STEP } from '../constants';
 import { clampPosition } from '../utils/progressCalculator';
 import { createLogger } from '@/shared/utils/logger';
 
+// Lazy import to break circular dependency: seekingStore ↔ playerStore
+// Typed getter instead of raw require() for compile-time safety
+type PlayerStoreType = typeof import('./playerStore');
+let _playerStoreModule: PlayerStoreType | null = null;
+function getPlayerStore() {
+  if (!_playerStoreModule) {
+    _playerStoreModule = require('./playerStore') as PlayerStoreType;
+  }
+  return _playerStoreModule.usePlayerStore;
+}
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -35,6 +46,9 @@ interface SeekingState {
   seekStartPosition: number;   // Where seek started (for delta display)
   seekDirection: SeekDirection | null;
   lastSeekTime: number | null; // Timestamp of last seek completion (for debouncing progress saves)
+  positionGeneration: number;  // Monotonic counter incremented on every seek/chapter jump.
+                               // Used by playerStore.updatePlaybackState to detect and discard
+                               // stale position updates from the 100ms polling interval.
 }
 
 interface SeekingActions {
@@ -118,9 +132,41 @@ const log = createLogger('SeekingStore');
 let seekInterval: NodeJS.Timeout | null = null;
 // Fix MEDIUM: Track if an interval callback is in progress to prevent overlapping
 let seekIntervalInProgress = false;
-// Safety timeout: auto-reset isSeeking if stuck for more than 10 seconds
+// Generation counter to detect stale interval callbacks after stop/restart
+let seekIntervalGeneration = 0;
+// Safety timeout: auto-reset isSeeking if stuck for more than 5 seconds
 let seekingSafetyTimeout: NodeJS.Timeout | null = null;
-const MAX_SEEKING_DURATION_MS = 10000;
+const MAX_SEEKING_DURATION_MS = 5000;
+
+/**
+ * Start (or restart) the safety timeout that auto-resets isSeeking.
+ * Called by every code path that sets isSeeking = true.
+ * If the seek completes normally, the timeout is cleared by commitSeek/cancelSeek/seekTo/resetSeekingState.
+ */
+function armSafetyTimeout(get: () => SeekingState & SeekingActions) {
+  if (seekingSafetyTimeout) clearTimeout(seekingSafetyTimeout);
+  seekingSafetyTimeout = setTimeout(async () => {
+    if (get().isSeeking) {
+      log.warn('Seeking stuck for >5s — committing current position and resetting');
+      const { seekPosition } = get();
+      try {
+        await audioService.seekTo(seekPosition);
+      } catch (err) {
+        log.warn('Safety timeout seekTo failed:', err);
+      }
+      get().resetSeekingState();
+    }
+    seekingSafetyTimeout = null;
+  }, MAX_SEEKING_DURATION_MS);
+}
+
+/** Clear the safety timeout (called when seek completes normally). */
+function disarmSafetyTimeout() {
+  if (seekingSafetyTimeout) {
+    clearTimeout(seekingSafetyTimeout);
+    seekingSafetyTimeout = null;
+  }
+}
 
 // =============================================================================
 // STORE
@@ -137,6 +183,7 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
     seekStartPosition: 0,
     seekDirection: null,
     lastSeekTime: null,
+    positionGeneration: 0,
 
     // =========================================================================
     // ACTIONS
@@ -146,28 +193,15 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       log.debug(`startSeeking: position=${position.toFixed(1)}, direction=${direction || 'none'}`);
 
       // Safety: auto-reset if seeking gets stuck (prevents blocking all position updates)
-      if (seekingSafetyTimeout) clearTimeout(seekingSafetyTimeout);
-      seekingSafetyTimeout = setTimeout(async () => {
-        if (get().isSeeking) {
-          log.warn('Seeking stuck for >10s — committing current position and resetting');
-          // Send final seekTo so audio position matches the last UI position
-          const { seekPosition } = get();
-          try {
-            await audioService.seekTo(seekPosition);
-          } catch (err) {
-            log.warn('Safety timeout seekTo failed:', err);
-          }
-          get().resetSeekingState();
-        }
-        seekingSafetyTimeout = null;
-      }, MAX_SEEKING_DURATION_MS);
+      armSafetyTimeout(get);
 
-      set({
+      set((s) => ({
         isSeeking: true,
         seekPosition: position,
         seekStartPosition: position,
         seekDirection: direction || null,
-      });
+        positionGeneration: s.positionGeneration + 1,
+      }));
     },
 
     updateSeekPosition: async (newPosition: number, duration: number) => {
@@ -197,8 +231,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       log.debug(`commitSeek: finalPosition=${seekPosition.toFixed(1)}`);
 
-      // Clear safety timeout
-      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
+      // Clear safety timeout — seek completed normally
+      disarmSafetyTimeout();
 
       // Ensure audio is at final position - audioService owns position
       await audioService.seekTo(seekPosition);
@@ -221,8 +255,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       log.debug(`cancelSeek: returning to ${seekStartPosition.toFixed(1)}`);
 
-      // Clear safety timeout
-      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
+      // Clear safety timeout — seek completed normally
+      disarmSafetyTimeout();
 
       // Return to original position - audioService owns position
       await audioService.seekTo(seekStartPosition);
@@ -240,22 +274,26 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
 
       log.debug(`seekTo: ${clampedPos.toFixed(1)}`);
 
-      // Fix: Clear safety timeout from any prior startSeeking call to prevent interference
-      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
+      // Arm safety timeout: if audioService.seekTo hangs, isSeeking will be auto-reset
+      // This replaces any prior timeout (e.g., from startSeeking) with a fresh one
+      armSafetyTimeout(get);
 
       // CRITICAL: Set isSeeking BEFORE the seek so the 100ms polling in playerStore
       // doesn't overwrite position/isPlaying with stale native values during the seek window.
       // Without this, skipForward/skipBackward/jumpToChapter cause a glitch where the
       // native player briefly reports the OLD position and isPlaying=false, which gets
       // pushed to the UI causing a play-stop-play stutter.
-      set({
+      // Also bump positionGeneration so any in-flight updatePlaybackState calls from the
+      // polling interval will detect the generation mismatch and discard their stale position.
+      set((s) => ({
         isSeeking: true,
         seekPosition: clampedPos,
-      });
+        positionGeneration: s.positionGeneration + 1,
+      }));
 
       // AWAIT seek to prevent race condition where playback continues
       // while seeking is still in progress (caused skip back bug)
-      await audioService.seekTo(clampedPos).catch((err) => {
+      await audioService.seekTo(clampedPos).catch((err: unknown) => {
         log.warn(`seekTo failed: ${err}`);
       });
 
@@ -265,13 +303,15 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
           bookId,
           clampedPos,
           duration
-        ).catch(() => {});
+        ).catch((e) => log.warn('[SeekingStore] saveProgressLocal after seek failed', e));
       }
 
       // Fix: Update playerStore's position to the clamped value before clearing isSeeking
       // This prevents the next playback state callback from flashing the old position
-      const { usePlayerStore } = require('./playerStore');
-      usePlayerStore.setState({ position: clampedPos });
+      getPlayerStore().setState({ position: clampedPos });
+
+      // Clear safety timeout — seek completed normally
+      disarmSafetyTimeout();
 
       // Clear isSeeking and record seek time
       set({
@@ -300,6 +340,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       // Pause playback during continuous seek
       await onPause();
 
+      // Arm safety timeout — continuous seeking can get stuck if interval errors out
+      armSafetyTimeout(get);
+
       // Enter seeking mode
       set({
         isSeeking: true,
@@ -313,15 +356,21 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       // Immediate first step
       const firstNewPosition = Math.max(0, Math.min(duration, position + step));
       set({ seekPosition: firstNewPosition });
-      await audioService.seekTo(firstNewPosition).catch(err => {
+      await audioService.seekTo(firstNewPosition).catch((err: unknown) => {
         log.warn('Continuous seek initial step failed:', err);
       });
 
       // Start interval
       // Fix MEDIUM: Reset in-progress flag
       seekIntervalInProgress = false;
+      // Bump generation so any late-firing callbacks from a previous interval are discarded
+      const thisGeneration = ++seekIntervalGeneration;
 
       seekInterval = setInterval(async () => {
+        // Discard stale callback from a previous interval generation
+        if (thisGeneration !== seekIntervalGeneration) {
+          return;
+        }
         // Fix MEDIUM: Prevent overlapping interval callbacks
         if (seekIntervalInProgress) {
           log.debug('Skipping interval - previous callback still in progress');
@@ -342,15 +391,14 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
           }
 
           // Fix: Read duration from playerStore inside interval to avoid stale closure
-          const { usePlayerStore } = require('./playerStore');
-          const currentDuration = usePlayerStore.getState().duration;
+          const currentDuration = getPlayerStore().getState().duration;
           const newPosition = Math.max(0, Math.min(currentDuration, state.seekPosition + step));
 
           // Stop at boundaries
           if ((direction === 'backward' && newPosition <= 0) ||
               (direction === 'forward' && newPosition >= currentDuration)) {
             set({ seekPosition: newPosition });
-            await audioService.seekTo(newPosition).catch(err => {
+            await audioService.seekTo(newPosition).catch((err: unknown) => {
               log.warn('Continuous seek boundary step failed:', err);
             });
             await get().stopContinuousSeeking();
@@ -358,7 +406,7 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
           }
 
           // Fix MEDIUM: Set position AFTER successful seek to prevent state inconsistency
-          await audioService.seekTo(newPosition).catch(err => {
+          await audioService.seekTo(newPosition).catch((err: unknown) => {
             log.warn('Continuous seek step failed:', err);
             // Stop seeking on repeated errors to prevent stuck UI
             if (seekInterval) {
@@ -380,6 +428,9 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
     stopContinuousSeeking: async () => {
       log.debug('stopContinuousSeeking');
 
+      // Bump generation to invalidate any pending interval callbacks
+      seekIntervalGeneration++;
+
       // Clear interval
       if (seekInterval) {
         clearInterval(seekInterval);
@@ -391,6 +442,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
     },
 
     clearSeekInterval: () => {
+      // Bump generation to invalidate any pending interval callbacks
+      seekIntervalGeneration++;
       if (seekInterval) {
         clearInterval(seekInterval);
         seekInterval = null;
@@ -400,6 +453,8 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
     },
 
     resetSeekingState: () => {
+      // Bump generation to invalidate any pending interval callbacks
+      seekIntervalGeneration++;
       // Clear interval first
       if (seekInterval) {
         clearInterval(seekInterval);
@@ -408,7 +463,7 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
       // Fix MEDIUM: Reset in-progress flag
       seekIntervalInProgress = false;
       // Clear safety timeout
-      if (seekingSafetyTimeout) { clearTimeout(seekingSafetyTimeout); seekingSafetyTimeout = null; }
+      disarmSafetyTimeout();
 
       set({
         isSeeking: false,
@@ -416,6 +471,7 @@ export const useSeekingStore = create<SeekingState & SeekingActions>()(
         seekStartPosition: 0,
         seekDirection: null,
         lastSeekTime: null,
+        positionGeneration: 0,
       });
     },
   }))

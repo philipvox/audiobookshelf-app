@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { scale, useTheme } from '@/shared/theme';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { GLOBAL_MINI_PLAYER_HEIGHT } from '@/navigation/components/GlobalMiniPlayer';
 import { BOTTOM_NAV_HEIGHT } from '@/constants/layout';
 

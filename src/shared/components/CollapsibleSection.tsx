@@ -105,39 +105,37 @@ export function CollapsibleSection({
 
   return (
     <View style={styles.container} testID={testID}>
-      {/* Header row with title and collapse toggle */}
-      <View style={styles.headerRow}>
-        {/* Title - navigable if onTitlePress provided */}
+      {/* Header row — uppercase monospace label with count */}
+      <Pressable
+        style={styles.headerRow}
+        onPress={toggleExpanded}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
+        accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} ${title} section`}
+      >
         {onTitlePress && !isStandalone ? (
-          <Pressable onPress={handleTitlePress} style={styles.titleContainer}>
-            <Text style={[styles.title, { color: colors.black }]} numberOfLines={1}>
-              {title}
-              <Text style={[styles.count, { color: colors.gray }]}> ({count})</Text>
+          <Pressable
+            onPress={handleTitlePress}
+            style={styles.titleContainer}
+            accessibilityRole="link"
+            accessibilityLabel={`Navigate to ${title}`}
+          >
+            <Text style={[styles.title, { color: colors.gray }]} numberOfLines={1}>
+              {title.toUpperCase()}
             </Text>
           </Pressable>
         ) : (
           <View style={styles.titleContainer}>
-            <Text style={[styles.title, { color: colors.black }]} numberOfLines={1}>
-              {title}
-              <Text style={[styles.count, { color: colors.gray }]}> ({count})</Text>
+            <Text style={[styles.title, { color: colors.gray }]} numberOfLines={1}>
+              {title.toUpperCase()}
             </Text>
           </View>
         )}
-
-        {/* Collapse/Expand toggle button - far right to avoid misclicks */}
-        <Pressable
-          onPress={toggleExpanded}
-          style={styles.collapseButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: isExpanded }}
-          accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} ${title} section`}
-        >
-          <Animated.View style={{ transform: [{ rotate: chevronRotation }] }}>
-            <ChevronDown size={scale(20)} color={colors.gray} strokeWidth={2} />
-          </Animated.View>
-        </Pressable>
-      </View>
+        <Text style={[styles.count, { color: colors.gray }]}>{count}</Text>
+        <Animated.View style={[styles.chevronIcon, { transform: [{ rotate: chevronRotation }] }]}>
+          <ChevronDown size={scale(14)} color={colors.gray} strokeWidth={2} />
+        </Animated.View>
+      </Pressable>
 
       {/* Content - only rendered when expanded */}
       {isExpanded && (
@@ -151,29 +149,32 @@ export function CollapsibleSection({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: scale(36),
+    marginBottom: scale(20),
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: scale(16),
-    marginTop: scale(8),
-  },
-  collapseButton: {
-    padding: scale(4),
-    marginLeft: scale(12), // Space between title and chevron
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   titleContainer: {
     flex: 1,
+    marginRight: 8,
   },
   title: {
-    fontFamily: secretLibraryFonts.playfair.regular,
-    fontSize: scale(26),
-    fontWeight: '400',
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    letterSpacing: 1,
   },
   count: {
     fontFamily: secretLibraryFonts.jetbrainsMono.regular,
     fontSize: scale(10),
+    letterSpacing: 0.5,
+    marginRight: 4,
+  },
+  chevronIcon: {
+    marginLeft: 2,
   },
   content: {
     // Content container - no special styling needed

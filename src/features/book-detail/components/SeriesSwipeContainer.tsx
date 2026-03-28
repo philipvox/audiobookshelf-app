@@ -11,10 +11,11 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   TouchableOpacity,
   ScrollView,
   Platform,
+  TextStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -26,9 +27,9 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { PlayIcon } from '@/features/player/components/PlayerIcons';
+import { PlayIcon } from '@/shared/components/PlayerIcons';
 import { useNavigation } from '@react-navigation/native';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
 import { getSeriesNavigationInfo, useCoverUrl } from '@/core/cache';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { scale } from '@/shared/theme';
@@ -40,8 +41,7 @@ import {
   secretLibraryColors as staticColors,
 } from '@/shared/theme/secretLibrary';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.2;
+const SWIPE_THRESHOLD_RATIO = 0.2;
 const VELOCITY_THRESHOLD = 500;
 const RUBBER_BAND_FACTOR = 0.3;
 const ANIMATION_DURATION = 250;
@@ -69,13 +69,13 @@ interface SeriesSwipeContainerProps {
 
 // Chevron icons
 const ChevronLeftIcon = ({ color }: { color: string }) => (
-  <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
     <Path d="M15 18l-6-6 6-6" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const ChevronRightIcon = ({ color }: { color: string }) => (
-  <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
     <Path d="M9 18l6-6-6-6" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
@@ -99,6 +99,8 @@ export function SeriesNavigationArrows() {
           onPress={navigateToPrevious}
           activeOpacity={0.7}
           hitSlop={{ top: 20, bottom: 20, left: 10, right: 30 }}
+          accessibilityRole="button"
+          accessibilityLabel="Previous book in series"
         >
           <ChevronLeftIcon color={colors.gray} />
         </TouchableOpacity>
@@ -109,6 +111,8 @@ export function SeriesNavigationArrows() {
           onPress={navigateToNext}
           activeOpacity={0.7}
           hitSlop={{ top: 20, bottom: 20, left: 30, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Next book in series"
         >
           <ChevronRightIcon color={colors.gray} />
         </TouchableOpacity>
@@ -134,10 +138,10 @@ const arrowStyles = StyleSheet.create({
     zIndex: 10,
   },
   arrowLeft: {
-    padding: scale(8),
+    padding: scale(14),
   },
   arrowRight: {
-    padding: scale(8),
+    padding: scale(14),
     marginLeft: 'auto',
   },
 });
@@ -161,27 +165,15 @@ function formatDuration(seconds: number): string {
   return `${mins}m`;
 }
 
-// Split title into two lines if more than 3 words
-function splitTitle(title: string): { line1: string; line2: string } {
-  const words = title.split(' ');
-  if (words.length <= 3) {
-    return { line1: title, line2: '' };
-  }
-  const midPoint = Math.ceil(words.length / 2);
-  return {
-    line1: words.slice(0, midPoint).join(' '),
-    line2: words.slice(midPoint).join(' '),
-  };
-}
-
 // Full book detail preview - matches SecretLibraryBookDetailScreen layout exactly
 
 function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: { book: LibraryItem; seriesName: string; bookSequence?: string }) {
+  const { width: screenWidth } = useWindowDimensions();
   const colors = useSecretLibraryColors();
   const navigation = useNavigation<any>();
   const coverUrl = useCoverUrl(book.id, { width: 600 });
 
-  const metadata = book.media?.metadata as any;
+  const metadata = book.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
   const narrator = metadata?.narratorName ||
@@ -203,7 +195,7 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
 
   // Try to get sequence from metadata if not provided
   if (!seriesSequence) {
-    if (metadata?.series?.length > 0) {
+    if (metadata?.series && metadata.series.length > 0) {
       const s = metadata.series[0];
       seriesSequence = s.sequence || '';
       if (!seriesName) seriesName = s.name || '';
@@ -222,18 +214,15 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
     seriesName = cachedSpineData.seriesName;
   }
 
-  // Title typography - matches real detail screen (Georgia/serif, weight 600)
+  // Title typography - matches real detail screen (Georgia/serif, weight 400)
   const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
-  const titleFontWeight = '600';
-
-  // Split title
-  const { line1, line2 } = splitTitle(title);
+  const titleFontWeight: TextStyle['fontWeight'] = '400';
 
   // Duration and meta
   const duration = cachedSpineData?.duration || book.media?.duration || 0;
   const formattedDuration = formatDuration(duration);
   const chapters = book.media?.chapters || [];
-  const chapterCount = chapters.length || (book.media as any)?.numAudioFiles || 0;
+  const chapterCount = chapters.length || (book.media as BookMedia)?.numAudioFiles || 0;
   const publishedYear = metadata?.publishedYear || '';
 
   // Progress - prioritize local SQLite, then spine cache, then server
@@ -276,7 +265,7 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
 
   return (
     <ScrollView
-      style={[styles.adjacentPage, { backgroundColor: colors.white }]}
+      style={[styles.adjacentPage, { width: screenWidth, backgroundColor: colors.white }]}
       contentContainerStyle={styles.hero}
       showsVerticalScrollIndicator={false}
     >
@@ -292,66 +281,47 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
         <CoverStars bookId={book.id} starSize={scale(32)} />
       </View>
 
-      {/* Title - Split into two lines with Georgia/serif */}
+      {/* Title */}
       <View style={styles.titleContainer}>
-        <Text style={[
-          styles.titleLine1,
-          {
-            fontFamily: titleFontFamily,
-            fontWeight: titleFontWeight as any,
-            color: colors.black,
-          }
-        ]}>
-          {line1}
-        </Text>
-        {line2 ? (
-          <Text style={[
-            styles.titleLine2,
+        <Text
+          style={[
+            styles.titleLine1,
             {
               fontFamily: titleFontFamily,
-              fontWeight: titleFontWeight as any,
+              fontWeight: titleFontWeight,
               color: colors.black,
             }
-          ]}>
-            {line2}
-          </Text>
-        ) : null}
+          ]}
+          numberOfLines={3}
+        >
+          {title}
+        </Text>
       </View>
 
-      {/* Byline: By Author · Narrated by Narrator - with tappable links */}
+      {/* Byline: Author · Narrator (matches player format) */}
       <View style={styles.byline}>
-        <Text style={[styles.bylineText, { color: colors.gray }]}>By </Text>
-        {author.split(',').map((name: string, idx: number, arr: string[]) => (
-          <React.Fragment key={idx}>
-            <TouchableOpacity onPress={() => handleAuthorPress(name)} activeOpacity={0.7}>
-              <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
-            </TouchableOpacity>
-            {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
-          </React.Fragment>
-        ))}
+        <TouchableOpacity onPress={() => handleAuthorPress(author.split(',')[0])} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`View author ${author}`}>
+          <Text style={[styles.bylineText, { color: colors.gray }]}>{author}</Text>
+        </TouchableOpacity>
         {narrator ? (
           <>
-            <Text style={[styles.bylineDot, { color: colors.gray }]}> · </Text>
-            <Text style={[styles.bylineText, { color: colors.gray }]}>Narrated by </Text>
-            {narrator.split(',').map((name: string, idx: number, arr: string[]) => (
-              <React.Fragment key={idx}>
-                <TouchableOpacity onPress={() => handleNarratorPress(name)} activeOpacity={0.7}>
-                  <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
-                </TouchableOpacity>
-                {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
-              </React.Fragment>
-            ))}
+            <Text style={[styles.bylineDot, { color: colors.gray }]}>  ·  </Text>
+            <TouchableOpacity onPress={() => handleNarratorPress(narrator.split(',')[0])} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`View narrator ${narrator}`}>
+              <Text style={[styles.bylineText, { color: colors.gray }]}>{narrator}</Text>
+            </TouchableOpacity>
           </>
         ) : null}
       </View>
 
-      {/* Series Link - tappable */}
+      {/* Series link */}
       {seriesName ? (
-        <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} style={styles.seriesRow}>
-          <Text style={[styles.seriesLink, { color: colors.gray }]}>
-            {seriesName}{seriesSequence ? ` · Book ${seriesSequence}` : ''}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.byline}>
+          <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`View series ${seriesName}`}>
+            <Text style={[styles.bylineText, { color: colors.gray }]}>
+              {seriesName}{seriesSequence ? ` · Book ${seriesSequence}` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
 
       {/* Meta Grid: Duration | Chapters | Year */}
@@ -372,11 +342,11 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
 
       {/* Action Buttons: Play + Download (visual-only in preview) */}
       <View style={styles.actionRow}>
-        <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Play ${title}`}>
           <PlayIcon color={colors.white} size={16} />
           <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>Play</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btnDownload, { borderColor: colors.black }]} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.btnDownload, { borderColor: colors.black }]} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Download ${title}`}>
           <DownloadIcon color={colors.black} size={16} />
           <Text style={[styles.btnText, { color: colors.black }]}>Download</Text>
         </TouchableOpacity>
@@ -424,6 +394,8 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
               style={[styles.genrePill, { borderColor: colors.grayLine }]}
               onPress={() => handleGenrePress(genre)}
               activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel={`View genre ${genre}`}
             >
               <Text style={[styles.genrePillText, { color: colors.gray }]}>{genre}</Text>
             </TouchableOpacity>
@@ -436,6 +408,8 @@ function AdjacentBookPage({ book, seriesName: parentSeriesName, bookSequence }: 
 
 export function SeriesSwipeContainer({ book, children }: SeriesSwipeContainerProps) {
   const navigation = useNavigation<any>();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const SWIPE_THRESHOLD = SCREEN_WIDTH * SWIPE_THRESHOLD_RATIO;
   const _colors = useSecretLibraryColors();
 
   const navInfo = useMemo(() => getSeriesNavigationInfo(book), [book]);
@@ -451,8 +425,8 @@ export function SeriesSwipeContainer({ book, children }: SeriesSwipeContainerPro
   // Helper to extract sequence from a book
   const getBookSequence = (b: LibraryItem | null): string => {
     if (!b) return '';
-    const meta = b.media?.metadata as any;
-    if (meta?.series?.length > 0 && meta.series[0]?.sequence) {
+    const meta = b.media?.metadata as BookMetadata | undefined;
+    if (meta?.series && meta.series.length > 0 && meta.series[0]?.sequence) {
       return String(meta.series[0].sequence);
     }
     if (meta?.seriesName) {
@@ -575,7 +549,7 @@ export function SeriesSwipeContainer({ book, children }: SeriesSwipeContainerPro
           {previousBook && <AdjacentBookPage book={previousBook} seriesName={seriesName} bookSequence={previousSequence} />}
 
           {/* Current book content - wrapped with navigation context */}
-          <View style={styles.currentContent}>
+          <View style={[styles.currentContent, { width: SCREEN_WIDTH }]}>
             <SeriesNavigationContext.Provider value={navigationContextValue}>
               {children}
             </SeriesNavigationContext.Provider>
@@ -599,11 +573,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   currentContent: {
-    width: SCREEN_WIDTH,
+    // width set inline via useWindowDimensions
     flex: 1,
   },
   adjacentPage: {
-    width: SCREEN_WIDTH,
+    // width set inline via useWindowDimensions
     flex: 1,
   },
 
@@ -640,20 +614,14 @@ const styles = StyleSheet.create({
     letterSpacing: -2,
   },
 
-  // Title - Split headline (matches real screen)
+  // Title
   titleContainer: {
     alignItems: 'center',
     alignSelf: 'stretch',
     marginBottom: scale(12),
+    gap: scale(6),
   },
   titleLine1: {
-    fontSize: scale(28),
-    letterSpacing: 0.5,
-    color: staticColors.black,
-    textAlign: 'center',
-    lineHeight: scale(32),
-  },
-  titleLine2: {
     fontSize: scale(28),
     letterSpacing: 0.5,
     color: staticColors.black,
@@ -674,27 +642,10 @@ const styles = StyleSheet.create({
     fontSize: scale(13),
     color: staticColors.gray,
   },
-  bylineLink: {
+  bylineDot: {
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
-    color: staticColors.black,
-    textDecorationLine: 'underline',
-  },
-  bylineDot: {
-    fontSize: scale(13),
     color: staticColors.gray,
-  },
-
-  // Series
-  seriesRow: {
-    marginTop: scale(4),
-  },
-  seriesLink: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(14),
-    fontStyle: 'italic',
-    color: staticColors.gray,
-    textDecorationLine: 'underline',
   },
 
   // Meta Grid

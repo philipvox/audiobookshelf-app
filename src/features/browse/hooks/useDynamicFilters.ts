@@ -8,6 +8,7 @@
 
 import { useMemo } from 'react';
 import { useLibraryCache } from '@/core/cache';
+import { BookMedia } from '@/core/types';
 
 export interface FilterOption {
   name: string;
@@ -53,7 +54,7 @@ export function useDynamicFilters(): {
     const tagCounts = new Map<string, { display: string; count: number }>();
     for (const item of items) {
       if (item.mediaType !== 'book') continue;
-      const bookTags: string[] = (item.media as any)?.tags || [];
+      const bookTags: string[] = (item.media as BookMedia)?.tags || [];
       for (const tag of bookTags) {
         if (isSystemTag(tag)) continue;
         const key = tag.toLowerCase();

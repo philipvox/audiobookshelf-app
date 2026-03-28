@@ -129,7 +129,7 @@ class ShakeDetector {
         logger.debug('[ShakeDetector] Shake detected! Magnitude:', magnitude.toFixed(2));
 
         // Trigger haptic feedback
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch((e) => logger.debug('[ShakeDetector] Haptic feedback failed', e));
 
         // Invoke callback
         if (this.callback) {

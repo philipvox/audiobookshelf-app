@@ -141,13 +141,13 @@ export function EmptyState({
       )}
 
       {(actionTitle && onAction) && (
-        <Pressable style={[styles.actionButton, { backgroundColor: colors.accent.primary }]} onPress={onAction}>
+        <Pressable style={[styles.actionButton, { backgroundColor: colors.accent.primary }]} onPress={onAction} accessibilityRole="button" accessibilityLabel={actionTitle}>
           <Text style={[styles.actionButtonText, { color: colors.background.primary }]}>{actionTitle}</Text>
         </Pressable>
       )}
 
       {(secondaryActionTitle && onSecondaryAction) && (
-        <Pressable style={styles.secondaryButton} onPress={onSecondaryAction}>
+        <Pressable style={styles.secondaryButton} onPress={onSecondaryAction} accessibilityRole="button" accessibilityLabel={secondaryActionTitle}>
           <Text style={[styles.secondaryButtonText, { color: colors.text.secondary }]}>{secondaryActionTitle}</Text>
         </Pressable>
       )}

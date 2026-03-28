@@ -106,15 +106,6 @@ export {
 } from './completionSheetStore';
 
 // =============================================================================
-// JOYSTICK SEEK STATE (from joystickSeekStore)
-// =============================================================================
-
-export {
-  useJoystickSeekStore,
-  useJoystickSeekSettings,
-} from './joystickSeekStore';
-
-// =============================================================================
 // DERIVED/COMPUTED SELECTORS (from playerSelectors)
 // These combine state from multiple stores
 // =============================================================================

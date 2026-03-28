@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { downloadManager, DownloadTask } from '@/core/services/downloadManager';
 import { LibraryItem } from '@/core/types';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Get all downloads with live updates
@@ -26,7 +27,7 @@ export function useDownloads() {
   }, []);
 
   const queueDownload = useCallback(async (item: LibraryItem, priority = 0) => {
-    await downloadManager.queueDownload(item, priority);
+    return downloadManager.queueDownload(item, priority);
   }, []);
 
   const cancelDownload = useCallback(async (itemId: string) => {
@@ -100,6 +101,7 @@ export function useDownloadStatus(itemId: string) {
     isDownloading: status?.status === 'downloading',
     isPending: status?.status === 'pending',
     isPaused: status?.status === 'paused',
+    isWaitingWifi: status?.status === 'waiting_wifi',
     hasError: status?.status === 'error',
     progress: status?.progress || 0,
     bytesDownloaded: status?.bytesDownloaded || 0,
@@ -122,7 +124,7 @@ export function useDownloadProgress(itemId: string) {
       if (mounted && status) {
         setProgress(status.progress);
       }
-    }).catch(() => {});
+    }).catch((e) => logger.debug('[useDownloads] Failed to get download status', e));
 
     // Subscribe to progress updates
     const unsubscribe = downloadManager.subscribeToProgress((id, p) => {

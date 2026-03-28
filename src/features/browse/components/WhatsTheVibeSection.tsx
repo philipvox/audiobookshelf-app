@@ -16,7 +16,7 @@ import { parseCompVibes } from '@/shared/utils/bookDNA';
 import { SectionHeader } from './SectionHeader';
 import { LibraryItem } from '@/core/types';
 import { VibeCard } from './VibeCard';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 
 interface WhatsTheVibeSectionProps {
   items: LibraryItem[];
@@ -66,7 +66,7 @@ export const WhatsTheVibeSection = React.memo(function WhatsTheVibeSection({ ite
     const vibeBookIds = new Map<string, string[]>();
 
     for (const item of items) {
-      const tags = (item.media?.metadata as any)?.tags || (item.media as any)?.tags;
+      const tags = item.media?.tags;
       const vibes = [...new Set(parseCompVibes(tags))];
       for (const vibe of vibes) {
         // Only track quality vibes

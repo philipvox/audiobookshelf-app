@@ -614,10 +614,17 @@ class AppInitializer {
     try {
       const { finishedBooksSync } = await import('@/core/services/finishedBooksSync');
 
-      // Preload most recent book into player store (shows correct progress on UI)
-      // Note: importRecentProgress already runs during init (syncRecentProgress) — skip duplicate call
+      // CRITICAL: Import from server FIRST before pushing any local changes.
+      // On fresh install, local SQLite is empty — pushing first would send
+      // empty/zero progress to the server, wiping real progress data.
+      const finishedImported = await finishedBooksSync.importFromServer();
+      if (finishedImported > 0) {
+        log.info(`Imported ${finishedImported} finished books from server`);
+        const { useProgressStore } = await import('@/core/stores/progressStore');
+        await useProgressStore.getState().loadFromDatabase();
+      }
 
-      // Sync any unsynced local changes to server (fast - only unsynced items)
+      // NOW sync local changes to server (only genuinely local changes survive)
       const { synced, failed } = await finishedBooksSync.syncToServer();
       if (synced > 0 || failed > 0) {
         log.info(`Synced ${synced} local changes to server (${failed} failed)`);
@@ -630,28 +637,10 @@ class AppInitializer {
       // Preload most recent book (uses shared data)
       await finishedBooksSync.preloadMostRecentBook(itemsInProgress);
 
-      // BACKGROUND: Full import from server (includes finished books)
-      // This runs after quick sync so UI is responsive, but finished books show up soon
-      finishedBooksSync.importFromServer().then(async (finishedImported) => {
-        if (finishedImported > 0) {
-          log.info(`Background sync: ${finishedImported} finished books imported from server`);
-          // Reload progressStore so the in-memory Map reflects ALL server-imported data
-          const { useProgressStore } = await import('@/core/stores/progressStore');
-          await useProgressStore.getState().loadFromDatabase();
-        }
-      }).catch((err) => {
-        log.warn('Background finished books sync failed:', err);
-      });
-
-      // BACKGROUND: Prefetch sessions for recent books (uses shared data)
-      // This caches audioTracks with MOOV data so play() doesn't need network calls
-      finishedBooksSync.prefetchSessions(itemsInProgress).then((prefetched) => {
-        if (prefetched > 0) {
-          log.info(`Prefetched ${prefetched} sessions for instant playback`);
-        }
-      }).catch((err) => {
-        log.warn('Session prefetch failed:', err);
-      });
+      // DISABLED: prefetchSessions was opening playback sessions via POST /api/items/{id}/play
+      // for 5 books on every startup. ABS session creation closes existing sessions and resets
+      // progress for "finished" items, causing progress corruption. Audio tracks and chapters
+      // are fetched on-demand when the user actually presses play.
     } catch (err) {
       log.warn('Finished books sync failed:', err);
     }

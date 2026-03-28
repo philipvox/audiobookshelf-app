@@ -1,33 +1,16 @@
 /**
  * Public API exports for shared components
  *
- * Organization:
- * - buttons/  → Button, IconButton
- * - inputs/   → TextInput, SearchInput
- * - feedback/ → LoadingSpinner, ErrorView, EmptyState
+ * Only re-exports that are actually imported from '@/shared/components'
+ * elsewhere in the codebase. Components not listed here can still be
+ * imported directly from their own file (e.g. '@/shared/components/BookCard').
  */
 
 // =============================================================================
-// BUTTONS
+// LOADING
 // =============================================================================
-export { Button } from './Button';
-export { IconButton } from './buttons/IconButton';
-
-// =============================================================================
-// INPUTS
-// =============================================================================
-export { TextInput } from './inputs/TextInput';
-export { SearchInput } from './inputs/SearchInput';
-
-// =============================================================================
-// LOADING (Single source of truth)
-// =============================================================================
-export { Loading, FullScreenLoading, InlineLoading, ButtonLoading, CandleLoading } from './Loading';
+export { Loading } from './Loading';
 export type { LoadingProps, LoadingMode } from './Loading';
-
-// Legacy loading components (deprecated - use Loading instead)
-export { LoadingSpinner } from './LoadingSpinner';
-export { SkullLoadingSpinner } from './SkullLoadingSpinner';
 
 // Custom pull-to-refresh with skull animation
 export { SkullRefreshControl } from './SkullRefreshControl';
@@ -39,9 +22,6 @@ export { ScreenLoadingOverlay } from './ScreenLoadingOverlay';
 // Global loading overlay (triggered from buttons before navigation)
 export { GlobalLoadingOverlay } from './GlobalLoadingOverlay';
 
-// Global cache progress bar (shows when image caching runs in background)
-export { GlobalCacheProgressBar } from './GlobalCacheProgressBar';
-
 // =============================================================================
 // FEEDBACK & STATES
 // =============================================================================
@@ -51,109 +31,31 @@ export { EmptyState } from './EmptyState';
 export type { EmptyStateIcon } from './EmptyState';
 
 // =============================================================================
-// TEXT
+// ICONS (only the AppIcons actually imported from this barrel)
 // =============================================================================
-export { HyphenatedText } from './HyphenatedText';
-
-// =============================================================================
-// ICONS (Single source of truth)
-// =============================================================================
-export { Icon, ICON_SIZES } from './Icon';
-export type { IconSize } from './Icon';
-
-// App Icons - custom SVG icons with consistent style
 export {
-  // Re-exports
-  IconSizes,
-  AppIcons,
-  IconButton as AppIconButton,
-  // Navigation
-  BackIcon,
-  CloseIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ChevronRightIcon,
-  // System
-  SearchIcon,
-  SettingsIcon,
-  MenuIcon,
-  MoreVerticalIcon,
-  MoreHorizontalIcon,
-  // Actions
-  PlusIcon,
-  CheckIcon,
   HeartIcon as HeartIconSvg,
-  DownloadIcon,
-  ShareIcon,
-  // Player
-  PlayIcon,
-  PauseIcon,
-  SkipBackIcon,
-  SkipForwardIcon,
-  MoonIcon,
-  // Entity
   UserIcon,
   MicIcon,
-  BellIcon,
-  BellOffIcon,
-  // Content
-  LibraryIcon,
   BookIcon,
-  BookOpenIcon,
-  ClockIcon,
-  GridIcon,
-  TagIcon,
-  SmileIcon,
-  ListIcon,
 } from './AppIcons';
-export { FilterSortBar } from './FilterSortBar';
-export type { SortOption } from './FilterSortBar';
 
 // =============================================================================
 // SKELETON LOADING
 // =============================================================================
 export {
-  Shimmer,
   SkeletonBox,
-  SkeletonCircle,
-  SkeletonText,
   BookCardSkeleton,
-  ContinueListeningCardSkeleton,
-  ListRowSkeleton,
   SectionSkeleton,
-  HomeHeroSkeleton,
-  BookDetailSkeleton,
   AuthorRowSkeleton,
   SearchResultsSkeleton,
 } from './Skeleton';
 
 // =============================================================================
-// OFFLINE-FIRST
-// =============================================================================
-export { CircularDownloadButton } from './CircularDownloadButton';
-
-// =============================================================================
 // INTERACTIVE BUTTONS
 // =============================================================================
-export { HeartButton, HeartIcon } from './HeartButton';
-export type { HeartButtonProps } from './HeartButton';
 export { SeriesHeartButton } from './SeriesHeartButton';
 export type { SeriesHeartButtonProps } from './SeriesHeartButton';
-export { SectionHeader } from './SectionHeader';
-export type { SectionHeaderProps } from './SectionHeader';
-
-// =============================================================================
-// BOOK CARDS
-// =============================================================================
-export { BookCard, BookCardWithState } from './BookCard';
-export type { BookCardProps, BookCardActionType, BookCardContext } from './BookCard';
-
-// =============================================================================
-// PLAYER CONTROLS
-// =============================================================================
-export { CoverPlayButton } from './CoverPlayButton';
-export { PlayPauseButton } from './PlayPauseButton';
-export type { PlayPauseButtonProps, PlayPauseButtonSize, PlayPauseButtonVariant } from './PlayPauseButton';
 
 // =============================================================================
 // NAVIGATION
@@ -163,37 +65,12 @@ export { AlphabetScrubber } from './AlphabetScrubber';
 // =============================================================================
 // PROGRESS INDICATORS
 // =============================================================================
-export { ProgressDots } from './ProgressDots';
 export { SeriesProgressBadge } from './SeriesProgressBadge';
-export { ThumbnailProgressBar } from './ThumbnailProgressBar';
-
-// =============================================================================
-// STACKED COVERS
-// =============================================================================
-export { StackedCovers } from './StackedCovers';
-
-// =============================================================================
-// SERIES CARDS
-// =============================================================================
-export { SeriesCard } from './SeriesCard';
-export type {
-  SeriesCardProps,
-  SeriesData,
-  SeriesBook,
-  EnhancedSeriesData,
-  BookStatus,
-} from './SeriesCard';
-
-// =============================================================================
-// ENTITY CARDS (Author/Narrator)
-// =============================================================================
-export { EntityCard } from './EntityCard';
-export type { EntityCardProps, EntityType } from './EntityCard';
 
 // =============================================================================
 // NETWORK STATUS
 // =============================================================================
-export { NetworkStatusBar, useNetworkStatus } from './NetworkStatusBar';
+export { NetworkStatusBar } from './NetworkStatusBar';
 
 // =============================================================================
 // SNACKBAR / TOAST
@@ -204,19 +81,12 @@ export type { SnackbarProps } from './Snackbar';
 // =============================================================================
 // CONTEXT MENUS
 // =============================================================================
-export { BookContextMenu } from './BookContextMenu';
 export { BookContextMenuProvider, useBookContextMenu } from './BookContextMenuProvider';
 
 // =============================================================================
 // GLOBAL TOAST
 // =============================================================================
 export { ToastContainer } from './ToastContainer';
-
-// =============================================================================
-// PIN INPUT
-// =============================================================================
-export { PinInput } from './PinInput';
-export type { PinInputProps } from './PinInput';
 
 // =============================================================================
 // TOP NAVIGATION
@@ -226,16 +96,9 @@ export {
   SearchIcon as TopNavSearchIcon,
   CloseIcon as TopNavCloseIcon,
   BackIcon as TopNavBackIcon,
-  SettingsIcon as TopNavSettingsIcon,
-  DownloadIcon as TopNavDownloadIcon,
   ShareIcon as TopNavShareIcon,
 } from './TopNav';
 export type { TopNavProps, TopNavPill, TopNavCircleButton, TopNavVariant, TopNavSearchConfig } from './TopNav';
-
-// =============================================================================
-// SYNC STATUS
-// =============================================================================
-export { SyncStatusBanner } from './SyncStatusBanner';
 
 // =============================================================================
 // COLLAPSIBLE SECTIONS
@@ -249,11 +112,6 @@ export type { CollapsibleSectionProps } from './CollapsibleSection';
 export { LocalStorageNoticeModal } from './LocalStorageNoticeModal';
 
 // =============================================================================
-// COVER STARS
+// COACH MARKS (First-run onboarding overlay)
 // =============================================================================
-export { CoverStars } from './CoverStars';
-
-// =============================================================================
-// HOLOGRAPHIC STICKER
-// =============================================================================
-export { HolographicSticker } from './HolographicSticker';
+export { CoachMarksOverlay } from './CoachMarksOverlay';

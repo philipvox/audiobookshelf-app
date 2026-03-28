@@ -30,11 +30,13 @@ import {
   Bluetooth,
   Clock,
 } from 'lucide-react-native';
-import { usePlayerStore } from '@/features/player/stores';
-import { usePlayerSettingsStore } from '@/features/player/stores/playerSettingsStore';
-import { useSpeedStore } from '@/features/player/stores/speedStore';
-import { useSleepTimerStore } from '@/features/player/stores/sleepTimerStore';
-import { useCompletionSheetStore } from '@/features/player/stores/completionSheetStore';
+import {
+  usePlayerStore,
+  usePlayerSettingsStore,
+  useSpeedStore,
+  useSleepTimerStore,
+  useCompletionSheetStore,
+} from '@/shared/stores/playerFacade';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
@@ -84,7 +86,13 @@ function OptionPicker<T>({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close picker"
+      >
         <View style={[styles.pickerContainer, { backgroundColor: colors.white }]}>
           <Text style={[styles.pickerTitle, { color: colors.black }]}>{title}</Text>
           {subtitle && <Text style={[styles.pickerSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
@@ -101,6 +109,9 @@ function OptionPicker<T>({
                   onSelect(option);
                   onClose();
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`${formatOption(option)}${selectedValue === option ? ', currently selected' : ''}`}
+                accessibilityState={{ selected: selectedValue === option }}
               >
                 <Text
                   style={[
@@ -256,6 +267,9 @@ export function PlaybackSettingsScreen() {
                   ]}
                   onPress={() => setSmartRewindMaxSeconds(seconds)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Maximum rewind ${seconds} seconds${smartRewindMaxSeconds === seconds ? ', currently selected' : ''}`}
+                  accessibilityState={{ selected: smartRewindMaxSeconds === seconds }}
                 >
                   <Text
                     style={[

@@ -4,7 +4,7 @@
  * Shared utility functions and constants for discover hooks.
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { apiClient } from '@/core/api';
 import { Mood } from '@/shared/utils/bookDNA';
 import { BookSummary, libraryItemToBookSummary } from '../types';
@@ -103,7 +103,7 @@ export function filterItemsByGenre(items: LibraryItem[], genre: string): Library
   const filterGenre = genre.toLowerCase();
 
   return items.filter(item => {
-    const metadata = (item.media?.metadata as any) || {};
+    const metadata = (item.media?.metadata as BookMetadata) || ({} as BookMetadata);
     const genres: string[] = metadata.genres || [];
     return genres.some(g => genreMatches(g, filterGenre));
   });

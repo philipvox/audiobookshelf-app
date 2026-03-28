@@ -38,7 +38,7 @@ export const SectionHeader = React.memo(function SectionHeader({ label, heading,
           )}
         </View>
         {onViewAll && (
-          <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel={`View all ${label}`} accessibilityRole="button">
             <Text style={[styles.viewAll, { color: colors.gray }]}>VIEW ALL ›</Text>
           </TouchableOpacity>
         )}

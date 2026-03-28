@@ -7,7 +7,8 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { scale } from '@/shared/theme';
 import type { StarPosition } from '../stores/starPositionStore';
 
@@ -43,7 +44,7 @@ export function CoverStarStickers({ stars, containerWidth = scale(320), containe
               left: xPx - STAR_SIZE / 2,
               transform: [{ rotate: `${star.rotation}deg` }],
             }}
-            resizeMode="contain"
+            contentFit="contain"
           />
         );
       })}

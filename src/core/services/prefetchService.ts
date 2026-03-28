@@ -11,8 +11,8 @@ import { Asset } from 'expo-asset';
 import { apiClient } from '@/core/api';
 import { LibraryItem } from '@/core/types';
 import { sqliteCache } from './sqliteCache';
-import { imageCacheService } from './imageCacheService';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
+import { getSpineUrl } from '@/core/cache/useSpineUrl';
 import { logger } from '@/shared/utils/logger';
 
 // Book cloth textures used by BookSpineVertical — preload to avoid pop-in
@@ -189,17 +189,6 @@ class PrefetchService {
       const elapsed = Date.now() - startTime;
       logger.debug(`[Prefetch] Loaded ${allItems.length} items in ${elapsed}ms (saved to SQLite)`);
 
-      // Auto-cache images for new books if enabled
-      if (this.cachedItems.length > 0) {
-        const existingIds = new Set(this.cachedItems.map(item => item.id));
-        const newItems = allItems.filter(item => !existingIds.has(item.id));
-        if (newItems.length > 0) {
-          imageCacheService.cacheNewBooks(newItems).catch(err => {
-            logger.debug('[Prefetch] Auto-cache new books failed:', err);
-          });
-        }
-      }
-
       // Prefetch cover images for 100 most recently added - expo-image handles this efficiently
       this.prefetchCovers(allItems, 100);
 
@@ -294,8 +283,10 @@ class PrefetchService {
    * Spines are pre-generated PNG images served from ABS metadata folder.
    */
   private async prefetchSpines(items: LibraryItem[]) {
+    // Use getSpineUrl() to match the exact URLs that useSpineUrl() returns in components
+    // This ensures prefetched images are cache hits when displayed
     const spineUrls = items
-      .map(item => apiClient.getItemSpineUrl(item.id))
+      .map(item => getSpineUrl(item.id))
       .filter((url): url is string => !!url);
 
     if (spineUrls.length === 0) return;
@@ -330,9 +321,10 @@ class PrefetchService {
 
     const startTime = Date.now();
 
-    // Get ALL spine THUMBNAIL URLs (tiny ~230 byte placeholders)
+    // Get ALL spine URLs using the same URL generation as display components
+    // This ensures prefetched images are cache hits when rendered
     const thumbnailUrls = items
-      .map(item => apiClient.getItemSpineUrl(item.id, { thumb: true }))
+      .map(item => getSpineUrl(item.id))
       .filter((url): url is string => !!url);
 
     if (thumbnailUrls.length === 0) return;

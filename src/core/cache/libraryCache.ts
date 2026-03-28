@@ -9,12 +9,13 @@
  */
 
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import { apiClient } from '@/core/api';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { searchIndex } from './searchIndex';
 import { normalizeForSearch } from '@/features/search/utils/fuzzySearch';
 import { createLogger } from '@/shared/utils/logger';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { getErrorMessage } from '@/shared/utils/errorUtils';
 
@@ -96,8 +97,9 @@ interface LibraryCacheState {
   genresWithBooks: Map<string, GenreInfo>;
   itemsById: Map<string, LibraryItem>;
 
-  // Spine manifest (pre-flight check for server spines)
+  // Spine manifests (pre-flight check for spine images)
   booksWithServerSpines: Set<string>;
+  booksWithCommunitySpines: Set<string>;
   spineManifestVersion: number | null;
 
   // Actions
@@ -266,7 +268,7 @@ function buildIndexes(items: LibraryItem[]) {
   };
 }
 
-export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
+export const useLibraryCache = create<LibraryCacheState>()(subscribeWithSelector((set, get) => ({
   items: [],
   isLoaded: false,
   isLoading: false,
@@ -282,6 +284,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   itemsById: new Map(),
   // Pre-populate from persisted manifest in spineCache (avoids flash of generative spines)
   booksWithServerSpines: new Set(useSpineCacheStore.getState().cachedManifestBookIds || []),
+  booksWithCommunitySpines: new Set(useSpineCacheStore.getState().cachedCommunityBookIds || []),
   spineManifestVersion: null,
 
   loadCache: async (libraryId: string, forceRefresh = false) => {
@@ -330,19 +333,10 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
               });
 
               // BACKGROUND: Spine operations (fire-and-forget, don't block startup)
-              Promise.all([
-                useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId),
-                apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
-              ]).then(([, spineManifest]) => {
-                if (spineManifest.items.length > 0) {
-                  set({
-                    booksWithServerSpines: new Set(spineManifest.items),
-                    spineManifestVersion: spineManifest.version,
-                  });
-                  useSpineCacheStore.getState().setCachedManifestBookIds(spineManifest.items);
-                  log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
-                }
-              }).catch(err => log.warn('Background spine operations failed:', err));
+              useSpineCacheStore.getState().populateFromLibrary(cachedItems, libraryId)
+                .catch(err => log.warn('Background spine population failed:', err));
+              // Load manifests via dedicated function (handles community + server independently)
+              get().loadSpineManifest();
 
               return;
             }
@@ -352,23 +346,14 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
 
       // Fetch fresh data from API - items, authors, and spine manifest in parallel
       log.debug('Fetching fresh library data for library:', libraryId);
-      const [itemsResponse, authorsResponse, spineManifest] = await Promise.all([
+      const [itemsResponse, authorsResponse] = await Promise.all([
         apiClient.getLibraryItems(libraryId, { limit: 100000 }),  // Large limit to fetch all books
-        apiClient.getLibraryAuthors(libraryId).catch(() => [] as ApiAuthor[]),
-        apiClient.getSpineManifest().catch(() => ({ items: [], version: 0, count: 0 })),
+        apiClient.getLibraryAuthors(libraryId).catch((e) => { log.debug('[LibraryCache] getLibraryAuthors failed', e); return [] as ApiAuthor[]; }),
       ]);
       const apiAuthors = authorsResponse as ApiAuthor[];
 
-      // Store spine manifest for pre-flight checks
-      if (spineManifest.items.length > 0) {
-        set({
-          booksWithServerSpines: new Set(spineManifest.items),
-          spineManifestVersion: spineManifest.version,
-        });
-        // Persist manifest for instant lookup on next app launch
-        useSpineCacheStore.getState().setCachedManifestBookIds(spineManifest.items);
-        log.debug(`Loaded spine manifest: ${spineManifest.count} books have server spines`);
-      }
+      // Load spine manifests in background (handles community + server independently)
+      get().loadSpineManifest();
       const items = itemsResponse?.results || [];
 
       // Build indexes from items
@@ -528,7 +513,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
         const series = (metadata.seriesName || '').toLowerCase();
         // Genres + DNA tags (e.g., "slow burn", "unreliable narrator")
         const genres = (metadata.genres || []).map((g: string) => g.toLowerCase()).join(' ');
-        const tags = ((item.media as any)?.tags || []).map((t: string) => t.toLowerCase()).join(' ');
+        const tags = ((item.media as BookMedia)?.tags || []).map((t: string) => t.toLowerCase()).join(' ');
 
         // Fast path 1: Simple substring match (handles 95%+ of searches)
         if (
@@ -669,17 +654,122 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
   },
 
   loadSpineManifest: async () => {
-    try {
-      const manifest = await apiClient.getSpineManifest();
-      set({
-        booksWithServerSpines: new Set(manifest.items),
-        spineManifestVersion: manifest.version,
-      });
-      // Persist to spineCache for instant lookup on next app launch
-      useSpineCacheStore.getState().setCachedManifestBookIds(manifest.items);
-      log.debug(`Loaded spine manifest: ${manifest.count} books have server spines`);
-    } catch (error) {
-      log.warn('Failed to load spine manifest:', error);
+    const { spineServerUrl, useCommunitySpines, useServerSpines } = useSpineCacheStore.getState();
+
+    // Load community manifest v2 (multi-key matching for universal compatibility)
+    if (useCommunitySpines) {
+      try {
+        const COMMUNITY_URL = 'https://spines.mysecretlibrary.com';
+        const manifest = await apiClient.getCommunityManifestV2(COMMUNITY_URL);
+
+        if (manifest.books.length > 0) {
+          // Build reverse lookup indexes from community manifest
+          const asinMap = new Map<string, { id: string; w: number; h: number }>();
+          const isbnMap = new Map<string, { id: string; w: number; h: number }>();
+          const hashMap = new Map<string, { id: string; w: number; h: number }>();
+
+          for (const book of manifest.books) {
+            const entry = { id: book.id, w: book.w || 0, h: book.h || 0 };
+            if (book.asin) asinMap.set(book.asin, entry);
+            if (book.isbn) isbnMap.set(book.isbn, entry);
+            if (book.hash) hashMap.set(book.hash, entry);
+          }
+
+          // Match local books against community manifest
+          const localItems = get().items;
+          const communityBookMap: Record<string, string> = {};
+          const matchedLocalIds: string[] = [];
+          const dimensions: Record<string, [number, number]> = {};
+
+          // Import hash function lazily to avoid circular deps
+          const { titleAuthorHash } = require('@/shared/utils/titleAuthorHash');
+
+          // Pre-compute hashes for all local books that weren't matched by ASIN/ISBN
+          const needsHash: { id: string; title: string; author: string }[] = [];
+
+          for (const item of localItems) {
+            const metadata = getBookMetadataTyped(item);
+            if (!metadata) continue;
+
+            // Priority 1: ASIN match
+            if (metadata.asin) {
+              const match = asinMap.get(metadata.asin);
+              if (match) {
+                communityBookMap[item.id] = match.id;
+                matchedLocalIds.push(item.id);
+                if (match.w && match.h) dimensions[item.id] = [match.w, match.h];
+                continue;
+              }
+            }
+
+            // Priority 2: ISBN match
+            if (metadata.isbn) {
+              const cleanIsbn = metadata.isbn.replace(/[^0-9X]/gi, '').toUpperCase();
+              const match = isbnMap.get(cleanIsbn);
+              if (match) {
+                communityBookMap[item.id] = match.id;
+                matchedLocalIds.push(item.id);
+                if (match.w && match.h) dimensions[item.id] = [match.w, match.h];
+                continue;
+              }
+            }
+
+            // Queue for hash matching
+            const title = metadata.title || '';
+            const author = metadata.authorName || '';
+            if (title) {
+              needsHash.push({ id: item.id, title, author });
+            }
+          }
+
+          // Priority 3: Fuzzy title+author hash (async due to crypto)
+          if (needsHash.length > 0 && hashMap.size > 0) {
+            const { batchTitleAuthorHash } = require('@/shared/utils/titleAuthorHash');
+            const hashResults: Map<string, string> = await batchTitleAuthorHash(needsHash);
+
+            for (const [localId, hash] of hashResults) {
+              const match = hashMap.get(hash);
+              if (match) {
+                communityBookMap[localId] = match.id;
+                matchedLocalIds.push(localId);
+                if (match.w && match.h) dimensions[localId] = [match.w, match.h];
+              }
+            }
+          }
+
+          // Update state
+          const communitySet = new Set(matchedLocalIds);
+          set({ booksWithCommunitySpines: communitySet });
+          useSpineCacheStore.getState().setCachedCommunityBookIds(matchedLocalIds);
+          useSpineCacheStore.getState().setCommunityBookMap(communityBookMap);
+
+          // Pre-populate spine dimensions
+          if (Object.keys(dimensions).length > 0) {
+            useSpineCacheStore.getState().batchSetServerSpineDimensions(dimensions);
+          }
+
+          log.debug(`Community manifest v2: ${manifest.books.length} available, ${matchedLocalIds.length} matched locally`);
+        }
+      } catch (err) {
+        log.warn('Failed to load community spine manifest:', err);
+      }
+    }
+
+    // Load server manifest (independent — uses abs_uuid, same instance)
+    if (useServerSpines) {
+      try {
+        const customSpineUrl = spineServerUrl || undefined;
+        const manifest = await apiClient.getSpineManifest(customSpineUrl);
+        const serverSet = new Set(manifest.items);
+        set({
+          booksWithServerSpines: serverSet,
+          spineManifestVersion: manifest.version,
+        });
+        useSpineCacheStore.getState().setCachedManifestBookIds(manifest.items);
+        log.debug(`Server spine manifest: ${serverSet.size} books`);
+      } catch (err) {
+        log.warn('Failed to load server spine manifest:', err);
+      }
     }
   },
 
@@ -713,6 +803,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       genresWithBooks: new Map(),
       itemsById: new Map(),
       booksWithServerSpines: new Set(),
+      booksWithCommunitySpines: new Set(),
       spineManifestVersion: null,
       // Keep currentLibraryId so we know which library to reload
     });
@@ -728,7 +819,7 @@ export const useLibraryCache = create<LibraryCacheState>((set, get) => ({
       get().loadCache(libraryId, true);
     }
   },
-}));
+})));
 
 // Export helper for getting all unique values
 export function getAllAuthors(): AuthorInfo[] {

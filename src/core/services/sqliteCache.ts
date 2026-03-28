@@ -11,6 +11,17 @@ import { createLogger } from '@/shared/utils/logger';
 
 const log = createLogger('SQLiteCache');
 
+/** Safely parse JSON with a fallback value if the string is corrupt/invalid */
+const safeJsonParse = <T>(str: string | null | undefined, fallback: T): T => {
+  if (!str) return fallback;
+  try {
+    return JSON.parse(str);
+  } catch {
+    log.warn('safeJsonParse: corrupt JSON, using fallback', str?.slice(0, 100));
+    return fallback;
+  }
+};
+
 // Types for cached data
 interface CachedAuthor {
   id: string;
@@ -603,6 +614,25 @@ class SQLiteCache {
         // Column already exists, ignore
       }
 
+      // Migration: Drop legacy playback_progress table.
+      // All progress data now lives in the user_books table.
+      // The legacy table was kept for backwards compatibility but is no longer
+      // read or written by any active code path.
+      try {
+        // Only drop if user_books has data (safety check)
+        const userBooksCount = await this.db.getFirstAsync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM user_books WHERE current_time > 0'
+        );
+        if (userBooksCount && userBooksCount.count > 0) {
+          await this.db.execAsync('DROP TABLE IF EXISTS playback_progress');
+          log.info(`Dropped legacy playback_progress table (user_books has ${userBooksCount.count} progress records)`);
+        } else {
+          log.info('Skipping playback_progress drop: user_books has no progress data yet');
+        }
+      } catch (err) {
+        log.warn('Failed to drop legacy playback_progress table:', err);
+      }
+
       this.isInitialized = true;
       log.info('Database initialized successfully');
     } catch (err) {
@@ -622,7 +652,6 @@ class SQLiteCache {
 
   /**
    * Get raw database instance for direct access.
-   * Used by databaseRecoveryService for integrity checks.
    */
   getDatabase(): SQLite.SQLiteDatabase | null {
     return this.db;
@@ -630,7 +659,6 @@ class SQLiteCache {
 
   /**
    * Close database connection.
-   * Used by databaseRecoveryService during recovery.
    */
   async close(): Promise<void> {
     if (this.db) {
@@ -705,7 +733,7 @@ class SQLiteCache {
         'SELECT data FROM library_items WHERE library_id = ? ORDER BY updated_at DESC',
         [libraryId]
       );
-      return rows.map(r => JSON.parse(r.data));
+      return rows.map(r => safeJsonParse<LibraryItem | null>(r.data, null)).filter((item): item is LibraryItem => item !== null);
     } catch (err) {
       log.warn('getLibraryItems error:', err);
       return [];
@@ -827,7 +855,7 @@ class SQLiteCache {
         'SELECT data FROM library_items WHERE id = ?',
         [itemId]
       );
-      return row ? JSON.parse(row.data) : null;
+      return row ? safeJsonParse<LibraryItem | null>(row.data, null) : null;
     } catch (err) {
       log.warn('getLibraryItem error:', err);
       return null;
@@ -944,7 +972,7 @@ class SQLiteCache {
         'SELECT data FROM authors WHERE library_id = ? ORDER BY data',
         [libraryId]
       );
-      return rows.map(r => JSON.parse(r.data));
+      return rows.map(r => safeJsonParse<CachedAuthor | null>(r.data, null)).filter((item): item is CachedAuthor => item !== null);
     } catch (err) {
       log.warn('getAuthors error:', err);
       return [];
@@ -980,7 +1008,7 @@ class SQLiteCache {
         'SELECT data FROM series WHERE library_id = ? ORDER BY data',
         [libraryId]
       );
-      return rows.map(r => JSON.parse(r.data));
+      return rows.map(r => safeJsonParse<CachedSeries | null>(r.data, null)).filter((item): item is CachedSeries => item !== null);
     } catch (err) {
       log.warn('getSeries error:', err);
       return [];
@@ -1016,7 +1044,7 @@ class SQLiteCache {
         'SELECT data FROM narrators WHERE library_id = ? ORDER BY data',
         [libraryId]
       );
-      return rows.map(r => JSON.parse(r.data));
+      return rows.map(r => safeJsonParse<CachedNarrator | null>(r.data, null)).filter((item): item is CachedNarrator => item !== null);
     } catch (err) {
       log.warn('getNarrators error:', err);
       return [];
@@ -1051,7 +1079,7 @@ class SQLiteCache {
       const rows = await db.getAllAsync<{ data: string }>(
         'SELECT data FROM collections ORDER BY data'
       );
-      return rows.map(r => JSON.parse(r.data));
+      return rows.map(r => safeJsonParse<Collection | null>(r.data, null)).filter((item): item is Collection => item !== null);
     } catch (err) {
       log.warn('getCollections error:', err);
       return [];
@@ -1083,11 +1111,23 @@ class SQLiteCache {
   async getPlaybackProgress(itemId: string): Promise<PlaybackProgress | null> {
     const db = await this.ensureReady();
     try {
-      const row = await db.getFirstAsync<PlaybackProgress>(
-        'SELECT item_id as itemId, position, duration, updated_at as updatedAt, synced FROM playback_progress WHERE item_id = ?',
+      // Reads from user_books (legacy playback_progress table has been dropped)
+      const row = await db.getFirstAsync<{
+        itemId: string; position: number; duration: number; updatedAt: string; synced: number;
+      }>(
+        `SELECT book_id as itemId, current_time as position, duration,
+                local_updated_at as updatedAt, progress_synced as synced
+         FROM user_books WHERE book_id = ?`,
         [itemId]
       );
-      return row || null;
+      if (!row) return null;
+      return {
+        itemId: row.itemId,
+        position: Number(row.position) || 0,
+        duration: Number(row.duration) || 0,
+        updatedAt: new Date(row.updatedAt).getTime(),
+        synced: !!row.synced,
+      };
     } catch {
       return null;
     }
@@ -1096,16 +1136,27 @@ class SQLiteCache {
   /**
    * Load ALL playback progress records at once.
    * Used by finishedBooksSync to avoid N+1 queries when syncing 2700+ items.
+   * Reads from user_books (legacy playback_progress table has been dropped).
    */
   async getAllPlaybackProgress(): Promise<Map<string, PlaybackProgress>> {
     const db = await this.ensureReady();
     try {
-      const rows = await db.getAllAsync<PlaybackProgress>(
-        'SELECT item_id as itemId, position, duration, updated_at as updatedAt, synced FROM playback_progress'
+      const rows = await db.getAllAsync<{
+        itemId: string; position: number; duration: number; updatedAt: string; synced: number;
+      }>(
+        `SELECT book_id as itemId, current_time as position, duration,
+                local_updated_at as updatedAt, progress_synced as synced
+         FROM user_books WHERE current_time > 0`
       );
       const map = new Map<string, PlaybackProgress>();
       for (const row of rows) {
-        map.set(row.itemId, row);
+        map.set(row.itemId, {
+          itemId: row.itemId,
+          position: Number(row.position) || 0,
+          duration: Number(row.duration) || 0,
+          updatedAt: new Date(row.updatedAt).getTime(),
+          synced: !!row.synced,
+        });
       }
       return map;
     } catch (err) {
@@ -1120,16 +1171,12 @@ class SQLiteCache {
     duration: number,
     synced = false
   ): Promise<void> {
-    const now = Date.now();
-
+    // Writes to user_books (legacy playback_progress table has been dropped)
     try {
-      await this.withTransactionLock(async (db) => {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO playback_progress (item_id, position, duration, updated_at, synced)
-           VALUES (?, ?, ?, ?, ?)`,
-          [itemId, position, duration, now, synced ? 1 : 0]
-        );
-      });
+      // Pass fromServer=synced so server-imported data gets sync flags set
+      // atomically in a single write (no race window)
+      await this.updateUserBookProgress(itemId, position, duration, 0, synced);
+      // No need for separate markUserBookSynced — handled by fromServer flag
     } catch (err) {
       log.warn('setPlaybackProgress error:', err);
     }
@@ -1138,22 +1185,30 @@ class SQLiteCache {
   async getUnsyncedProgress(): Promise<PlaybackProgress[]> {
     const db = await this.ensureReady();
     try {
-      return await db.getAllAsync<PlaybackProgress>(
-        'SELECT item_id as itemId, position, duration, updated_at as updatedAt, synced FROM playback_progress WHERE synced = 0'
+      // Reads from user_books (legacy playback_progress table has been dropped)
+      const rows = await db.getAllAsync<{
+        itemId: string; position: number; duration: number; updatedAt: string; synced: number;
+      }>(
+        `SELECT book_id as itemId, current_time as position, duration,
+                local_updated_at as updatedAt, progress_synced as synced
+         FROM user_books WHERE progress_synced = 0 AND current_time > 0`
       );
+      return rows.map((row) => ({
+        itemId: row.itemId,
+        position: Number(row.position) || 0,
+        duration: Number(row.duration) || 0,
+        updatedAt: new Date(row.updatedAt).getTime(),
+        synced: !!row.synced,
+      }));
     } catch {
       return [];
     }
   }
 
   async markProgressSynced(itemId: string): Promise<void> {
+    // Writes to user_books (legacy playback_progress table has been dropped)
     try {
-      await this.withTransactionLock(async (db) => {
-        await db.runAsync(
-          'UPDATE playback_progress SET synced = 1 WHERE item_id = ?',
-          [itemId]
-        );
-      });
+      await this.markUserBookSynced(itemId, { progress: true });
     } catch (err) {
       log.warn('markProgressSynced error:', err);
     }
@@ -1226,7 +1281,7 @@ class SQLiteCache {
         title: r.title,
         authorName: r.author_name,
         narratorName: r.narrator_name || undefined,
-        genres: JSON.parse(r.genres),
+        genres: safeJsonParse<string[]>(r.genres, []),
         completedAt: r.completed_at,
         timesRead: r.times_read,
         rating: r.rating || undefined,
@@ -2400,7 +2455,7 @@ class SQLiteCache {
           }>('SELECT * FROM daily_stats WHERE date = ?', [date]);
 
           if (existing) {
-            const booksTouched: string[] = JSON.parse(existing.books_touched);
+            const booksTouched: string[] = safeJsonParse<string[]>(existing.books_touched, []);
             if (!booksTouched.includes(session.bookId)) {
               booksTouched.push(session.bookId);
             }
@@ -2523,7 +2578,7 @@ class SQLiteCache {
         date: r.date,
         totalSeconds: r.total_seconds,
         sessionCount: r.session_count,
-        booksTouched: JSON.parse(r.books_touched),
+        booksTouched: safeJsonParse<string[]>(r.books_touched, []),
       }));
     } catch (err) {
       log.warn('getDailyStats error:', err);
@@ -2551,7 +2606,7 @@ class SQLiteCache {
         date: row.date,
         totalSeconds: row.total_seconds,
         sessionCount: row.session_count,
-        booksTouched: JSON.parse(row.books_touched),
+        booksTouched: safeJsonParse<string[]>(row.books_touched, []),
       };
     } catch {
       return null;
@@ -2622,7 +2677,7 @@ class SQLiteCache {
       for (const row of rows) {
         totalSeconds += row.total_seconds;
         sessionCount += row.session_count;
-        JSON.parse(row.books_touched).forEach((b: string) => allBooks.add(b));
+        safeJsonParse<string[]>(row.books_touched, []).forEach((b: string) => allBooks.add(b));
       }
 
       return {
@@ -2729,7 +2784,7 @@ class SQLiteCache {
 
       const allBooks = new Set<string>();
       for (const row of books) {
-        JSON.parse(row.books_touched).forEach((b: string) => allBooks.add(b));
+        safeJsonParse<string[]>(row.books_touched, []).forEach((b: string) => allBooks.add(b));
       }
 
       const totalSeconds = summary?.total_seconds || 0;
@@ -2991,10 +3046,10 @@ class SQLiteCache {
 
       return {
         bookId: row.book_id,
-        currentTime: row.current_time,
-        duration: row.duration,
-        progress: row.progress,
-        currentTrackIndex: row.current_track_index,
+        currentTime: Number(row.current_time) || 0,
+        duration: Number(row.duration) || 0,
+        progress: Number(row.progress) || 0,
+        currentTrackIndex: Number(row.current_track_index) || 0,
         isFavorite: row.is_favorite === 1,
         isFinished: row.is_finished === 1,
         isInLibrary: row.is_in_library === 1,
@@ -3334,7 +3389,9 @@ class SQLiteCache {
     bookId: string,
     currentTime: number,
     duration: number,
-    currentTrackIndex: number = 0
+    currentTrackIndex: number = 0,
+    /** If true, data came from server — don't mark as needing sync back */
+    fromServer: boolean = false
   ): Promise<void> {
     const progress = duration > 0 ? currentTime / duration : 0;
     const now = new Date().toISOString();
@@ -3351,15 +3408,23 @@ class SQLiteCache {
       progress,
       currentTrackIndex,
       lastPlayedAt: now,
-      startedAt: currentTime > 0 && !existing?.startedAt ? now : undefined, // Only set startedAt on first progress
-      progressSynced: false,
-      // Auto-finish logic
-      ...(shouldAutoFinish && {
-        isFinished: true,
-        finishSource: 'progress' as const,
-        finishedAt: now,
-        finishedSynced: false,
-        timesCompleted: (existing?.timesCompleted ?? 0) + 1,
+      startedAt: currentTime > 0 && !existing?.startedAt ? now : undefined,
+      // Only mark as needing sync if this is a LOCAL change, not a server import.
+      // Setting progressSynced:false for server imports creates a race where
+      // syncUnsyncedFromStorage() reads the record before markUserBookSynced()
+      // runs, pushing stale data back to the server.
+      ...(fromServer ? {
+        progressSynced: true,
+        finishedSynced: true,
+      } : {
+        progressSynced: false,
+        ...(shouldAutoFinish && {
+          isFinished: true,
+          finishSource: 'progress' as const,
+          finishedAt: now,
+          finishedSynced: false,
+          timesCompleted: (existing?.timesCompleted ?? 0) + 1,
+        }),
       }),
     });
   }
@@ -3757,10 +3822,10 @@ class SQLiteCache {
   private mapUserBookRow(row: UserBookRow): UserBook {
     return {
       bookId: row.book_id,
-      currentTime: row.current_time,
-      duration: row.duration,
-      progress: row.progress,
-      currentTrackIndex: row.current_track_index,
+      currentTime: Number(row.current_time) || 0,
+      duration: Number(row.duration) || 0,
+      progress: Number(row.progress) || 0,
+      currentTrackIndex: Number(row.current_track_index) || 0,
       isFavorite: row.is_favorite === 1,
       isFinished: row.is_finished === 1,
       isInLibrary: row.is_in_library === 1,
@@ -3813,14 +3878,20 @@ class SQLiteCache {
 
     try {
       await db.withTransactionAsync(async () => {
-        // Step 1: Migrate playback_progress
-        const progressRows = await db.getAllAsync<{
-          item_id: string;
-          position: number;
-          duration: number;
-          updated_at: number;
-          synced: number;
-        }>('SELECT * FROM playback_progress');
+        // Step 1: Migrate playback_progress (table may have been dropped already)
+        let progressRows: { item_id: string; position: number; duration: number; updated_at: number; synced: number; }[] = [];
+        try {
+          progressRows = await db.getAllAsync<{
+            item_id: string;
+            position: number;
+            duration: number;
+            updated_at: number;
+            synced: number;
+          }>('SELECT * FROM playback_progress');
+        } catch {
+          // Table already dropped, skip this step
+          log.debug('playback_progress table not found (already dropped), skipping migration step');
+        }
 
         for (const row of progressRows) {
           const progress = row.duration > 0 ? row.position / row.duration : 0;
@@ -4041,7 +4112,7 @@ class SQLiteCache {
 
           // User-specific data
           await db.runAsync('DELETE FROM user_books');
-          await db.runAsync('DELETE FROM playback_progress');
+          // playback_progress table has been dropped (migrated to user_books)
           await db.runAsync('DELETE FROM read_history');
           await db.runAsync('DELETE FROM favorites');
           await db.runAsync('DELETE FROM bookmarks');

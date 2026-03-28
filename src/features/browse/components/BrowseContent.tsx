@@ -26,12 +26,12 @@ import { ScrollView, View, NativeSyntheticEvent, NativeScrollEvent } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { secretLibraryDarkColors } from '@/shared/theme/secretLibrary';
 import { SkullRefreshControl } from '@/shared/components';
-import { useCollections } from '@/features/collections';
+import { useCollections } from '@/shared/hooks/useCollections';
 import { LibraryItem } from '@/core/types';
 import { filterByFeeling } from '@/shared/utils/bookDNA';
 import { useFeelingChipStore } from '../stores/feelingChipStore';
 import type { FeelingChip } from '../stores/feelingChipStore';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 
 // Sections — personalized (from For You)
 import { ActionNeededSection } from './ActionNeededSection';

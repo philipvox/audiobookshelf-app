@@ -61,18 +61,3 @@ export type {
   ComparableEngineOptions,
 } from './comparableBooksEngine';
 
-// Comprehensive scoring
-export {
-  calculateComprehensiveScore,
-  scoreItems,
-  scoreAndRank,
-  applyDiversityConstraints,
-} from './comprehensiveScoring';
-export type {
-  AffinityData,
-  ScoringContext,
-  ScoreBreakdown,
-  ComprehensiveScore,
-  RecommendationCategory,
-  ScoredItem,
-} from './comprehensiveScoring';

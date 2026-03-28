@@ -29,11 +29,11 @@ import { audioLog } from '@/shared/utils/audioDebug';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
 import { getErrorMessage } from '@/shared/utils/errorUtils';
 import { audioService } from '@/features/player/services/audioService';
+import { shallow } from 'zustand/shallow';
 
 // PERF: Pre-import player store to avoid dynamic import latency on first command
 // Dynamic imports can take 100-300ms on first invocation
-import { usePlayerStore } from '@/features/player/stores/playerStore';
-import { useSpeedStore } from '@/features/player/stores/speedStore';
+import { usePlayerStore, useSpeedStore } from '@/shared/stores/playerFacade';
 
 // Extended metadata interface
 interface ExtendedBookMetadata extends BookMetadata {
@@ -147,8 +147,19 @@ class AutomotiveService {
   // CarPlay-specific state (when react-native-carplay is installed)
   private carPlayModule: any = null;
   private continueListeningTemplate: any = null;
+  private libraryTemplate: any = null;
+  private authorsTemplate: any = null;
   private downloadsTemplate: any = null;
   private libraryCacheUnsubscribe: (() => void) | null = null;
+
+  // CarPlay data cache — mutable arrays that onItemSelect closures reference.
+  // Updated by both setupCarPlayTemplates and updateCarPlayLists so tap
+  // handlers always see current data (no stale closure problem).
+  private carPlayContinueItemIds: string[] = [];
+  private carPlayLibraryItemIds: string[] = [];
+  private carPlayAuthors: { name: string; bookIds: string[] }[] = [];
+  private carPlayDownloadItemIds: string[] = [];
+  private carPlayDownloadedIds: Set<string> = new Set();
 
   // Deduplication for playItem to prevent double playback
   private lastPlayedItemId: string | null = null;
@@ -227,19 +238,22 @@ class AutomotiveService {
   private async initCarPlay(): Promise<void> {
     try {
       // First check if the native module exists before requiring the package
-      const { NativeModules } = require('react-native');
-      if (!NativeModules.RNCarPlay) {
+      const { NativeModules: RNModules } = require('react-native');
+      log('Available native modules:', Object.keys(RNModules).filter(k => k.toLowerCase().includes('car') || k.toLowerCase().includes('rncar')).join(', ') || 'none matching car*');
+      if (!RNModules.RNCarPlay) {
         log('CarPlay native module not linked - skipping CarPlay init');
-        log('To enable CarPlay:');
-        log('1. Get CarPlay entitlement from Apple');
-        log('2. Install: npm install react-native-carplay');
-        log('3. Run pod install and rebuild');
         return;
       }
 
       // Try to require react-native-carplay
       this.carPlayModule = require('react-native-carplay');
-      log('CarPlay module loaded');
+      log('CarPlay module loaded successfully');
+
+      // Guard against duplicate setupCarPlayTemplates calls.
+      // CarPlayInterface constructor already calls checkForConnection() which
+      // can fire didConnect immediately — our registerOnConnect could then fire
+      // a second time if the native side also emits.
+      let carPlayTemplatesSetUp = false;
 
       // Set up connection listener
       this.carPlayModule.CarPlay.registerOnConnect(() => {
@@ -247,15 +261,23 @@ class AutomotiveService {
         this.connectionState = 'connected';
         this.connectedPlatform = 'carplay';
         this.callbacks?.onConnect('carplay');
-        this.setupCarPlayTemplates();
+        if (!carPlayTemplatesSetUp) {
+          carPlayTemplatesSetUp = true;
+          this.setupCarPlayTemplates();
+        }
       });
 
       this.carPlayModule.CarPlay.registerOnDisconnect(() => {
         log('CarPlay disconnected');
         this.connectionState = 'disconnected';
         this.connectedPlatform = 'none';
+        carPlayTemplatesSetUp = false; // Allow re-setup on reconnect
         this.callbacks?.onDisconnect();
       });
+
+      // NOTE: CarPlayInterface constructor already calls checkForConnection()
+      // when we require('react-native-carplay') above. That handles the case
+      // where CarPlay connected before JS was ready. No need to call it again.
 
       // Subscribe to library cache changes to refresh lists
       this.setupLibraryCacheListener();
@@ -281,11 +303,11 @@ class AutomotiveService {
         this.libraryCacheUnsubscribe();
       }
 
-      // Subscribe to changes - track previous items to detect changes
-      let prevItems = useLibraryCache.getState().items;
-      this.libraryCacheUnsubscribe = useLibraryCache.subscribe((state) => {
-        if (state.items !== prevItems) {
-          prevItems = state.items;
+      // PERF: Subscribe only to items changes (not loading/error state)
+      // using subscribeWithSelector to avoid unnecessary callback invocations
+      this.libraryCacheUnsubscribe = useLibraryCache.subscribe(
+        (state) => state.items,
+        (items) => {
           log('Library changed, refreshing automotive data');
 
           // Refresh CarPlay lists when library changes
@@ -298,12 +320,11 @@ class AutomotiveService {
             this.syncBrowseDataToAndroidAuto();
           }
         }
-      });
+      );
 
-      // Initial sync for Android Auto
+      // Initial sync for Android Auto (immediate — retry logic handles load delay)
       if (Platform.OS === 'android') {
-        // Delay initial sync to ensure library is loaded
-        setTimeout(() => this.syncBrowseDataToAndroidAuto(), 1000);
+        this.syncBrowseDataToAndroidAuto(true);
       }
 
       log('Library cache listener set up');
@@ -321,9 +342,20 @@ class AutomotiveService {
    */
   private browseSyncDebounceTimer: NodeJS.Timeout | null = null;
   private browseSyncInProgress = false;
+  private hasCompletedInitialSync = false;
 
-  private syncBrowseDataToAndroidAuto(): void {
+  private syncBrowseDataToAndroidAuto(immediate = false): void {
     if (Platform.OS !== 'android') return;
+
+    // First sync is immediate (no debounce) — Android Auto may already be waiting
+    if (immediate || !this.hasCompletedInitialSync) {
+      if (this.browseSyncDebounceTimer) {
+        clearTimeout(this.browseSyncDebounceTimer);
+        this.browseSyncDebounceTimer = null;
+      }
+      this.performBrowseSync();
+      return;
+    }
 
     // Debounce: collapse rapid calls into one
     if (this.browseSyncDebounceTimer) {
@@ -334,6 +366,11 @@ class AutomotiveService {
       this.performBrowseSync();
     }, 500);
   }
+
+  private browseSyncRetryTimer: NodeJS.Timeout | null = null;
+  private browseSyncRetryCount = 0;
+  private static readonly BROWSE_SYNC_MAX_RETRIES = 10;
+  private static readonly BROWSE_SYNC_RETRY_INTERVAL_MS = 1000;
 
   private async performBrowseSync(): Promise<void> {
     // Lock: skip if already syncing
@@ -354,7 +391,18 @@ class AutomotiveService {
       const { useLibraryCache } = await import('@/core/cache/libraryCache');
       const libraryItems = useLibraryCache.getState().items;
       if (libraryItems.length === 0) {
-        log('Library not loaded yet, skipping browse sync');
+        // Library not loaded yet — schedule retry with backoff
+        if (this.browseSyncRetryCount < AutomotiveService.BROWSE_SYNC_MAX_RETRIES) {
+          this.browseSyncRetryCount++;
+          log(`Library not loaded yet, retry ${this.browseSyncRetryCount}/${AutomotiveService.BROWSE_SYNC_MAX_RETRIES} in ${AutomotiveService.BROWSE_SYNC_RETRY_INTERVAL_MS}ms`);
+          if (this.browseSyncRetryTimer) clearTimeout(this.browseSyncRetryTimer);
+          this.browseSyncRetryTimer = setTimeout(() => {
+            this.browseSyncRetryTimer = null;
+            this.performBrowseSync();
+          }, AutomotiveService.BROWSE_SYNC_RETRY_INTERVAL_MS);
+        } else {
+          log('Library not loaded after max retries, giving up');
+        }
         return;
       }
 
@@ -365,6 +413,8 @@ class AutomotiveService {
       const jsonData = JSON.stringify(sections);
       try {
         await AndroidAutoModule.writeBrowseData(jsonData);
+        this.hasCompletedInitialSync = true;
+        this.browseSyncRetryCount = 0;
         log(`Browse data written: ${sections.length} sections, ${jsonData.length} chars`);
       } catch (err) {
         log('Failed to write browse data:', err);
@@ -413,11 +463,9 @@ class AutomotiveService {
       // Subscribe to player state changes for MediaSession sync
       await this.setupPlayerStateSync();
 
-      // Sync browse data to native MediaBrowserService
-      // The debounce will collapse these into a single sync
-      this.syncBrowseDataToAndroidAuto();
-      // Retry after delay in case library isn't loaded yet
-      setTimeout(() => this.syncBrowseDataToAndroidAuto(), 3000);
+      // Sync browse data to native MediaBrowserService (immediate, no debounce)
+      // If library isn't loaded yet, performBrowseSync will auto-retry up to 10 times
+      this.syncBrowseDataToAndroidAuto(true);
 
       // Periodic browse sync every 30 min to refresh auth tokens in cover URLs
       // and update recently played list while app is open
@@ -644,8 +692,8 @@ class AutomotiveService {
         // subscription's prev values already match current state and won't re-fire.
         log('Android Auto (re)connected, forcing full state re-sync');
         this.forceAndroidAutoSync();
-        // Also ensure browse data is fresh
-        this.syncBrowseDataToAndroidAuto();
+        // Also ensure browse data is fresh (immediate — AA is waiting)
+        this.syncBrowseDataToAndroidAuto(true);
         break;
 
       case 'requestBrowseData':
@@ -902,12 +950,16 @@ class AutomotiveService {
         }, SYNC_DEBOUNCE_MS);
       };
 
-      // Helper to sync current state to Android Auto
-      const syncState = async (state: any) => {
+      // Helper to sync current state to Android Auto.
+      // Called when the selector slice changes (book, isPlaying, chapter, speed,
+      // duration, or position crossing a 10s boundary).  Reads precise position
+      // from getState() so the native side gets an accurate value.
+      const syncState = async () => {
+        const state = usePlayerStore.getState();
         const isPlaying = state.isPlaying;
         const position = state.position;
         const book = state.currentBook;
-        const speed = state.playbackRate || 1.0;
+        const speed = useSpeedStore.getState().playbackRate || 1.0;
         const duration = state.duration || 0;
 
         // IMPORTANT: Only sync on meaningful state changes, NOT on a timer.
@@ -944,7 +996,7 @@ class AutomotiveService {
         }
 
         // Sync metadata when book changes or chapter changes
-        const currentChapter = state.currentChapter;
+        const currentChapter = state.getCurrentChapter();
         const chapterTitle = currentChapter?.title || null;
 
         if (book && (book.id !== prevBookId || chapterTitle !== prevChapterTitle)) {
@@ -1004,11 +1056,26 @@ class AutomotiveService {
         // Force initial sync by resetting prev values
         prevBookId = '';
         prevIsPlaying = !currentState.isPlaying; // Force mismatch
-        syncState(currentState);
+        syncState();
       }
 
-      // Subscribe to player state changes
-      this.playerStoreUnsubscribe = usePlayerStore.subscribe(syncState);
+      // PERF: Subscribe to player state changes using selector to avoid ~10Hz
+      // position-update spam. The selector picks only the fields we care about
+      // and quantizes position to 10s buckets so normal playback (small increments)
+      // doesn't trigger the callback. Seeks (>10s jumps) cross bucket boundaries
+      // and do trigger. The callback reads precise position via getState().
+      this.playerStoreUnsubscribe = usePlayerStore.subscribe(
+        (state) => ({
+          bookId: state.currentBook?.id ?? null,
+          isPlaying: state.isPlaying,
+          chapterTitle: state.getCurrentChapter()?.title ?? null,
+          duration: state.duration,
+          // Quantize position to 10s buckets — fires only when crossing a boundary
+          positionBucket: Math.floor((state.position ?? 0) / 10),
+        }),
+        () => { syncState(); },
+        { equalityFn: shallow }
+      );
 
       // NOTE: No periodic interval here. Every updatePlaybackState() call triggers
       // mediaSession.setPlaybackState() on the native side, which renegotiates audio
@@ -1028,85 +1095,430 @@ class AutomotiveService {
   }
 
   /**
-   * Set up CarPlay templates when connected
+   * Set up CarPlay templates when connected.
+   *
+   * Tab layout:
+   *  1. Continue  – current book + recently played (with progress bars)
+   *  2. Library   – all books A-Z, grouped by first letter
+   *  3. Authors   – browse by author → drill into their books
+   *  4. Downloads – offline books only
    */
   private async setupCarPlayTemplates(): Promise<void> {
     if (!this.carPlayModule) return;
 
-    const { TabBarTemplate, ListTemplate, _NowPlayingTemplate } = this.carPlayModule;
+    const { TabBarTemplate, ListTemplate, CarPlay } = this.carPlayModule;
 
-    // Get initial data
-    const sections = await this.getBrowseSections();
-    const continueSection = sections.find(s => s.id === 'continue-listening');
-    const downloadsSection = sections.find(s => s.id === 'downloads');
+    // -----------------------------------------------------------
+    // Gather data
+    // -----------------------------------------------------------
+    const { useLibraryCache } = await import('@/core/cache/libraryCache');
+    const { sqliteCache } = await import('@/core/services/sqliteCache');
+    const libraryItems = useLibraryCache.getState().items;
+    const playerState = usePlayerStore.getState();
 
-    log('Setting up CarPlay templates with:', {
-      continueItems: continueSection?.items.length || 0,
-      downloadItems: downloadsSection?.items.length || 0,
-    });
+    log('Setting up CarPlay templates, library size:', libraryItems.length);
 
-    // Create Continue Listening tab with data
+    // ----- Gather all data and store itemIds on the instance -----
+    // onItemSelect closures reference `this.carPlay*ItemIds` (not local vars)
+    // so they always see current data even after updateCarPlayLists refreshes them.
+    const continueItems = await this.getCarPlayContinueItems(libraryItems, playerState, sqliteCache);
+    this.carPlayContinueItemIds = continueItems.itemIds;
+
+    const librarySections = this.getCarPlayLibrarySections(libraryItems);
+    this.carPlayLibraryItemIds = librarySections.itemIds;
+
+    this.getCarPlayAuthorSections(libraryItems); // populates this.carPlayAuthors
+
+    const downloadSections = await this.getCarPlayDownloadSections(libraryItems, sqliteCache);
+    this.carPlayDownloadItemIds = downloadSections.itemIds;
+
+    // -----------------------------------------------------------
+    // 1. Continue Listening tab
+    // -----------------------------------------------------------
     this.continueListeningTemplate = new ListTemplate({
       title: 'Continue',
-      sections: [{
-        header: 'In Progress',
-        items: (continueSection?.items || []).map(item => ({
-          text: item.title,
-          detailText: item.subtitle,
-          image: item.imageUrl,
-          showsDisclosureIndicator: false,
-        })),
-      }],
+      tabTitle: 'Continue',
+      tabSystemImageName: 'book.fill',
+      emptyViewTitleVariants: ['No Books In Progress'],
+      emptyViewSubtitleVariants: ['Start listening to see your books here'],
+      sections: continueItems.sections,
       onItemSelect: async ({ index }: { index: number }) => {
-        const currentSections = await this.getBrowseSections();
-        const section = currentSections.find(s => s.id === 'continue-listening');
-        if (section && section.items[index]) {
-          await this.playItem(section.items[index].id);
+        const itemId = this.carPlayContinueItemIds[index];
+        if (itemId) {
+          const currentBookId = usePlayerStore.getState().currentBook?.id;
+          if (itemId === currentBookId) {
+            this.pushChapterList(itemId);
+          } else {
+            await this.playItem(itemId);
+          }
         }
       },
     });
 
-    // Create Downloads tab with data
+    // -----------------------------------------------------------
+    // 2. Library tab (A-Z)
+    // -----------------------------------------------------------
+    this.libraryTemplate = new ListTemplate({
+      title: 'Library',
+      tabTitle: 'Library',
+      tabSystemImageName: 'books.vertical.fill',
+      emptyViewTitleVariants: ['Library Empty'],
+      emptyViewSubtitleVariants: ['Connect to your server to browse books'],
+      sections: librarySections.sections,
+      onItemSelect: async ({ index }: { index: number }) => {
+        const itemId = this.carPlayLibraryItemIds[index];
+        if (itemId) await this.playItem(itemId);
+      },
+    });
+
+    // -----------------------------------------------------------
+    // 3. Authors tab
+    // -----------------------------------------------------------
+    this.authorsTemplate = new ListTemplate({
+      title: 'Authors',
+      tabTitle: 'Authors',
+      tabSystemImageName: 'person.2.fill',
+      emptyViewTitleVariants: ['No Authors'],
+      sections: this.getCarPlayAuthorSections(libraryItems).sections,
+      onItemSelect: async ({ index }: { index: number }) => {
+        // Read current library at tap time, not stale captured reference
+        const { useLibraryCache: libCache } = await import('@/core/cache/libraryCache');
+        const currentItems = libCache.getState().items;
+        const author = this.carPlayAuthors[index];
+        if (author) this.pushAuthorBookList(author.name, author.bookIds, currentItems);
+      },
+    });
+
+    // -----------------------------------------------------------
+    // 4. Downloads tab
+    // -----------------------------------------------------------
     this.downloadsTemplate = new ListTemplate({
       title: 'Downloads',
-      sections: [{
-        header: 'Offline Books',
-        items: (downloadsSection?.items || []).map(item => ({
-          text: item.title,
-          detailText: item.subtitle,
-          image: item.imageUrl,
-          showsDisclosureIndicator: false,
-        })),
-      }],
+      tabTitle: 'Downloads',
+      tabSystemImageName: 'arrow.down.circle.fill',
+      emptyViewTitleVariants: ['No Downloads'],
+      emptyViewSubtitleVariants: ['Downloaded books appear here for offline listening'],
+      sections: downloadSections.sections,
       onItemSelect: async ({ index }: { index: number }) => {
-        const currentSections = await this.getBrowseSections();
-        const section = currentSections.find(s => s.id === 'downloads');
-        if (section && section.items[index]) {
-          await this.playItem(section.items[index].id);
-        }
+        const itemId = this.carPlayDownloadItemIds[index];
+        if (itemId) await this.playItem(itemId);
       },
     });
 
-    // Create Tab Bar template (root)
+    // -----------------------------------------------------------
+    // Tab Bar (root)
+    // -----------------------------------------------------------
     const tabBarTemplate = new TabBarTemplate({
       title: this.config.appName,
       templates: [
-        {
-          ...this.continueListeningTemplate,
-          tabSystemImageName: 'book.fill',
-          tabTitle: 'Continue',
-        },
-        {
-          ...this.downloadsTemplate,
-          tabSystemImageName: 'arrow.down.circle.fill',
-          tabTitle: 'Downloads',
-        },
+        this.continueListeningTemplate,
+        this.libraryTemplate,
+        this.authorsTemplate,
+        this.downloadsTemplate,
       ],
+      onTemplateSelect: () => {},
     });
 
-    // Set root template
-    this.carPlayModule.CarPlay.setRootTemplate(tabBarTemplate);
-    log('CarPlay templates set up successfully');
+    CarPlay.setRootTemplate(tabBarTemplate);
+
+    // Enable Now Playing (system now-playing screen with playback controls)
+    try {
+      CarPlay.enableNowPlaying(true);
+      log('CarPlay Now Playing enabled');
+    } catch (e) {
+      log('Failed to enable Now Playing:', e);
+    }
+
+    log(`CarPlay templates set up: continue=${this.carPlayContinueItemIds.length}, library=${librarySections.sections.length} sections, authors=${this.carPlayAuthors.length}, downloads=${this.carPlayDownloadItemIds.length}`);
+  }
+
+  // ---------------------------------------------------------------
+  // CarPlay data builders
+  // ---------------------------------------------------------------
+
+  /**
+   * Build Continue Listening items: current book + recently played.
+   * Returns flat itemIds array matching the visual order across all sections.
+   */
+  private async getCarPlayContinueItems(
+    libraryItems: LibraryItem[],
+    playerState: any,
+    sqliteCache: any,
+  ): Promise<{ sections: any[]; itemIds: string[] }> {
+    const sections: any[] = [];
+    const itemIds: string[] = [];
+
+    // Current book (if any)
+    if (playerState.currentBook) {
+      const book = playerState.currentBook;
+      const meta = getBookMetadata(book);
+      const progress = book.userMediaProgress?.progress || 0;
+      const chapter = playerState.getCurrentChapter?.()?.title;
+      sections.push({
+        header: 'Now Playing',
+        items: [{
+          text: meta?.title || 'Unknown',
+          detailText: chapter || meta?.authorName || meta?.authors?.[0]?.name || '',
+          playbackProgress: progress,
+          isPlaying: playerState.isPlaying,
+          showsDisclosureIndicator: true, // chapters drill-in
+        }],
+      });
+      itemIds.push(book.id);
+    }
+
+    // Recently played (up to 15, excluding current)
+    try {
+      const recentBooks = await sqliteCache.getInProgressUserBooks();
+      const currentBookId = playerState.currentBook?.id;
+      const recentItems: any[] = [];
+
+      for (const userBook of recentBooks.slice(0, 15)) {
+        if (userBook.bookId === currentBookId) continue;
+        const item = libraryItems.find(i => i.id === userBook.bookId);
+        if (!item) continue;
+        const meta = getBookMetadata(item);
+        const progress = item.userMediaProgress?.progress || 0;
+        recentItems.push({
+          text: meta?.title || 'Unknown',
+          detailText: meta?.authorName || meta?.authors?.[0]?.name || '',
+          playbackProgress: progress,
+          showsDisclosureIndicator: false,
+        });
+        itemIds.push(item.id);
+      }
+
+      if (recentItems.length > 0) {
+        sections.push({ header: 'Recently Played', items: recentItems });
+      }
+    } catch (err) {
+      log('Error loading recent books for CarPlay:', err);
+    }
+
+    return { sections, itemIds };
+  }
+
+  /**
+   * Build Library sections grouped by first letter (A-Z + #).
+   * Returns sections and a flat itemIds array in matching order.
+   */
+  private getCarPlayLibrarySections(
+    libraryItems: LibraryItem[],
+  ): { sections: any[]; itemIds: string[] } {
+    const sections: any[] = [];
+    const itemIds: string[] = [];
+
+    const sorted = [...libraryItems].sort((a, b) => {
+      const aTitle = getBookMetadata(a)?.title || '';
+      const bTitle = getBookMetadata(b)?.title || '';
+      return aTitle.localeCompare(bTitle);
+    });
+
+    // Group by first letter
+    const groups = new Map<string, { item: LibraryItem; meta: any }[]>();
+    for (const item of sorted) {
+      const meta = getBookMetadata(item);
+      const title = meta?.title || '';
+      const firstChar = title.charAt(0).toUpperCase();
+      const key = /[A-Z]/.test(firstChar) ? firstChar : '#';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push({ item, meta });
+    }
+
+    // Build sections in alphabetical order
+    const sortedKeys = [...groups.keys()].sort((a, b) => {
+      if (a === '#') return 1;
+      if (b === '#') return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const key of sortedKeys) {
+      const books = groups.get(key)!;
+      sections.push({
+        header: key,
+        items: books.map(({ item, meta }) => {
+          const progress = item.userMediaProgress?.progress || 0;
+          const author = meta?.authorName || meta?.authors?.[0]?.name || '';
+          itemIds.push(item.id);
+          return {
+            text: meta?.title || 'Unknown',
+            detailText: author,
+            playbackProgress: progress > 0 ? progress : undefined,
+            showsDisclosureIndicator: false,
+          };
+        }),
+      });
+    }
+
+    return { sections, itemIds };
+  }
+
+  /**
+   * Build Authors sections: one list item per author, sorted A-Z.
+   * Tapping an author pushes a detail list of their books.
+   */
+  private getCarPlayAuthorSections(
+    libraryItems: LibraryItem[],
+  ): { sections: any[] } {
+    // Build author → book mapping
+    const authorMap = new Map<string, string[]>();
+    for (const item of libraryItems) {
+      const meta = getBookMetadata(item);
+      const authorName = meta?.authorName || meta?.authors?.[0]?.name;
+      if (!authorName) continue;
+      if (!authorMap.has(authorName)) authorMap.set(authorName, []);
+      authorMap.get(authorName)!.push(item.id);
+    }
+
+    // Sort authors alphabetically
+    const sortedAuthors = [...authorMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    // Cache for use in onItemSelect
+    this.carPlayAuthors = sortedAuthors.map(([name, bookIds]) => ({ name, bookIds }));
+
+    const items = sortedAuthors.map(([name, bookIds]) => ({
+      text: name,
+      detailText: `${bookIds.length} book${bookIds.length !== 1 ? 's' : ''}`,
+      showsDisclosureIndicator: true,
+    }));
+
+    return { sections: items.length > 0 ? [{ header: 'All Authors', items }] : [] };
+  }
+
+  /**
+   * Build Downloads section from completed downloads in SQLite.
+   */
+  private async getCarPlayDownloadSections(
+    libraryItems: LibraryItem[],
+    sqliteCache: any,
+  ): Promise<{ sections: any[]; itemIds: string[] }> {
+    const itemIds: string[] = [];
+    try {
+      const downloads = await sqliteCache.getAllDownloads();
+      const completedIds = new Set<string>(
+        downloads.filter((d: any) => d.status === 'complete').map((d: any) => d.itemId)
+      );
+      this.carPlayDownloadedIds = completedIds;
+
+      const downloadedBooks = libraryItems
+        .filter(item => completedIds.has(item.id))
+        .sort((a, b) => {
+          const aTitle = getBookMetadata(a)?.title || '';
+          const bTitle = getBookMetadata(b)?.title || '';
+          return aTitle.localeCompare(bTitle);
+        });
+
+      const items = downloadedBooks.map(item => {
+        const meta = getBookMetadata(item);
+        const progress = item.userMediaProgress?.progress || 0;
+        itemIds.push(item.id);
+        return {
+          text: meta?.title || 'Unknown',
+          detailText: meta?.authorName || meta?.authors?.[0]?.name || '',
+          playbackProgress: progress > 0 ? progress : undefined,
+          showsDisclosureIndicator: false,
+        };
+      });
+
+      return {
+        sections: items.length > 0 ? [{ header: 'Available Offline', items }] : [],
+        itemIds,
+      };
+    } catch (err) {
+      log('Error loading downloads for CarPlay:', err);
+      return { sections: [], itemIds };
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // CarPlay drill-in screens
+  // ---------------------------------------------------------------
+
+  /**
+   * Push a chapter list for the given book onto the CarPlay nav stack.
+   */
+  private pushChapterList(bookId: string): void {
+    if (!this.carPlayModule) return;
+
+    const { ListTemplate, CarPlay } = this.carPlayModule;
+    const state = usePlayerStore.getState();
+    const chapters = state.chapters || [];
+    const position = state.position || 0;
+    const currentChapterIndex = chapters.findIndex(
+      (ch: any) => position >= ch.start && position < ch.end
+    );
+
+    if (chapters.length === 0) {
+      log('No chapters available for book:', bookId);
+      return;
+    }
+
+    const chapterTemplate = new ListTemplate({
+      title: 'Chapters',
+      backButtonHidden: false,
+      sections: [{
+        header: `${chapters.length} Chapters`,
+        items: chapters.map((ch: any, idx: number) => ({
+          text: ch.title || `Chapter ${idx + 1}`,
+          detailText: this.formatTime(ch.start || 0),
+          isPlaying: idx === currentChapterIndex,
+          showsDisclosureIndicator: false,
+        })),
+      }],
+      onItemSelect: async ({ index }: { index: number }) => {
+        await this.playChapter(`chapter:${bookId}:${index}`);
+        CarPlay.popTemplate(true);
+      },
+    });
+
+    CarPlay.pushTemplate(chapterTemplate, true);
+    log('Pushed chapter list for book:', bookId, 'chapters:', chapters.length);
+  }
+
+  /**
+   * Push a list of books by a specific author onto the CarPlay nav stack.
+   */
+  private pushAuthorBookList(authorName: string, bookIds: string[], libraryItems: LibraryItem[]): void {
+    if (!this.carPlayModule) return;
+
+    const { ListTemplate, CarPlay } = this.carPlayModule;
+
+    const books = bookIds
+      .map(id => libraryItems.find(i => i.id === id))
+      .filter((i): i is LibraryItem => !!i)
+      .sort((a, b) => {
+        const aTitle = getBookMetadata(a)?.title || '';
+        const bTitle = getBookMetadata(b)?.title || '';
+        return aTitle.localeCompare(bTitle);
+      });
+
+    const bookItemIds: string[] = [];
+    const items = books.map(item => {
+      const meta = getBookMetadata(item);
+      const progress = item.userMediaProgress?.progress || 0;
+      const duration = getBookDuration(item);
+      bookItemIds.push(item.id);
+      return {
+        text: meta?.title || 'Unknown',
+        detailText: formatSubtitle('', duration, progress > 0 ? progress : undefined),
+        playbackProgress: progress > 0 ? progress : undefined,
+        showsDisclosureIndicator: false,
+      };
+    });
+
+    const authorTemplate = new ListTemplate({
+      title: authorName,
+      backButtonHidden: false,
+      sections: [{ header: `${books.length} Book${books.length !== 1 ? 's' : ''}`, items }],
+      onItemSelect: async ({ index }: { index: number }) => {
+        const itemId = bookItemIds[index];
+        if (itemId) await this.playItem(itemId);
+      },
+    });
+
+    CarPlay.pushTemplate(authorTemplate, true);
+    log('Pushed author book list:', authorName, 'books:', books.length);
   }
 
   /**
@@ -1146,6 +1558,13 @@ class AutomotiveService {
           log('Book not found in library:', bookId);
           return;
         }
+      }
+
+      // Validate chapter index is within bounds
+      const chapters = usePlayerStore.getState().chapters || [];
+      if (chapterIndex < 0 || chapterIndex >= chapters.length) {
+        log('Chapter index out of bounds:', chapterIndex, 'total:', chapters.length);
+        return;
       }
 
       // Jump to the chapter and start playback
@@ -1279,43 +1698,45 @@ class AutomotiveService {
   }
 
   /**
-   * Update CarPlay list templates with current data
+   * Update all CarPlay list templates with current data.
    */
   private async updateCarPlayLists(): Promise<void> {
     if (!this.carPlayModule || this.connectedPlatform !== 'carplay') return;
 
     try {
-      const sections = await this.getBrowseSections();
+      const { useLibraryCache } = await import('@/core/cache/libraryCache');
+      const { sqliteCache } = await import('@/core/services/sqliteCache');
+      const libraryItems = useLibraryCache.getState().items;
+      const playerState = usePlayerStore.getState();
 
-      // Update Continue Listening template
-      const continueSection = sections.find(s => s.id === 'continue-listening');
-      if (this.continueListeningTemplate && continueSection) {
-        this.continueListeningTemplate.updateSections([{
-          header: 'In Progress',
-          items: continueSection.items.map(item => ({
-            text: item.title,
-            detailText: item.subtitle,
-            image: item.imageUrl,
-            showsDisclosureIndicator: false,
-          })),
-        }]);
-        log('Updated continue listening with', continueSection.items.length, 'items');
+      // Update Continue Listening (sections + itemIds)
+      if (this.continueListeningTemplate) {
+        const continueData = await this.getCarPlayContinueItems(libraryItems, playerState, sqliteCache);
+        this.carPlayContinueItemIds = continueData.itemIds;
+        this.continueListeningTemplate.updateSections(continueData.sections);
       }
 
-      // Update Downloads template
-      const downloadsSection = sections.find(s => s.id === 'downloads');
-      if (this.downloadsTemplate && downloadsSection) {
-        this.downloadsTemplate.updateSections([{
-          header: 'Offline Books',
-          items: downloadsSection.items.map(item => ({
-            text: item.title,
-            detailText: item.subtitle,
-            image: item.imageUrl,
-            showsDisclosureIndicator: false,
-          })),
-        }]);
-        log('Updated downloads with', downloadsSection.items.length, 'items');
+      // Update Library (sections + itemIds)
+      if (this.libraryTemplate) {
+        const libraryData = this.getCarPlayLibrarySections(libraryItems);
+        this.carPlayLibraryItemIds = libraryData.itemIds;
+        this.libraryTemplate.updateSections(libraryData.sections);
       }
+
+      // Update Authors (sections + carPlayAuthors)
+      if (this.authorsTemplate) {
+        const authorData = this.getCarPlayAuthorSections(libraryItems);
+        this.authorsTemplate.updateSections(authorData.sections);
+      }
+
+      // Update Downloads (sections + itemIds)
+      if (this.downloadsTemplate) {
+        const downloadData = await this.getCarPlayDownloadSections(libraryItems, sqliteCache);
+        this.carPlayDownloadItemIds = downloadData.itemIds;
+        this.downloadsTemplate.updateSections(downloadData.sections);
+      }
+
+      log('Updated all CarPlay lists');
     } catch (error) {
       log('Error updating CarPlay lists:', error);
     }
@@ -1560,7 +1981,14 @@ class AutomotiveService {
 
     // Clear template references and command queue
     this.continueListeningTemplate = null;
+    this.libraryTemplate = null;
+    this.authorsTemplate = null;
     this.downloadsTemplate = null;
+    this.carPlayContinueItemIds = [];
+    this.carPlayLibraryItemIds = [];
+    this.carPlayAuthors = [];
+    this.carPlayDownloadItemIds = [];
+    this.carPlayDownloadedIds = new Set();
     this.commandQueue = [];
 
     this.connectionState = 'disconnected';

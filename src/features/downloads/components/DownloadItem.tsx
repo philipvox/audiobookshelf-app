@@ -4,17 +4,18 @@
  * Single download item for the downloads list view.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import { useCoverUrl } from '@/core/cache';
 import { DownloadTask } from '@/core/services/downloadManager';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
 import { useColors } from '@/shared/theme/themeStore';
+import { formatBytes } from '@/shared/utils/format';
 
 // Pause icon
 const PauseIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -82,7 +83,7 @@ interface DownloadItemProps {
   onDelete: () => void;
 }
 
-export function DownloadItem({ download, onPause, onResume, onDelete }: DownloadItemProps) {
+export const DownloadItem = React.memo(function DownloadItem({ download, onPause, onResume, onDelete }: DownloadItemProps) {
   const colors = useColors();
   const [book, setBook] = useState<LibraryItem | null>(null);
   const coverUrl = useCoverUrl(download.itemId);
@@ -94,7 +95,7 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
     });
   }, [download.itemId]);
 
-  const metadata = book?.media?.metadata as any;
+  const metadata = book?.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Loading...';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || '';
 
@@ -114,23 +115,14 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
     onDelete();
   }, [onDelete]);
 
-  // Format bytes helper
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-  };
-
   // NN/g: Detailed status display for visibility of system status
-  const getStatusInfo = () => {
+  const statusInfo = useMemo(() => {
     const bytesInfo = download.bytesDownloaded > 0 && download.totalBytes > 0
       ? ` • ${formatBytes(download.bytesDownloaded)} / ${formatBytes(download.totalBytes)}`
       : '';
 
     switch (download.status) {
-      case 'downloading':
+      case 'downloading': {
         // Show "Preparing" when server is fetching/caching the file
         const progressPct = Math.round(download.progress * 100);
         const statusText = progressPct === 0
@@ -141,6 +133,7 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
           color: colors.semantic.success,
           showProgress: true, // Always show progress bar for downloading state
         };
+      }
       case 'pending':
         return {
           text: 'Queued - waiting to start...',
@@ -172,22 +165,30 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
           showProgress: false,
         };
     }
-  };
-
-  const statusInfo = getStatusInfo();
+  }, [download.status, download.progress, download.bytesDownloaded, download.totalBytes, download.error, colors]);
 
   // Action button based on status - NN/g: 44×44px minimum touch target
   const renderActionButton = () => {
     switch (download.status) {
       case 'downloading':
         return (
-          <Pressable style={styles.actionButton} onPress={handlePause}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={handlePause}
+            accessibilityRole="button"
+            accessibilityLabel={`Pause downloading ${title}`}
+          >
             <PauseIcon size={scale(18)} color={colors.semantic.success} />
           </Pressable>
         );
       case 'paused':
         return (
-          <Pressable style={styles.actionButton} onPress={handleResume}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={handleResume}
+            accessibilityRole="button"
+            accessibilityLabel={`Resume downloading ${title}`}
+          >
             <PlayIcon size={scale(18)} color={colors.semantic.warning} />
           </Pressable>
         );
@@ -199,13 +200,23 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
         );
       case 'error':
         return (
-          <Pressable style={styles.actionButton} onPress={handleResume}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={handleResume}
+            accessibilityRole="button"
+            accessibilityLabel={`Retry downloading ${title}`}
+          >
             <AlertIcon size={scale(18)} color={colors.semantic.error} />
           </Pressable>
         );
       case 'complete':
         return (
-          <Pressable style={styles.actionButton} onPress={handleDelete}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={handleDelete}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove downloaded ${title}`}
+          >
             <CheckIcon size={scale(18)} color={colors.semantic.success} />
           </Pressable>
         );
@@ -276,7 +287,7 @@ export function DownloadItem({ download, onPause, onResume, onDelete }: Download
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

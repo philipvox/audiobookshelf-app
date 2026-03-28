@@ -9,7 +9,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
@@ -20,13 +19,13 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { Search, XCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { RootStackNavigationProp } from '@/navigation/types';
 import { apiClient } from '@/core/api';
 import { useLibraryCache } from '@/core/cache';
-import { usePlayerStore } from '@/features/player';
-import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
 import { scale, spacing, useTheme } from '@/shared/theme';
-import { SectionSkeleton, BookCardSkeleton, SkullRefreshControl, useBookContextMenu } from '@/shared/components';
+import { SectionSkeleton, BookCardSkeleton, useBookContextMenu } from '@/shared/components';
 import { SortPicker } from '../components/SortPicker';
 import { useLibraryViewStore } from '../stores/libraryViewStore';
 import { LibraryTabBar } from '../components/LibraryTabBar';
@@ -58,7 +57,7 @@ const CompassIcon = ({ size = 24, color = '#FFFFFF' }: { size?: number; color?: 
 export function MyLibraryScreen() {
   useScreenLoadTime('MyLibraryScreen');
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootStackNavigationProp>();
   const { colors } = useTheme();
   const loadBook = usePlayerStore((s) => s.loadBook);
   const { showMenu } = useBookContextMenu();
@@ -117,7 +116,7 @@ export function MyLibraryScreen() {
 
   const handleBrowse = () => {
     // Use jumpTo for tab switching when already inside the tab navigator
-    const parent = navigation.getParent();
+    const parent = navigation.getParent() as { jumpTo?: (name: string) => void } | undefined;
     if (parent?.jumpTo) {
       parent.jumpTo('DiscoverTab');
     } else {
@@ -197,7 +196,7 @@ export function MyLibraryScreen() {
     });
   }, [activeDownloads, resumeDownload]);
 
-  // Render tab content
+  // Render tab content - each tab has its own FlatList for virtualization
   const renderTabContent = () => {
     switch (activeTab) {
       case 'favorites':
@@ -214,6 +213,8 @@ export function MyLibraryScreen() {
             onNarratorPress={handleNarratorPress}
             isMarkedFinished={isMarkedFinished}
             onBrowse={handleBrowse}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
           />
         );
       case 'in-progress':
@@ -226,6 +227,8 @@ export function MyLibraryScreen() {
             onSeriesPress={handleSeriesPress}
             isMarkedFinished={isMarkedFinished}
             onBrowse={handleBrowse}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
           />
         );
       case 'downloaded':
@@ -248,11 +251,22 @@ export function MyLibraryScreen() {
             hasDownloading={hasDownloading}
             hasPaused={hasPaused}
             onBrowse={handleBrowse}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
           />
         );
       case 'completed':
-        // Handled separately above with its own FlatList for virtualization
-        return null;
+        return (
+          <CompletedTab
+            books={filteredBooks}
+            onBookPress={handleBookPress}
+            onBookPlay={handlePlayBook}
+            isMarkedFinished={isMarkedFinished}
+            onBrowse={handleBrowse}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+          />
+        );
       default:
         return (
           <AllBooksTab
@@ -277,6 +291,8 @@ export function MyLibraryScreen() {
             hasDownloading={hasDownloading}
             hasPaused={hasPaused}
             onBrowse={handleBrowse}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
           />
         );
     }
@@ -297,9 +313,10 @@ export function MyLibraryScreen() {
             placeholderTextColor={colors.text.secondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            accessibilityLabel="Search your library"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Clear search">
               <XCircle size={scale(18)} color={colors.text.secondary} />
             </TouchableOpacity>
           )}
@@ -311,6 +328,8 @@ export function MyLibraryScreen() {
           <TouchableOpacity
             style={[styles.browseButton, { backgroundColor: colors.background.secondary }]}
             onPress={handleBrowse}
+            accessibilityRole="button"
+            accessibilityLabel="Browse library"
           >
             <CompassIcon size={scale(18)} color={colors.text.primary} />
           </TouchableOpacity>
@@ -323,7 +342,7 @@ export function MyLibraryScreen() {
         onTabChange={setActiveTab}
       />
 
-      {/* Content */}
+      {/* Content - each tab has its own FlatList for virtualization */}
       {isLoading ? (
         <View style={styles.skeletonContainer}>
           <SectionSkeleton />
@@ -335,31 +354,8 @@ export function MyLibraryScreen() {
         </View>
       ) : !hasAnyContent ? (
         <LibraryEmptyState tab={activeTab} onAction={handleBrowse} />
-      ) : activeTab === 'completed' ? (
-        // CompletedTab has its own FlatList for virtualization
-        <CompletedTab
-          books={filteredBooks}
-          onBookPress={handleBookPress}
-          onBookPlay={handlePlayBook}
-          isMarkedFinished={isMarkedFinished}
-          onBrowse={handleBrowse}
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-        />
       ) : (
-        // Other tabs use ScrollView (can be refactored later for virtualization)
-        <SkullRefreshControl refreshing={isRefreshing} onRefresh={handleRefresh}>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
-            ]}
-            showsVerticalScrollIndicator={false}
-          >
-            {renderTabContent()}
-          </ScrollView>
-        </SkullRefreshControl>
+        renderTabContent()
       )}
     </View>
   );
@@ -398,12 +394,6 @@ const styles = StyleSheet.create({
     borderRadius: scale(18),
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    // No top padding - content starts immediately after tab bar
   },
   skeletonContainer: {
     paddingHorizontal: spacing.lg,

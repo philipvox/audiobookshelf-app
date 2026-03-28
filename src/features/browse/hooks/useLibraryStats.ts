@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryCache } from '@/core/cache';
 
 export interface LibraryStats {
@@ -18,7 +19,7 @@ export interface LibraryStats {
  * Calculate aggregate library statistics
  */
 export function useLibraryStats(): LibraryStats {
-  const { items, isLoaded } = useLibraryCache();
+  const { items, isLoaded } = useLibraryCache(useShallow((s) => ({ items: s.items, isLoaded: s.isLoaded })));
 
   return useMemo(() => {
     if (!isLoaded || !items.length) {
@@ -33,7 +34,7 @@ export function useLibraryStats(): LibraryStats {
 
     items.forEach(item => {
       // Duration is stored in seconds on the media object
-      const duration = (item.media as any)?.duration || 0;
+      const duration = item.media?.duration || 0;
       totalDurationSeconds += duration;
     });
 

@@ -171,7 +171,7 @@ export function configFromLibraryItem(
     },
     display: {
       progress,
-      isDownloaded: false, // TODO: Check download status
+      isDownloaded: false, // Download status not tracked for spine display
       context,
     },
   };

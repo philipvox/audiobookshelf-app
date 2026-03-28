@@ -2,7 +2,6 @@
  * src/features/recommendations/utils/moodMaps.ts
  *
  * Genre/indicator maps for mood-based scoring.
- * Extracted from the removed mood-discovery types for use by comprehensiveScoring.
  */
 
 import { Mood } from '@/shared/utils/bookDNA';

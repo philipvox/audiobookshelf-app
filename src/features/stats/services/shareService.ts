@@ -6,7 +6,7 @@
  */
 
 import { Share, Platform } from 'react-native';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { logger } from '@/shared/utils/logger';
 
@@ -60,7 +60,7 @@ function formatShareDuration(seconds: number): string {
  */
 export function generateProgressShareText(progress: BookProgress): string {
   const { book, percentComplete, position, duration } = progress;
-  const metadata = book.media?.metadata as any;
+  const metadata = book.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
 
@@ -84,7 +84,7 @@ export function generateProgressShareText(progress: BookProgress): string {
  * Generate share text for completing a book
  */
 export function generateCompletedShareText(book: LibraryItem, listenTime?: number): string {
-  const metadata = book.media?.metadata as any;
+  const metadata = book.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
 

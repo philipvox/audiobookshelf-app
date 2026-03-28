@@ -30,12 +30,14 @@ export function SectionHeader({
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]} accessibilityRole="header">{title}</Text>
       {showViewAll && onViewAll && (
         <TouchableOpacity
           onPress={onViewAll}
           style={styles.viewAllButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={`View all ${title}`}
         >
           <Text style={[styles.viewAll, { color: colors.text.secondary }]}>View All</Text>
         </TouchableOpacity>

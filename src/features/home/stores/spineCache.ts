@@ -89,12 +89,26 @@ export interface SpineCacheState {
   lastPopulatedAt: number | null;
   useColoredSpines: boolean;
   useServerSpines: boolean;
+  /** Custom spine server URL (e.g. http://192.168.1.100:8786). If empty, uses main ABS server. */
+  spineServerUrl: string;
+  /** Use community spine images from Secret Spines (on by default) */
+  useCommunitySpines: boolean;
   serverSpineDimensions: Record<string, SpineDimensionEntry>;
   isHydrated: boolean;
   serverSpineDimensionsVersion: number;
   /** Incremented when accent colors arrive — triggers re-renders */
   colorVersion: number;
   cachedManifestBookIds: string[];
+  /** Persisted community spine book IDs for instant hydration */
+  cachedCommunityBookIds: string[];
+  /** Maps localItemId → communityBookId for spine URL construction */
+  communityBookMap: Record<string, string>;
+  /** Per-book spine overrides: bookId → community spine URL or local file URI (user-selected) */
+  spineOverrides: Record<string, string>;
+  /** Whether to prompt to submit custom spines to community server (default true) */
+  promptCommunitySubmit: boolean;
+  /** Pending community spine submissions: spineId -> bookTitle */
+  pendingSubmissions: Record<string, string>;
   /** Persisted accent colors: bookId -> hex color */
   accentColors: Record<string, string>;
 }
@@ -108,12 +122,35 @@ export interface SpineCacheActions {
   clearCache: () => void;
   setUseColoredSpines: (enabled: boolean) => void;
   setUseServerSpines: (enabled: boolean) => void;
+  setSpineServerUrl: (url: string) => void;
+  setUseCommunitySpines: (enabled: boolean) => void;
   saveToSQLite: (libraryId: string) => Promise<void>;
   getServerSpineDimensions: (bookId: string) => { width: number; height: number } | undefined;
   setServerSpineDimensions: (bookId: string, width: number, height: number) => void;
+  /** Batch set dimensions for many books at once (single state update) */
+  batchSetServerSpineDimensions: (dims: Record<string, [number, number]>) => void;
   clearServerSpineDimensions: () => void;
   setCachedManifestBookIds: (bookIds: string[]) => void;
   getCachedManifestBookIds: () => string[];
+  setCachedCommunityBookIds: (bookIds: string[]) => void;
+  /** Set the community book ID mapping (localItemId → communityBookId) */
+  setCommunityBookMap: (map: Record<string, string>) => void;
+  /** Get the community book ID for a local item */
+  getCommunityBookId: (localItemId: string) => string | undefined;
+  /** Set a per-book spine override URL */
+  setSpineOverride: (bookId: string, spineUrl: string) => void;
+  /** Clear a per-book spine override */
+  clearSpineOverride: (bookId: string) => void;
+  /** Get the spine override for a book */
+  getSpineOverride: (bookId: string) => string | undefined;
+  /** Toggle community submission prompt */
+  setPromptCommunitySubmit: (enabled: boolean) => void;
+  /** Track a pending community spine submission */
+  addPendingSubmission: (spineId: string, bookTitle: string) => void;
+  /** Remove a pending submission (after it's been resolved) */
+  removePendingSubmission: (spineId: string) => void;
+  /** Check status of all pending submissions and return resolved ones */
+  checkPendingSubmissions: () => Promise<Array<{ id: string; status: string; bookTitle: string }>>;
   /** Set accent color for a single book */
   setAccentColor: (bookId: string, color: string) => void;
 }
@@ -170,6 +207,10 @@ function buildCoverUrl(bookId: string): string | null {
 // Track whether color extraction is already running to prevent duplicate batches
 let _colorExtractionInProgress = false;
 
+// Debounce buffer for server spine dimension updates
+let _pendingDimUpdates: Record<string, { width: number; height: number }> = {};
+let _dimFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Extract accent colors for books that don't have one yet.
  * Runs in background, updates store as colors arrive.
@@ -213,12 +254,32 @@ async function extractMissingColors(
       });
 
       const results = await Promise.allSettled(promises);
+      // Batch all colors from this batch into a single store update
+      const batchColors: { id: string; color: string }[] = [];
       for (const result of results) {
         if (result.status === 'fulfilled') {
-          setAccentColor(result.value.id, result.value.color);
+          batchColors.push(result.value);
         } else {
           log.debug('Color extraction rejected:', result.reason);
         }
+      }
+      if (batchColors.length > 0) {
+        const store = useSpineCacheStore.getState();
+        const newAccentColors = { ...store.accentColors };
+        const newCache = new Map(store.cache);
+        let cacheChanged = false;
+        for (const { id, color } of batchColors) {
+          newAccentColors[id] = color;
+          const existing = newCache.get(id);
+          if (existing && existing.accentColor !== color) {
+            newCache.set(id, { ...existing, accentColor: color });
+            cacheChanged = true;
+          }
+        }
+        useSpineCacheStore.setState({
+          accentColors: newAccentColors,
+          ...(cacheChanged ? { cache: newCache, colorVersion: store.colorVersion + 1 } : {}),
+        });
       }
     }
 
@@ -241,11 +302,18 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       lastPopulatedAt: null,
       useColoredSpines: true,
       useServerSpines: true,
+      spineServerUrl: '',
+      useCommunitySpines: true,
       serverSpineDimensions: {},
       isHydrated: false,
       serverSpineDimensionsVersion: 0,
       colorVersion: 0,
       cachedManifestBookIds: [],
+      cachedCommunityBookIds: [],
+      communityBookMap: {},
+      spineOverrides: {},
+      promptCommunitySubmit: true,
+      pendingSubmissions: {},
       accentColors: {},
 
       // Actions
@@ -333,6 +401,14 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
         set({ useServerSpines: enabled });
       },
 
+      setSpineServerUrl: (url: string) => {
+        set({ spineServerUrl: url.trim().replace(/\/+$/, '') });
+      },
+
+      setUseCommunitySpines: (enabled: boolean) => {
+        set({ useCommunitySpines: enabled });
+      },
+
       getServerSpineDimensions: (bookId: string) => {
         const entry = get().serverSpineDimensions[bookId];
         if (!entry) return undefined;
@@ -342,14 +418,47 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
       },
 
       setServerSpineDimensions: (bookId: string, width: number, height: number) => {
+        // Debounced: collect dimension updates and flush in a single batch
+        _pendingDimUpdates[bookId] = { width, height };
+        if (!_dimFlushTimer) {
+          _dimFlushTimer = setTimeout(() => {
+            const { serverSpineDimensions, serverSpineDimensionsVersion } = useSpineCacheStore.getState();
+            const updates = { ...serverSpineDimensions };
+            let changed = false;
+            for (const [id, dims] of Object.entries(_pendingDimUpdates)) {
+              const existing = updates[id];
+              if (!existing || existing.width !== dims.width || existing.height !== dims.height) {
+                updates[id] = { ...dims, cachedAt: Date.now() };
+                changed = true;
+              }
+            }
+            _pendingDimUpdates = {};
+            _dimFlushTimer = null;
+            if (changed) {
+              useSpineCacheStore.setState({
+                serverSpineDimensions: updates,
+                serverSpineDimensionsVersion: serverSpineDimensionsVersion + 1,
+              });
+            }
+          }, 200);
+        }
+      },
+
+      batchSetServerSpineDimensions: (dims: Record<string, [number, number]>) => {
         const { serverSpineDimensions, serverSpineDimensionsVersion } = get();
-        const existing = serverSpineDimensions[bookId];
-        if (!existing || existing.width !== width || existing.height !== height) {
+        const now = Date.now();
+        const merged = { ...serverSpineDimensions };
+        let changed = 0;
+        for (const [bookId, [w, h]] of Object.entries(dims)) {
+          const existing = merged[bookId];
+          if (!existing || existing.width !== w || existing.height !== h) {
+            merged[bookId] = { width: w, height: h, cachedAt: now };
+            changed++;
+          }
+        }
+        if (changed > 0) {
           set({
-            serverSpineDimensions: {
-              ...serverSpineDimensions,
-              [bookId]: { width, height, cachedAt: Date.now() },
-            },
+            serverSpineDimensions: merged,
             serverSpineDimensionsVersion: serverSpineDimensionsVersion + 1,
           });
         }
@@ -365,6 +474,77 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
 
       getCachedManifestBookIds: () => {
         return get().cachedManifestBookIds;
+      },
+
+      setCachedCommunityBookIds: (bookIds: string[]) => {
+        set({ cachedCommunityBookIds: bookIds });
+      },
+
+      setCommunityBookMap: (map: Record<string, string>) => {
+        set({ communityBookMap: map });
+      },
+
+      getCommunityBookId: (localItemId: string) => {
+        return get().communityBookMap[localItemId];
+      },
+
+      setSpineOverride: (bookId: string, spineUrl: string) => {
+        set({ spineOverrides: { ...get().spineOverrides, [bookId]: spineUrl } });
+      },
+
+      clearSpineOverride: (bookId: string) => {
+        const { [bookId]: _, ...rest } = get().spineOverrides;
+        set({ spineOverrides: rest });
+      },
+
+      getSpineOverride: (bookId: string) => {
+        return get().spineOverrides[bookId];
+      },
+
+      setPromptCommunitySubmit: (enabled: boolean) => {
+        set({ promptCommunitySubmit: enabled });
+      },
+
+      addPendingSubmission: (spineId: string, bookTitle: string) => {
+        set({ pendingSubmissions: { ...get().pendingSubmissions, [spineId]: bookTitle } });
+      },
+
+      removePendingSubmission: (spineId: string) => {
+        const { [spineId]: _, ...rest } = get().pendingSubmissions;
+        set({ pendingSubmissions: rest });
+      },
+
+      checkPendingSubmissions: async () => {
+        const pending = get().pendingSubmissions;
+        const ids = Object.keys(pending);
+        if (ids.length === 0) return [];
+
+        try {
+          const res = await fetch(
+            `https://spines.mysecretlibrary.com/api/submissions/check?ids=${ids.join(',')}`
+          );
+          if (!res.ok) return [];
+          const data = await res.json();
+          const resolved: Array<{ id: string; status: string; bookTitle: string }> = [];
+
+          for (const result of data.results || []) {
+            if (result.status === 'approved' || result.status === 'denied') {
+              resolved.push({
+                id: result.id,
+                status: result.status,
+                bookTitle: pending[result.id] || result.bookTitle || 'Unknown',
+              });
+              // Remove from pending
+              const { [result.id]: _, ...rest } = get().pendingSubmissions;
+              set({ pendingSubmissions: rest });
+            }
+          }
+
+          return resolved;
+        } catch {
+          log.debug('Failed to check pending submissions');
+          return [];
+        }
       },
 
       setAccentColor: (bookId: string, color: string) => {
@@ -402,13 +582,20 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
     }),
     {
       name: 'spine-settings',
-      version: 12, // v12: Clear stale brown colors, use hash-based diverse fallback
+      version: 17, // v17: Add pendingSubmissions for community spine status tracking
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         useColoredSpines: state.useColoredSpines,
         useServerSpines: state.useServerSpines,
+        spineServerUrl: state.spineServerUrl,
+        useCommunitySpines: state.useCommunitySpines,
         serverSpineDimensions: state.serverSpineDimensions,
         cachedManifestBookIds: state.cachedManifestBookIds,
+        cachedCommunityBookIds: state.cachedCommunityBookIds,
+        communityBookMap: state.communityBookMap,
+        spineOverrides: state.spineOverrides,
+        promptCommunitySubmit: state.promptCommunitySubmit,
+        pendingSubmissions: state.pendingSubmissions,
         accentColors: state.accentColors,
       }),
       migrate: (persistedState: any, version: number) => {
@@ -418,10 +605,31 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
             ...persistedState,
             useColoredSpines: persistedState.useColoredSpines ?? true,
             useServerSpines: persistedState.useServerSpines ?? true,
+            spineServerUrl: '',
             serverSpineDimensions: persistedState.serverSpineDimensions || {},
             cachedManifestBookIds: persistedState.cachedManifestBookIds || [],
             accentColors: {},
           };
+        }
+        if (version < 13) {
+          // v13: Reset spineServerUrl — was accidentally set to an IP address
+          return { ...persistedState, spineServerUrl: '' };
+        }
+        if (version < 14) {
+          // v14: Add community spines (on by default)
+          return { ...persistedState, useCommunitySpines: true, communityBookMap: {} };
+        }
+        if (version < 15) {
+          // v15: Add communityBookMap for universal matching
+          return { ...persistedState, communityBookMap: {} };
+        }
+        if (version < 16) {
+          // v16: Add per-book spine overrides
+          return { ...persistedState, spineOverrides: {} };
+        }
+        if (version < 17) {
+          // v17: Add pending submissions tracking
+          return { ...persistedState, pendingSubmissions: {} };
         }
         return persistedState;
       },
@@ -434,12 +642,21 @@ export const useSpineCacheStore = create<SpineCacheState & SpineCacheActions>()(
 
           useSpineCacheStore.setState({ isHydrated: true });
 
+          const { useLibraryCache } = require('@/core/cache/libraryCache');
           if (manifestCount > 0) {
-            const { useLibraryCache } = require('@/core/cache/libraryCache');
             const current = useLibraryCache.getState().booksWithServerSpines;
             if (current.size === 0) {
               useLibraryCache.setState({
                 booksWithServerSpines: new Set(state.cachedManifestBookIds),
+              });
+            }
+          }
+          const communityCount = state.cachedCommunityBookIds?.length || 0;
+          if (communityCount > 0) {
+            const currentCommunity = useLibraryCache.getState().booksWithCommunitySpines;
+            if (currentCommunity.size === 0) {
+              useLibraryCache.setState({
+                booksWithCommunitySpines: new Set(state.cachedCommunityBookIds),
               });
             }
           }
@@ -457,3 +674,4 @@ export const selectIsPopulated = (state: SpineCacheState) => state.isPopulated;
 export const selectCacheSize = (state: SpineCacheState) => state.cache.size;
 export const selectUseColoredSpines = (state: SpineCacheState) => state.useColoredSpines;
 export const selectUseServerSpines = (state: SpineCacheState) => state.useServerSpines;
+export const selectUseCommunitySpines = (state: SpineCacheState) => state.useCommunitySpines;

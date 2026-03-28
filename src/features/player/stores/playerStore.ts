@@ -64,6 +64,7 @@ import {
   resolvePosition,
   createLocalSource,
   createServerSource,
+  getInitialPosition,
 } from '../utils/positionResolver';
 
 // Import tick cache for pre-generating timeline ticks
@@ -181,8 +182,6 @@ interface PlayerState {
   // UI State
   // ---------------------------------------------------------------------------
   isPlayerVisible: boolean;
-  isOffline: boolean;
-  playbackError: string | null;  // Error message to show in UI (null = no error)
 
   // ---------------------------------------------------------------------------
   // Last Played Tracking (separate from currentBook which is "opened" book)
@@ -261,11 +260,6 @@ interface PlayerActions {
   commitSeek: () => Promise<void>;
 
   /**
-   * Cancel seek without committing. Returns to original position.
-   */
-  cancelSeek: () => Promise<void>;
-
-  /**
    * Convenience: instant seek (start + update + commit in one call)
    * Use this for tap-to-seek or chapter jumps.
    */
@@ -327,7 +321,6 @@ interface PlayerActions {
   closePlayer: () => void;
   stopPlayback: () => Promise<void>;
   setPlayerVisible: (visible: boolean) => void;
-  clearPlaybackError: () => void;
   handleAudioError: (error: AudioError) => Promise<void>;
 
   // ---------------------------------------------------------------------------
@@ -366,8 +359,6 @@ const LAST_PLAYED_BOOK_ID_KEY = 'playerLastPlayedBookId';
 const PROGRESS_SAVE_INTERVAL = 5000; // Save progress every 5 seconds (SQLite only, no UI updates)
 const MIN_PAUSE_FOR_REWIND_MS = 3000; // Minimum pause before smart rewind applies
 const PREV_CHAPTER_THRESHOLD = 3;     // Seconds before going to prev vs restart
-const _SLEEP_TIMER_SHAKE_THRESHOLD = 60; // Start shake detection when < 60 seconds remaining
-const _SLEEP_TIMER_EXTEND_MINUTES = 15;  // Add 15 minutes on shake
 const AUTO_DOWNLOAD_THRESHOLD = 0.8;  // Trigger auto-download at 80% progress
 
 // =============================================================================
@@ -452,8 +443,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
     // UI
     isPlayerVisible: false,
-    isOffline: false,
-    playbackError: null,
 
     // Last played tracking
     lastPlayedBookId: null,
@@ -546,9 +535,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         try {
           // Quick local progress lookup - non-blocking, use cached if available
           const localProgress = await progressService.getLocalProgress(book.id);
-          if (localProgress > 0) {
-            earlyPosition = localProgress;
-            log('Early position from local progress:', earlyPosition.toFixed(1));
+          earlyPosition = getInitialPosition(localProgress, book);
+          if (earlyPosition > 0) {
+            log('Early position:', earlyPosition.toFixed(1));
           }
         } catch {
           // Ignore - will get position later from session
@@ -566,7 +555,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         viewingBook: book,  // Sync viewing book when loading
         isPlaying: false,
         isBuffering: true,
-        playbackError: null,  // Fix: Clear any previous playback error
         // Set position early to avoid jarring jump from stale/0 to resume position
         position: earlyPosition,
       });
@@ -574,8 +562,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (showPlayer) {
         playerTransitionProgress.value = withSpring(1, SPRING_CONFIG);
       }
-      // Reset seeking state in seekingStore (single source of truth)
-      useSeekingStore.getState().resetSeekingState();
       timing('State set');
 
       try {
@@ -667,10 +653,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // Start auto sync in background
             sessionService.startAutoSync(() => get().position);
 
-            // Use local position (more recent than cached session)
-            if (!startPosition && localData && localData.currentTime > 0) {
-              resumePosition = localData.currentTime;
-              log(`Using local progress: ${resumePosition.toFixed(1)}s`);
+            // Use timestamp-based position resolution (same logic as streaming path)
+            if (!startPosition) {
+              const serverPosition = cachedSession.currentTime || 0;
+              const serverTimestamp = cachedSession.updatedAt || 0;
+
+              const localSource = localData
+                ? createLocalSource(localData.currentTime, localData.updatedAt || 0)
+                : null;
+              const serverSource = serverPosition > 0
+                ? createServerSource(serverPosition, serverTimestamp)
+                : null;
+
+              const resolution = resolvePosition(localSource, serverSource);
+              log(`Position resolved (cached session): ${resolution.position.toFixed(1)}s (${resolution.reason})`);
+
+              if (resolution.position > 0) {
+                resumePosition = resolution.position;
+              }
             }
           } else {
             // FIX 2: Race session request against 2-second timeout
@@ -730,32 +730,50 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
                 book_id: book.id,
               }, 'info');
 
-              // Use local progress
-              if (!startPosition && localData && localData.currentTime > 0) {
-                resumePosition = localData.currentTime;
-                log(`Using local progress: ${resumePosition.toFixed(1)}s`);
+              // Use local progress with book's server progress as fallback
+              // Even without a live session, the book object may have userMediaProgress
+              if (!startPosition) {
+                const localSource = localData
+                  ? createLocalSource(localData.currentTime, localData.updatedAt || 0)
+                  : null;
+                const bookProgress = book?.userMediaProgress || book?.mediaProgress;
+                const bpTime = bookProgress?.currentTime ?? 0;
+                const serverSource = bpTime > 0
+                  ? createServerSource(bpTime, bookProgress?.lastUpdate || 0)
+                  : null;
+
+                const resolution = resolvePosition(localSource, serverSource);
+                log(`Position resolved (session timed out): ${resolution.position.toFixed(1)}s (${resolution.reason})`);
+
+                if (resolution.position > 0) {
+                  resumePosition = resolution.position;
+                }
               }
 
               // Continue session connection in background for sync only - NO SEEKING after playback starts
               sessionPromise.then((session) => {
-                if (session) {
-                  // FIX: Check if user has switched books before starting auto-sync
-                  // This prevents orphaned sessions from syncing to the wrong book
-                  const currentBookId = get().currentBook?.id;
-                  if (currentBookId !== book.id) {
-                    log(`Background session arrived but user switched books (${book.id} -> ${currentBookId}), closing orphaned session`);
-                    sessionService.closeSessionAsync();
-                    return;
-                  }
+                try {
+                  if (session) {
+                    // FIX: Check if user has switched books before starting auto-sync
+                    // This prevents orphaned sessions from syncing to the wrong book
+                    const currentBookId = get().currentBook?.id;
+                    if (currentBookId !== book.id) {
+                      log(`Background session arrived but user switched books (${book.id} -> ${currentBookId}), closing orphaned session`);
+                      sessionService.closeSessionAsync();
+                      return;
+                    }
 
-                  const actualWaitTime = Date.now() - timeoutStartTime + SESSION_TIMEOUT_MS;
-                  log(`Background session connected after ${actualWaitTime}ms total (sync only, no position change)`);
-                  log(`Server position was: ${session.currentTime?.toFixed(1)}s, we used: ${resumePosition.toFixed(1)}s`);
-                  sessionService.startAutoSync(() => get().position);
-                  // Note: We do NOT seek here - that would cause jarring UX
-                  // The position was already resolved before playback started
+                    const actualWaitTime = Date.now() - timeoutStartTime + SESSION_TIMEOUT_MS;
+                    log(`Background session connected after ${actualWaitTime}ms total (sync only, no position change)`);
+                    log(`Server position was: ${session.currentTime?.toFixed(1)}s, we used: ${resumePosition.toFixed(1)}s`);
+                    sessionService.startAutoSync(() => get().position);
+                    // Note: We do NOT seek here - that would cause jarring UX
+                    // The position was already resolved before playback started
+                  }
+                } catch (e) {
+                  log('[Player] Error in background session handler:', e);
                 }
-              }).catch(() => {});
+              }).catch((e) => log('[Player] Background session connect failed', e));
             }
           } // End of else block (no cached session)
 
@@ -788,8 +806,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               const filePath = `${localPath}${fileName}`;
               // Try to match with cached session tracks first (have accurate duration/offset)
               // Then fall back to book.media.audioFiles
-              const sessionTrack = sessionTracks[index];
-              const bookFile = bookAudioFiles[index];
+              // P0 fix: bounds-check before array access — arrays may differ in length
+              const sessionTrack = index < sessionTracks.length ? sessionTracks[index] : undefined;
+              const bookFile = index < bookAudioFiles.length ? bookAudioFiles[index] : undefined;
 
               // Use session track duration if available (most reliable for downloaded books)
               const duration = sessionTrack?.duration || bookFile?.duration || 0;
@@ -945,6 +964,18 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               resumePosition = resolution.position;
             }
 
+            // Initialize high water mark with the highest known position
+            // This prevents any future sync from regressing below this point
+            const highestKnown = Math.max(
+              resolution.position,
+              serverPosition,
+              localData?.currentTime || 0
+            );
+            if (highestKnown > 0) {
+              sessionService.updateHighWaterMark(book.id, highestKnown);
+              log('High water mark set to', highestKnown.toFixed(1) + 's');
+            }
+
             if (resolution.isConflict) {
               log('Position conflict detected - using', resolution.source, 'position');
             }
@@ -971,12 +1002,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
            */
           const buildTrackUrl = (track: AudioTrack, index: number): string => {
             // Try to find the matching audioFile for this track to get the INO
-            const audioFile = bookAudioFiles[index];
+            // P0 fix: bounds-check before array access
+            const audioFile = index < bookAudioFiles.length ? bookAudioFiles[index] : undefined;
             if (audioFile?.ino) {
               // Use direct file URL — standard ABS endpoint, works on all servers.
               // On servers with a moov proxy (Caddy routing /api/items/*/file/*),
               // this also gets moov caching for free.
-              const fileUrl = `${baseUrl}/api/items/${book.id}/file/${audioFile.ino}?token=${token}`;
+              const fileUrl = `${baseUrl}/api/items/${book.id}/file/${audioFile.ino}?token=${encodeURIComponent(token)}`;
               log(`Track[${index}] using FILE URL (ino=${audioFile.ino})`);
               return fileUrl;
             }
@@ -987,7 +1019,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             let trackUrl = `${baseUrl}${contentUrl}`;
             if (!contentUrl.includes('token=')) {
               const separator = contentUrl.includes('?') ? '&' : '?';
-              trackUrl = `${trackUrl}${separator}token=${token}`;
+              trackUrl = `${trackUrl}${separator}token=${encodeURIComponent(token)}`;
             }
             return trackUrl;
           };
@@ -1024,9 +1056,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
             // Final fallback: build from session audioTracks contentUrl
             if (!url && session?.audioTracks?.length) {
-              log('getStreamUrl() returned null — building URL from session audioTracks directly');
-              url = buildTrackUrl(session.audioTracks[0] as AudioTrack, 0);
-              log('Fallback stream URL built successfully');
+              const firstTrack = session.audioTracks[0];
+              // P0 fix: validate track has required contentUrl before casting
+              if (firstTrack && typeof firstTrack.contentUrl === 'string') {
+                log('getStreamUrl() returned null — building URL from session audioTracks directly');
+                url = buildTrackUrl(firstTrack as AudioTrack, 0);
+                log('Fallback stream URL built successfully');
+              } else {
+                log('getStreamUrl() returned null and first audioTrack has no contentUrl — skipping fallback');
+              }
             }
 
             if (!url) {
@@ -1066,9 +1104,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         }
 
         // Initialize and start background sync service (NON-BLOCKING)
-        backgroundSyncService.init().then(() => backgroundSyncService.start()).catch((err) => {
-          audioLog.error('[Player] Background sync init failed:', err);
-        });
+        // Retry up to 3 times with exponential backoff if init fails
+        const initBackgroundSync = async (attempt = 1, maxAttempts = 3) => {
+          try {
+            await backgroundSyncService.init();
+            await backgroundSyncService.start();
+          } catch (err) {
+            if (attempt < maxAttempts) {
+              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+              audioLog.warn(`[Player] Background sync init failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms:`, err);
+              setTimeout(() => initBackgroundSync(attempt + 1, maxAttempts), delay);
+            } else {
+              audioLog.error(`[Player] Background sync init failed after ${maxAttempts} attempts — progress sync is disabled for this session:`, err);
+            }
+          }
+        };
+        initBackgroundSync();
 
         // Log chapters and duration sources
         if (chapters.length > 0) {
@@ -1116,7 +1167,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               }
               // Mark as applied and clear state so play() doesn't double-apply
               markSmartRewindApplied(book.id);
-              clearSmartRewindState().catch(() => {});
+              clearSmartRewindState().catch((e) => log('[SmartRewind] Failed to clear state', e));
             } catch (err) {
               log('[SmartRewind] Error in loadBook:', err);
             }
@@ -1135,7 +1186,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           viewingChapters: chapters,  // Sync viewing chapters
           duration: totalDuration,
           position: resumePosition,
-          isOffline,
         });
 
         // Pre-generate timeline ticks in background so they're ready when player opens
@@ -1146,11 +1196,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             end: ch.end,
             displayTitle: ch.title,
           }));
-          generateAndCacheTicks(book.id, totalDuration, chapterInputs, true).catch(() => {});
+          generateAndCacheTicks(book.id, totalDuration, chapterInputs, true).catch((e) => log('[Player] Failed to pre-generate timeline ticks', e));
           log('Pre-generating timeline ticks for:', book.id);
 
           // Cache chapters to SQLite for future fallback (fire and forget)
-          chapterCacheService.cacheChapters(book.id, chapters).catch(() => {});
+          chapterCacheService.cacheChapters(book.id, chapters).catch((e) => log('[Player] Failed to cache chapters to SQLite', e));
         }
 
         if (loadId !== currentLoadId) return;
@@ -1164,7 +1214,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         const coverUrl = apiClient.getItemCoverUrl(book.id);
 
         // Set up status callback BEFORE loading audio
-        audioService.setStatusUpdateCallback((state) => {
+        audioService.setStatusUpdateCallback((state: PlaybackState) => {
           get().updatePlaybackState(state);
         });
 
@@ -1177,7 +1227,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         audioService.setCurrentBookId(book.id);
 
         // Set up remote command callback for media control delegation
-        audioService.setRemoteCommandCallback((command, position) => {
+        audioService.setRemoteCommandCallback((command: string, position?: number) => {
           if (command === 'nextChapter') {
             get().nextChapter();
           } else if (command === 'prevChapter') {
@@ -1242,7 +1292,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
               const bookAudioFiles = isBookMedia(book.media) ? book.media.audioFiles || [] : [];
               const firstFile = bookAudioFiles[0];
               if (firstFile?.ino) {
-                castStreamUrl = `${castBaseUrl}/api/items/${book.id}/file/${firstFile.ino}?token=${castToken}`;
+                castStreamUrl = `${castBaseUrl}/api/items/${book.id}/file/${firstFile.ino}?token=${encodeURIComponent(castToken)}`;
               } else {
                 log('[Cast] No audio file INO available, cannot build cast URL');
                 throw new Error('No audio file INO for cast streaming');
@@ -1258,17 +1308,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // Ensure token is in the URL
             if (castToken && !castStreamUrl.includes('token=')) {
               const sep = castStreamUrl.includes('?') ? '&' : '?';
-              castStreamUrl = `${castStreamUrl}${sep}token=${castToken}`;
+              castStreamUrl = `${castStreamUrl}${sep}token=${encodeURIComponent(castToken)}`;
             }
 
             // Build authenticated cover URL for cast device
-            const castCoverUrl = `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}token=${castToken}`;
+            const castCoverUrl = `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(castToken)}`;
 
             log('[Cast] Loading media on cast device at position:', resumePosition.toFixed(1));
             await castState.loadMedia(castStreamUrl, title, author, castCoverUrl, resumePosition, castContentType);
 
             // Pause local audio — cast device handles playback
-            audioService.pause().catch(() => {});
+            audioService.pause().catch((e: unknown) => log('[Cast] Failed to pause local audio', e));
             log('[Cast] Media loaded on cast device, local audio paused');
           } catch (castErr) {
             log('[Cast] Failed to load on cast device, continuing with local playback:', castErr);
@@ -1290,7 +1340,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           });
 
           // Persist lastPlayedBookId for app restart recovery
-          AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, book.id).catch(() => {});
+          AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, book.id).catch((e) => log('[Player] Failed to persist lastPlayedBookId', e));
 
           // Start listening session tracking for autoplay
           startListeningSession(book, resumePosition);
@@ -1364,7 +1414,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // Log recovery attempt
             playerLogger.info('Attempting chapter recovery after error', {
               bookId: book.id,
-              bookTitle: (book.media?.metadata as any)?.title || 'Unknown',
+              bookTitle: (book.media?.metadata as BookMetadata)?.title || 'Unknown',
             });
 
             // Try to recover chapters from cache/metadata fallback
@@ -1513,9 +1563,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       const bookDuration = getBookDuration(book);
 
-      // Get progress from cache (instant) or SQLite
+      // Get progress from cache (instant) or SQLite, with server fallback for fresh install
       const progressData = await progressService.getProgressData(book.id);
-      const position = progressData?.currentTime || 0;
+      const position = getInitialPosition(progressData?.currentTime || 0, book);
       const duration = progressData?.duration || bookDuration;
 
       log(`Preloaded state: position=${position.toFixed(1)}s, duration=${duration.toFixed(1)}s`);
@@ -1546,11 +1596,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const viewingChapters = chapterResult.chapters;
       log(`viewBook chapters: ${viewingChapters.length} from ${chapterResult.source}`);
 
-      // Get duration and progress for display
+      // Get duration and progress for display, with server fallback for fresh install
       const bookDuration = getBookDuration(book);
       const progressData = await progressService.getProgressData(book.id);
       const viewDuration = progressData?.duration || bookDuration;
-      const viewPosition = progressData?.currentTime || 0;
+      const viewPosition = getInitialPosition(progressData?.currentTime || 0, book);
 
       // Always set duration/position for the viewed book so the player UI is correct.
       // If audio is actively playing, the status callback will overwrite these values
@@ -1563,7 +1613,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         viewingBook: book,
         viewingChapters,
         isPlayerVisible: true,
-        playbackError: null,  // Fix: Clear any previous playback error
         // Set duration/position when audio isn't actively loaded
         ...(!isAudioLoaded && {
           duration: viewDuration,
@@ -1623,7 +1672,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       if (castState.isConnected) {
         if (castState.play) {
           set({ isPlaying: true });
-          castState.play().catch(() => {});
+          castState.play().catch((e: unknown) => log('[Cast] play() failed', e));
         } else {
           audioLog.warn('[Player] Cast connected but play() unavailable');
         }
@@ -1650,7 +1699,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       });
 
       // Fire play command (don't block on it)
-      audioService.play().catch((err) => {
+      audioService.play().catch((err: unknown) => {
         audioLog.warn('[Player] Play command failed:', err);
       });
 
@@ -1697,7 +1746,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
                     startPosition: pos,
                     autoPlay: true,
                     showPlayer: true,
-                  }).catch(() => {});
+                  }).catch((e) => log('[STUCK_DETECTION] Hard reset loadBook failed', e));
                 }
               }
             }, 1500);
@@ -1707,19 +1756,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         }
       }, 3000);
 
-      // Emit book resumed event
-      // Fix HIGH TOCTOU: Re-read position from store to get current value after async operations
-      if (currentBook) {
-        const currentPosition = get().position;
-        eventBus.emit('book:resumed', {
-          bookId: currentBook.id,
-          position: currentPosition,
-        });
-      }
-
       // Persist lastPlayedBookId for app restart recovery (fire and forget)
       if (currentBook) {
-        AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, currentBook.id).catch(() => {});
+        AsyncStorage.setItem(LAST_PLAYED_BOOK_ID_KEY, currentBook.id).catch((e) => log('[Player] Failed to persist lastPlayedBookId on play', e));
       }
 
       // Sync progress on play (fire and forget)
@@ -1807,13 +1846,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const castState = getCastState();
       if (castState.isConnected) {
         set({ isPlaying: false });
-        castState.pause?.().catch(() => {});
+        castState.pause?.().catch((e: unknown) => log('[Cast] pause() failed', e));
         return;
       }
 
-      // INSTANT: Use store position and don't block on async operations
-      // Store position is kept in sync by polling, good enough for pause
-      const { position: storePosition, currentBook, duration } = get();
+      // INSTANT: Use store position and don't block on async operations.
+      // If actively seeking, prefer seekPosition (store position is blocked during seeks).
+      const { position: rawPosition, currentBook, duration } = get();
+      const seekingState = useSeekingStore.getState();
+      const storePosition = seekingState.isSeeking ? seekingState.seekPosition : rawPosition;
       const { smartRewindEnabled } = usePlayerSettingsStore.getState();
 
       // Fix Bug #1: Clear stuck detection timeouts to prevent orphaned callbacks
@@ -1823,37 +1864,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       set({ isPlaying: false });
 
       // Fire pause command (don't await - let it happen in background)
-      audioService.pause().catch((err) => {
+      audioService.pause().catch((err: unknown) => {
         logError('pause failed:', err);
       });
 
       if (!currentBook) return;
 
-      // Emit book paused event
-      eventBus.emit('book:paused', {
-        bookId: currentBook.id,
-        position: storePosition,
-      });
-
       // Record pause state for smart rewind (fire and forget)
       // BUT NOT during scrubbing - user is manually seeking, not pausing
       if (smartRewindEnabled && !audioService.getIsScrubbing()) {
-        persistSmartRewindState(currentBook.id, storePosition).catch(() => {});
+        persistSmartRewindState(currentBook.id, storePosition).catch((e) => log('[SmartRewind] Failed to persist state on pause', e));
       }
 
       // End listening session tracking (fire and forget)
-      endListeningSession(storePosition).catch(() => {});
+      endListeningSession(storePosition).catch((e) => log('[Player] Failed to end listening session', e));
 
-      // Save progress locally (fire-and-forget — don't block pause return).
-      // Previously awaited, but this blocked the Android Auto command queue
-      // for 50-200ms (SQLite write + dynamic import), causing delayed responses
-      // and play-pause stuttering. Local save is still durable — it just completes
-      // asynchronously now.
+      // Fire-and-forget — don't block pause return (avoids 50-200ms stutter on
+      // Android Auto). Progress is also saved every 5s during playback, so worst
+      // case on app kill is losing ~5s of position.
       backgroundSyncService.saveProgressLocal(
         currentBook.id,
         storePosition,
         duration
-      ).catch(() => {});
+      ).catch((e) => log('[Player] Failed to save progress locally on pause', e));
 
       // Queue server sync (fire and forget — local save is already durable)
       const session = sessionService.getCurrentSession();
@@ -1862,7 +1895,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         storePosition,
         duration,
         session?.id
-      ).catch(() => {});
+      ).catch((e) => log('[Player] Failed to sync progress to server on pause', e));
     },
 
     // =========================================================================
@@ -1886,11 +1919,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       await useSeekingStore.getState().commitSeek();
     },
 
-    cancelSeek: async () => {
-      // Delegate to seekingStore (single source of truth)
-      await useSeekingStore.getState().cancelSeek();
-    },
-
     seekTo: async (position: number) => {
       // Fix 10: Validate position is a finite number
       if (!Number.isFinite(position)) {
@@ -1907,7 +1935,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       const castState = getCastState();
       if (castState.isConnected) {
         set({ position: clampedPos });
-        castState.seek?.(clampedPos).catch(() => {});
+        castState.seek?.(clampedPos).catch((e: unknown) => log('[Cast] seek() failed', e));
         return;
       }
 
@@ -2148,7 +2176,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     clearSmartRewind: () => {
       // Clear smart rewind state - call when user starts scrubbing
       // This prevents old pause state from triggering rewind on resume
-      clearSmartRewindState().catch(() => {});
+      clearSmartRewindState().catch((e) => log('[SmartRewind] Failed to clear state on scrub', e));
     },
 
     loadPlayerSettings: async () => {
@@ -2210,16 +2238,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         isLoading: false,
         isBuffering: false,
         isPlaying: false,
-        playbackError: null,
       });
     },
 
     setPlayerVisible: (visible: boolean) => {
       set({ isPlayerVisible: visible });
-    },
-
-    clearPlaybackError: () => {
-      set({ playbackError: null });
     },
 
     /**
@@ -2238,9 +2261,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       });
 
       if (error.type === 'URL_EXPIRED') {
-        // Session/URL expired - refresh session and reload at same position
-        set({ playbackError: 'Session expired - refreshing...' });
-
         if (currentBook) {
           const resumePosition = error.position ?? position;
           playerLogger.info('[URL_EXPIRED] Refreshing session and reloading audio', {
@@ -2263,18 +2283,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             // (Don't use autoPlay:false + play() — that can trigger double loadBook)
             await get().loadBook(currentBook, { startPosition: resumePosition, autoPlay: true });
 
-            set({ playbackError: null });
             playerLogger.info('[URL_EXPIRED] Session refresh successful');
           } catch (refreshError) {
             playerLogger.error('[URL_EXPIRED] Session refresh failed:', refreshError);
-            set({ playbackError: 'Session expired. Tap to retry.' });
           }
-        } else {
-          set({ playbackError: 'Playback failed. Tap to retry.' });
         }
-      } else {
-        // Generic error - show message to user
-        set({ playbackError: error.message || 'Playback failed. Tap to retry.' });
       }
     },
 
@@ -2300,7 +2313,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       // STUCK DETECTION: Handle stuck audio (position unchanged for 5+ seconds)
       if (state.isStuck) {
-        set({ playbackError: 'Playback stuck - retrying...' });
         audioLog.warn('[Player] Stuck detected - attempting recovery');
 
         // Capture book ID to guard recovery timeout against book switches
@@ -2318,19 +2330,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             if (!currentState.currentBook || currentState.currentBook.id !== bookIdAtStuck) return;
 
             if (!audioService.getIsPlaying()) {
-              set({ playbackError: 'Playback failed. Tap to retry.' });
               audioLog.error('[Player] Recovery failed - playback still stuck');
             } else {
-              set({ playbackError: null });
               audioLog.store('[Player] Recovery successful');
             }
           }, 1000);
-        }).catch((err) => {
-          // Guard: Only update error if same book is still active
-          const currentState = get();
-          if (currentState.currentBook?.id === bookIdAtStuck) {
-            set({ playbackError: 'Playback failed. Tap to retry.' });
-          }
+        }).catch((err: unknown) => {
           audioLog.error('[Player] Recovery play() failed:', err);
         });
         return; // Don't process normal update while handling stuck
@@ -2389,6 +2394,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       // the position and we must not let audio callbacks overwrite it with stale values.
       // Check seekingStore directly for the authoritative isSeeking state.
       const seekingState = useSeekingStore.getState();
+      // Capture generation counter BEFORE any async work. If a seek starts between
+      // now and when we write position, the counter will have incremented and we'll
+      // discard this stale update instead of overwriting the seek target.
+      const generationAtStart = seekingState.positionGeneration;
+
       if (seekingState.isSeeking) {
         // Only update play state, not position
         set({
@@ -2424,6 +2434,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         });
       }
 
+      // GENERATION GUARD: A seek may have started (and possibly completed) between
+      // when we captured generationAtStart and now. If the generation counter changed,
+      // the position we're about to write is stale — it was read from the audio service
+      // BEFORE the seek landed. Discard it to avoid overwriting the seek target.
+      const currentGeneration = useSeekingStore.getState().positionGeneration;
+      if (currentGeneration !== generationAtStart) {
+        // A seek happened during this update cycle — position is stale, skip it.
+        // Still update play/buffer state since those are not affected by seeks.
+        set({
+          isPlaying: newIsPlaying,
+          ...(shouldUpdateDuration && { duration: displayDuration }),
+          isBuffering: state.isBuffering,
+        });
+        return;
+      }
+
       set({
         isPlaying: newIsPlaying,
         position: validatedPosition,
@@ -2446,7 +2472,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           currentBook.id,
           validatedPosition,
           totalBookDuration
-        ).catch(() => {});
+        ).catch((e) => log('[Player] Periodic progress save failed', e));
 
         // Check for auto-download of next book in series
         const progress = totalBookDuration > 0 ? state.position / totalBookDuration : 0;
@@ -2491,7 +2517,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
             state.position,
             totalBookDuration,
             session?.id
-          ).catch(() => {});
+          ).catch((e) => log('[Player] Failed to sync progress on book finish', e));
 
           // Get completion preferences from completionStore (Phase 6)
           const completionState = useCompletionSheetStore.getState();
@@ -2517,7 +2543,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
                 authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
                 narratorName: metadata.narrators?.[0],
                 genres: metadata.genres || [],
-              }).catch(() => {});
+              }).catch((e) => log('[Player] Failed to add to read history', e));
             }
 
             // Check queue for next book (late import to avoid circular dependency)

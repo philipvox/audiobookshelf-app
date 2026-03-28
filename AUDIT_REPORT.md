@@ -1,643 +1,316 @@
-# Secret Library Codebase Audit Report
-## January 11, 2026
+# Audit Report: AudiobookShelf Mobile App v0.9.223
+
+**Audit Number:** 3 (Third Comprehensive Audit)
+**Date:** 2026-03-22
+**Version Audited:** 0.9.223 (Build 1223)
+**Previous Scores:** Audit 1: 78/100, Audit 2: 89/100
 
 ---
 
-## Summary Dashboard
+## Executive Summary
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    CODEBASE HEALTH: 91%                       │
-├──────────────────────────────────────────────────────────────┤
-│  Total Files: 401        Lines: 132,025                      │
-├──────────────────────────────────────────────────────────────┤
-│  ✅ Working & Clean:  434                                     │
-│  ⚠️  Works w/ Issues:  625 (mostly TypeScript `any`)          │
-│  ❌ Broken/Empty:       5                                     │
-│  💀 Dead Code:         10                                     │
-│  🚧 WIP:                2                                     │
-└──────────────────────────────────────────────────────────────┘
-```
+This third audit examined all source files across the codebase following 17 fixes applied since the second audit (v0.9.222). While the prior fixes addressed many issues (StorageCard debounce, wishlist cap, SQLite migration safety, typed lazy getters, event bus capacity), **several new bugs were introduced by the fix agents**, primarily in `authService.clearStorage()`. The app's overall architecture remains solid, with good patterns for state management, audio playback, and offline support.
+
+**Overall Score: 87/100** (down from 89 due to newly introduced regressions)
 
 ---
 
-## 🚨 CRITICAL ISSUES (Fix Immediately)
+## Scoring Breakdown
 
-### 1. Empty Core Files (10 files to DELETE)
-
-```bash
-# These are 0-byte files causing confusion/potential import errors:
-rm src/core/storage/database.ts
-rm src/core/storage/cache.ts
-rm src/core/storage/index.ts
-rm src/core/sync/syncService.ts
-rm src/core/sync/index.ts
-rm src/config/features.ts
-rm src/config/constants.ts
-rm src/config/index.ts
-rm src/navigation/types.ts
-rm src/navigation/index.ts
-```
-
-### 2. Potential Store Duplication
-
-| Store | Location 1 | Location 2 | Action |
-|-------|------------|------------|--------|
-| `settingsStore` | player/stores/ | player/stores/playerSettingsStore | Verify & consolidate |
-| `kidModeStore` | shared/stores/ | profile/stores/ | Verify single source |
+| Category | Score | Weight | Notes |
+|----------|-------|--------|-------|
+| Architecture & Patterns | 90/100 | 20% | Strong modular design, cross-feature imports still prevalent |
+| Performance | 88/100 | 15% | Good use of lazy loading, memoization; module-level Dimensions.get() |
+| Error Handling | 89/100 | 15% | Comprehensive try/catch, error boundaries on all screens |
+| Security | 78/100 | 20% | PIN hash migration gap, kid mode not reset on logout |
+| Data Integrity | 85/100 | 15% | Type mismatch in auth cleanup, silent failures on wrong method names |
+| Production Readiness | 90/100 | 15% | Good logging, background tasks, graceful degradation |
+| **Weighted Total** | **87/100** | | |
 
 ---
 
-## ⚠️ Major Issues (Fix Soon)
+## Issues Found
 
-| Issue | Impact | Files Affected |
-|-------|--------|----------------|
-| 590 `any` types | Type safety, refactoring risk | Across codebase |
-| 49 untyped catch blocks | Error handling gaps | Services, hooks |
-| Low test coverage (~5%) | Bug risk | Missing tests |
-| WebSocket service partial | Real-time sync may not work | websocketService.ts |
-| Download integrity incomplete | Hash verification missing | downloadIntegrity.ts |
+### CRITICAL (Must Fix Before Release)
 
----
+#### C-01: authService resets myLibraryStore with Set() instead of Array
+**File:** `src/core/auth/authService.ts` line 219
+**Severity:** Critical | **Category:** Data Integrity
+**Introduced by:** Fix agent (Audit 2 store cleanup)
 
-## Feature Module Status
-
-| Feature | Files | Status | Issues |
-|---------|-------|--------|--------|
-| **Player** | 45 | ✅ STABLE | settingsStore duplication |
-| **Home** | 32 | ✅ STABLE | 3D components WIP |
-| **Library** | 28 | ✅ STABLE | — |
-| **Browse** | 18 | ✅ STABLE | — |
-| **Search** | 12 | ✅ STABLE | — |
-| **Downloads** | 6 | ✅ STABLE | Integrity checks |
-| **Queue** | 8 | ✅ STABLE | — |
-| **Book Detail** | 8 | ✅ STABLE | — |
-| **Series** | 8 | ✅ STABLE | — |
-| **Author** | 7 | ✅ STABLE | — |
-| **Narrator** | 7 | ✅ STABLE | — |
-| **Profile** | 12 | ✅ STABLE | — |
-| **Mood Discovery** | 14 | ✅ WORKING | — |
-| **Wishlist** | 11 | ⚠️ PARTIAL | Edit sheet TODO |
-| **Recommendations** | 8 | ✅ WORKING | — |
-| **Stats** | 8 | ✅ WORKING | — |
-| **Automotive** | 8 | ✅ WORKING | — |
-| **3D Shelf** | 6 | 🚧 WIP | Untracked files |
-
----
-
-## Core Layer Audit
-
-### API Layer (`src/core/api/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `apiClient.ts` | ✅ Working | 68 `any` types need typing |
-| `baseClient.ts` | ✅ Working | — |
-| `endpoints.ts` | ✅ Working | — |
-| `errors.ts` | ✅ Working | — |
-| `middleware.ts` | ✅ Working | — |
-| `networkOptimizer.ts` | ⚠️ Issues | Complex, potential race conditions |
-| `offlineApi.ts` | ✅ Working | — |
-| `playbackApi.ts` | ✅ Working | — |
-
-### Storage Layer (`src/core/storage/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `database.ts` | 💀 EMPTY | 0 bytes - DELETE |
-| `cache.ts` | 💀 EMPTY | 0 bytes - DELETE |
-| `index.ts` | 💀 EMPTY | 0 bytes - DELETE |
-
-### Cache Layer (`src/core/cache/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `libraryCache.ts` | ✅ Working | — |
-| `searchIndex.ts` | ✅ Working | Has tests |
-| `useCoverUrl.ts` | ✅ Working | — |
-
-### Services (`src/core/services/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `downloadManager.ts` | ✅ Working | ~500 lines, well-structured |
-| `downloadIntegrity.ts` | ⚠️ Partial | Hash verification missing |
-| `backgroundSyncService.ts` | ✅ Working | ~300 lines |
-| `websocketService.ts` | ⚠️ Partial | Implementation incomplete |
-| `networkMonitor.ts` | ✅ Working | — |
-| `finishedBooksSync.ts` | ✅ Working | Two-way sync |
-| `chapterNormalizer.ts` | ❓ Unknown | May be unused - verify |
-| `prefetchService.ts` | ✅ Working | — |
-| `sqliteCache.ts` | ✅ Working | ~600 lines |
-| `syncQueue.ts` | ✅ Working | Offline queue |
-| `appInitializer.ts` | ✅ Working | Bootstrap sequence |
-
-### Hooks (`src/core/hooks/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `useAppBootstrap.ts` | ✅ Working | — |
-| `useDownloads.ts` | ✅ Working | — |
-| `useNetworkStatus.ts` | ✅ Working | — |
-| `useSyncStatus.ts` | ✅ Working | — |
-| `useUserBooks.ts` | ✅ Working | — |
-| `useLibraryPrefetch.ts` | ✅ Working | — |
-| `useScreenLoadTime.ts` | ✅ Working | Performance monitoring |
-| `useOptimisticMutation.ts` | ✅ Working | — |
-
-### Auth (`src/core/auth/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `authService.ts` | ✅ Working | Token management |
-| `authContext.tsx` | ✅ Working | Provider |
-
-### Errors (`src/core/errors/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `ErrorBoundary.tsx` | ✅ Working | Screen-level boundaries |
-| `errorService.ts` | ✅ Working | Logging |
-| `errorMessages.ts` | ✅ Working | User-friendly messages |
-| `ErrorProvider.tsx` | ✅ Working | Context |
-| `ErrorSheet.tsx` | ✅ Working | Display |
-| `ErrorToast.tsx` | ✅ Working | Notifications |
-
-### Sync (`src/core/sync/`)
-
-| File | Status | Issues |
-|------|--------|--------|
-| `syncService.ts` | 💀 EMPTY | 0 bytes - DELETE |
-| `index.ts` | 💀 EMPTY | 0 bytes - DELETE |
-
----
-
-## Player Architecture Deep Dive
-
-### Store Architecture (Phase 1-7 Refactor Complete)
-
-```
-playerStore.ts (2,156 lines) ─── WELL ARCHITECTED
-│
-├── CRITICAL PATTERN: isSeeking blocks position updates
-│   During seek: playerStore ignores audioService.position updates
-│   Prevents UI jitter during scrubbing
-│
-├── seekingStore.ts ──────────── ✅ 367 lines, seek operations
-├── speedStore.ts ────────────── ✅ 150 lines, per-book rates (persisted)
-├── sleepTimerStore.ts ───────── ✅ 180 lines, sleep timer + fade
-├── bookmarksStore.ts ────────── ✅ 200 lines, bookmark CRUD
-├── completionStore.ts ───────── ✅ 140 lines, completion tracking
-├── playerSettingsStore.ts ──── ✅ 200 lines, persisted settings
-├── joystickSeekStore.ts ─────── ✅ 80 lines, alternative input
-└── settingsStore.ts ─────────── ⚠️ POTENTIAL DUPLICATE
+```typescript
+// BUG: myLibraryStore uses string[] arrays, not Set objects
+require('@/shared/stores/myLibraryStore').useMyLibraryStore.setState({
+  libraryIds: new Set(),          // Should be: []
+  favoriteSeriesNames: new Set(), // Should be: []
+  selectedIds: new Set(),         // Should be: []
+  isSelecting: false
+});
 ```
 
-### Player Stores Status
+**Impact:** After logout, any component calling `.includes()`, `.filter()`, `.map()`, or `.length` on these fields will crash with a TypeError because Set objects don't have those Array methods. This affects the entire My Library tab.
 
-| Store | Lines | Status | Persisted | Notes |
-|-------|-------|--------|-----------|-------|
-| `playerStore.ts` | 2,156 | ✅ | No | Main orchestrator |
-| `seekingStore.ts` | 367 | ✅ | No | CRITICAL: isSeeking flag |
-| `speedStore.ts` | 150 | ✅ | Yes | Per-book rates |
-| `sleepTimerStore.ts` | 180 | ✅ | No | Timer + fade |
-| `bookmarksStore.ts` | 200 | ✅ | No | CRUD, manual sync |
-| `completionStore.ts` | 140 | ✅ | Partial | Completion prefs |
-| `playerSettingsStore.ts` | 200 | ✅ | Yes | AsyncStorage |
-| `joystickSeekStore.ts` | 80 | ✅ | No | Alt input |
-| `settingsStore.ts` | ? | ⚠️ | ? | VERIFY - may be duplicate |
-
-### Player Services
-
-| Service | Lines | Status | Notes |
-|---------|-------|--------|-------|
-| `audioService.ts` | ~600 | ✅ | expo-av wrapper |
-| `progressService.ts` | ~150 | ✅ | Server sync |
-| `backgroundSyncService.ts` | ~300 | ✅ | Background loop |
-| `sessionService.ts` | ~200 | ✅ | Session tracking |
-| `tickCache.ts` | ~150 | ✅ | Timeline ticks |
-| `shakeDetector.ts` | ~100 | ✅ | Shake to extend |
-
-### Player Components
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `SecretLibraryPlayerScreen.tsx` | ✅ | Full-screen player |
-| `PlayerModule.tsx` | ✅ | Player UI container |
-| `ProgressBar.tsx` | ✅ | Timeline slider |
-| `LiquidSlider.tsx` | ✅ | Animated slider |
-| `CircularProgress.tsx` | ✅ | Progress ring |
-| `ChapterListItem.tsx` | ✅ | Chapter items |
-| `PlayerIcons.tsx` | ✅ | Icon set |
-| `NumericInputModal.tsx` | ✅ | Manual position |
-| `BookCompletionSheet.tsx` | ✅ | Completion prompt |
-
-### Player Sheets
-
-| Sheet | Status | Notes |
-|-------|--------|-------|
-| `BookmarksSheet.tsx` | ✅ | Bookmark list |
-| `AddBookmarkSheet.tsx` | ✅ | Add bookmark |
-| `ChaptersSheet.tsx` | ✅ | Chapter nav |
-| `SettingsSheet.tsx` | ✅ | Player settings |
-| `SleepTimerSheet.tsx` | ✅ | Sleep control |
-| `SpeedSheet.tsx` | ✅ | Speed control |
-
-### Player Utilities (Well-Tested)
-
-| Utility | Status | Tests |
-|---------|--------|-------|
-| `smartRewindCalculator.ts` | ✅ | ✅ Has tests |
-| `chapterNavigator.ts` | ✅ | ✅ Has tests |
-| `playbackRateResolver.ts` | ✅ | ✅ Has tests |
-| `progressCalculator.ts` | ✅ | ✅ Has tests |
-| `trackNavigator.ts` | ✅ | ✅ Has tests |
-| `bookLoadingHelpers.ts` | ✅ | — |
-| `downloadListener.ts` | ✅ | — |
+**Fix:** Change `new Set()` to `[]` for all three fields.
 
 ---
 
-## Navigation Audit
+#### C-02: PIN Hash Migration Gap - Existing Users Locked Out
+**File:** `src/shared/stores/kidModeStore.ts` lines 338-384
+**Severity:** Critical | **Category:** Security
+**Status:** Pre-existing (not introduced by fix agents)
 
-### AppNavigator.tsx Structure
+`setPin()` now hashes PINs with SHA-256 before storing them. `verifyPin()` hashes the input and compares to the stored value. However, there is **no migration path** for users who had a plaintext PIN stored before this change was deployed.
 
-```
-AppNavigator (~400 lines)
-├── Login (unauthenticated)
-└── MainTabs (authenticated)
-    ├── HomeTab ────────→ LibraryScreen (SecretLibrary)
-    ├── LibraryTab ─────→ MyLibraryScreen
-    ├── DiscoverTab ────→ SecretLibraryBrowseScreen
-    └── ProfileTab ─────→ ProfileScreen
+**Impact:** Any user who set a Kid Mode PIN before the hashing update will be unable to disable Kid Mode or access adult content. Their plaintext PIN will never match the SHA-256 hash comparison.
 
-Modal Stacks:
-├── BookDetail ─────────→ SecretLibraryBookDetailScreen
-├── SeriesDetail ───────→ SecretLibrarySeriesDetailScreen
-├── AuthorDetail ───────→ SecretLibraryAuthorDetailScreen
-├── NarratorDetail ─────→ SecretLibraryNarratorDetailScreen
-├── CollectionDetail
-├── Search
-├── Downloads
-├── QueueScreen
-├── Stats
-├── Wishlist
-├── MoodDiscovery
-├── ReadingHistoryWizard
-└── Settings (7+ screens)
+**Fix:** Add a migration check in `verifyPin()`:
+1. If stored PIN is exactly 4 digits (plaintext), hash it and update storage
+2. Then compare hashed input against newly-hashed stored value
+3. OR: detect plaintext by checking if stored value length is 4 (hashes are 64 hex chars)
 
-Global Overlays:
-├── SecretLibraryPlayerScreen (full-screen)
-├── GlobalMiniPlayer (floating)
-├── BookCompletionSheet
-├── NetworkStatusBar
-└── ToastContainer
+---
+
+### HIGH (Should Fix Before Release)
+
+#### H-01: authService Calls Non-Existent Method `cancelSeeking`
+**File:** `src/core/auth/authService.ts` line 214
+**Severity:** High | **Category:** Data Integrity
+**Introduced by:** Fix agent (Audit 2 store cleanup)
+
+```typescript
+require('@/features/player/stores/seekingStore')
+  .useSeekingStore.getState().cancelSeeking?.();
+// Method doesn't exist! Actual methods are: cancelSeek() or resetSeekingState()
 ```
 
-### Navigation Files
+**Impact:** The optional chaining (`?.()`) prevents a crash, but the seeking state is never cleaned up on logout. If a user logs out while seeking, the seeking state persists. Low practical impact due to the full app restart that typically follows logout.
 
-| File | Status | Issues |
-|------|--------|--------|
-| `AppNavigator.tsx` | ✅ Working | — |
-| `NavigationBar.tsx` | ✅ Working | Custom tab bar |
-| `GlobalMiniPlayer.tsx` | ✅ Working | Floating player |
-| `types.ts` | 💀 EMPTY | 0 bytes - DELETE or populate |
-| `index.ts` | 💀 EMPTY | 0 bytes - DELETE or populate |
+**Fix:** Change `cancelSeeking` to `resetSeekingState`.
 
 ---
 
-## State Management Audit
+#### H-02: authService Uses Wrong Property Name `isEnabled` for kidModeStore
+**File:** `src/core/auth/authService.ts` line 233
+**Severity:** High | **Category:** Security
 
-### Zustand Stores Inventory (28 total)
-
-#### Player Stores (9)
-- ✅ `playerStore` - Main orchestrator
-- ✅ `seekingStore` - Seeking flag
-- ✅ `speedStore` - Per-book rates
-- ✅ `sleepTimerStore` - Sleep timer
-- ✅ `bookmarksStore` - Bookmarks
-- ✅ `completionStore` - Completion
-- ✅ `playerSettingsStore` - Settings (persisted)
-- ✅ `joystickSeekStore` - Alt input
-- ⚠️ `settingsStore` - VERIFY duplicate
-
-#### Feature Stores (17)
-- ✅ `myLibraryStore` - Library organization
-- ✅ `spineCache` - Book spine rendering
-- ✅ `wishlistStore` - Wishlist items
-- ✅ `moodSessionStore` - Mood discovery
-- ✅ `galleryStore` - Reading history
-- ✅ `queueStore` - Playback queue
-- ✅ `preferencesStore` - User preferences
-- ✅ `dismissedItemsStore` - Dismissed recs
-- ✅ `chapterCleaningStore` - Chapter cleanup
-- ✅ `hapticSettingsStore` - Haptics
-- ⚠️ `kidModeStore` - May be duplicated
-- ✅ `customizationStore` - Theme
-- ✅ `homeStore` - Home screen state
-- ✅ `discoverStore` - Browse state
-- ✅ `themeStore` - Theme state
-
-#### Shared Stores (2)
-- ⚠️ `kidModeStore` - Check for duplication
-- ⚠️ `myLibraryStore` - Check for duplication
-
-### Persistence Strategy
-
-| Store | Persisted | Storage | Syncs to Server |
-|-------|-----------|---------|-----------------|
-| playerSettingsStore | ✅ | AsyncStorage | No |
-| speedStore | ✅ | AsyncStorage | No |
-| preferencesStore | ✅ | AsyncStorage | No |
-| bookmarksStore | ❌ | Memory | Yes (manual) |
-| queueStore | ✅ | SQLite | No |
-| userBooks | ✅ | SQLite | Yes |
-| favorites (books) | ✅ | SQLite | Yes |
-| favorites (series) | ✅ | AsyncStorage | No |
-| favorites (authors) | ✅ | AsyncStorage | No |
-
----
-
-## Shared Components Audit
-
-### UI Components (`src/shared/components/`)
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `Loading.tsx` | ✅ | Candle animation |
-| `SkullRefreshControl.tsx` | ✅ | Pull-to-refresh |
-| `BookCard.tsx` | ✅ | Book display |
-| `SeriesCard.tsx` | ✅ | Series display |
-| `NetworkStatusBar.tsx` | ✅ | Connection indicator |
-| `ToastContainer.tsx` | ✅ | Toast manager |
-| `Button.tsx` | ✅ | Primary CTA |
-| `EmptyState.tsx` | ✅ | Empty placeholder |
-| `Skeleton.tsx` | ✅ | Loading skeleton |
-| `AlphabetScrubber.tsx` | ✅ | A-Z scrubber |
-| `AnimatedSplash.tsx` | ✅ | Splash animation |
-| `AppIcons.tsx` | ✅ | Icon library |
-| `BookContextMenu.tsx` | ✅ | Long-press menu |
-| `CircularDownloadButton.tsx` | ✅ | Download progress |
-| `CoverPlayButton.tsx` | ✅ | Cover + play |
-| `EntityCard.tsx` | ✅ | Generic card |
-| `ErrorView.tsx` | ✅ | Error display |
-| `FilterSortBar.tsx` | ✅ | Filter toolbar |
-| `HeartButton.tsx` | ✅ | Favorite button |
-| `PinInput.tsx` | ✅ | PIN entry |
-| `PlayPauseButton.tsx` | ✅ | Play/pause |
-| `ProgressDots.tsx` | ✅ | Page indicator |
-| `SeriesHeartButton.tsx` | ✅ | Series favorite |
-| `SeriesProgressBadge.tsx` | ✅ | Progress badge |
-| `Snackbar.tsx` | ✅ | Toast/snackbar |
-| `StackedCovers.tsx` | ✅ | Stacked covers |
-| `ThumbnailProgressBar.tsx` | ✅ | Thumbnail timeline |
-| `TopNav.tsx` | ✅ | Top navigation |
-
-### Theme System (`src/shared/theme/`)
-
-| File | Status | Notes |
-|------|--------|-------|
-| `colors.ts` | ✅ | Color tokens (light/dark/accents) |
-| `spacing.ts` | ✅ | Spacing scale + scale() |
-| `typography.ts` | ✅ | Font system |
-| `sizes.ts` | ✅ | Component sizes |
-| `animation.ts` | ✅ | Animation configs |
-| `formatting.ts` | ✅ | Format utilities |
-| `themeStore.ts` | ✅ | Zustand theme state |
-| `secretLibrary.ts` | ✅ | SecretLibrary theme |
-| `ThemeContext.tsx` | ✅ | Theme provider |
-
----
-
-## TypeScript Health
-
-### Type Safety Metrics
-
-| Metric | Count | Severity |
-|--------|-------|----------|
-| `any` type declarations | 590 | 🔴 HIGH |
-| `as any` assertions | 85+ | 🔴 HIGH |
-| Untyped catch blocks | 49 | 🟡 MEDIUM |
-| Untyped JSON.parse | 26 | 🟡 MEDIUM |
-| Missing type exports | ~20 | 🟢 LOW |
-
-### Highest Risk Files
-
-| File | `any` Count | Priority |
-|------|-------------|----------|
-| `apiClient.ts` | 68 | HIGH |
-| `playerStore.ts` | 45 | MEDIUM |
-| Various services | 30+ | MEDIUM |
-| Error handlers | 49 | MEDIUM |
-
-### Recommendations
-
-1. **Create API response types** for all endpoints
-2. **Type error parameters** in catch blocks:
-   ```typescript
-   // Bad
-   catch (e: any) { ... }
-   
-   // Good
-   catch (e) {
-     if (e instanceof Error) { ... }
-   }
-   ```
-3. **Safe JSON.parse helper**:
-   ```typescript
-   function safeJsonParse<T>(json: string): T | null {
-     try { return JSON.parse(json) as T; }
-     catch { return null; }
-   }
-   ```
-
----
-
-## Test Coverage
-
-### Current State
-
-```
-Test Files: 21
-Estimated Coverage: ~5-8% (LOW for project size)
+```typescript
+require('@/shared/stores/kidModeStore').useKidModeStore.setState({
+  isEnabled: false,  // WRONG: property is called `enabled`, not `isEnabled`
+  pin: null,
+  pinFailedAttempts: 0,
+  pinLockoutUntil: null
+});
 ```
 
-### Well-Tested Areas
+**Impact:** Kid Mode is NOT disabled on logout because `isEnabled` is not a recognized property. The `enabled` flag retains its value. If a parent logs out and a child picks up the device, Kid Mode settings from the previous account persist. The `pin`, `pinFailedAttempts`, and `pinLockoutUntil` are correctly reset since those property names match.
 
-| Area | Test Files | Status |
-|------|------------|--------|
-| Player utilities | 5 | ✅ Good |
-| Core services | 2 | ✅ Good |
-| Cache/search | 1 | ✅ Good |
-| Player stores | 3 | ✅ Good |
-| Queue store | 1 | ✅ Good |
-| Analytics | 1 | ✅ Good |
-| Haptics | 1 | ✅ Good |
-| Library components | 1 | ✅ Good |
-
-### Missing Test Coverage
-
-| Area | Priority | Notes |
-|------|----------|-------|
-| API client | 🔴 HIGH | No tests |
-| Authentication | 🔴 HIGH | No tests |
-| Downloads | 🔴 HIGH | No tests |
-| Sync operations | 🟡 MEDIUM | No tests |
-| UI components | 🟡 MEDIUM | Minimal tests |
-| E2E tests | 🟡 MEDIUM | None |
-| Integration tests | 🟡 MEDIUM | Minimal |
+**Fix:** Change `isEnabled: false` to `enabled: false`.
 
 ---
 
-## Dead Code Summary
+#### H-03: Unbounded `followedAuthors` and `trackedSeries` Arrays in WishlistStore
+**File:** `src/features/wishlist/stores/wishlistStore.ts`
+**Severity:** High | **Category:** Performance/Data Integrity
+**Status:** Pre-existing (wishlist `items` capped at 200, but these arrays have no limit)
 
-### Files to DELETE (10 empty files)
+The wishlist store correctly caps `items` at `MAX_WISHLIST_ITEMS = 200`, but `followedAuthors` and `trackedSeries` arrays have no size limits. A user could theoretically follow thousands of authors, causing:
+- AsyncStorage serialization overhead (entire store persisted)
+- Slow filtering operations
+- Memory pressure on low-end devices
 
-```bash
-# Core storage (empty)
-rm src/core/storage/database.ts
-rm src/core/storage/cache.ts
-rm src/core/storage/index.ts
+**Fix:** Add caps (e.g., 100 followed authors, 100 tracked series) with the same pattern used for items.
 
-# Core sync (empty)
-rm src/core/sync/syncService.ts
-rm src/core/sync/index.ts
+---
 
-# Config (empty)
-rm src/config/features.ts
-rm src/config/constants.ts
-rm src/config/index.ts
+### MEDIUM (Should Fix in Next Sprint)
 
-# Navigation (empty)
-rm src/navigation/types.ts
-rm src/navigation/index.ts
+#### M-01: Duplicate `resetSeekingState()` Call in playerStore.loadBook
+**File:** `src/features/player/stores/playerStore.ts` lines 557 and 576
+**Severity:** Medium | **Category:** Code Quality
+
+```typescript
+// Line 557: First call
+useSeekingStore.getState().resetSeekingState();
+
+// ... set() call with new book state ...
+
+// Line 576: Duplicate call
+useSeekingStore.getState().resetSeekingState();
 ```
 
-### Files to VERIFY
+**Impact:** No functional bug (idempotent operation), but unnecessary work and confusing intent. The first call resets before setting state, the second resets after -- both accomplish the same thing.
 
-| File | Issue | Action |
-|------|-------|--------|
-| `settingsStore.ts` | Potential duplicate | Compare with playerSettingsStore |
-| `chapterNormalizer.ts` | May be unused | Search for imports |
-| `Book3D.tsx` (discover) | Duplicate? | Check vs home version |
-| `kidModeStore` | Duplicate? | Check shared/ vs profile/ |
-
-### Incomplete Features
-
-| Feature | File | Issue |
-|---------|------|-------|
-| Wishlist edit | `WishlistScreen.tsx:125` | TODO comment |
-| 3D shelf | `Book3D.tsx`, `BookGL.tsx` | Untracked/WIP |
-| WebSocket | `websocketService.ts` | Partial impl |
+**Fix:** Remove one of the two calls. The one at line 557 (before state set) is sufficient.
 
 ---
 
-## Performance Considerations
+#### M-02: Module-Level `Dimensions.get('window')` in 17 Files
+**Files:** See list below
+**Severity:** Medium | **Category:** Platform Compatibility
 
-### Heavy Computations
-
-| Component | Risk | Notes |
-|-----------|------|-------|
-| Book shelf rendering | MEDIUM | 3D calc, complex layout |
-| Search index | MEDIUM | Full-text on large libraries |
-| Layout solver | MEDIUM | Bookshelf algorithm |
-| Tick cache generation | LOW | Large books may lag |
-| Library cache hydration | MEDIUM | Large libraries on start |
-| Network optimizer | MEDIUM | Complex batching |
-
-### Memory Risks
-
-- 205 `useEffect` hooks - possible leaks
-- 28 Zustand stores - accumulated state
-- Event listeners without cleanup
-- Cache accumulation in SQLite
-
-### Recommendations
-
-1. Profile on low-end devices (iPhone 8, older Android)
-2. Verify useEffect cleanup functions
-3. Monitor Zustand subscription counts
-4. Set cache size limits
-
----
-
-## Priority Action Items
-
-### Priority 1 - CRITICAL (Today)
-
-```bash
-# 1. Delete 10 empty files
-rm src/core/storage/{database,cache,index}.ts
-rm src/core/sync/{syncService,index}.ts
-rm src/config/{features,constants,index}.ts
-rm src/navigation/{types,index}.ts
-
-# 2. Verify no imports from deleted paths
-grep -r "from '@/core/storage'" src/
-grep -r "from '@/core/sync'" src/
-grep -r "from '@/config'" src/
-
-# 3. Verify settingsStore vs playerSettingsStore
-# Check which is used, delete the other
+```
+src/constants/layout.ts
+src/shared/theme/spacing.ts
+src/features/player/constants.ts
+src/features/reading-history-wizard/screens/MarkBooksScreen.tsx
+src/features/reading-history-wizard/components/SwipeableBookCard.tsx
+src/features/home/components/DiscoverMoreCard.tsx
+src/features/library/screens/SeriesListScreen.tsx
+src/features/browse/components/CollectionsSection.tsx
+src/features/browse/components/SeriesListContent.tsx
+src/features/browse/components/FeaturedCollectionCard.tsx
+src/features/browse/components/BrowseHero.tsx
+src/features/browse/screens/CollectionsListScreen.tsx
+src/features/book-detail/components/SeriesSwipeContainer.tsx
+src/shared/components/BrowseSeriesCard.tsx
+src/shared/components/Snackbar.tsx
 ```
 
-### Priority 2 - HIGH (This Week)
+**Impact:** `Dimensions.get('window')` at module scope captures the window size at import time. On iPad split-screen, foldable devices, or Android multi-window, the values won't update if the window resizes. The app already has a `useResponsive` hook that handles this correctly.
 
-- [ ] Consolidate duplicate stores
-- [ ] Implement wishlist edit sheet (has TODO)
-- [ ] Add types to API responses (reduce `any` by 50%)
-- [ ] Type error parameters in catch blocks
-
-### Priority 3 - MEDIUM (Next Sprint)
-
-- [ ] Increase test coverage to 25%
-- [ ] Complete WebSocket service or remove
-- [ ] Add hash verification to downloadIntegrity
-- [ ] Profile performance on low-end devices
-
-### Priority 4 - LOW (Backlog)
-
-- [ ] Document API response schemas
-- [ ] Add JSDoc comments to complex functions
-- [ ] Refactor NetworkOptimizer
-- [ ] Create architecture diagrams
+**Fix:** Replace module-level calls with `useWindowDimensions()` hook or the existing `useResponsive` hook inside components.
 
 ---
 
-## Final Scores
+#### M-03: Extensive Cross-Feature Imports Still Present
+**Severity:** Medium | **Category:** Architecture
 
-| Category | Score | Notes |
-|----------|-------|-------|
-| Architecture | 9/10 | Solid structure |
-| Code Quality | 7/10 | Type safety needs work |
-| Test Coverage | 3/10 | Very low |
-| Documentation | 5/10 | Mixed |
-| Performance | 7/10 | Good perceived speed |
-| Error Handling | 8/10 | Good boundaries |
-| State Management | 8/10 | Well-organized |
-| Feature Completeness | 8/10 | 1 TODO, 2-3 WIP |
-| Maintenance | 6/10 | 590 `any` types |
-| **Overall** | **7/10** | GOOD |
+The CLAUDE.md states "Features should NOT import from other features" but this rule is widely violated. 19 files across non-player features import from `@/features/player`. Other cross-feature imports include:
 
----
+- `browse` -> `player`, `collections`, `narrator`, `library`, `search`, `series`, `discover`
+- `profile` -> `player` (5+ stores), `library`, `stats`
+- `library` -> `player`, `downloads`, `book-detail`, `recommendations`
+- `book-detail` -> `player`, `queue`
+- `queue` -> `player`
+- `search` -> `player`
 
-## Conclusion
+**Impact:** Tight coupling makes features harder to test and maintain independently. Circular dependency risk (already mitigated with lazy getters in some places).
 
-The Secret Library codebase is **well-architected** with a clear separation of concerns and solid patterns. The player feature in particular is excellently designed with proper seeking mechanisms and modular stores.
-
-**Immediate actions required:**
-1. Delete 10 empty files
-2. Verify store duplication
-3. Fix imports from deleted modules
-
-**Main technical debt:**
-1. 590 `any` types
-2. Low test coverage (~5%)
-3. Incomplete features (wishlist edit, WebSocket)
-
-**Overall verdict:** Ship-ready with minor cleanup needed. Address Priority 1 items before next release.
+**Mitigation:** The lazy getter pattern is correctly applied in critical circular paths (castStore, seekingStore). For non-circular paths, this is more of a long-term maintenance concern than a bug.
 
 ---
 
-*Audit completed: January 11, 2026*
-*Codebase version: 0.6.335 (build 565)*
-*Branch: feature/homepage-spine-design*
+#### M-04: `require()` Calls in authService Not Using Typed Lazy Getter Pattern
+**File:** `src/core/auth/authService.ts` lines 212-238
+**Severity:** Medium | **Category:** Code Quality
+
+The `clearStorage()` method uses 20+ raw `require()` calls wrapped in individual try/catch blocks. While each call is wrapped in `try/catch {}`, using untyped `require()` means:
+- No compile-time checking of property names (root cause of C-01, H-01, H-02)
+- No IDE autocompletion or type safety
+- Easy to introduce property name mismatches
+
+**Fix:** Either:
+1. Use typed lazy getters (like castStore does) for compile-time safety
+2. Or use dynamic `import()` with typed returns
+3. At minimum, add a unit test that verifies all property names match their stores
+
+---
+
+### LOW (Nice to Have)
+
+#### L-01: QueueScreen Uses DraggableFlatList Inside ScrollView
+**File:** `src/features/queue/screens/QueueScreen.tsx` line 372
+**Severity:** Low | **Category:** UX
+
+`DraggableFlatList` is nested inside a `ScrollView` with `scrollEnabled={false}`. While this works because scroll is disabled on the FlatList, it means the entire queue is rendered at once (no virtualization benefit). For very large queues, this could cause performance issues.
+
+**Impact:** Minimal for typical queue sizes (5-20 books). Only problematic for 100+ items.
+
+---
+
+#### L-02: `formatDuration()` Helper Duplicated Across Files
+**Files:** `QueueScreen.tsx`, `QueuePanel.tsx`, `QueueItem.tsx`, `SwipeableQueueItem.tsx`
+**Severity:** Low | **Category:** Code Quality
+
+Each queue component has its own copy of duration formatting logic. The shared utils already have `formatDuration` in `src/shared/utils/format.ts`.
+
+**Fix:** Import from shared utils.
+
+---
+
+#### L-03: Hardcoded Skip Intervals in GlobalMiniPlayer
+**File:** `src/navigation/components/GlobalMiniPlayer.tsx` lines 121, 130
+**Severity:** Low | **Category:** UX Consistency
+
+The mini player hardcodes skip back = 15s and skip forward = 30s, while the user can configure these in Profile > Playback Settings (`skipForwardInterval`, `skipBackInterval`). The full player respects user settings but the mini player doesn't.
+
+**Fix:** Read from `usePlayerSettingsStore` instead of hardcoding.
+
+---
+
+#### L-04: `useEffect` Missing Dependency in QueueScreen
+**File:** `src/features/queue/screens/QueueScreen.tsx` line 230
+**Severity:** Low | **Category:** React Best Practices
+
+```typescript
+useEffect(() => {
+  if (shouldShowClearDialog) { ... }
+}, [shouldShowClearDialog]);
+// Missing: dismissClearDialog, clearPlayed
+```
+
+**Impact:** Functions are stable (from Zustand), so this won't cause bugs, but ESLint exhaustive-deps would flag it.
+
+---
+
+## Verified Fixes (From Audit 2)
+
+The following fixes from the previous audit were verified as correctly applied:
+
+| Fix | Status | Verification |
+|-----|--------|-------------|
+| Wishlist MAX_WISHLIST_ITEMS = 200 cap | Correct | Items array properly bounded |
+| StorageCard 5-second debounce | Correct | Interval check + useEffect cleanup |
+| SQLite migration safety (user_books check before drop) | Correct | Checks count before dropping legacy table |
+| Typed lazy getters in castStore | Correct | 5 dependencies typed with compile-time safety |
+| Typed lazy getter in seekingStore | Correct | playerStore resolved with type annotation |
+| Event bus maxListeners = 25 | Correct | Raised from default 10 |
+| Error boundaries on all screen-level components | Correct | 18 screens wrapped in AppNavigator |
+| Non-blocking app initialization | Correct | InteractionManager defers all service inits |
+| Position generation counter in seekingStore | Correct | Prevents stale updates |
+| Safety timeout for stuck seeking (10s) | Correct | Auto-resets via setTimeout |
+
+---
+
+## Architecture Observations
+
+### Strengths
+
+1. **Modular player architecture**: playerStore delegates to 7 child stores (seeking, speed, sleep, bookmarks, completion, settings, selectors). Clear ownership boundaries.
+
+2. **Offline-first queue**: Queue persists to SQLite with slim metadata (~200 bytes/book instead of 150-500KB for full LibraryItem). Resolves from cache with offline fallback stubs.
+
+3. **Background task prioritization**: BackgroundTaskService uses priority levels and per-task timeouts. Critical tasks (progress sync) run first within the limited background time.
+
+4. **Error boundary coverage**: Every screen in AppNavigator is wrapped in an ErrorBoundary with context labels. Crashes are contained to individual screens.
+
+5. **Authentication security**: Proper use of SecureStore for tokens (with 2048 byte limit awareness), AsyncStorage for larger user data. Credential storage is atomic (all-or-nothing with cleanup on partial failure).
+
+6. **Content filtering**: Comprehensive age-based filtering system with multiple dimensions (age recommendations, age ratings, content ratings, genre-based, tag-based, length range).
+
+### Areas for Improvement
+
+1. **Cross-feature coupling**: The "features should not import from other features" rule is widely violated. While not causing bugs (lazy getters handle circular cases), it makes the codebase harder to refactor.
+
+2. **Auth cleanup fragility**: The 20+ `require()` calls in `clearStorage()` are the most error-prone code in the entire codebase. Three separate bugs were introduced here (C-01, H-01, H-02) because there's no type checking on property names.
+
+3. **Module-level dimension capture**: 17 files capture window dimensions at module scope, which won't update on window resize events.
+
+---
+
+## Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|-----------|
+| C-01: Crash after logout (Set vs Array) | **High** (every logout) | **High** (app crash) | Fix immediately |
+| C-02: Locked out of Kid Mode | **Medium** (only affects users who set PIN before hash update) | **High** (permanent lockout) | Add migration |
+| H-02: Kid Mode persists after logout | **Medium** (only if Kid Mode was active) | **Medium** (security leak) | Fix property name |
+| M-02: Stale dimensions on resize | **Low** (only iPad/foldable) | **Low** (layout glitch) | Replace with hooks |
+
+---
+
+## Recommendation
+
+**Do NOT ship** until C-01 (Set vs Array crash) is fixed. This will crash the app on every logout attempt. C-02 (PIN migration) and H-02 (Kid Mode not reset on logout) should also be addressed before release due to their security implications.
+
+The remaining medium and low issues can be addressed in subsequent releases without blocking.

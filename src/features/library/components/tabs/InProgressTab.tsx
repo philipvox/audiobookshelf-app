@@ -2,14 +2,19 @@
  * src/features/library/components/tabs/InProgressTab.tsx
  *
  * In Progress tab content for MyLibraryScreen.
- * Shows continue listening cards in a horizontal scroll with progress bars.
+ * Shows continue listening hero card and in-progress books.
+ *
+ * Uses FlatList for proper virtualization - only renders visible items.
+ * Hero card and series sections are rendered as ListHeaderComponent
+ * and ListFooterComponent.
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Play } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SectionHeader } from '@/shared/components/SectionHeader';
 import { LibraryEmptyState } from '../LibraryEmptyState';
 import { FannedSeriesCard } from '../FannedSeriesCard';
@@ -17,6 +22,7 @@ import { BookRow } from '../BookRow';
 import { apiClient } from '@/core/api';
 import { useLibraryCache } from '@/core/cache';
 import { scale, useTheme } from '@/shared/theme';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { EnrichedBook, formatTimeRemaining, FannedSeriesCardData } from '../../types';
 
 interface InProgressTabProps {
@@ -27,6 +33,9 @@ interface InProgressTabProps {
   onSeriesPress: (seriesName: string) => void;
   isMarkedFinished: (bookId: string) => boolean;
   onBrowse: () => void;
+  // Refresh control props passed from parent
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 export function InProgressTab({
@@ -37,9 +46,12 @@ export function InProgressTab({
   onSeriesPress,
   isMarkedFinished,
   onBrowse,
+  refreshing = false,
+  onRefresh,
 }: InProgressTabProps) {
   const { colors } = useTheme();
   const { getSeries } = useLibraryCache();
+  const insets = useSafeAreaInsets();
 
   // Books come from Continue Listening API - already filtered for in-progress
   // Just sort by most recently played
@@ -70,13 +82,23 @@ export function InProgressTab({
       });
   }, [sortedItems, getSeries]);
 
-  if (sortedItems.length === 0) {
-    return <LibraryEmptyState tab="in-progress" onAction={onBrowse} />;
-  }
   const heroItem = sortedItems[0];
   const otherItems = sortedItems.slice(1);
 
-  return (
+  // Memoized render function for FlatList
+  const renderItem = useCallback(({ item: book }: { item: EnrichedBook }) => (
+    <BookRow
+      book={book}
+      onPress={() => onBookPress(book.id)}
+      onPlay={() => onBookPlay(book)}
+      isMarkedFinished={isMarkedFinished(book.id)}
+    />
+  ), [onBookPress, onBookPlay, isMarkedFinished]);
+
+  const keyExtractor = useCallback((item: EnrichedBook) => item.id, []);
+
+  // Header: hero card + "More In Progress" section header
+  const ListHeader = useCallback(() => (
     <View>
       {/* Hero Continue Listening Card */}
       {heroItem && (
@@ -85,6 +107,8 @@ export function InProgressTab({
             style={styles.heroCard}
             onPress={() => onResumeBook(heroItem)}
             activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel={`Continue listening to ${heroItem.title} by ${heroItem.author}, ${formatTimeRemaining(heroItem.duration * (1 - heroItem.progress))} remaining`}
           >
             <Image
               source={apiClient.getItemCoverUrl(heroItem.id, { width: 400, height: 400 })}
@@ -111,6 +135,8 @@ export function InProgressTab({
             <TouchableOpacity
               style={[styles.heroPlayButton, { backgroundColor: colors.background.primary }]}
               onPress={() => onResumeBook(heroItem)}
+              accessibilityRole="button"
+              accessibilityLabel={`Play ${heroItem.title}`}
             >
               <Play size={scale(28)} color={colors.text.primary} fill={colors.text.primary} strokeWidth={0} />
             </TouchableOpacity>
@@ -118,23 +144,16 @@ export function InProgressTab({
         </View>
       )}
 
-      {/* Other In Progress Items */}
+      {/* Section header for remaining items */}
       {otherItems.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader title={`More In Progress (${otherItems.length})`} showViewAll={false} />
-          {otherItems.map(book => (
-            <BookRow
-              key={book.id}
-              book={book}
-              onPress={() => onBookPress(book.id)}
-              onPlay={() => onBookPlay(book)}
-              isMarkedFinished={isMarkedFinished(book.id)}
-            />
-          ))}
-        </View>
+        <SectionHeader title={`More In Progress (${otherItems.length})`} showViewAll={false} />
       )}
+    </View>
+  ), [heroItem, otherItems.length, onResumeBook, colors.background.primary, colors.text.primary]);
 
-      {/* In Progress Series */}
+  // Footer: in-progress series
+  const ListFooter = useCallback(() => (
+    <View>
       {inProgressSeriesData.length > 0 && (
         <View style={styles.section}>
           <SectionHeader title={`Series In Progress (${inProgressSeriesData.length})`} showViewAll={false} />
@@ -150,6 +169,35 @@ export function InProgressTab({
         </View>
       )}
     </View>
+  ), [inProgressSeriesData, onSeriesPress]);
+
+  if (sortedItems.length === 0) {
+    return <LibraryEmptyState tab="in-progress" onAction={onBrowse} />;
+  }
+
+  return (
+    <FlatList
+      data={otherItems}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      ListHeaderComponent={ListHeader}
+      ListFooterComponent={ListFooter}
+      // Performance optimizations
+      removeClippedSubviews={Platform.OS === 'android'}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      initialNumToRender={10}
+      windowSize={5}
+      // Pull to refresh
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      // Content styling
+      contentContainerStyle={[
+        styles.listContent,
+        { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+      ]}
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -162,6 +210,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: scale(16),
     gap: scale(12),
+  },
+  listContent: {
+    flexGrow: 1,
   },
   // Hero card styles
   heroSection: {

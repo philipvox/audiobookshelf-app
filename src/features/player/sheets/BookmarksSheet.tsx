@@ -1,7 +1,7 @@
 /**
  * src/features/player/sheets/BookmarksSheet.tsx
  *
- * Bookmarks panel - Editorial design with filter tabs, bookmark types, and notes.
+ * Bookmarks panel - Dark editorial design with filter tabs, bookmark types, and notes.
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  ScrollView,
+  FlatList,
   Share,
   Alert,
   Clipboard,
@@ -19,22 +19,35 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { haptics } from '@/core/native/haptics';
 import { scale } from '@/shared/theme';
-import {
-  secretLibraryColors as colors,
-} from '@/shared/theme/secretLibrary';
 import type { Bookmark } from '../stores/bookmarksStore';
+
+// Dark theme colors
+const dark = {
+  bg: '#1a1a1a',
+  surface: '#252525',
+  surfaceLight: '#2f2f2f',
+  border: 'rgba(255,255,255,0.12)',
+  text: '#FFFFFF',
+  textSecondary: 'rgba(255,255,255,0.5)',
+  accent: '#FFFFFF',
+  danger: '#FF4D4D',
+  dangerBg: 'rgba(255,77,77,0.15)',
+  noteBg: 'rgba(76,175,80,0.15)',
+  noteText: '#81C784',
+  handle: 'rgba(255,255,255,0.3)',
+};
 
 // =============================================================================
 // ICONS
 // =============================================================================
 
-const BookmarkIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: number }) => (
+const BookmarkIcon = ({ color = dark.text, size = 14 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
   </Svg>
 );
 
-const NoteIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: number }) => (
+const NoteIcon = ({ color = dark.text, size = 14 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <Path d="M14 2v6h6" />
@@ -42,25 +55,25 @@ const NoteIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: 
   </Svg>
 );
 
-const PlayIcon = ({ color = colors.black, size = 12 }: { color?: string; size?: number }) => (
+const PlayIcon = ({ color = dark.text, size = 12 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M5 3l14 9-14 9V3z" fill="none" />
   </Svg>
 );
 
-const EditIcon = ({ color = colors.black, size = 12 }: { color?: string; size?: number }) => (
+const EditIcon = ({ color = dark.text, size = 12 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
   </Svg>
 );
 
-const DeleteIcon = ({ color = colors.black, size = 12 }: { color?: string; size?: number }) => (
+const DeleteIcon = ({ color = dark.danger, size = 12 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
   </Svg>
 );
 
-const ExportIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: number }) => (
+const ExportIcon = ({ color = dark.text, size = 14 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5}>
     <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <Path d="M17 8l-5-5-5 5" />
@@ -68,7 +81,7 @@ const ExportIcon = ({ color = colors.black, size = 14 }: { color?: string; size?
   </Svg>
 );
 
-const PlusIcon = ({ color = colors.black, size = 14 }: { color?: string; size?: number }) => (
+const PlusIcon = ({ color = dark.bg, size = 14 }: { color?: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Path d="M12 5v14M5 12h14" />
   </Svg>
@@ -159,6 +172,9 @@ function FilterTab({
       style={[styles.filterTab, isActive && styles.filterTabActive]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="tab"
+      accessibilityLabel={`${label}, ${count}`}
+      accessibilityState={{ selected: isActive }}
     >
       <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
         {label}
@@ -194,13 +210,20 @@ function BookmarkItem({
   }, [bookmark.time, onDelete]);
 
   return (
-    <TouchableOpacity style={styles.bookmarkItem} onPress={onPlay} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={styles.bookmarkItem}
+      onPress={onPlay}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Bookmark at ${formatTime(bookmark.time)}, ${bookmark.chapterTitle || 'Unknown Chapter'}${hasNote ? `, note: ${bookmark.note}` : ''}`}
+      accessibilityHint="Double tap to play from this bookmark"
+    >
       <View style={styles.bookmarkHeader}>
-        <View style={[styles.bookmarkIcon, iconBgStyle]}>
+        <View style={[styles.bookmarkIcon, iconBgStyle]} accessible={false}>
           {hasNote ? (
-            <NoteIcon color={hasNote ? '#155724' : colors.black} size={14} />
+            <NoteIcon color={dark.noteText} size={14} />
           ) : (
-            <BookmarkIcon color={colors.black} size={14} />
+            <BookmarkIcon color={dark.textSecondary} size={14} />
           )}
         </View>
         <View style={styles.bookmarkMeta}>
@@ -214,22 +237,28 @@ function BookmarkItem({
             style={styles.bookmarkActionBtn}
             onPress={onPlay}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Play from bookmark"
           >
-            <PlayIcon color={colors.black} size={12} />
+            <PlayIcon color={dark.text} size={12} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.bookmarkActionBtn}
             onPress={onEdit}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit bookmark"
           >
-            <EditIcon color={colors.black} size={12} />
+            <EditIcon color={dark.text} size={12} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.bookmarkActionBtn, styles.bookmarkDeleteBtn]}
             onPress={handleDelete}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Delete bookmark"
           >
-            <DeleteIcon color="#DC3545" size={12} />
+            <DeleteIcon color={dark.danger} size={12} />
           </TouchableOpacity>
         </View>
       </View>
@@ -306,6 +335,17 @@ export function BookmarksSheet({
     }
   }, [onAddBookmark, onAddBookmarkWithDetails]);
 
+  const renderBookmarkItem = useCallback(({ item }: { item: Bookmark }) => (
+    <BookmarkItem
+      bookmark={item}
+      onPlay={() => handlePlay(item)}
+      onEdit={() => handleEdit(item)}
+      onDelete={() => handleDelete(item)}
+    />
+  ), [handlePlay, handleEdit, handleDelete]);
+
+  const bookmarkKeyExtractor = useCallback((item: Bookmark) => item.id, []);
+
   const handleExport = useCallback(async () => {
     if (bookmarks.length === 0) {
       Alert.alert('No Bookmarks', 'There are no bookmarks to export.');
@@ -359,7 +399,7 @@ export function BookmarksSheet({
 
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIcon}>
-            <BookmarkIcon color={colors.gray} size={28} />
+            <BookmarkIcon color={dark.textSecondary} size={28} />
           </View>
           <Text style={styles.emptyTitle}>No bookmarks yet</Text>
           <Text style={styles.emptyText}>
@@ -372,8 +412,10 @@ export function BookmarksSheet({
             style={[styles.actionButton, styles.actionButtonPrimary]}
             onPress={handleAddBookmark}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add Bookmark"
           >
-            <PlusIcon color={colors.white} size={14} />
+            <PlusIcon color={dark.bg} size={14} />
             <Text style={styles.actionButtonTextPrimary}>Add Bookmark</Text>
           </TouchableOpacity>
         </View>
@@ -414,17 +456,13 @@ export function BookmarksSheet({
       </View>
 
       {/* Bookmarks List */}
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {filteredBookmarks.map((bookmark) => (
-          <BookmarkItem
-            key={bookmark.id}
-            bookmark={bookmark}
-            onPlay={() => handlePlay(bookmark)}
-            onEdit={() => handleEdit(bookmark)}
-            onDelete={() => handleDelete(bookmark)}
-          />
-        ))}
-      </ScrollView>
+      <FlatList
+        data={filteredBookmarks}
+        keyExtractor={bookmarkKeyExtractor}
+        renderItem={renderBookmarkItem}
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      />
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
@@ -432,16 +470,20 @@ export function BookmarksSheet({
           style={styles.actionButton}
           onPress={handleExport}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Export bookmarks"
         >
-          <ExportIcon color={colors.black} size={14} />
+          <ExportIcon color={dark.text} size={14} />
           <Text style={styles.actionButtonText}>Export</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionButtonPrimary]}
           onPress={handleAddBookmark}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Add Bookmark"
         >
-          <PlusIcon color={colors.white} size={14} />
+          <PlusIcon color={dark.bg} size={14} />
           <Text style={styles.actionButtonTextPrimary}>Add Bookmark</Text>
         </TouchableOpacity>
       </View>
@@ -455,13 +497,13 @@ export function BookmarksSheet({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.creamGray,
+    backgroundColor: dark.bg,
     paddingBottom: scale(40),
   },
   handle: {
     width: scale(36),
     height: scale(4),
-    backgroundColor: colors.grayLine,
+    backgroundColor: dark.handle,
     borderRadius: scale(2),
     alignSelf: 'center',
     marginTop: scale(12),
@@ -477,18 +519,18 @@ const styles = StyleSheet.create({
     marginBottom: scale(16),
     paddingBottom: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: colors.black,
+    borderBottomColor: dark.border,
   },
   title: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(28),
     fontWeight: '400',
-    color: colors.black,
+    color: dark.text,
   },
   subtitle: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(11),
-    color: colors.gray,
+    color: dark.textSecondary,
   },
 
   // Filter Tabs
@@ -502,22 +544,22 @@ const styles = StyleSheet.create({
     height: scale(32),
     paddingHorizontal: scale(14),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: dark.border,
+    backgroundColor: dark.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterTabActive: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: dark.accent,
+    borderColor: dark.accent,
   },
   filterTabText: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: colors.gray,
+    color: dark.textSecondary,
   },
   filterTabTextActive: {
-    color: colors.white,
+    color: dark.bg,
   },
   filterTabCount: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
@@ -535,7 +577,7 @@ const styles = StyleSheet.create({
   bookmarkItem: {
     paddingVertical: scale(16),
     borderBottomWidth: 1,
-    borderBottomColor: colors.grayLine,
+    borderBottomColor: dark.border,
   },
   bookmarkHeader: {
     flexDirection: 'row',
@@ -551,10 +593,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   bookmarkIconDefault: {
-    backgroundColor: colors.grayLight,
+    backgroundColor: dark.surface,
   },
   bookmarkIconNote: {
-    backgroundColor: '#D4EDDA',
+    backgroundColor: dark.noteBg,
   },
   bookmarkMeta: {
     flex: 1,
@@ -562,14 +604,14 @@ const styles = StyleSheet.create({
   },
   bookmarkChapter: {
     fontSize: scale(11),
-    color: colors.gray,
+    color: dark.textSecondary,
     marginBottom: scale(2),
   },
   bookmarkTimestamp: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(13),
     fontWeight: '500',
-    color: colors.black,
+    color: dark.text,
   },
   bookmarkActions: {
     flexDirection: 'row',
@@ -580,28 +622,28 @@ const styles = StyleSheet.create({
     width: scale(28),
     height: scale(28),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: dark.border,
+    backgroundColor: dark.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
   bookmarkDeleteBtn: {
-    borderColor: '#F8D7DA',
-    backgroundColor: '#F8D7DA',
+    borderColor: dark.dangerBg,
+    backgroundColor: dark.dangerBg,
   },
   bookmarkContent: {
     marginLeft: scale(40),
   },
   bookmarkNote: {
     fontSize: scale(13),
-    color: colors.black,
+    color: dark.text,
     lineHeight: scale(20),
     marginBottom: scale(8),
   },
   bookmarkDate: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(10),
-    color: colors.gray,
+    color: dark.textSecondary,
   },
 
   // Empty State
@@ -613,7 +655,7 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: scale(64),
     height: scale(64),
-    backgroundColor: colors.grayLight,
+    backgroundColor: dark.surface,
     borderRadius: scale(32),
     justifyContent: 'center',
     alignItems: 'center',
@@ -622,12 +664,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
     fontSize: scale(18),
-    color: colors.black,
+    color: dark.text,
     marginBottom: scale(8),
   },
   emptyText: {
     fontSize: scale(13),
-    color: colors.gray,
+    color: dark.textSecondary,
     textAlign: 'center',
     lineHeight: scale(20),
   },
@@ -637,7 +679,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(28),
     paddingTop: scale(16),
     borderTopWidth: 1,
-    borderTopColor: colors.grayLine,
+    borderTopColor: dark.border,
     flexDirection: 'row',
     gap: scale(8),
   },
@@ -645,26 +687,26 @@ const styles = StyleSheet.create({
     flex: 1,
     height: scale(44),
     borderWidth: 1,
-    borderColor: colors.grayLine,
-    backgroundColor: colors.grayLight,
+    borderColor: dark.border,
+    backgroundColor: dark.surface,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: scale(8),
   },
   actionButtonPrimary: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: dark.accent,
+    borderColor: dark.accent,
   },
   actionButtonText: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: colors.black,
+    color: dark.text,
   },
   actionButtonTextPrimary: {
     fontSize: scale(12),
     fontWeight: '500',
-    color: colors.white,
+    color: dark.bg,
   },
 });
 

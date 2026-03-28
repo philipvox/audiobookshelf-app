@@ -14,6 +14,7 @@
  */
 
 import { LibraryItem } from '@/core/types';
+import { BookMetadata } from '@/core/types/media';
 
 // =============================================================================
 // Types
@@ -83,7 +84,7 @@ function getMetadata(item: LibraryItem): {
   narrator: string;
   series: string;
 } {
-  const metadata = (item.media?.metadata as any) || {};
+  const metadata = (item.media?.metadata as BookMetadata | undefined) || {} as Partial<BookMetadata>;
 
   let narrator = metadata.narratorName || '';
   narrator = narrator.replace(/^Narrated by\s*/i, '').trim();
@@ -310,45 +311,10 @@ export class SearchIndex {
   }
 
   /**
-   * Get items by exact match.
-   * Faster than search() for known matches.
-   */
-  getByExactMatch(field: 'title' | 'author' | 'narrator' | 'series', value: string): LibraryItem[] {
-    // Lazy build index if needed (P2 Fix)
-    this.ensureBuilt();
-
-    const lowerValue = value.toLowerCase();
-
-    return this.items
-      .filter((item) => item[`${field}Lower`] === lowerValue)
-      .map((item) => item.item);
-  }
-
-  /**
-   * Get item by ID.
-   */
-  getById(id: string): LibraryItem | undefined {
-    // Lazy build index if needed (P2 Fix)
-    this.ensureBuilt();
-
-    return this.itemById.get(id)?.item;
-  }
-
-  /**
    * Check if index is built or has pending items for lazy build.
    */
   get ready(): boolean {
     return this.isBuilt || this.pendingItems !== null;
-  }
-
-  /**
-   * Get index statistics.
-   */
-  getStats(): { itemCount: number; trigramCount: number } {
-    return {
-      itemCount: this.items.length,
-      trigramCount: this.trigramIndex.size,
-    };
   }
 
   private getMatchedFields(item: IndexedItem, query: string): string[] {

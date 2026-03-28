@@ -5,19 +5,18 @@
  * Extracts all useMemo logic from MyLibraryScreen for cleaner separation.
  */
 
-import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import { useMemo, useCallback, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useDownloads } from '@/core/hooks/useDownloads';
 import { useLibraryCache, getAllAuthors, getAllSeries, getAllNarrators } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { useMyLibraryStore } from '@/shared/stores/myLibraryStore';
 import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
-import { usePreferencesStore } from '@/features/recommendations/stores/preferencesStore';
+import { usePreferencesStore } from '@/shared/stores/preferencesStore';
 import { useFinishedBookIds, useInProgressBooks } from '@/core/hooks/useUserBooks';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
-import { useCompletionStore } from '@/features/completion';
+import { useCompletionStore } from '@/shared/stores/completionStore';
 import { useProgressStore } from '@/core/stores/progressStore';
-import { useKidModeStore } from '@/shared/stores/kidModeStore';
-import { isKidFriendly } from '@/shared/utils/kidModeFilter';
 import {
   TabType,
   EnrichedBook,
@@ -69,7 +68,7 @@ interface UseLibraryDataResult {
 }
 
 export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataProps): UseLibraryDataResult {
-  const { items: cachedItems, isLoaded, getSeries, getItem, loadCache, currentLibraryId } = useLibraryCache();
+  const { items: cachedItems, isLoaded, getSeries, getItem, loadCache, currentLibraryId } = useLibraryCache(useShallow((s) => ({ items: s.items, isLoaded: s.isLoaded, getSeries: s.getSeries, getItem: s.getItem, loadCache: s.loadCache, currentLibraryId: s.currentLibraryId })));
   const { downloads, isLoading: isDownloadsLoading, pauseDownload, resumeDownload, deleteDownload } = useDownloads();
 
   // Favorites from stores
@@ -106,9 +105,6 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     return map;
   }, [sqliteInProgressBooks]);
 
-  // Kid Mode filter
-  const kidModeEnabled = useKidModeStore((state) => state.enabled);
-
   // Unified lastPlayedAt resolver: progressStore (real-time) → SQLite → server
   const getLastPlayedAt = useCallback((bookId: string, item?: LibraryItem | null): number | undefined => {
     // 1. progressStore — real-time, updated instantly during playback
@@ -121,32 +117,32 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     return item?.userMediaProgress?.lastUpdate;
   }, [progressMap, sqliteProgressMap]);
 
-  // Combined loading state - wait for ALL data sources before showing sorted results
-  // This prevents the "flash" where books reorder as each async source completes
-  // Include isFetching and isServerLoading to wait for background queries (not just initial load)
-  const isDataReady = isLoaded && !isDownloadsLoading && !isProgressLoading && !isProgressFetching && !isContinueLoading && !isServerLoading;
+  // Per-tab loading state - each tab only waits for the data sources it actually needs
+  // This prevents tabs from blocking on unrelated async queries
+  const isBaseReady = isLoaded && !isDownloadsLoading;
+  const isProgressReady = !isProgressLoading && !isProgressFetching;
+  const isContinueReady = !isContinueLoading && !isServerLoading;
 
-  // STABILIZATION: Wait for data to settle before showing content
-  // This adds a minimum 500ms delay on initial load to let all syncs complete
-  const [hasSettled, setHasSettled] = useState(false);
-  const settleTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const wasDataReadyRef = useRef(false);
-
-  useEffect(() => {
-    if (isDataReady && !wasDataReadyRef.current) {
-      // Data just became ready - start settle timer
-      wasDataReadyRef.current = true;
-      settleTimerRef.current = setTimeout(() => {
-        setHasSettled(true);
-      }, 500); // 500ms settle time
+  const isTabDataReady = useMemo(() => {
+    switch (activeTab) {
+      case 'downloaded':
+      case 'not-started':
+        // Only needs cache + downloads (+ progress for enrichment, but non-blocking)
+        return isBaseReady;
+      case 'in-progress':
+        // Needs continue-listening server data
+        return isBaseReady && isContinueReady;
+      case 'completed':
+        // Needs cache + downloads + progress (for finished state)
+        return isBaseReady && isProgressReady;
+      case 'favorites':
+        // Only needs cache
+        return isLoaded;
+      default:
+        // "all" tab unions everything
+        return isBaseReady && isProgressReady && isContinueReady;
     }
-
-    return () => {
-      if (settleTimerRef.current) {
-        clearTimeout(settleTimerRef.current);
-      }
-    };
-  }, [isDataReady]);
+  }, [activeTab, isBaseReady, isProgressReady, isContinueReady, isLoaded]);
 
   // Trigger library sync on mount if a playlist is linked
   const libraryPlaylistId = useLibrarySyncStore(s => s.libraryPlaylistId);
@@ -159,9 +155,6 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       });
     }
   }, [libraryPlaylistId]);
-
-  // Final loading state: data must be ready AND settled
-  const isFullyReady = isDataReady && hasSettled;
 
   // Separate active downloads from completed
   const activeDownloads = useMemo(
@@ -332,7 +325,6 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
 
     // Helper: add book, preferring entry with most recent lastPlayedAt
     const addBook = (book: EnrichedBook) => {
-      if (kidModeEnabled && book.item && !isKidFriendly(book.item)) return;
       const existing = bookMap.get(book.id);
       if (!existing || (book.lastPlayedAt || 0) > (existing.lastPlayedAt || 0)) {
         bookMap.set(book.id, book);
@@ -352,8 +344,6 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
       if (pd.progress <= 0 && !pd.isInLibrary) continue;
       const item = getItem(bookId);
       if (!item) continue;
-      if (kidModeEnabled && !isKidFriendly(item)) continue;
-
       const metadata = getMetadata(item);
       const { cleanName: seriesName, sequence } = extractSeriesMetadata(metadata.seriesName || '');
       const download = downloadMap.get(bookId);
@@ -375,7 +365,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     }
 
     return Array.from(bookMap.values());
-  }, [enrichedBooks, serverInProgressBooks, favoritedBooks, markedFinishedBooks, progressMap, progressVersion, kidModeEnabled, getItem, downloadMap]);
+  }, [enrichedBooks, serverInProgressBooks, favoritedBooks, markedFinishedBooks, progressMap, progressVersion, getItem, downloadMap]);
 
   // Get books for current tab
   const currentTabBooks = useMemo(() => {
@@ -396,10 +386,10 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     }
   }, [activeTab, enrichedBooks, serverInProgressBooks, favoritedBooks, allLibraryBooks, isMarkedFinished, markedFinishedBooks]);
 
-  // Apply sort - only when all data sources are ready AND settled
+  // Apply sort - only when this tab's data sources are ready
   const sortedBooks = useMemo(() => {
-    // Return empty while loading/settling - skeleton will show instead
-    if (!isFullyReady) {
+    // Return empty while tab data is loading - skeleton will show instead
+    if (!isTabDataReady) {
       return [];
     }
 
@@ -432,7 +422,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     }
 
     return result;
-  }, [currentTabBooks, sort, isFullyReady]);
+  }, [currentTabBooks, sort, isTabDataReady]);
 
   // Apply search filter
   const filteredBooks = useMemo(() => {
@@ -472,17 +462,19 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
   // Favorite data with proper type filtering
   const favoriteAuthorData = useMemo(() => {
     if (!isLoaded) return [];
-    const allAuthorsMap = getAllAuthors();
+    const allAuthors = getAllAuthors();
+    const byName = new Map(allAuthors.map(a => [a.name, a]));
     return favoriteAuthors
-      .map(name => allAuthorsMap.find(a => a.name === name))
+      .map(name => byName.get(name))
       .filter((a): a is NonNullable<typeof a> => a !== undefined);
   }, [favoriteAuthors, isLoaded]);
 
   const favoriteSeriesData = useMemo((): FannedSeriesCardData[] => {
     if (!isLoaded) return [];
-    const allSeriesMap = getAllSeries();
+    const allSeries = getAllSeries();
+    const byName = new Map(allSeries.map(s => [s.name, s]));
     return favoriteSeriesNames
-      .map(name => allSeriesMap.find(s => s.name === name))
+      .map(name => byName.get(name))
       .filter((s): s is NonNullable<typeof s> => s !== undefined)
       .map(s => ({
         name: s.name,
@@ -493,9 +485,10 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
 
   const favoriteNarratorData = useMemo(() => {
     if (!isLoaded) return [];
-    const allNarratorsMap = getAllNarrators();
+    const allNarrators = getAllNarrators();
+    const byName = new Map(allNarrators.map(n => [n.name, n]));
     return favoriteNarrators
-      .map(name => allNarratorsMap.find(n => n.name === name))
+      .map(name => byName.get(name))
       .filter((n): n is NonNullable<typeof n> => n !== undefined);
   }, [favoriteNarrators, isLoaded]);
 
@@ -519,7 +512,7 @@ export function useLibraryData({ activeTab, sort, searchQuery }: UseLibraryDataP
     continueListeningItems,
     totalStorageUsed,
     isLoaded,
-    isLoading: !isDataReady,
+    isLoading: !isTabDataReady,
     hasDownloading,
     hasPaused,
     hasAnyContent,

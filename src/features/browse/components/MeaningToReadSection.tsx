@@ -52,8 +52,8 @@ const MeaningCard = React.memo(function MeaningCard({
   const colors = useSecretLibraryColors();
   const coverUrl = useCoverUrl(item.id, { width: 200 });
   const metadata = getMetadata(item);
-  const title = (metadata as any).title || 'Untitled';
-  const author = (metadata as any).authorName || (metadata as any).authors?.[0]?.name || '';
+  const title = (metadata as BookMetadata).title || 'Untitled';
+  const author = (metadata as BookMetadata).authorName || (metadata as BookMetadata).authors?.[0]?.name || '';
 
   // Get progress to determine abandoned vs unstarted
   const progress = useProgressStore((s) => s.getProgress(item.id));
@@ -69,7 +69,7 @@ const MeaningCard = React.memo(function MeaningCard({
   }
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.8} accessibilityLabel={`Open ${title}${author ? ` by ${author}` : ''}`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         <Image
           source={coverUrl}

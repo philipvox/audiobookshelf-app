@@ -149,8 +149,9 @@ class WebSocketService {
       }
 
       // Create socket.io connection
-      // AudiobookShelf uses the /socket.io path by default
+      // AudiobookShelf uses /audiobookshelf/socket.io (not the default /socket.io)
       this.socket = io(serverUrl, {
+        path: '/audiobookshelf/socket.io',
         auth: {
           token,
         },

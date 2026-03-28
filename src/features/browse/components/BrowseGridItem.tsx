@@ -38,6 +38,8 @@ function BrowseGridItemComponent({
         pressed && { opacity: 0.7 },
       ]}
       onPress={onPress}
+      accessibilityLabel={`Browse ${title}`}
+      accessibilityRole="button"
     >
       <Icon name={iconName} size={24} color={colors.text} strokeWidth={1.5} />
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>

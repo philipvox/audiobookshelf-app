@@ -166,12 +166,12 @@ export function ShareStatsCard({
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.shareButton, { backgroundColor: COLORS.accent }]} onPress={handleShare}>
+        <TouchableOpacity style={[styles.shareButton, { backgroundColor: COLORS.accent }]} onPress={handleShare} accessibilityRole="button" accessibilityLabel="Share stats">
           <Icon name="Share" size={20} color={COLORS.background} />
           <Text style={[styles.shareButtonText, { color: COLORS.background }]}>Share</Text>
         </TouchableOpacity>
         {onClose && (
-          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+          <TouchableOpacity style={styles.cancelButton} onPress={onClose} accessibilityRole="button" accessibilityLabel="Cancel sharing">
             <Text style={[styles.cancelButtonText, { color: COLORS.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
         )}

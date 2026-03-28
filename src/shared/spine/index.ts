@@ -30,3 +30,6 @@ export {
   getTypographyForGenres,
   getSeriesStyle,
 } from '@/features/home/utils/spine/adapter';
+
+// Dimension utilities
+export { fitToBoundingBox } from '@/features/home/utils/spine/core/dimensions';

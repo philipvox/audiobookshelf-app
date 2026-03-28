@@ -18,7 +18,7 @@
  * - Cached LibraryItem missing chapters (downloaded books)
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { apiClient } from '@/core/api/apiClient';
 import { SessionChapter } from './sessionService';
@@ -55,7 +55,7 @@ class ChapterCacheService {
     sessionChapters: SessionChapter[] | null | undefined
   ): Promise<ChapterResult> {
     const bookId = book.id;
-    const bookTitle = (book.media?.metadata as any)?.title || 'Unknown';
+    const bookTitle = (book.media?.metadata as BookMetadata)?.title || 'Unknown';
     const startTime = Date.now();
 
     try {

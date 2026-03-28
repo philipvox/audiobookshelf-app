@@ -5,14 +5,16 @@
  * Handles both pushing local changes to server and importing from server.
  */
 
+import { Platform } from 'react-native';
 import { sqliteCache } from './sqliteCache';
 import { playbackCache } from './playbackCache';
 import { userApi } from '@/core/api/endpoints/user';
 import { apiClient } from '@/core/api';
 import { syncLogger as log } from '@/shared/utils/logger';
 import { useLibraryCache } from '@/core/cache/libraryCache';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
 import { LibraryItem, BookMedia } from '@/core/types';
+import { APP_VERSION } from '@/constants/version';
 
 // Type guard for book media
 function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
@@ -43,11 +45,29 @@ export const finishedBooksSync = {
 
       for (const book of toSync) {
         try {
-          if (book.isFinished) {
-            await userApi.markAsFinished(book.bookId, book.duration);
-          } else {
-            await userApi.markAsNotStarted(book.bookId);
+          // Only sync books that are genuinely finished locally.
+          // NEVER call markAsNotStarted() here — on fresh install, imported books
+          // may have finishedSynced=false and calling markAsNotStarted() would send
+          // currentTime:0 to the server, wiping real progress.
+          if (!book.isFinished) {
+            // Not finished — just mark the sync flag so we don't revisit
+            await sqliteCache.markUserBookSynced(book.bookId, { finished: true });
+            synced++;
+            continue;
           }
+
+          // Validate before syncing finished books
+          if (!book.duration || book.duration <= 0) {
+            log.warn(`Skipping sync for ${book.bookId}: invalid duration=${book.duration}`);
+            failed++;
+            continue;
+          }
+          if (book.currentTime > book.duration + 60) {
+            log.warn(`Skipping sync for ${book.bookId}: currentTime (${book.currentTime}s) exceeds duration (${book.duration}s)`);
+            failed++;
+            continue;
+          }
+          await userApi.markAsFinished(book.bookId, book.duration);
           await sqliteCache.markUserBookSynced(book.bookId, { finished: true });
           synced++;
         } catch (err) {
@@ -124,11 +144,15 @@ export const finishedBooksSync = {
           );
 
           // Also update user_books for book detail screen
+          // fromServer=true: sets sync flags to true in a single write,
+          // preventing race where syncUnsyncedFromStorage reads the record
+          // before markUserBookSynced runs
           await sqliteCache.updateUserBookProgress(
             item.id,
             serverProgress.currentTime,
             duration,
-            0
+            0,
+            true // fromServer
           );
 
           // Update spine cache
@@ -196,8 +220,8 @@ export const finishedBooksSync = {
 
       // Batch-load ALL local playback progress upfront to avoid N+1 queries
       // (was calling sqliteCache.getPlaybackProgress(item.id) in a loop for 2700+ items)
-      // TODO: This reads from the legacy `playback_progress` table, but the active write path
-      // uses `user_books`. Migrate to reading from `user_books` once data consistency is verified.
+      // NOTE: The legacy `playback_progress` table has been dropped (RM-2 migration in sqliteCache.init).
+      // This now reads from `user_books` via getAllPlaybackProgress() which was updated accordingly.
       const allLocalProgress = await sqliteCache.getAllPlaybackProgress();
       log.info(`Loaded ${allLocalProgress.size} local progress records for batch comparison`);
 
@@ -255,13 +279,14 @@ export const finishedBooksSync = {
             );
 
             // Also update user_books for book detail screen
+            // fromServer=true: atomic single-write with sync flags already set
             await sqliteCache.updateUserBookProgress(
               item.id,
               serverProgress.currentTime,
               duration,
-              0 // currentTrackIndex - not available from server
+              0, // currentTrackIndex - not available from server
+              true // fromServer
             );
-            await sqliteCache.markUserBookSynced(item.id, { progress: true });
 
             // Also update spine cache so book spines show correct progress
             useSpineCacheStore.getState().updateProgress(item.id, serverProgress.progress);
@@ -321,6 +346,10 @@ export const finishedBooksSync = {
   async syncBook(bookId: string, isFinished: boolean, duration?: number): Promise<boolean> {
     try {
       if (isFinished) {
+        if (!duration || duration <= 0) {
+          log.warn(`syncBook: refusing to mark ${bookId} finished with invalid duration=${duration}`);
+          return false;
+        }
         await userApi.markAsFinished(bookId, duration);
       } else {
         await userApi.markAsNotStarted(bookId);
@@ -394,9 +423,9 @@ export const finishedBooksSync = {
             `/api/items/${item.id}/play`,
             {
               deviceInfo: {
-                clientName: 'AudiobookShelf-RN',
-                clientVersion: '1.0.0',
-                deviceId: 'rn-mobile-app-prefetch',
+                clientName: 'Secret Library',
+                clientVersion: APP_VERSION,
+                deviceId: `${Platform.OS}-secret-library-prefetch`,
               },
               forceDirectPlay: true,
               forceTranscode: false,

@@ -86,7 +86,7 @@ export function SecretLibraryBrowseScreen() {
     const timeout = setTimeout(() => {
       import('@/shared/stores/globalLoadingStore').then(({ globalLoading }) => {
         globalLoading.hide();
-      });
+      }).catch((e) => logger.warn('[Browse] Failed to import globalLoadingStore for safety timeout:', e));
     }, 5000);
     return () => clearTimeout(timeout);
   }, []);

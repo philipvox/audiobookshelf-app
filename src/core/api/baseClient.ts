@@ -76,8 +76,14 @@ export class BaseApiClient {
   }
 
   /**
-   * Attempt to verify auth by calling /api/me
-   * Returns true if token is still valid, false otherwise
+   * Attempt to verify auth by calling /api/me with retries.
+   * Returns true if token is still valid, false only if server confirms invalid.
+   *
+   * CRITICAL: A single transient 401 + network blip during verification used to
+   * trigger permanent logout, wiping ALL local state (progress, downloads, prefs).
+   * Now we retry 3 times with backoff, and only return false when the server
+   * explicitly confirms the token is invalid (401 response with valid body).
+   * Network errors during verification are treated as "unknown" → no logout.
    */
   private async tryVerifyAuth(): Promise<boolean> {
     if (!this.authToken || !this.baseURL) {
@@ -86,16 +92,45 @@ export class BaseApiClient {
 
     this.isVerifyingAuth = true;
 
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_BASE = 500; // 500ms, 1000ms, 2000ms
+
     try {
-      // Make a direct axios call to avoid our own interceptor
-      await this.axiosInstance.get('/api/me', {
-        headers: { Authorization: `Bearer ${this.authToken}` },
-      });
-      // If we get here, token is valid - the original 401 was transient
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          // Make a direct axios call to avoid our own interceptor
+          await this.axiosInstance.get('/api/me', {
+            headers: { Authorization: `Bearer ${this.authToken}` },
+            timeout: 10000, // 10s timeout per attempt
+          });
+          // If we get here, token is valid - the original 401 was transient
+          return true;
+        } catch (verifyError: any) {
+          const status = verifyError?.response?.status;
+
+          // Server explicitly says 401 = token is genuinely invalid, no retry needed
+          if (status === 401) {
+            return false;
+          }
+
+          // Server returned 403 = token valid but forbidden, don't logout
+          if (status === 403) {
+            return true;
+          }
+
+          // Network error or timeout — retry, don't assume token is invalid
+          if (attempt < MAX_RETRIES) {
+            await new Promise(resolve =>
+              setTimeout(resolve, RETRY_DELAY_BASE * attempt)
+            );
+          }
+        }
+      }
+
+      // All retries exhausted with network errors — assume token is still valid
+      // rather than wiping all local data. The user will get a natural retry
+      // on their next API call when connectivity returns.
       return true;
-    } catch {
-      // Token is definitely invalid
-      return false;
     } finally {
       this.isVerifyingAuth = false;
     }
@@ -158,7 +193,7 @@ export class BaseApiClient {
     if (error.response) {
       // Server responded with error status
       const status = error.response.status;
-      const message = (error.response.data as any)?.error || error.message;
+      const message = (error.response.data as Record<string, unknown>)?.error as string || error.message;
 
       switch (status) {
         case 401:
@@ -175,14 +210,15 @@ export class BaseApiClient {
         case 500:
           return new Error('Server error - please try again later');
         default:
-          return new Error(`API error (${status}): ${message}`);
+          // Avoid leaking raw server error details to the UI
+          return new Error(`Server error (${status}). Please try again later.`);
       }
     } else if (error.request) {
       // Request made but no response received
       return new Error('Network error - please check your connection');
     } else {
-      // Error setting up the request
-      return new Error(`Request error: ${error.message}`);
+      // Error setting up the request — avoid leaking internal details
+      return new Error('Request failed. Please check your connection and try again.');
     }
   }
 

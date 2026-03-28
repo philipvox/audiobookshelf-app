@@ -251,6 +251,9 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
               style={[styles.optionButton, isSelected && styles.optionButtonSelected]}
               onPress={() => handleQuickSelect(option.value)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${option.label} ${option.unit === 'hr' ? (option.label === '1' ? 'hour' : 'hours') : 'minutes'}`}
+              accessibilityState={{ selected: isSelected }}
             >
               <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
                 {option.label}
@@ -272,6 +275,9 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
           ]}
           onPress={handleEndOfChapter}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`End of chapter, approximately ${chapterRemaining} minutes remaining`}
+          accessibilityState={{ selected: timerMode === 'end-of-chapter' }}
         >
           <BookIcon
             color={timerMode === 'end-of-chapter' ? colors.black : colors.white}
@@ -300,6 +306,9 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
           ]}
           onPress={handleEndOfBook}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`End of book, ${bookRemaining.hours} hours ${bookRemaining.mins} minutes remaining`}
+          accessibilityState={{ selected: timerMode === 'end-of-book' }}
         >
           <BooksIcon
             color={timerMode === 'end-of-book' ? colors.black : colors.white}
@@ -333,6 +342,7 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
             keyboardType="number-pad"
             maxLength={2}
             selectTextOnFocus
+            accessibilityLabel="Custom timer hours"
           />
           <Text style={styles.customTimeUnit}>h</Text>
           <Text style={styles.customTimeSeparator}>:</Text>
@@ -343,10 +353,11 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
             keyboardType="number-pad"
             maxLength={2}
             selectTextOnFocus
+            accessibilityLabel="Custom timer minutes"
           />
           <Text style={styles.customTimeUnit}>m</Text>
         </View>
-        <TouchableOpacity style={styles.customTimeSet} onPress={handleCustomSet}>
+        <TouchableOpacity style={styles.customTimeSet} onPress={handleCustomSet} accessibilityRole="button" accessibilityLabel="Set custom timer">
           <Text style={styles.customTimeSetText}>Set</Text>
         </TouchableOpacity>
       </View>
@@ -359,6 +370,8 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
               style={styles.actionButtonCancel}
               onPress={handleCancelTimer}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel timer"
             >
               <CloseIcon color={colors.orange} size={14} />
               <Text style={styles.actionButtonCancelText}>Cancel Timer</Text>
@@ -367,6 +380,8 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
               style={styles.actionButtonPrimary}
               onPress={onClose}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
             >
               <Text style={styles.actionButtonPrimaryText}>Done</Text>
             </TouchableOpacity>
@@ -376,6 +391,8 @@ export function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
             style={styles.actionButton}
             onPress={onClose}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
             <Text style={styles.actionButtonText}>Close</Text>
           </TouchableOpacity>

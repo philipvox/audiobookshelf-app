@@ -32,7 +32,6 @@ export { useSleepTimerStore } from './sleepTimerStore';
 export { useSpeedStore } from './speedStore';
 export { useCompletionSheetStore } from './completionSheetStore';
 export { useSeekingStore } from './seekingStore';
-export { useJoystickSeekStore } from './joystickSeekStore';
 
 // =============================================================================
 // ALL HOOKS (from playerHooks.ts - unified export point)
@@ -89,10 +88,6 @@ export {
   useIsCompletionSheetVisible,
   useCompletionSheetBook,
   useCompletionState,
-
-  // Joystick seek (source: joystickSeekStore)
-  useJoystickSeekStore as useJoystickSeekStoreHook,
-  useJoystickSeekSettings,
 
   // Derived selectors (source: playerSelectors - combine multiple stores)
   useDisplayPosition,

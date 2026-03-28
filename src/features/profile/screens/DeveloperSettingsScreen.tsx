@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Paintbrush,
   Bug,
+  Activity,
   type LucideIcon,
 } from 'lucide-react-native';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
@@ -32,7 +33,8 @@ import {
   secretLibraryFonts as fonts,
 } from '@/shared/theme/secretLibrary';
 import { SettingsHeader } from '../components/SettingsHeader';
-import { imageCacheService } from '@/core/services/imageCacheService';
+import { useCoachMarksStore } from '@/shared/stores/coachMarksStore';
+import { useFpsStore } from '@/shared/components/FpsOverlay';
 
 // =============================================================================
 // COMPONENTS
@@ -77,6 +79,9 @@ function SettingsRow({
             trackColor={{ false: 'rgba(0,0,0,0.1)', true: colors.black }}
             thumbColor={colors.white}
             ios_backgroundColor="rgba(0,0,0,0.1)"
+            accessibilityRole="switch"
+            accessibilityLabel={label}
+            accessibilityState={{ checked: switchValue }}
           />
         )}
         {onPress && <ChevronRight size={scale(16)} color={colors.gray} strokeWidth={1.5} />}
@@ -86,7 +91,12 @@ function SettingsRow({
 
   if (onPress) {
     return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}${description ? `, ${description}` : ''}${value ? `, ${value}` : ''}`}
+      >
         {content}
       </TouchableOpacity>
     );
@@ -112,13 +122,9 @@ export function DeveloperSettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
 
-  const handleResetCachePrompt = useCallback(async () => {
-    try {
-      await imageCacheService.resetCachePromptSeen();
-      Alert.alert('Done', 'Cache prompt will show again on next app launch.');
-    } catch {
-      Alert.alert('Error', 'Failed to reset cache prompt.');
-    }
+  const handleResetCoachMarks = useCallback(() => {
+    useCoachMarksStore.getState().reset();
+    Alert.alert('Done', 'Coach marks will show again on next app launch.');
   }, []);
 
   const handleOpenSpinePlayground = useCallback(() => {
@@ -128,6 +134,9 @@ export function DeveloperSettingsScreen() {
   const handleOpenDebugStressTest = useCallback(() => {
     navigation.navigate('DebugStressTest');
   }, [navigation]);
+
+  const showFps = useFpsStore((s) => s.showFps);
+  const setShowFps = useFpsStore((s) => s.setShowFps);
 
   return (
     <View style={styles.container}>
@@ -156,9 +165,9 @@ export function DeveloperSettingsScreen() {
           <View style={styles.sectionCard}>
             <SettingsRow
               Icon={RefreshCw}
-              label="Reset Cache Prompt"
-              onPress={handleResetCachePrompt}
-              description="Show the image cache prompt again on next launch"
+              label="Reset Coach Marks"
+              onPress={handleResetCoachMarks}
+              description="Show the first-run walkthrough tips again"
             />
           </View>
         </View>
@@ -181,6 +190,13 @@ export function DeveloperSettingsScreen() {
               label="Stress Test"
               onPress={handleOpenDebugStressTest}
               description="Memory and performance testing"
+            />
+            <SettingsRow
+              Icon={Activity}
+              label="FPS Overlay"
+              switchValue={showFps}
+              onSwitchChange={setShowFps}
+              description="Show frame rate counter on screen"
             />
           </View>
         </View>

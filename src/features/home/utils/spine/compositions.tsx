@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type DimensionValue } from 'react-native';
 import { fg, fg2, fgS, rc } from './genreVisualConfig';
 import { hashString, hashToBool, hashToPick } from './core/hashing';
 
@@ -102,10 +102,10 @@ function RotatedZone({
     <View
       style={{
         position: 'absolute',
-        top: `${z0 * 100}%` as any,
+        top: `${z0 * 100}%` as DimensionValue,
         left: 0,
         right: 0,
-        height: `${(z1 - z0) * 100}%` as any,
+        height: `${(z1 - z0) * 100}%` as DimensionValue,
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -147,10 +147,10 @@ function HorizontalZone({
     <View
       style={{
         position: 'absolute',
-        top: `${z0 * 100}%` as any,
+        top: `${z0 * 100}%` as DimensionValue,
         left: 0,
         right: 0,
-        height: `${(z1 - z0) * 100}%` as any,
+        height: `${(z1 - z0) * 100}%` as DimensionValue,
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
@@ -171,9 +171,9 @@ function HR({ pos, isDark, inset = 18 }: { pos: number; isDark: boolean; inset?:
     <View
       style={{
         position: 'absolute',
-        left: `${inset}%` as any,
-        right: `${inset}%` as any,
-        top: `${pos * 100}%` as any,
+        left: `${inset}%` as DimensionValue,
+        right: `${inset}%` as DimensionValue,
+        top: `${pos * 100}%` as DimensionValue,
         height: StyleSheet.hairlineWidth,
         backgroundColor: rc(isDark),
       }}
@@ -188,10 +188,10 @@ function VR({ top, height, isDark }: { top: number; height: number; isDark: bool
     <View
       style={{
         position: 'absolute',
-        left: '50%' as any,
-        top: `${top * 100}%` as any,
+        left: '50%' as DimensionValue,
+        top: `${top * 100}%` as DimensionValue,
         width: StyleSheet.hairlineWidth,
-        height: `${height * 100}%` as any,
+        height: `${height * 100}%` as DimensionValue,
         backgroundColor: rc(isDark),
         transform: [{ translateX: -0.5 }],
       }}
@@ -206,8 +206,8 @@ function Dot({ pos, isDark }: { pos: number; isDark: boolean }) {
     <View
       style={{
         position: 'absolute',
-        left: '50%' as any,
-        top: `${pos * 100}%` as any,
+        left: '50%' as DimensionValue,
+        top: `${pos * 100}%` as DimensionValue,
         width: 2.5,
         height: 2.5,
         borderRadius: 1.25,
@@ -345,10 +345,10 @@ function AuthorHorizontal({
       <View
         style={{
           position: 'absolute',
-          top: `${z0 * 100}%` as any,
+          top: `${z0 * 100}%` as DimensionValue,
           left: 0,
           right: 0,
-          height: `${(z1 - z0) * 100}%` as any,
+          height: `${(z1 - z0) * 100}%` as DimensionValue,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -374,10 +374,10 @@ function AuthorHorizontal({
     <View
       style={{
         position: 'absolute',
-        top: `${z0 * 100}%` as any,
+        top: `${z0 * 100}%` as DimensionValue,
         left: 0,
         right: 0,
-        height: `${(z1 - z0) * 100}%` as any,
+        height: `${(z1 - z0) * 100}%` as DimensionValue,
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -680,10 +680,10 @@ function c7({ w, h, title, author, titleFont, authorFont, isDark }: CompositionP
       <View
         style={{
           position: 'absolute',
-          top: '9%' as any,
-          bottom: '9%' as any,
-          left: '10%' as any,
-          right: '10%' as any,
+          top: '9%' as DimensionValue,
+          bottom: '9%' as DimensionValue,
+          left: '10%' as DimensionValue,
+          right: '10%' as DimensionValue,
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: rc(isDark),
         }}
@@ -712,9 +712,9 @@ function c7({ w, h, title, author, titleFont, authorFont, isDark }: CompositionP
       <View
         style={{
           position: 'absolute',
-          left: '32%' as any,
-          right: '32%' as any,
-          top: '61%' as any,
+          left: '32%' as DimensionValue,
+          right: '32%' as DimensionValue,
+          top: '61%' as DimensionValue,
           height: StyleSheet.hairlineWidth,
           backgroundColor: rc(isDark),
         }}
@@ -741,10 +741,10 @@ function c8({ w, h, title, author, titleFont, authorFont, isDark }: CompositionP
       <View
         style={{
           position: 'absolute',
-          top: '4%' as any,
+          top: '4%' as DimensionValue,
           left: 0,
           right: 0,
-          height: '74%' as any,
+          height: '74%' as DimensionValue,
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',

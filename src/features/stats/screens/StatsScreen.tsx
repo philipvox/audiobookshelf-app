@@ -4,8 +4,8 @@
  * Listening statistics screen showing today, weekly, all-time stats,
  * streak information, top books, and listening patterns.
  *
- * Styled with Secret Library design system: Playfair Display headings,
- * JetBrains Mono metadata, secretLibrary color palette.
+ * Uses SettingsHeader for consistent navigation and Secret Library
+ * design system tokens throughout.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -27,6 +27,7 @@ import { ShareStatsCard } from '../components/ShareStatsCard';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
+import { SettingsHeader } from '@/shared/components/SettingsHeader';
 import type { SecretLibraryColors } from '@/shared/theme/secretLibrary';
 
 // =============================================================================
@@ -49,8 +50,8 @@ interface StatCardProps {
 
 function StatCard({ Icon, label, value, subtitle, colors }: StatCardProps) {
   return (
-    <View style={[styles.statCard, { backgroundColor: colors.creamGray }]}>
-      <Icon size={scale(20)} color={colors.gray} strokeWidth={1.5} />
+    <View style={[styles.statCard, { backgroundColor: colors.grayLight }]}>
+      <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
       <Text style={[styles.statCardValue, { color: colors.black }]}>{value}</Text>
       <Text style={[styles.statCardLabel, { color: colors.gray }]}>{label}</Text>
       {subtitle && <Text style={[styles.statCardSub, { color: colors.textMuted }]}>{subtitle}</Text>}
@@ -100,9 +101,9 @@ function WeeklyChart({ dailyBreakdown, colors }: WeeklyChartProps) {
                 <View
                   style={[
                     styles.chartBar,
-                    { height, backgroundColor: 'rgba(243, 182, 12, 0.3)' },
+                    { height, backgroundColor: 'rgba(243, 182, 12, 0.25)' },
                     isToday && { backgroundColor: colors.gold },
-                    day.totalSeconds === 0 && { backgroundColor: colors.creamGray },
+                    day.totalSeconds === 0 && { backgroundColor: colors.grayLight },
                   ]}
                 />
               </View>
@@ -156,7 +157,7 @@ function HourHeatmap({ byHour, colors }: HourHeatmapProps) {
           const intensity = item.totalSeconds / maxSeconds;
           const backgroundColor =
             intensity === 0
-              ? colors.creamGray
+              ? colors.grayLight
               : `rgba(243, 182, 12, ${0.2 + intensity * 0.8})`;
           return (
             <View key={item.hour} style={styles.heatmapCellWrapper}>
@@ -200,14 +201,14 @@ function TopBooksList({ topBooks, colors }: TopBooksProps) {
         const barWidth = (book.totalSeconds / maxSeconds) * 100;
         return (
           <View key={book.bookId} style={styles.topBookItem}>
-            <View style={[styles.topBookRank, { backgroundColor: colors.creamGray }]}>
+            <View style={[styles.topBookRank, { backgroundColor: colors.grayLight }]}>
               <Text style={[styles.topBookRankText, { color: colors.gray }]}>{index + 1}</Text>
             </View>
             <View style={styles.topBookInfo}>
               <Text style={[styles.topBookTitle, { color: colors.black }]} numberOfLines={1}>
                 {book.bookTitle}
               </Text>
-              <View style={[styles.topBookBarBg, { backgroundColor: colors.creamGray }]}>
+              <View style={[styles.topBookBarBg, { backgroundColor: colors.grayLight }]}>
                 <View style={[styles.topBookBar, { width: `${barWidth}%`, backgroundColor: colors.gold }]} />
               </View>
             </View>
@@ -217,6 +218,19 @@ function TopBooksList({ topBooks, colors }: TopBooksProps) {
           </View>
         );
       })}
+    </View>
+  );
+}
+
+// =============================================================================
+// SECTION LABEL
+// =============================================================================
+
+function SectionLabel({ title, colors, rightElement }: { title: string; colors: Colors; rightElement?: React.ReactNode }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <Text style={[styles.sectionLabel, { color: colors.gray }]}>{title}</Text>
+      {rightElement}
     </View>
   );
 }
@@ -255,9 +269,9 @@ export function StatsScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.white }]}>
-      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
-      <View style={[styles.safeAreaTop, { height: insets.top, backgroundColor: colors.white }]} />
+    <View style={[styles.container, { backgroundColor: colors.grayLight }]}>
+      <StatusBar barStyle={colors.isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.grayLight} />
+      <SettingsHeader title="Listening Stats" />
 
       <SkullRefreshControl refreshing={isLoading} onRefresh={refetch}>
         <ScrollView
@@ -265,14 +279,9 @@ export function StatsScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom }]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: colors.black }]}>Listening Stats</Text>
-          </View>
-
           {/* Today */}
-          <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-            <Text style={[styles.sectionLabel, { color: colors.gray }]}>Today</Text>
+          <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+            <SectionLabel title="Today" colors={colors} />
             <View style={styles.todayStats}>
               <Text style={[styles.todayTime, { color: colors.gold }]}>
                 {formatDuration(todayTime)}
@@ -293,22 +302,25 @@ export function StatsScreen() {
           </View>
 
           {/* Streak */}
-          <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.sectionLabel, { color: colors.gray }]}>Streak</Text>
-              {currentStreak > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+            <SectionLabel
+              title="Streak"
+              colors={colors}
+              rightElement={currentStreak > 0 ? (
                 <TouchableOpacity
                   onPress={() => openShareModal('streak')}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share streak stats"
                 >
-                  <Share2 size={scale(16)} color={colors.textMuted} strokeWidth={1.5} />
+                  <Share2 size={scale(14)} color={colors.textMuted} strokeWidth={1.5} />
                 </TouchableOpacity>
-              )}
-            </View>
+              ) : undefined}
+            />
             <View style={styles.streakContainer}>
               <View style={styles.streakItem}>
                 <Flame
-                  size={scale(24)}
+                  size={scale(22)}
                   color={currentStreak > 0 ? colors.orange : colors.textMuted}
                   strokeWidth={1.5}
                 />
@@ -319,7 +331,7 @@ export function StatsScreen() {
               </View>
               <View style={[styles.streakDivider, { backgroundColor: colors.borderLight }]} />
               <View style={styles.streakItem}>
-                <Trophy size={scale(24)} color={colors.gold} strokeWidth={1.5} />
+                <Trophy size={scale(22)} color={colors.gold} strokeWidth={1.5} />
                 <Text style={[styles.streakValue, { color: colors.black }]}>{longestStreak}</Text>
                 <Text style={[styles.streakLabel, { color: colors.textMuted }]}>
                   day{longestStreak !== 1 ? 's' : ''} best
@@ -329,18 +341,21 @@ export function StatsScreen() {
           </View>
 
           {/* This Week */}
-          <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.sectionLabel, { color: colors.gray }]}>This Week</Text>
-              {weeklyTime > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+            <SectionLabel
+              title="This Week"
+              colors={colors}
+              rightElement={weeklyTime > 0 ? (
                 <TouchableOpacity
                   onPress={() => openShareModal('weekly')}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share weekly stats"
                 >
-                  <Share2 size={scale(16)} color={colors.textMuted} strokeWidth={1.5} />
+                  <Share2 size={scale(14)} color={colors.textMuted} strokeWidth={1.5} />
                 </TouchableOpacity>
-              )}
-            </View>
+              ) : undefined}
+            />
             <Text style={[styles.weeklyTotal, { color: colors.black }]}>
               {formatDurationLong(weeklyTime)}
             </Text>
@@ -351,18 +366,21 @@ export function StatsScreen() {
           </View>
 
           {/* All Time */}
-          <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.sectionLabel, { color: colors.gray }]}>All Time</Text>
-              {allTimeTime > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+            <SectionLabel
+              title="All Time"
+              colors={colors}
+              rightElement={allTimeTime > 0 ? (
                 <TouchableOpacity
                   onPress={() => openShareModal('allTime')}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share all-time stats"
                 >
-                  <Share2 size={scale(16)} color={colors.textMuted} strokeWidth={1.5} />
+                  <Share2 size={scale(14)} color={colors.textMuted} strokeWidth={1.5} />
                 </TouchableOpacity>
-              )}
-            </View>
+              ) : undefined}
+            />
             <View style={styles.statsGrid}>
               <StatCard
                 Icon={Clock}
@@ -403,15 +421,15 @@ export function StatsScreen() {
           </View>
 
           {/* Top Books */}
-          <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-            <Text style={[styles.sectionLabel, { color: colors.gray }]}>Most Listened</Text>
+          <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+            <SectionLabel title="Most Listened" colors={colors} />
             <TopBooksList topBooks={topBooks || []} colors={colors} />
           </View>
 
           {/* Listening Pattern */}
           {byHour && byHour.some((h) => h.totalSeconds > 0) && (
-            <View style={[styles.card, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}>
-              <Text style={[styles.sectionLabel, { color: colors.gray }]}>When You Listen</Text>
+            <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.borderLight }]}>
+              <SectionLabel title="When You Listen" colors={colors} />
               <Text style={[styles.patternSubtext, { color: colors.textMuted }]}>
                 Activity by hour of day
               </Text>
@@ -440,6 +458,8 @@ export function StatsScreen() {
             style={styles.modalDismiss}
             activeOpacity={1}
             onPress={closeShareModal}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss share modal"
           />
           <View style={styles.modalContent}>
             {shareType === 'weekly' && (
@@ -489,22 +509,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  safeAreaTop: {},
   scrollView: {
     flex: 1,
   },
   content: {
     paddingHorizontal: 16,
-  },
-
-  // Header
-  header: {
-    paddingVertical: 12,
-    marginTop: 8,
-  },
-  headerTitle: {
-    fontFamily: fonts.playfair.regular,
-    fontSize: scale(28),
+    paddingTop: 8,
   },
 
   // Cards
@@ -512,9 +522,11 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     borderWidth: 1,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  cardHeader: {
+
+  // Section label (uppercase mono)
+  sectionLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -522,10 +534,9 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(10),
+    fontSize: scale(9),
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 12,
   },
 
   // Today
@@ -535,12 +546,12 @@ const styles = StyleSheet.create({
   },
   todayTime: {
     fontFamily: fonts.playfair.regular,
-    fontSize: scale(44),
+    fontSize: scale(40),
     fontWeight: '600',
   },
   todayLabel: {
     fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(11),
+    fontSize: scale(10),
     marginTop: 4,
   },
   todayMeta: {
@@ -565,7 +576,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   streakItem: {
     alignItems: 'center',
@@ -573,24 +584,24 @@ const styles = StyleSheet.create({
   },
   streakDivider: {
     width: 1,
-    height: 60,
+    height: 56,
   },
   streakValue: {
     fontFamily: fonts.playfair.regular,
-    fontSize: scale(32),
+    fontSize: scale(28),
     fontWeight: '600',
     marginTop: 6,
   },
   streakLabel: {
     fontFamily: fonts.jetbrainsMono.regular,
-    fontSize: scale(10),
+    fontSize: scale(9),
     marginTop: 2,
   },
 
   // Weekly
   weeklyTotal: {
     fontFamily: fonts.playfair.regular,
-    fontSize: scale(18),
+    fontSize: scale(17),
   },
   weeklySubtext: {
     fontFamily: fonts.jetbrainsMono.regular,
@@ -599,13 +610,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chartContainer: {
-    marginTop: 8,
+    marginTop: 4,
   },
   chartBars: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 120,
+    height: 110,
   },
   chartBarWrapper: {
     flex: 1,
@@ -637,7 +648,7 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   statCard: {
     flex: 1,
@@ -645,11 +656,11 @@ const styles = StyleSheet.create({
     borderRadius: scale(10),
     padding: 12,
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   statCardValue: {
     fontFamily: fonts.playfair.regular,
-    fontSize: scale(18),
+    fontSize: scale(16),
     fontWeight: '600',
     marginTop: 4,
   },

@@ -18,42 +18,23 @@ import {
   validateUrl,
 } from '@/shared/utils/audioDebug';
 import { getErrorMessage } from '@/shared/utils/errorUtils';
+import type { PlaybackState, AudioTrackInfo, AudioErrorType, AudioError, StatusCallback, ErrorCallback, RemoteCommandCallback } from './audioServiceTypes';
 
-// Re-export shared types
-export interface PlaybackState {
-  isPlaying: boolean;
-  position: number;       // Global position across all tracks
-  duration: number;       // Total duration of all tracks
-  isBuffering: boolean;
-  didJustFinish: boolean; // True when last track in queue ends
-  isStuck?: boolean;      // True when playback appears stuck
-}
-
-export interface AudioTrackInfo {
-  url: string;
-  title: string;
-  startOffset: number;    // Global start position of this track
-  duration: number;
-}
-
-export type AudioErrorType = 'URL_EXPIRED' | 'NETWORK_ERROR' | 'LOAD_FAILED';
-
-export interface AudioError {
-  type: AudioErrorType;
-  message: string;
-  httpStatus?: number;
-  position?: number;
-  bookId?: string;
-}
-
-type StatusCallback = (status: PlaybackState) => void;
-type ErrorCallback = (error: AudioError) => void;
-type RemoteCommandCallback = (command: 'nextChapter' | 'prevChapter' | 'skipForward' | 'skipBackward' | 'seek', position?: number) => void;
+// Re-export shared types so existing consumers can still import from this file
+export type { PlaybackState, AudioTrackInfo, AudioErrorType, AudioError } from './audioServiceTypes';
 
 const log = (...args: unknown[]) => audioLog.audio(args.map(String).join(' '));
 
 const ExoPlayerModule = NativeModules.ExoPlayerModule;
 const exoPlayerEmitter = ExoPlayerModule ? new NativeEventEmitter(ExoPlayerModule) : null;
+
+/** Throw if ExoPlayerModule is not available (Expo Go or missing native module) */
+function requireExoPlayer(): typeof ExoPlayerModule {
+  if (!ExoPlayerModule) {
+    throw new Error('ExoPlayerModule is not available — native module not linked (Expo Go?)');
+  }
+  return ExoPlayerModule;
+}
 
 class AndroidAudioService {
   private statusCallback: StatusCallback | null = null;
@@ -228,7 +209,7 @@ class AndroidAudioService {
           case 'prevChapter':
           case 'skipForward':
           case 'skipBackward':
-            this.remoteCommandCallback?.(data.command as any);
+            this.remoteCommandCallback?.(data.command as 'nextChapter' | 'prevChapter' | 'skipForward' | 'skipBackward');
             break;
           case 'seek':
             if (data.param) {
@@ -339,7 +320,7 @@ class AndroidAudioService {
     }];
 
     try {
-      await ExoPlayerModule.loadTracks(
+      await requireExoPlayer().loadTracks(
         trackInfo,
         0,
         startPositionSec * 1000, // ms
@@ -352,7 +333,7 @@ class AndroidAudioService {
       this.isLoaded = true;
 
       // Update native metadata for notification/lock screen
-      ExoPlayerModule.setMetadata(
+      requireExoPlayer().setMetadata(
         metadata?.title || 'Unknown Title',
         metadata?.artist || 'Unknown Author',
         metadata?.artwork || null,
@@ -443,7 +424,7 @@ class AndroidAudioService {
         duration: t.duration,
       }));
 
-      await ExoPlayerModule.loadTracks(
+      await requireExoPlayer().loadTracks(
         nativeTracks,
         targetTrackIndex,
         positionInTrack * 1000, // ms
@@ -456,7 +437,7 @@ class AndroidAudioService {
       this.isLoaded = true;
 
       // Update native metadata
-      ExoPlayerModule.setMetadata(
+      requireExoPlayer().setMetadata(
         metadata?.title || 'Unknown Title',
         metadata?.artist || 'Unknown Author',
         metadata?.artwork || null,
@@ -490,12 +471,12 @@ class AndroidAudioService {
 
   async play(): Promise<void> {
     log('▶ Play (ExoPlayer)');
-    ExoPlayerModule.play();
+    requireExoPlayer().play();
   }
 
   async pause(): Promise<void> {
     log('⏸ Pause (ExoPlayer)');
-    ExoPlayerModule.pause();
+    requireExoPlayer().pause();
   }
 
   setPosition(positionSec: number): void {
@@ -504,13 +485,13 @@ class AndroidAudioService {
 
   async seekTo(positionSec: number): Promise<void> {
     this.lastKnownGoodPosition = positionSec;
-    ExoPlayerModule.seekTo(positionSec);
+    requireExoPlayer().seekTo(positionSec);
   }
 
   async setPlaybackRate(rate: number): Promise<void> {
     const clampedRate = Math.max(0.25, Math.min(4.0, rate));
     log(`Speed: ${clampedRate}x (ExoPlayer)`);
-    ExoPlayerModule.setRate(clampedRate);
+    requireExoPlayer().setRate(clampedRate);
   }
 
   async getPosition(): Promise<number> {
@@ -554,7 +535,7 @@ class AndroidAudioService {
     this.remoteCommandCallback = null;
 
     try {
-      await ExoPlayerModule.cleanup();
+      if (ExoPlayerModule) await ExoPlayerModule.cleanup();
     } catch {
       // Ignore errors during cleanup
     }

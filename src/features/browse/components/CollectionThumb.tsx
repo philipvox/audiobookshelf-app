@@ -56,7 +56,7 @@ function CollectionThumbComponent({
   }, [bookId, bookTitle, getSpineData]);
 
   return (
-    <Pressable style={styles.container} onPress={onPress}>
+    <Pressable style={styles.container} onPress={onPress} accessibilityLabel={`Book ${number}${bookTitle ? `, ${bookTitle}` : ''}`} accessibilityRole="button">
       {/* Number label */}
       <Text style={styles.number}>{number}</Text>
 

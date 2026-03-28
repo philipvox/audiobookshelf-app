@@ -59,6 +59,8 @@ export function GenreCardLarge({ genre, onPress, variant = 'light' }: GenreCardL
         isDark ? styles.borderDark : styles.borderLight,
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${genre.name}, ${genre.bookCount} ${genre.bookCount === 1 ? 'book' : 'books'}`}
     >
       {/* Left side: Name and count */}
       <View style={styles.largeCardLeft}>
@@ -111,6 +113,8 @@ export function GenreCardCompact({ genre, onPress, variant = 'light' }: GenreCar
         isDark ? styles.borderDark : styles.borderLight,
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${genre.name}, ${genre.bookCount} ${genre.bookCount === 1 ? 'book' : 'books'}`}
     >
       {/* Left: Name and count */}
       <View style={styles.compactLeft}>
@@ -158,6 +162,8 @@ export function GenreListItem({ genre, onPress }: GenreListItemProps) {
     <Pressable
       style={[styles.listItem, { borderBottomColor: colors.border.default }]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${genre.name}, ${genre.bookCount} ${genre.bookCount === 1 ? 'book' : 'books'}`}
     >
       {/* Left: Name */}
       <View style={styles.listItemLeft}>

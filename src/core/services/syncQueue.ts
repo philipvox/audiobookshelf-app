@@ -216,7 +216,7 @@ class SyncQueue {
         const collectionId = data.collectionId as string;
         const description = data.description as string;
         if (!collectionId || !description) break;
-        await apiClient.updateCollection(collectionId, { description } as any);
+        await apiClient.updateCollection(collectionId, { description });
         break;
       }
 

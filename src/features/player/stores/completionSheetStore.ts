@@ -17,7 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { haptics } from '@/core/native/haptics';
-import type { LibraryItem } from '@/core/types';
+import type { LibraryItem, BookMetadata } from '@/core/types';
 
 // =============================================================================
 // LOGGING
@@ -164,13 +164,13 @@ export const useCompletionSheetStore = create<CompletionState & CompletionAction
 
         // Add to reading history
         if (currentBook?.id === bookId) {
-          const metadata = currentBook.media?.metadata as any;
+          const metadata = currentBook.media?.metadata as BookMetadata;
           if (metadata) {
             await sqliteCache.addToReadHistory({
               itemId: bookId,
               title: metadata.title || 'Unknown Title',
               authorName: metadata.authorName || metadata.authors?.[0]?.name || 'Unknown Author',
-              narratorName: metadata.narratorName || metadata.narrators?.[0]?.name,
+              narratorName: metadata.narratorName || metadata.narrators?.[0],
               genres: metadata.genres || [],
             });
             log.debug('Added to reading history');

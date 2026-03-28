@@ -12,6 +12,7 @@ import { useLibraryCache } from '@/core/cache';
 import { SeriesCard, SeriesCardVariant, SeriesCardLayout } from './SeriesCard';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
+import { LibraryItem, BookMetadata } from '@/core/types';
 
 interface SeriesGalleryProps {
   /** Called when a series card is pressed */
@@ -27,14 +28,14 @@ interface SeriesGalleryProps {
 }
 
 // Get author name from first book in series
-function getAuthorName(books: any[]): string {
+function getAuthorName(books: LibraryItem[]): string {
   if (!books || books.length === 0) return '';
-  const metadata = books[0]?.media?.metadata as any;
+  const metadata = books[0]?.media?.metadata as BookMetadata | undefined;
   return metadata?.authorName || '';
 }
 
 // Get book IDs from series for color dots
-function getBookIds(books: any[]): string[] {
+function getBookIds(books: LibraryItem[]): string[] {
   if (!books) return [];
   return books.map((book) => book.id);
 }
@@ -96,7 +97,7 @@ export function SeriesGallery({
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.black }]}>Series</Text>
-        <Pressable onPress={onViewAll}>
+        <Pressable onPress={onViewAll} accessibilityLabel="View all series" accessibilityRole="button">
           <Text style={[styles.link, { color: colors.black }]}>VIEW ALL</Text>
         </Pressable>
       </View>

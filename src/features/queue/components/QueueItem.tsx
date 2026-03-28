@@ -10,8 +10,9 @@ import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import { useCoverUrl } from '@/core/cache';
 import { CoverStars } from '@/shared/components/CoverStars';
-import { LibraryItem } from '@/core/types';
+import { QueueBookMeta } from '../stores/queueStore';
 import { scale, useTheme } from '@/shared/theme';
+import { formatDuration } from '@/shared/utils/format';
 
 // Drag handle icon
 const DragIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -39,29 +40,25 @@ const RemoveIcon = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: s
 );
 
 interface QueueItemProps {
-  book: LibraryItem;
+  bookId: string;
+  meta: QueueBookMeta;
   position: number;
   onRemove: () => void;
   onDragStart?: () => void;
 }
 
-export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemProps) {
+export const QueueItem = React.memo(function QueueItem({ bookId, meta, position, onRemove, onDragStart }: QueueItemProps) {
   const { colors } = useTheme();
-  const coverUrl = useCoverUrl(book.id);
-  const metadata = book.media?.metadata as any;
-  const title = metadata?.title || 'Untitled';
-  const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
+  const coverUrl = useCoverUrl(bookId);
+  const title = meta.title;
+  const author = meta.authorName;
 
-  // Calculate duration
-  const duration = book.media?.duration || 0;
-  const hours = Math.floor(duration / 3600);
-  const minutes = Math.floor((duration % 3600) / 60);
-  const durationText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const durationText = formatDuration(meta.duration);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background.secondary }]}>
       {/* Drag handle */}
-      <Pressable style={styles.dragHandle} onLongPress={onDragStart}>
+      <Pressable style={styles.dragHandle} onLongPress={onDragStart} accessibilityRole="button" accessibilityLabel={`Reorder ${title}`} accessibilityHint="Long press to drag and reorder">
         <DragIcon size={scale(18)} color={colors.text.secondary} />
       </Pressable>
 
@@ -73,7 +70,7 @@ export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemPr
       {/* Cover */}
       <View style={{ width: scale(50), height: scale(50), borderRadius: scale(6), overflow: 'hidden' }}>
         <Image source={coverUrl} style={[styles.cover, { backgroundColor: colors.background.secondary }]} contentFit="cover" />
-        <CoverStars bookId={book.id} starSize={scale(14)} />
+        <CoverStars bookId={bookId} starSize={scale(14)} />
       </View>
 
       {/* Info */}
@@ -88,12 +85,12 @@ export function QueueItem({ book, position, onRemove, onDragStart }: QueueItemPr
       </View>
 
       {/* Remove button */}
-      <Pressable style={styles.removeButton} onPress={onRemove}>
+      <Pressable style={styles.removeButton} onPress={onRemove} accessibilityRole="button" accessibilityLabel={`Remove ${title} from queue`}>
         <RemoveIcon size={scale(18)} color={colors.text.secondary} />
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

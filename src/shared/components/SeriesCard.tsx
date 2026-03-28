@@ -116,6 +116,8 @@ function SeriesCardComponent({
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={interactiveStates.press.opacity}
+      accessibilityRole="button"
+      accessibilityLabel={`Open series ${series.name}, ${bookCount} ${bookCount === 1 ? 'book' : 'books'}`}
     >
       {/* Heart button - top right */}
       {showHeart && (

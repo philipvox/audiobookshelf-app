@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, wp, useSecretLibraryColors } from '@/shared/theme';
 import { Collection } from '@/core/types';
-import { useCollections } from '@/features/collections';
+import { useCollections } from '@/shared/hooks/useCollections';
 import { useCoverUrl } from '@/core/cache';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { SectionHeader } from './SectionHeader';
@@ -37,7 +37,7 @@ const CollectionCard = React.memo(function CollectionCard({
   const bookCount = collection.books?.length || 0;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8} accessibilityLabel={`Open collection ${collection.name}, ${bookCount} books`} accessibilityRole="button">
       <View style={[styles.coverContainer, { backgroundColor: colors.grayLine }]}>
         {firstBookId && (
           <Image

@@ -19,22 +19,55 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  FlatList,
   StatusBar,
   Image,
+  Modal,
+  TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import type { RootStackNavigationProp } from '@/navigation/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TopNav, TopNavBackIcon, UserIcon, BellIcon, BellOffIcon, CollapsibleSection, useBookContextMenu } from '@/shared/components';
+import { TopNav, TopNavBackIcon, UserIcon, CollapsibleSection, useBookContextMenu } from '@/shared/components';
+import { ViewModePicker } from '@/shared/components/ViewModePicker';
+import type { ViewMode } from '@/shared/components/ViewModePicker';
 import * as Haptics from 'expo-haptics';
 import { useLibraryCache } from '@/core/cache';
 import { apiClient } from '@/core/api';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { LibraryItem, BookMetadata } from '@/core/types';
-import { useWishlistStore, useIsAuthorFollowed } from '@/features/wishlist';
 import { secretLibraryColors as staticColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { logger } from '@/shared/utils/logger';
 import { BookSpineVerticalData, ShelfRow } from '@/shared/spine';
+import { BookGrid } from '@/shared/components/BookGrid';
+import Svg, { Path } from 'react-native-svg';
+
+// Sort types for detail screens
+type DetailSortMode = 'publishedYear' | 'title' | 'duration' | 'progress';
+type DetailSortDirection = 'asc' | 'desc';
+
+const DETAIL_SORT_OPTIONS: { key: DetailSortMode; label: string; defaultDir: DetailSortDirection }[] = [
+  { key: 'publishedYear', label: 'Published', defaultDir: 'desc' },
+  { key: 'title', label: 'Title', defaultDir: 'asc' },
+  { key: 'duration', label: 'Duration', defaultDir: 'desc' },
+  { key: 'progress', label: 'Progress', defaultDir: 'desc' },
+];
+
+const SortArrow = ({ color = '#000', direction = 'desc' }: { color?: string; direction?: 'asc' | 'desc' }) => (
+  <Svg
+    width={10}
+    height={10}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={3}
+    style={direction === 'asc' ? { transform: [{ rotate: '180deg' }] } : undefined}
+  >
+    <Path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
 
 // Extended metadata with additional fields
 interface ExtendedBookMetadata extends BookMetadata {
@@ -66,7 +99,6 @@ type AuthorDetailRouteParams = {
 };
 
 type FilterTab = 'all' | 'series' | 'narrator' | 'genre';
-type ViewMode = 'series' | 'book';
 
 // Helper to get metadata (legacy - uses new type guard)
 const getMetadata = (item: LibraryItem): ExtendedBookMetadata | null => getBookMetadata(item);
@@ -125,7 +157,7 @@ function toSpineData(item: LibraryItem, cachedData?: any): BookSpineVerticalData
 
 export function SecretLibraryAuthorDetailScreen() {
   const route = useRoute<RouteProp<AuthorDetailRouteParams, 'AuthorDetail'>>();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootStackNavigationProp>();
   const insets = useSafeAreaInsets();
   const colors = useSecretLibraryColors();
   const isDarkMode = colors.isDark;
@@ -135,24 +167,18 @@ export function SecretLibraryAuthorDetailScreen() {
   const authorName = route.params.authorName || route.params.name || '';
 
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('book');
+  const [viewMode, setViewMode] = useState<ViewMode>('shelf');
+  const [sortMode, setSortMode] = useState<DetailSortMode>('publishedYear');
+  const [sortDirection, setSortDirection] = useState<DetailSortDirection>('desc');
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [authorBooks, setAuthorBooks] = useState<LibraryItem[]>([]);
+  const [authorDescription, setAuthorDescription] = useState<string | null>(null);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [isFetchingBooks, setIsFetchingBooks] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryCount, setFetchRetryCount] = useState(0);
 
   const { getAuthor, isLoaded } = useLibraryCache();
-
-  // Follow functionality
-  const isFollowing = useIsAuthorFollowed(authorName);
-  const { followAuthor, unfollowAuthor } = useWishlistStore();
-
-  const handleFollowToggle = useCallback(() => {
-    if (isFollowing) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      unfollowAuthor(authorName);
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      followAuthor(authorName);
-    }
-  }, [isFollowing, authorName, followAuthor, unfollowAuthor]);
 
   // Get author data from cache
   const authorInfo = useMemo(() => {
@@ -165,32 +191,76 @@ export function SecretLibraryAuthorDetailScreen() {
     let cancelled = false;
     const fetchAuthorBooks = async () => {
       if (!authorInfo?.id) return;
+      setIsFetchingBooks(true);
+      setFetchError(null);
       try {
         const authorData = await apiClient.getAuthor(authorInfo.id, { include: 'items' });
         if (cancelled) return; // Prevent stale data from overwriting
-        const authorWithItems = authorData as { libraryItems?: LibraryItem[] };
+        const authorWithItems = authorData as { libraryItems?: LibraryItem[]; description?: string };
         if (authorWithItems?.libraryItems) {
           setAuthorBooks(authorWithItems.libraryItems);
+        }
+        if (authorData.description) {
+          setAuthorDescription(authorData.description);
         }
       } catch (error) {
         if (!cancelled) {
           logger.warn('[AuthorDetail] Failed to fetch author books:', error);
+          setFetchError(error instanceof Error ? error.message : 'Failed to load books');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsFetchingBooks(false);
         }
       }
     };
     fetchAuthorBooks();
     return () => { cancelled = true; };
-  }, [authorInfo?.id]);
+  }, [authorInfo?.id, fetchRetryCount]);
 
-  // All books (sorted by title)
+  const retryFetchBooks = useCallback(() => {
+    setFetchError(null);
+    setFetchRetryCount(c => c + 1);
+  }, []);
+
+  const handleSortSelect = useCallback((mode: DetailSortMode) => {
+    if (mode === sortMode) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      const option = DETAIL_SORT_OPTIONS.find(o => o.key === mode);
+      setSortMode(mode);
+      setSortDirection(option?.defaultDir || 'desc');
+    }
+    setShowSortDropdown(false);
+  }, [sortMode]);
+
+  const currentSortLabel = DETAIL_SORT_OPTIONS.find(o => o.key === sortMode)?.label || 'Published';
+
+  // All books sorted by selected sort mode
   const allBooks = useMemo(() => {
-    const books = authorBooks.length > 0 ? authorBooks : (authorInfo?.books || []);
-    return [...books].sort((a, b) => {
-      const titleA = (getMetadata(a)?.title || '').toLowerCase();
-      const titleB = (getMetadata(b)?.title || '').toLowerCase();
-      return titleA.localeCompare(titleB);
-    });
-  }, [authorBooks, authorInfo?.books]);
+    const books = [...(authorBooks.length > 0 ? authorBooks : (authorInfo?.books || []))];
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    switch (sortMode) {
+      case 'title':
+        books.sort((a, b) => dir * (getMetadata(a)?.title || '').localeCompare(getMetadata(b)?.title || ''));
+        break;
+      case 'publishedYear':
+        books.sort((a, b) => {
+          const yearA = parseInt(getMetadata(a)?.publishedYear || '0', 10) || 0;
+          const yearB = parseInt(getMetadata(b)?.publishedYear || '0', 10) || 0;
+          if (yearA !== yearB) return dir * (yearA - yearB);
+          return (getMetadata(a)?.title || '').localeCompare(getMetadata(b)?.title || '');
+        });
+        break;
+      case 'duration':
+        books.sort((a, b) => dir * ((a.media?.duration || 0) - (b.media?.duration || 0)));
+        break;
+      case 'progress':
+        books.sort((a, b) => dir * ((a.userMediaProgress?.progress || 0) - (b.userMediaProgress?.progress || 0)));
+        break;
+    }
+    return books;
+  }, [authorBooks, authorInfo?.books, sortMode, sortDirection]);
 
   // Get unique series (books sorted by sequence number within each series)
   const seriesList = useMemo(() => {
@@ -309,7 +379,7 @@ export function SecretLibraryAuthorDetailScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Main' as never);
+      navigation.navigate('Main');
     }
   };
 
@@ -363,46 +433,56 @@ export function SecretLibraryAuthorDetailScreen() {
     );
   };
 
-  // Render vertical book list (one per line)
+  // Render a single vertical book item (used by both FlatList and ScrollView paths)
+  const renderVerticalBookItem = useCallback(({ item: book }: { item: LibraryItem }) => {
+    const metadata = getMetadata(book);
+    const title = metadata?.title || 'Unknown';
+    const duration = getBookDuration(book) || 0;
+    const durationText = formatDurationCompact(duration);
+    const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
+    const seriesName = metadata?.seriesName?.replace(/\s*#[\d.]+$/, '') || metadata?.series?.[0]?.name;
+    const seriesSeq = getSeriesSequence(metadata);
+
+    return (
+      <Pressable
+        style={[styles.verticalListItem, { borderBottomColor: colors.borderLight }]}
+        onPress={() => handleBookPress(book.id)}
+        onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
+        delayLongPress={400}
+        accessibilityRole="button"
+        accessibilityLabel={`Open book ${title}${seriesName ? `, ${seriesName}${seriesSeq ? ` #${seriesSeq}` : ''}` : ''}, ${durationText}`}
+      >
+        <View style={{ width: scale(40), height: scale(40), borderRadius: 4, overflow: 'hidden' }}>
+          <Image
+            source={{ uri: coverUrl }}
+            style={styles.verticalCover}
+          />
+          <CoverStars bookId={book.id} starSize={scale(12)} />
+        </View>
+        <View style={styles.verticalInfo}>
+          <Text style={[styles.verticalTitle, { color: colors.black }]} numberOfLines={1}>{title}</Text>
+          {seriesName && (
+            <Text style={[styles.verticalSeries, { color: colors.gray }]} numberOfLines={1}>
+              {seriesName}{seriesSeq ? ` #${seriesSeq}` : ''}
+            </Text>
+          )}
+        </View>
+        <Text style={[styles.verticalDuration, { color: colors.gray }]}>{durationText}</Text>
+      </Pressable>
+    );
+  }, [colors.borderLight, colors.black, colors.gray, handleBookPress, navigation]);
+
+  const bookKeyExtractor = useCallback((item: LibraryItem) => item.id, []);
+
+  // Render vertical book list (one per line) - used for grouped sections inside ScrollView
   const renderVerticalBookList = (books: LibraryItem[]) => {
     return (
       <View style={styles.verticalList}>
-        {books.map((book) => {
-          const metadata = getMetadata(book);
-          const title = metadata?.title || 'Unknown';
-          const duration = getBookDuration(book) || 0;
-          const durationText = formatDurationCompact(duration);
-          const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
-          const seriesName = metadata?.seriesName?.replace(/\s*#[\d.]+$/, '') || metadata?.series?.[0]?.name;
-          const seriesSeq = getSeriesSequence(metadata);
-
-          return (
-            <Pressable
-              key={book.id}
-              style={[styles.verticalListItem, { borderBottomColor: colors.borderLight }]}
-              onPress={() => handleBookPress(book.id)}
-              onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
-              delayLongPress={400}
-            >
-              <View style={{ width: scale(40), height: scale(40), borderRadius: 4, overflow: 'hidden' }}>
-                <Image
-                  source={{ uri: coverUrl }}
-                  style={styles.verticalCover}
-                />
-                <CoverStars bookId={book.id} starSize={scale(12)} />
-              </View>
-              <View style={styles.verticalInfo}>
-                <Text style={[styles.verticalTitle, { color: colors.black }]} numberOfLines={1}>{title}</Text>
-                {seriesName && (
-                  <Text style={[styles.verticalSeries, { color: colors.gray }]} numberOfLines={1}>
-                    {seriesName}{seriesSeq ? ` #${seriesSeq}` : ''}
-                  </Text>
-                )}
-              </View>
-              <Text style={[styles.verticalDuration, { color: colors.gray }]}>{durationText}</Text>
-            </Pressable>
-          );
-        })}
+        {books.map((book) => (
+          <React.Fragment key={book.id}>
+            {renderVerticalBookItem({ item: book })}
+          </React.Fragment>
+        ))}
       </View>
     );
   };
@@ -411,8 +491,8 @@ export function SecretLibraryAuthorDetailScreen() {
   if (!authorName || !isLoaded) {
     return (
       <View style={[styles.container, { backgroundColor: colors.white }]}>
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={staticColors.black} />
-        <View style={{ backgroundColor: staticColors.black }}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+        <View style={{ backgroundColor: colors.white }}>
           <TopNav
             variant="dark"
             showLogo={true}
@@ -438,8 +518,8 @@ export function SecretLibraryAuthorDetailScreen() {
   if (!authorInfo) {
     return (
       <View style={[styles.container, { backgroundColor: colors.white }]}>
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={staticColors.black} />
-        <View style={{ backgroundColor: staticColors.black }}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+        <View style={{ backgroundColor: colors.white }}>
           <TopNav
             variant="dark"
             showLogo={true}
@@ -462,9 +542,278 @@ export function SecretLibraryAuthorDetailScreen() {
     );
   }
 
+  // Determine if we should use FlatList (flat book list with no grouping)
+  const isFlatBookList = activeTab === 'all' && viewMode === 'list';
+
+  // Shared header content (dark header + tabs)
+  const headerContent = (
+    <>
+      {/* Header section with dark background */}
+      <View style={{ backgroundColor: colors.white }}>
+        <TopNav
+          variant="dark"
+          showLogo={true}
+          onLogoPress={handleLogoPress}
+          style={{ backgroundColor: 'transparent' }}
+          pills={[
+            {
+              key: 'all-authors',
+              label: 'All Authors',
+              icon: <UserIcon size={16} color={staticColors.white} />,
+              onPress: () => navigation.navigate('AuthorsList'),
+            },
+            {
+              key: 'sort',
+              icon: <SortArrow color={showSortDropdown ? staticColors.black : staticColors.white} direction={sortDirection} />,
+              label: currentSortLabel,
+              onPress: () => setShowSortDropdown(true),
+              active: showSortDropdown,
+            },
+          ]}
+          circleButtons={[
+            {
+              key: 'back',
+              icon: <TopNavBackIcon color={staticColors.white} size={16} />,
+              onPress: handleBack,
+            },
+          ]}
+        />
+
+        {/* Author Info - dark header area */}
+        <View style={[styles.authorInfoBlock, { paddingHorizontal: 24 }]}>
+          <View style={styles.titleRow}>
+            {authorInfo.id && authorInfo.imagePath && (
+              <View style={styles.authorPhotoFrame}>
+                <Image
+                  source={{ uri: apiClient.getAuthorImageUrl(authorInfo.id) }}
+                  style={styles.authorPhoto}
+                  resizeMode="cover"
+                />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerName, { color: staticColors.white }]}>{authorInfo.name}</Text>
+              <Text style={[styles.headerStats, { color: colors.gray }]}>
+                {authorInfo.bookCount} {authorInfo.bookCount === 1 ? 'book' : 'books'} · {formatDurationCompact(totalDuration)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Author description - truncated with read more */}
+          {(authorDescription || authorInfo.description) && (
+            <View style={styles.authorDescriptionContainer}>
+              <Text
+                style={[styles.authorDescription, { color: colors.gray }]}
+                numberOfLines={3}
+              >
+                {authorDescription || authorInfo.description}
+              </Text>
+              <Pressable onPress={() => setDescriptionExpanded(true)} hitSlop={8}>
+                <Text style={[styles.readMoreText, { color: colors.gray }]}>
+                  Read more
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
+      {/* Tabs Row with View Toggle */}
+      <View style={styles.tabsRow}>
+        <View style={styles.tabs}>
+          <Pressable
+            style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'all' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
+            onPress={() => setActiveTab('all')}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by All"
+            accessibilityState={{ selected: activeTab === 'all' }}
+          >
+            <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'all' && { color: colors.white }]}>All</Text>
+          </Pressable>
+          {seriesList.length > 0 && (
+          <Pressable
+            style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'series' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
+            onPress={() => setActiveTab('series')}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by Series"
+            accessibilityState={{ selected: activeTab === 'series' }}
+          >
+            <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'series' && { color: colors.white }]}>Series</Text>
+          </Pressable>
+          )}
+          {narratorList.length > 0 && (
+          <Pressable
+            style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'narrator' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
+            onPress={() => setActiveTab('narrator')}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by Narrator"
+            accessibilityState={{ selected: activeTab === 'narrator' }}
+          >
+            <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'narrator' && { color: colors.white }]}>Narrator</Text>
+          </Pressable>
+          )}
+          {genreList.length > 0 && (
+          <Pressable
+            style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'genre' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
+            onPress={() => setActiveTab('genre')}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by Genre"
+            accessibilityState={{ selected: activeTab === 'genre' }}
+          >
+            <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'genre' && { color: colors.white }]}>Genre</Text>
+          </Pressable>
+          )}
+        </View>
+        {/* View mode toggle */}
+        <ViewModePicker
+          mode={viewMode}
+          onModeChange={setViewMode}
+          iconColor={colors.black}
+          activeIconColor={colors.white}
+          inactiveIconColor={colors.gray}
+          borderColor={colors.grayLine}
+          indicatorColor={colors.black}
+          capsuleBg={colors.grayLight}
+        />
+      </View>
+    </>
+  );
+
+  // Sort dropdown modal
+  const sortDropdown = (
+    <Modal visible={showSortDropdown} transparent animationType="fade" onRequestClose={() => setShowSortDropdown(false)}>
+      <Pressable style={styles.dropdownOverlay} onPress={() => setShowSortDropdown(false)}>
+        <View style={[styles.dropdownMenu, { backgroundColor: isDarkMode ? colors.shelfBg : colors.white }]}>
+          {DETAIL_SORT_OPTIONS.map((option) => {
+            const isActive = sortMode === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={styles.dropdownItem}
+                onPress={() => handleSortSelect(option.key)}
+              >
+                <Text style={[styles.dropdownText, { color: colors.black }, isActive && { fontWeight: '700' }]}>
+                  {option.label}
+                </Text>
+                {isActive && (
+                  <Text style={{ fontSize: 14 }}>{sortDirection === 'asc' ? '\u2191' : '\u2193'}</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
+  // Expanded description content — renders below the existing nav
+  const expandedDescriptionContent = (
+    <ScrollView
+      style={[styles.scrollView, { backgroundColor: colors.white }]}
+      contentContainerStyle={{ paddingHorizontal: 32, paddingBottom: 40 + insets.bottom }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Thin top rule */}
+      <View style={[styles.descriptionRule, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)' }]} />
+
+      {/* Kicker */}
+      <Text style={[styles.descriptionSheetKicker, { color: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
+        About {authorInfo.name}
+      </Text>
+
+      {/* Body text */}
+      <Text style={[styles.descriptionSheetText, { color: isDarkMode ? 'rgba(255,255,255,0.8)' : '#333' }]}>
+        {authorDescription || authorInfo.description}
+      </Text>
+
+      {/* Back to books link */}
+      <Pressable onPress={() => setDescriptionExpanded(false)} hitSlop={8} style={{ marginTop: 24 }}>
+        <Text style={[styles.readMoreText, { color: colors.gray }]}>
+          Back to books
+        </Text>
+      </Pressable>
+    </ScrollView>
+  );
+
+  // Shared footer content
+  const footerContent = (
+    <View style={styles.footer}>
+      <Text style={[styles.footerText, { color: colors.gray }]}>
+        {allBooks.length} {allBooks.length === 1 ? 'title' : 'titles'} · {Math.round(totalDuration / 3600)} hours total
+      </Text>
+    </View>
+  );
+
+  // Expanded description view — reuses same nav, replaces content below it
+  if (descriptionExpanded) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.white }]}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+        <View style={{ backgroundColor: colors.white }}>
+          <TopNav
+            variant="dark"
+            showLogo={true}
+            onLogoPress={handleLogoPress}
+            style={{ backgroundColor: 'transparent' }}
+            circleButtons={[
+              {
+                key: 'back',
+                icon: <TopNavBackIcon color={staticColors.white} size={16} />,
+                onPress: () => setDescriptionExpanded(false),
+              },
+            ]}
+          />
+        </View>
+        {expandedDescriptionContent}
+      </View>
+    );
+  }
+
+  // Use FlatList for flat "All + Book" view, ScrollView for everything else
+  if (isFlatBookList) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.white }]}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+        <FlatList
+          data={allBooks}
+          keyExtractor={bookKeyExtractor}
+          renderItem={renderVerticalBookItem}
+          ListHeaderComponent={headerContent}
+          ListFooterComponent={footerContent}
+          ListEmptyComponent={
+            isFetchingBooks ? (
+              <Text style={[styles.emptyText, { color: colors.gray }]}>Loading books...</Text>
+            ) : fetchError ? (
+              <View style={{ alignItems: 'center', paddingTop: 40 }}>
+                <Text style={[styles.emptyText, { color: colors.gray }]}>Failed to load books</Text>
+                <Text style={[styles.emptyText, { color: colors.gray, fontSize: scale(10), marginTop: 4 }]}>{fetchError}</Text>
+                <Pressable
+                  style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: colors.grayLine }}
+                  onPress={retryFetchBooks}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading books"
+                >
+                  <Text style={[styles.emptyText, { color: colors.black, marginTop: 0 }]}>Try Again</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={[styles.emptyText, { color: colors.gray }]}>No books found</Text>
+            )
+          }
+          style={[styles.scrollView, { backgroundColor: colors.white }]}
+          contentContainerStyle={{ paddingTop: 0, paddingBottom: 40 + insets.bottom }}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.white }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={staticColors.black} />
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.white} />
+      {sortDropdown}
 
       <ScrollView
         style={[styles.scrollView, { backgroundColor: colors.white }]}
@@ -474,88 +823,31 @@ export function SecretLibraryAuthorDetailScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header section with dark background — scrolls with content */}
-        <View style={{ backgroundColor: staticColors.black }}>
-          <TopNav
-            variant="dark"
-            showLogo={true}
-            onLogoPress={handleLogoPress}
-            style={{ backgroundColor: 'transparent' }}
-            pills={[
-              {
-                key: 'all-authors',
-                label: 'All Authors',
-                icon: <UserIcon size={16} color={staticColors.white} />,
-                onPress: () => navigation.navigate('AuthorsList'),
-              },
-              {
-                key: 'follow',
-                label: isFollowing ? 'Following' : 'Follow',
-                icon: isFollowing
-                  ? <BellOffIcon size={16} color={staticColors.black} />
-                  : <BellIcon size={16} color={staticColors.white} />,
-                active: isFollowing,
-                onPress: handleFollowToggle,
-              },
-            ]}
-            circleButtons={[
-              {
-                key: 'back',
-                icon: <TopNavBackIcon color={staticColors.white} size={16} />,
-                onPress: handleBack,
-              },
-            ]}
-          />
+        {headerContent}
 
-          {/* Author Info - dark header area */}
-          <View style={[styles.authorInfoBlock, { paddingHorizontal: 24 }]}>
-            <Text style={[styles.headerName, { color: staticColors.white }]}>{authorInfo.name}</Text>
-            <Text style={[styles.headerStats, { color: colors.gray }]}>
-              {authorInfo.bookCount} {authorInfo.bookCount === 1 ? 'book' : 'books'} · {formatDurationCompact(totalDuration)}
-            </Text>
-          </View>
-        </View>
-        {/* Tabs Row with View Toggle */}
-        <View style={styles.tabsRow}>
-          <View style={styles.tabs}>
+        {/* Loading state while fetching author books from API */}
+        {isFetchingBooks && allBooks.length === 0 && (
+          <Text style={[styles.emptyText, { color: colors.gray }]}>Loading books...</Text>
+        )}
+
+        {/* Error state if fetch failed and no cached data available */}
+        {fetchError && allBooks.length === 0 && !isFetchingBooks && (
+          <View style={{ alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 }}>
+            <Text style={[styles.emptyText, { color: colors.gray }]}>Failed to load books</Text>
+            <Text style={[styles.emptyText, { color: colors.gray, fontSize: scale(10), marginTop: 4 }]}>{fetchError}</Text>
             <Pressable
-              style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'all' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
-              onPress={() => setActiveTab('all')}
+              style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: colors.grayLine }}
+              onPress={retryFetchBooks}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading books"
             >
-              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'all' && { color: colors.white }]}>All</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'series' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
-              onPress={() => setActiveTab('series')}
-            >
-              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'series' && { color: colors.white }]}>Series</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'narrator' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
-              onPress={() => setActiveTab('narrator')}
-            >
-              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'narrator' && { color: colors.white }]}>Narrator</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, { borderColor: colors.grayLine }, activeTab === 'genre' && [styles.tabActive, { backgroundColor: colors.black, borderColor: colors.black }]]}
-              onPress={() => setActiveTab('genre')}
-            >
-              <Text style={[styles.tabText, { color: colors.gray }, activeTab === 'genre' && { color: colors.white }]}>Genre</Text>
+              <Text style={[styles.emptyText, { color: colors.black, marginTop: 0 }]}>Try Again</Text>
             </Pressable>
           </View>
-          {/* View mode toggle */}
-          <Pressable
-            style={styles.viewToggle}
-            onPress={() => setViewMode(viewMode === 'book' ? 'series' : 'book')}
-          >
-            <Text style={[styles.toggleText, { color: colors.black }]}>
-              {viewMode === 'book' ? 'Book' : 'Series'}
-            </Text>
-          </Pressable>
-        </View>
+        )}
 
         {/* Content based on tab and view mode */}
-        {activeTab === 'all' && viewMode === 'series' && (
+        {activeTab === 'all' && viewMode === 'shelf' && (
           <View style={styles.groupedList}>
             {allBooksBySeries.map((group, index) => (
               <CollapsibleSection
@@ -575,16 +867,13 @@ export function SecretLibraryAuthorDetailScreen() {
           </View>
         )}
 
-        {activeTab === 'all' && viewMode === 'book' && (
-          <View style={styles.verticalList}>
-            {renderVerticalBookList(allBooks)}
-            {allBooks.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No books found</Text>
-            )}
+        {activeTab === 'all' && viewMode === 'grid' && (
+          <View style={styles.groupedList}>
+            <BookGrid books={allBooks} onBookPress={(book) => handleBookPress(book.id)} onBookLongPress={(book) => showMenu(book)} />
           </View>
         )}
 
-        {activeTab === 'series' && viewMode === 'series' && (
+        {activeTab === 'series' && viewMode === 'shelf' && (
           <View style={styles.groupedList}>
             {seriesList.map((series, index) => (
               <CollapsibleSection
@@ -597,13 +886,10 @@ export function SecretLibraryAuthorDetailScreen() {
                 <ShelfRow books={series.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
-            {seriesList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No series found</Text>
-            )}
           </View>
         )}
 
-        {activeTab === 'series' && viewMode === 'book' && (
+        {activeTab === 'series' && viewMode === 'list' && (
           <View style={styles.groupedList}>
             {seriesList.map((series, index) => (
               <CollapsibleSection
@@ -616,13 +902,26 @@ export function SecretLibraryAuthorDetailScreen() {
                 {renderVerticalBookList(series.books)}
               </CollapsibleSection>
             ))}
-            {seriesList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No series found</Text>
-            )}
           </View>
         )}
 
-        {activeTab === 'narrator' && viewMode === 'series' && (
+        {activeTab === 'series' && viewMode === 'grid' && (
+          <View style={styles.groupedList}>
+            {seriesList.map((series, index) => (
+              <CollapsibleSection
+                key={series.name}
+                title={series.name}
+                count={series.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleSeriesPress(series.name)}
+              >
+                <BookGrid books={series.books} onBookPress={(book) => handleBookPress(book.id)} onBookLongPress={(book) => showMenu(book)} />
+              </CollapsibleSection>
+            ))}
+          </View>
+        )}
+
+        {activeTab === 'narrator' && viewMode === 'shelf' && (
           <View style={styles.groupedList}>
             {narratorList.map((narrator, index) => (
               <CollapsibleSection
@@ -635,13 +934,10 @@ export function SecretLibraryAuthorDetailScreen() {
                 <ShelfRow books={narrator.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
-            {narratorList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No narrators found</Text>
-            )}
           </View>
         )}
 
-        {activeTab === 'narrator' && viewMode === 'book' && (
+        {activeTab === 'narrator' && viewMode === 'list' && (
           <View style={styles.groupedList}>
             {narratorList.map((narrator, index) => (
               <CollapsibleSection
@@ -654,13 +950,26 @@ export function SecretLibraryAuthorDetailScreen() {
                 {renderVerticalBookList(narrator.books)}
               </CollapsibleSection>
             ))}
-            {narratorList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No narrators found</Text>
-            )}
           </View>
         )}
 
-        {activeTab === 'genre' && viewMode === 'series' && (
+        {activeTab === 'narrator' && viewMode === 'grid' && (
+          <View style={styles.groupedList}>
+            {narratorList.map((narrator, index) => (
+              <CollapsibleSection
+                key={narrator.name}
+                title={narrator.name}
+                count={narrator.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleNarratorPress(narrator.name)}
+              >
+                <BookGrid books={narrator.books} onBookPress={(book) => handleBookPress(book.id)} onBookLongPress={(book) => showMenu(book)} />
+              </CollapsibleSection>
+            ))}
+          </View>
+        )}
+
+        {activeTab === 'genre' && viewMode === 'shelf' && (
           <View style={styles.groupedList}>
             {genreList.map((genre, index) => (
               <CollapsibleSection
@@ -673,13 +982,10 @@ export function SecretLibraryAuthorDetailScreen() {
                 <ShelfRow books={genre.books} toSpineData={toSpineData} onSpinePress={handleSpinePress} onSpineLongPress={(spine) => { const item = allBooks.find(b => b.id === spine.id); if (item) showMenu(item); }} />
               </CollapsibleSection>
             ))}
-            {genreList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No genres found</Text>
-            )}
           </View>
         )}
 
-        {activeTab === 'genre' && viewMode === 'book' && (
+        {activeTab === 'genre' && viewMode === 'list' && (
           <View style={styles.groupedList}>
             {genreList.map((genre, index) => (
               <CollapsibleSection
@@ -692,18 +998,26 @@ export function SecretLibraryAuthorDetailScreen() {
                 {renderVerticalBookList(genre.books)}
               </CollapsibleSection>
             ))}
-            {genreList.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.gray }]}>No genres found</Text>
-            )}
           </View>
         )}
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.gray }]}>
-            {allBooks.length} {allBooks.length === 1 ? 'title' : 'titles'} · {Math.round(totalDuration / 3600)} hours total
-          </Text>
-        </View>
+        {activeTab === 'genre' && viewMode === 'grid' && (
+          <View style={styles.groupedList}>
+            {genreList.map((genre, index) => (
+              <CollapsibleSection
+                key={genre.name}
+                title={genre.name}
+                count={genre.books.length}
+                defaultExpanded={index === 0}
+                onTitlePress={() => handleGenrePress(genre.name)}
+              >
+                <BookGrid books={genre.books} onBookPress={(book) => handleBookPress(book.id)} onBookLongPress={(book) => showMenu(book)} />
+              </CollapsibleSection>
+            ))}
+          </View>
+        )}
+
+        {footerContent}
       </ScrollView>
     </View>
   );
@@ -712,7 +1026,7 @@ export function SecretLibraryAuthorDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: staticColors.black,
+    backgroundColor: staticColors.white,
   },
   scrollView: {
     flex: 1,
@@ -720,14 +1034,65 @@ const styles = StyleSheet.create({
   scrollContent: {
   },
   authorInfoBlock: {
+    paddingTop: 20,
     marginBottom: 24,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  authorPhotoFrame: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 3,
+    padding: 2,
+    marginRight: 14,
+  },
+  authorPhoto: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  authorDescriptionContainer: {
+    marginTop: 14,
+  },
+  authorDescription: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(16),
+    lineHeight: scale(16) * 1.3,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  readMoreText: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(9),
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginTop: 12,
+  },
+  descriptionRule: {
+    height: 1,
+    marginBottom: 24,
+  },
+  descriptionSheetKicker: {
+    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
+    fontSize: scale(10),
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 28,
+  },
+  descriptionSheetText: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontSize: scale(17),
+    lineHeight: scale(17) * 1.55,
   },
   headerName: {
     fontFamily: secretLibraryFonts.playfair.regular,
-    fontSize: scale(36),
+    fontSize: scale(24),
     fontWeight: '400',
     color: staticColors.white,
-    lineHeight: scale(36) * 1.1,
+    lineHeight: scale(24) * 1.1,
     marginBottom: 6,
   },
   headerStats: {
@@ -746,10 +1111,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
-  },
-  viewToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   tab: {
     height: 32,
@@ -773,14 +1134,6 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: staticColors.black,
-  },
-  toggleText: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    color: staticColors.white,
-    textTransform: 'uppercase',
-    letterSpacing: 0.45,
-    textDecorationLine: 'underline',
   },
   textList: {
     flex: 1,
@@ -851,7 +1204,6 @@ const styles = StyleSheet.create({
   },
   groupedList: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   groupSection: {
     marginBottom: 36,
@@ -906,5 +1258,27 @@ const styles = StyleSheet.create({
     fontSize: scale(18),
     color: staticColors.white,
     marginTop: 16,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownMenu: {
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 200,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  dropdownText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(12),
   },
 });

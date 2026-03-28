@@ -6,6 +6,7 @@
  */
 
 import { LibraryItem } from '@/core/types';
+import { BookMetadata } from '@/core/types/media';
 import { logger } from '@/shared/utils/logger';
 
 // =============================================================================
@@ -28,7 +29,7 @@ export interface SeriesInfo {
  */
 export function getSeriesInfo(item: LibraryItem): SeriesInfo | null {
   try {
-    const metadata = item.media?.metadata as any;
+    const metadata = item.media?.metadata as BookMetadata | undefined;
     if (!metadata) return null;
 
     // Series can be an array of { id, name, sequence }
@@ -116,7 +117,7 @@ export function findNextInSeries(
   // Find the book with the smallest sequence greater than current
   for (const book of seriesBooks) {
     if (book.sequence > currentSeriesInfo.sequence) {
-      const title = (book.item.media?.metadata as any)?.title || 'Unknown';
+      const title = (book.item.media?.metadata as BookMetadata | undefined)?.title || 'Unknown';
       logger.debug(`[seriesUtils] Found next book: "${title}" (sequence ${book.sequence})`);
       return book.item;
     }

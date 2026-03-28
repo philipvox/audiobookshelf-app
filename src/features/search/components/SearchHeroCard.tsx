@@ -17,22 +17,17 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
-import { PlayIcon, PauseIcon } from '@/features/player/components/PlayerIcons';
+import { PlayIcon, PauseIcon } from '@/shared/components/PlayerIcons';
 import { useNavigation } from '@react-navigation/native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale } from '@/shared/theme';
 import { apiClient } from '@/core/api';
 import { haptics } from '@/core/native/haptics';
-import { usePlayerStore } from '@/features/player';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
 import { useDownloadStatus } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
 import { LibraryItem, BookMetadata } from '@/core/types';
-import { useKidModeStore } from '@/shared/stores/kidModeStore';
-
-// Kids genre keywords — used to exclude children's books when kid mode is off
-const KIDS_GENRES = ['children', "children's", 'childrens', 'kids', 'middle grade', 'picture books', 'juvenile', 'young readers'];
-
 // Module-level counter: refreshes the pick every 3rd mount
 let heroMountCount = 0;
 const REFRESH_INTERVAL = 3;
@@ -74,7 +69,7 @@ function getBookMetadata(item: LibraryItem): ExtendedBookMetadata | null {
 }
 
 function getBookDuration(item: LibraryItem): number {
-  return (item.media as any)?.duration || 0;
+  return item.media?.duration || 0;
 }
 
 function formatDuration(seconds: number): string {
@@ -103,23 +98,16 @@ interface TaggedPool {
   books: LibraryItem[];
 }
 
-function buildPools(items: LibraryItem[], kidModeEnabled: boolean): TaggedPool[] {
+function buildPools(items: LibraryItem[]): TaggedPool[] {
   const currentYear = new Date().getFullYear();
   const thirtyDaysAgo = Date.now() / 1000 - 30 * 24 * 60 * 60;
 
-  // Filter out kids books unless kid mode is on
-  const filtered = kidModeEnabled ? items : items.filter((item) => {
-    const meta = getBookMetadata(item);
-    const genres = (meta?.genres || []).map((g) => g.toLowerCase());
-    return !genres.some((g) => KIDS_GENRES.some((kg) => g.includes(kg)));
-  });
-
-  const unstarted = filtered.filter((item) => {
+  const unstarted = items.filter((item) => {
     const progress = item.userMediaProgress?.progress || 0;
     return progress === 0 && !item.userMediaProgress?.isFinished;
   });
 
-  const pool = unstarted.length > 5 ? unstarted : filtered;
+  const pool = unstarted.length > 5 ? unstarted : items;
   const pools: TaggedPool[] = [];
 
   // New to Library
@@ -139,7 +127,7 @@ function buildPools(items: LibraryItem[], kidModeEnabled: boolean): TaggedPool[]
     const matches = pool.filter((item) => {
       const meta = getBookMetadata(item);
       const genres = (meta?.genres || []).map((g) => g.toLowerCase());
-      const tags = ((item.media as any)?.tags || []).map((t: string) => t.toLowerCase());
+      const tags = (item.media?.tags || []).map((t: string) => t.toLowerCase());
       const all = [...genres, ...tags];
       return vibe.keywords.some((kw) => all.some((g) => g.includes(kw)));
     });
@@ -169,7 +157,6 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
 }: SearchHeroCardProps) {
   const navigation = useNavigation<any>();
   const selectionRef = useRef<{ poolIdx: number; bookIdx: number } | null>(null);
-  const kidModeEnabled = useKidModeStore((s) => s.enabled);
 
   // Refresh the pick every Nth mount
   const mountGenRef = useRef(heroMountCount);
@@ -198,7 +185,7 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
   const { book, tag } = useMemo(() => {
     if (!items.length) return { book: null, tag: '' };
 
-    const pools = buildPools(items, kidModeEnabled);
+    const pools = buildPools(items);
     if (pools.length === 0) return { book: null, tag: '' };
 
     if (
@@ -214,7 +201,7 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
     const selectedPool = pools[poolIdx % pools.length];
     const selectedBook = selectedPool.books[bookIdx % selectedPool.books.length];
     return { book: selectedBook, tag: selectedPool.tag };
-  }, [items, kidModeEnabled]);
+  }, [items]);
 
   const bookId = book?.id || '';
   const metadata = book ? getBookMetadata(book) : null;
@@ -323,6 +310,8 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
       style={styles.container}
       activeOpacity={0.9}
       onPress={handleCardPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open book ${title} by ${author}`}
     >
       {/* Blurred cover background */}
       <Image
@@ -381,6 +370,8 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnPrimary]}
             onPress={handlePlay}
+            accessibilityRole="button"
+            accessibilityLabel={isCurrentlyPlaying ? `Pause ${title}` : `Play ${title}`}
           >
             {isCurrentlyPlaying ? (
               <PauseIcon color={secretLibraryColors.black} size={14} />
@@ -401,6 +392,9 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
             ]}
             onPress={handleDownload}
             disabled={isDownloaded}
+            accessibilityRole="button"
+            accessibilityLabel={isDownloaded ? `${title} saved` : `Save ${title}`}
+            accessibilityState={{ disabled: isDownloaded }}
           >
             {isDownloaded ? (
               <CheckIcon color={secretLibraryColors.black} size={14} />
@@ -421,6 +415,8 @@ export const SearchHeroCard = React.memo(function SearchHeroCard({
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnTertiary]}
             onPress={handleLibraryToggle}
+            accessibilityRole="button"
+            accessibilityLabel={isInLibrary ? `Remove ${title} from library` : `Add ${title} to library`}
           >
             <Text
               style={[

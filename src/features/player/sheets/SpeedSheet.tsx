@@ -214,7 +214,7 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
       {/* Header with Done button */}
       <View style={styles.header}>
         <Text style={styles.title}>Speed</Text>
-        <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
+        <TouchableOpacity onPress={onClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Done">
           <Text style={styles.doneButton}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -247,6 +247,8 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
             minimumTrackTintColor={colors.gray}
             maximumTrackTintColor={darkBorder}
             thumbTintColor={colors.white}
+            accessibilityRole="adjustable"
+            accessibilityLabel={`Playback speed, ${formatSpeed(displaySpeed)} times`}
           />
           {/* Tick marks on track */}
           <View style={styles.tickMarks} pointerEvents="none">
@@ -264,6 +266,9 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
           onPress={handleSavePreset}
           activeOpacity={0.7}
           disabled={!canSavePreset}
+          accessibilityRole="button"
+          accessibilityLabel={`Save preset at ${formatSpeed(sliderValue)} times speed`}
+          accessibilityState={{ disabled: !canSavePreset }}
         >
           <Text style={[styles.actionButtonText, !canSavePreset && styles.actionButtonTextDisabled]}>
             + Save Preset
@@ -274,6 +279,8 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
           style={styles.actionButton}
           onPress={handleReset}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Reset speed to 1.0 times"
         >
           <ResetIcon color={colors.white} size={14} />
           <Text style={styles.actionButtonText}>Reset to 1.0×</Text>
@@ -296,6 +303,10 @@ export function SpeedSheet({ onClose }: SpeedSheetProps) {
               ]}
               onPress={() => handlePresetPress(speed)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${speed.toFixed(speed % 0.25 === 0 ? 1 : 2)} times speed${isSaved ? ', saved preset' : ''}`}
+              accessibilityState={{ selected: isActive }}
+              accessibilityHint={isSaved ? 'Double tap to select, double tap again quickly to remove' : 'Double tap to select'}
             >
               <Text style={[
                 styles.presetText,

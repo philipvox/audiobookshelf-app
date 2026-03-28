@@ -5,7 +5,7 @@
  * Clean editorial design with hero, progress, description, and chapters.
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,32 +17,36 @@ import {
   Share,
   Alert,
   useWindowDimensions,
+  TextStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { PlayIcon, PauseIcon } from '@/features/player/components/PlayerIcons';
+import { PlayIcon, PauseIcon } from '@/shared/components/PlayerIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 
 import { useBookDetails } from '../hooks/useBookDetails';
 import { ErrorView, Loading, SkullRefreshControl, TopNav, TopNavBackIcon, TopNavShareIcon } from '@/shared/components';
 import { useCoverUrl, useLibraryCache } from '@/core/cache';
-import { LibraryItem, BookMetadata } from '@/core/types';
-import { usePlayerStore, useCurrentChapterIndex } from '@/features/player';
+import { LibraryItem, BookMetadata, BookMedia, MediaProgress } from '@/core/types';
+import { usePlayerStore, useCurrentChapterIndex } from '@/shared/stores/playerFacade';
 import { useShallow } from 'zustand/react/shallow';
-import { useQueueStore, useQueue } from '@/features/queue/stores/queueStore';
+import { useQueueStore, useQueue } from '@/shared/stores/queueFacade';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
 import { downloadManager } from '@/core/services/downloadManager';
 import { useNormalizedChapters } from '@/shared/hooks';
 import { haptics } from '@/core/native/haptics';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
+import { formatBytes } from '@/shared/utils/format';
 import { userApi, apiClient } from '@/core/api';
+import { endpoints } from '@/core/api/endpoints';
 import { useAuth } from '@/core/auth';
 import { sqliteCache } from '@/core/services/sqliteCache';
 import { playbackCache } from '@/core/services/playbackCache';
-import { useIsFinished, useMarkFinished, useBookProgress, useBookRating, useSetBookRating } from '@/core/hooks/useUserBooks';
+import { useIsFinished, useMarkFinished, useBookProgress, useBookRating, useSetBookRating, userBooksKeys } from '@/core/hooks/useUserBooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { finishedBooksSync } from '@/core/services/finishedBooksSync';
 import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
 import { logger } from '@/shared/utils/logger';
@@ -51,6 +55,8 @@ import {
 } from '@/shared/theme/secretLibrary';
 import { useSpineCacheStore, BookSpineVertical, BookSpineVerticalData, useBookRowLayout, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
 import { SeriesSwipeContainer, SeriesNavigationArrows, useSeriesNavigation } from '../components/SeriesSwipeContainer';
+import { ViewModePicker, ViewMode } from '@/shared/components/ViewModePicker';
+import { BookGrid } from '@/shared/components/BookGrid';
 import { CoverStarStickers } from '../components/CoverStarStickers';
 import { useStarPositionStore, STAR_HIT_RADIUS } from '../stores/starPositionStore';
 
@@ -135,15 +141,11 @@ const _BookmarkIcon = ({ color = '#000', size = 14, filled = false }: IconProps 
 );
 
 const LibraryPlusIcon = ({ color = '#000', size = 14 }: IconProps) => (
-  <Svg width={size * 1.5} height={size} viewBox="0 0 36 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-    {/* Library books (shifted left) */}
-    <Path d="m12 6 4 14" />
-    <Path d="M8 6v14" />
-    <Path d="M4 8v12" />
-    <Path d="M0 4v16" />
-    {/* Plus sign (right side, large) */}
-    <Path d="M28 12v0M24 12h8" strokeWidth={3} />
-    <Path d="M28 8v8" strokeWidth={3} />
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="m16 6 4 14" />
+    <Path d="M12 6v14" />
+    <Path d="M8 8v12" />
+    <Path d="M4 4v16" />
   </Svg>
 );
 
@@ -306,7 +308,7 @@ function DropCapParagraph({ text, expanded, onToggleExpand, colors }: DropCapPar
 
       {/* Only show Read more if there's enough below text to be truncated (roughly 3+ lines) */}
       {(textSplit?.below || '').length > 150 && (
-        <TouchableOpacity onPress={onToggleExpand}>
+        <TouchableOpacity onPress={onToggleExpand} accessibilityRole="button" accessibilityLabel={expanded ? 'Show less of description' : 'Read more of description'}>
           <Text style={[styles.readMore, { color: colors.black }]}>
             {expanded ? 'Show less' : 'Read more'}
           </Text>
@@ -328,13 +330,18 @@ export function SecretLibraryBookDetailScreen() {
 
   // Theme-aware colors
   const colors = useSecretLibraryColors();
+  const queryClient = useQueryClient();
   const isDarkMode = colors.isDark;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [activeContentTab, setActiveContentTab] = useState<'chapters' | 'series'>('chapters');
-  const [seriesViewMode, setSeriesViewMode] = useState<'book' | 'shelf'>('book');
+  const [activeContentTab, setActiveContentTab] = useState<'chapters' | 'series' | 'info'>('chapters');
+  const [seriesViewMode, setSeriesViewMode] = useState<ViewMode>('shelf');
   const [chaptersExpanded, setChaptersExpanded] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [sessions, setSessions] = useState<Array<{ id: string; startedAt: number; updatedAt: number; currentTime: number; duration: number; timeListening: number; playMethod: number }>>([]);
+  const [liveServerProgress, setLiveServerProgress] = useState<{ currentTime: number; progress: number } | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const chaptersYRef = useRef<number>(0);
 
@@ -364,7 +371,7 @@ export function SecretLibraryBookDetailScreen() {
   const isInQueue = queue.some((q) => q.bookId === bookId);
 
   // Download state
-  const { isDownloaded, isDownloading, isPending, isPaused, progress: downloadProgress } = useDownloadStatus(bookId);
+  const { isDownloaded, isDownloading, isPending, isPaused, isWaitingWifi, progress: downloadProgress } = useDownloadStatus(bookId);
   const { queueDownload } = useDownloads();
 
   // Progress and finished state (single source of truth: SQLite)
@@ -450,6 +457,44 @@ export function SecretLibraryBookDetailScreen() {
   // This selector is reactive - updates when spine cache updates
   const cachedSpineData = useSpineCacheStore((s) => s.cache.get(bookId));
 
+  // Fetch live server progress when Info tab is opened
+  useEffect(() => {
+    if (activeContentTab !== 'info') return;
+    let cancelled = false;
+    apiClient.get<MediaProgress>(endpoints.user.progress(bookId))
+      .then((data) => {
+        if (!cancelled) {
+          setLiveServerProgress({
+            currentTime: data.currentTime || 0,
+            progress: data.progress || 0,
+          });
+        }
+      })
+      .catch(() => {
+        // No progress on server for this book
+        if (!cancelled) setLiveServerProgress({ currentTime: 0, progress: 0 });
+      });
+    return () => { cancelled = true; };
+  }, [activeContentTab, bookId]);
+
+  // Fetch listening sessions from server when expanded
+  useEffect(() => {
+    if (!sessionsExpanded) return;
+    let cancelled = false;
+    apiClient.get<{ sessions: Array<{ id: string; libraryItemId: string; startedAt: number; updatedAt: number; currentTime: number; duration: number; timeListening: number; playMethod: number }> }>(
+      '/api/me/listening-sessions?itemsPerPage=500'
+    ).then((data) => {
+      if (cancelled) return;
+      const bookSessions = data.sessions
+        .filter((s) => s.libraryItemId === bookId)
+        .sort((a, b) => b.startedAt - a.startedAt);
+      setSessions(bookSessions);
+    }).catch(() => {
+      if (!cancelled) setSessions([]);
+    });
+    return () => { cancelled = true; };
+  }, [sessionsExpanded, bookId]);
+
   // Refresh handler
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -525,12 +570,23 @@ export function SecretLibraryBookDetailScreen() {
       return;
     }
 
+    // If waiting for WiFi, cancel it
+    if (isWaitingWifi) {
+      haptics.warning();
+      await downloadManager.cancelDownload(bookId);
+      return;
+    }
+
     // If not downloaded, queue it
     if (!isDownloaded) {
       haptics.selection();
-      await queueDownload(book);
+      const result = await queueDownload(book);
+      if (result && !result.success) {
+        haptics.warning();
+        Alert.alert('Download Blocked', result.reason || 'Cannot download right now');
+      }
     }
-  }, [book, bookId, isDownloaded, isDownloading, isPaused, isPending, queueDownload]);
+  }, [book, bookId, isDownloaded, isDownloading, isPaused, isPending, isWaitingWifi, queueDownload]);
 
   // Library toggle handler
   const handleLibraryToggle = useCallback(async () => {
@@ -878,6 +934,38 @@ export function SecretLibraryBookDetailScreen() {
   const timeRemaining = duration - currentTime;
   const progressPercent = Math.round(progress * 100);
 
+  // Sync position: pick app or server time
+  const handleSyncPosition = useCallback(async (source: 'app' | 'server') => {
+    if (!liveServerProgress) return;
+    const targetTime = source === 'app' ? currentTime : liveServerProgress.currentTime;
+    const targetProgress = duration > 0 ? targetTime / duration : 0;
+    try {
+      // Update local SQLite
+      await sqliteCache.updateUserBookProgress(bookId, targetTime, duration, 0, source === 'server');
+      // Update server
+      await apiClient.updateProgress(bookId, {
+        currentTime: targetTime,
+        duration,
+        progress: targetProgress,
+      });
+      // Update live server display
+      setLiveServerProgress({ currentTime: targetTime, progress: targetProgress });
+      // Invalidate queries so UI re-reads from SQLite
+      queryClient.invalidateQueries({ queryKey: userBooksKeys.one(bookId) });
+      // Refetch book detail to get fresh server progress
+      refetch();
+      // If the book is loaded in the player, seek to the position
+      if (isThisBookLoaded) {
+        const { seekTo } = usePlayerStore.getState();
+        seekTo(targetTime);
+      }
+      haptics.success();
+    } catch (e: unknown) {
+      logger.warn('handleSyncPosition failed:', e);
+      Alert.alert('Sync Failed', 'Could not update position. Try again.');
+    }
+  }, [bookId, currentTime, duration, liveServerProgress, isThisBookLoaded, queryClient, refetch]);
+
   // Get normalized chapter names
   const normalizedChapters = useNormalizedChapters(chapters, { bookTitle: title });
 
@@ -911,9 +999,6 @@ export function SecretLibraryBookDetailScreen() {
     return { visibleChapters: visible, hiddenCount: hidden };
   }, [normalizedChapters, savedChapterIndex, chaptersExpanded]);
 
-  // Title split
-  const { line1, line2 } = useMemo(() => splitTitle(title), [title]);
-
   // Get spine typography - USE CACHED TYPOGRAPHY for consistency
   // This ensures book detail shows the EXACT same font as the book spine on home screen
   const _spineTypography = useMemo(() => {
@@ -941,7 +1026,7 @@ export function SecretLibraryBookDetailScreen() {
 
   // Use standard site font for title (Georgia/serif) instead of variable spine fonts
   const titleFontFamily = Platform.select({ ios: 'Georgia', android: 'serif' });
-  const titleFontWeight = '600';
+  const titleFontWeight: TextStyle['fontWeight'] = '400';
   const _titleFontStyle = 'normal' as const;
   const titleTransform: string = 'none';
 
@@ -952,13 +1037,6 @@ export function SecretLibraryBookDetailScreen() {
     }
     return title;
   }, [title, titleTransform]);
-
-  const { displayLine1, displayLine2 } = useMemo(() => {
-    if (titleTransform === 'uppercase') {
-      return { displayLine1: line1.toUpperCase(), displayLine2: line2.toUpperCase() };
-    }
-    return { displayLine1: line1, displayLine2: line2 };
-  }, [line1, line2, titleTransform]);
 
   // Loading state
   if (isLoading && !book) {
@@ -1070,79 +1148,64 @@ export function SecretLibraryBookDetailScreen() {
           </Animated.View>
           </GestureDetector>
 
-          {/* Split Title with Series Navigation Arrows */}
+          {/* Title with Series Navigation Arrows */}
           <View style={styles.titleContainer}>
             <SeriesNavigationArrows />
-            <Text style={[
-              styles.titleLine1,
-              {
-                fontFamily: titleFontFamily,
-                fontWeight: titleFontWeight as any,
-                color: colors.black,
-              }
-            ]}>
-              {displayLine1}
-            </Text>
-            {displayLine2 ? (
-              <Text style={[
-                styles.titleLine2,
+            <Text
+              style={[
+                styles.titleLine1,
                 {
                   fontFamily: titleFontFamily,
-                  fontWeight: titleFontWeight as any,
+                  fontWeight: titleFontWeight,
                   color: colors.black,
                 }
-              ]}>
-                {displayLine2}
-              </Text>
-            ) : null}
+              ]}
+              numberOfLines={3}
+            >
+              {title}
+            </Text>
           </View>
 
-          {/* Byline: By Author · Narrated by Narrator */}
+          {/* Byline: Author · Narrator (matches player format) */}
           <View style={styles.byline}>
-            <Text style={[styles.bylineText, { color: colors.gray }]}>By </Text>
-            {author.split(',').map((name: string, idx: number, arr: string[]) => (
-              <React.Fragment key={idx}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                navigation.navigate('AuthorDetail', { authorName: author.split(',')[0].trim() });
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel={`Go to author ${author}`}
+            >
+              <Text style={[styles.bylineText, { color: colors.gray }]}>{author}</Text>
+            </TouchableOpacity>
+            {narrator ? (
+              <>
+                <Text style={[styles.bylineDot, { color: colors.gray }]}>  ·  </Text>
                 <TouchableOpacity
                   onPress={() => {
                     haptics.selection();
-                    navigation.navigate('AuthorDetail', { authorName: name.trim() });
+                    navigation.navigate('NarratorDetail', { narratorName: narrator.split(',')[0].trim() });
                   }}
                   activeOpacity={0.7}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Go to narrator ${narrator}`}
                 >
-                  <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
+                  <Text style={[styles.bylineText, { color: colors.gray }]}>{narrator}</Text>
                 </TouchableOpacity>
-                {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
-              </React.Fragment>
-            ))}
-            {narrator ? (
-              <>
-                <Text style={[styles.bylineDot, { color: colors.gray }]}> · </Text>
-                <Text style={[styles.bylineText, { color: colors.gray }]}>Narrated by </Text>
-                {narrator.split(',').map((name: string, idx: number, arr: string[]) => (
-                  <React.Fragment key={idx}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        haptics.selection();
-                        navigation.navigate('NarratorDetail', { narratorName: name.trim() });
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.bylineLink, { color: colors.black }]}>{name.trim()}</Text>
-                    </TouchableOpacity>
-                    {idx < arr.length - 1 && <Text style={[styles.bylineText, { color: colors.gray }]}>, </Text>}
-                  </React.Fragment>
-                ))}
               </>
             ) : null}
           </View>
 
-          {/* Series Link */}
+          {/* Series link */}
           {seriesInfo && (
-            <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} style={styles.seriesRow}>
-              <Text style={[styles.seriesLink, { color: colors.gray }]}>
-                {seriesInfo.name}{seriesInfo.sequence ? ` · Book ${seriesInfo.sequence}` : ''}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.byline}>
+              <TouchableOpacity onPress={handleSeriesPress} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`Go to series ${seriesInfo.name}`}>
+                <Text style={[styles.bylineText, { color: colors.gray }]}>
+                  {seriesInfo.name}{seriesInfo.sequence ? ` · Book ${seriesInfo.sequence}` : ''}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -1152,7 +1215,7 @@ export function SecretLibraryBookDetailScreen() {
             <Text style={[styles.metaLabel, { color: colors.gray }]}>Duration</Text>
             <Text style={[styles.metaValue, { color: colors.black }]}>{formattedDuration}</Text>
           </View>
-          <TouchableOpacity style={[styles.metaItemCenter, { borderColor: colors.grayLine }]} onPress={handleScrollToChapters} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.metaItemCenter, { borderColor: colors.grayLine }]} onPress={handleScrollToChapters} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`${chapterCount} chapters, scroll to chapter list`}>
             <Text style={[styles.metaLabel, { color: colors.gray }]}>Chapters</Text>
             <Text style={[styles.metaValue, styles.metaValueLink, { color: colors.black }]}>{chapterCount}</Text>
           </TouchableOpacity>
@@ -1165,7 +1228,7 @@ export function SecretLibraryBookDetailScreen() {
         {/* Action Buttons: Play + Download */}
         <View style={styles.actionRow}>
           {/* Play Button - 30% width */}
-          <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} onPress={handlePlay} activeOpacity={0.8}>
+          <TouchableOpacity style={[styles.btnPlay, { backgroundColor: colors.black }]} onPress={handlePlay} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={isThisBookPlaying ? `Pause ${title}` : `Play ${title}`}>
             {isThisBookPlaying ? <PauseIcon color={colors.white} size={16} /> : <PlayIcon color={colors.white} size={16} />}
             <Text style={[styles.btnText, styles.btnTextActive, { color: colors.white }]}>
               {isThisBookPlaying ? 'Pause' : 'Play'}
@@ -1178,11 +1241,14 @@ export function SecretLibraryBookDetailScreen() {
               styles.btnDownload,
               { borderColor: colors.black },
               isDownloaded && [styles.btnDownloadActive, { backgroundColor: colors.black, borderColor: colors.black }],
-              (isDownloading || isPaused) && { backgroundColor: '#FFFFFF' },
+              (isDownloading || isPaused || isWaitingWifi) && { backgroundColor: '#FFFFFF' },
             ]}
             onPress={handleDownload}
             disabled={isDownloaded}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isDownloaded ? `${title} downloaded` : isDownloading ? `Downloading ${title}, ${Math.round(downloadProgress * 100)}%` : isPaused ? `Download paused, ${Math.round(downloadProgress * 100)}%` : isWaitingWifi ? `Waiting for WiFi to download ${title}` : isPending ? `Download queued for ${title}` : `Download ${title}`}
+            accessibilityState={{ disabled: isDownloaded }}
           >
             {isDownloaded ? (
               <>
@@ -1193,6 +1259,8 @@ export function SecretLibraryBookDetailScreen() {
               <Text style={[styles.btnText, { color: '#000' }]}>
                 {isPaused ? 'Paused' : 'Downloading'} {Math.round(downloadProgress * 100)}%
               </Text>
+            ) : isWaitingWifi ? (
+              <Text style={[styles.btnText, { color: colors.black }]}>Waiting for WiFi</Text>
             ) : isPending ? (
               <Text style={[styles.btnText, { color: colors.black }]}>Queued</Text>
             ) : (
@@ -1218,6 +1286,8 @@ export function SecretLibraryBookDetailScreen() {
               style={styles.markFinishedBtn}
               onPress={isFinished ? handleUnmarkFinished : handleMarkFinished}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={isFinished ? 'Unmark as finished' : 'Mark as finished'}
             >
               <Text style={[styles.markFinishedText, { color: colors.gray }]}>
                 {isFinished ? 'Unmark Finished' : 'Mark as Finished'}
@@ -1234,6 +1304,7 @@ export function SecretLibraryBookDetailScreen() {
             <View style={styles.timeWithClear}>
               <TouchableOpacity
                 onPress={handleClearProgress}
+                accessibilityRole="button"
                 accessibilityLabel="Clear progress"
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -1264,6 +1335,8 @@ export function SecretLibraryBookDetailScreen() {
                 style={[styles.genrePill, { borderColor: colors.grayLine }]}
                 onPress={() => handleGenrePress(genre)}
                 activeOpacity={0.7}
+                accessibilityRole="link"
+                accessibilityLabel={`Go to genre ${genre}`}
               >
                 <Text style={[styles.genrePillText, { color: colors.gray }]}>{genre}</Text>
               </TouchableOpacity>
@@ -1285,6 +1358,9 @@ export function SecretLibraryBookDetailScreen() {
               ]}
               onPress={() => setActiveContentTab('chapters')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Chapters, ${chapterCount}`}
+              accessibilityState={{ selected: activeContentTab === 'chapters' }}
             >
               <Text style={[
                 styles.contentTabText,
@@ -1305,6 +1381,9 @@ export function SecretLibraryBookDetailScreen() {
                 ]}
                 onPress={() => setActiveContentTab('series')}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Series, ${seriesBooks.length} books`}
+                accessibilityState={{ selected: activeContentTab === 'series' }}
               >
                 <Text style={[
                   styles.contentTabText,
@@ -1318,16 +1397,39 @@ export function SecretLibraryBookDetailScreen() {
               </TouchableOpacity>
             )}
 
+            <TouchableOpacity
+              style={[
+                styles.contentTab,
+                activeContentTab === 'info' && styles.contentTabActive,
+              ]}
+              onPress={() => setActiveContentTab('info')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Book info"
+              accessibilityState={{ selected: activeContentTab === 'info' }}
+            >
+              <Text style={[
+                styles.contentTabText,
+                { color: activeContentTab === 'info' ? colors.black : colors.gray },
+              ]}>
+                Info
+              </Text>
+            </TouchableOpacity>
+
             {/* View Mode Toggle - only for Series tab */}
             {activeContentTab === 'series' && seriesBooks.length > 1 && (
-              <TouchableOpacity
-                style={styles.viewModeToggle}
-                onPress={() => setSeriesViewMode(seriesViewMode === 'book' ? 'shelf' : 'book')}
-              >
-                <Text style={[styles.viewModeText, { color: colors.black }]}>
-                  {seriesViewMode === 'book' ? 'Book' : 'Shelf'}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ marginLeft: 'auto' }}>
+                <ViewModePicker
+                  mode={seriesViewMode}
+                  onModeChange={setSeriesViewMode}
+                  iconColor={colors.black}
+                  activeIconColor={colors.black}
+                  inactiveIconColor={colors.gray}
+                  borderColor={colors.grayLine}
+                  indicatorColor={colors.grayLight}
+                  capsuleBg={colors.white}
+                />
+              </View>
             )}
           </View>
 
@@ -1340,6 +1442,8 @@ export function SecretLibraryBookDetailScreen() {
                   style={[styles.showEarlierBtn, { borderBottomColor: colors.grayLine }]}
                   onPress={() => setChaptersExpanded(true)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${hiddenCount} earlier ${hiddenCount === 1 ? 'chapter' : 'chapters'}`}
                 >
                   <Text style={[styles.showEarlierText, { color: colors.gray }]}>
                     Show {hiddenCount} earlier {hiddenCount === 1 ? 'chapter' : 'chapters'}
@@ -1360,6 +1464,8 @@ export function SecretLibraryBookDetailScreen() {
                     style={[styles.chapterItem, { borderBottomColor: colors.grayLine }]}
                     onPress={() => handleChapterPress(index)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Chapter ${index + 1}, ${chapter.displayTitle || `Chapter ${index + 1}`}, ${formatChapterDuration(chapterDuration)}${isCurrentChapter ? ', currently playing' : isComplete ? ', completed' : ''}`}
                   >
                     {/* Circular badge number */}
                     <View style={[
@@ -1405,8 +1511,21 @@ export function SecretLibraryBookDetailScreen() {
             </>
           )}
 
-          {/* Series Content - Book View */}
-          {activeContentTab === 'series' && seriesViewMode === 'book' && seriesBooks.map((seriesBook, index) => {
+          {/* Series Content - Grid View */}
+          {activeContentTab === 'series' && seriesViewMode === 'grid' && (
+            <BookGrid
+              books={seriesBooks}
+              onBookPress={(book) => {
+                if (book.id !== bookId) {
+                  haptics.selection();
+                  navigation.push('BookDetail', { id: book.id });
+                }
+              }}
+            />
+          )}
+
+          {/* Series Content - List View */}
+          {activeContentTab === 'series' && seriesViewMode === 'list' && seriesBooks.map((seriesBook, index) => {
             const seriesBookMeta = getBookMetadata(seriesBook);
             const isCurrentBook = seriesBook.id === bookId;
             const seriesBookProgress = seriesBook.userMediaProgress?.progress || 0;
@@ -1431,6 +1550,8 @@ export function SecretLibraryBookDetailScreen() {
                   }
                 }}
                 activeOpacity={isCurrentBook ? 1 : 0.7}
+                accessibilityRole="link"
+                accessibilityLabel={`Book ${seriesSeq}, ${seriesBookMeta?.title || 'Unknown Title'}, ${formatDuration(seriesBookDuration)}${isCurrentBook ? ', current book' : isSeriesBookFinished ? ', finished' : seriesBookProgress > 0 ? `, ${Math.round(seriesBookProgress * 100)}% complete` : ''}`}
               >
                 {/* Cover image */}
                 <Image
@@ -1506,6 +1627,268 @@ export function SecretLibraryBookDetailScreen() {
               })}
             </ScrollView>
           )}
+
+          {/* Info Tab Content */}
+          {activeContentTab === 'info' && (
+            <View style={styles.infoTabContent}>
+              {/* Position Comparison */}
+              <View style={styles.infoSection}>
+                <Text style={[styles.infoSectionTitle, { color: colors.black }]}>Position</Text>
+                <View style={[styles.infoCard, { backgroundColor: colors.white, borderColor: colors.grayLine }]}>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.gray }]}>APP</Text>
+                    <Text style={[styles.infoValue, { color: colors.black }]}>
+                      {formatDuration(currentTime)} ({progressPercent}%)
+                    </Text>
+                  </View>
+                  <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.gray }]}>SERVER</Text>
+                    <Text style={[styles.infoValue, { color: colors.black }]}>
+                      {liveServerProgress
+                        ? `${formatDuration(liveServerProgress.currentTime)} (${Math.round(liveServerProgress.progress * 100)}%)`
+                        : '…'}
+                    </Text>
+                  </View>
+                  {liveServerProgress && Math.abs(currentTime - liveServerProgress.currentTime) > 10 && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>DRIFT</Text>
+                        <Text style={[styles.infoValue, { color: colors.orange }]}>
+                          {formatDuration(Math.abs(currentTime - liveServerProgress.currentTime))}
+                          {currentTime > liveServerProgress.currentTime ? ' ahead' : ' behind'}
+                        </Text>
+                      </View>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.driftActions}>
+                        <Text style={[styles.driftLabel, { color: colors.gray }]}>Set progress to</Text>
+                        <View style={styles.driftBtnRow}>
+                          <TouchableOpacity
+                            style={[styles.driftBtn, { borderColor: colors.grayLine }]}
+                            onPress={() => handleSyncPosition('app')}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.driftBtnText, { color: colors.black }]}>{formatDuration(currentTime)}</Text>
+                            <Text style={[styles.driftBtnSub, { color: colors.gray }]}>app</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.driftBtn, { borderColor: colors.grayLine }]}
+                            onPress={() => handleSyncPosition('server')}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.driftBtnText, { color: colors.black }]}>{formatDuration(liveServerProgress.currentTime)}</Text>
+                            <Text style={[styles.driftBtnSub, { color: colors.gray }]}>server</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+
+              {/* Listening Log */}
+              <View style={styles.infoSection}>
+                <TouchableOpacity
+                  style={styles.infoSectionHeader}
+                  onPress={() => setSessionsExpanded(!sessionsExpanded)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.infoSectionTitle, { color: colors.black }]}>
+                    Listening Log
+                  </Text>
+                  <Text style={[styles.infoExpandIcon, { color: colors.gray }]}>
+                    {sessionsExpanded ? '−' : '+'}
+                  </Text>
+                </TouchableOpacity>
+                {sessionsExpanded && (
+                  <View style={[styles.infoCard, { backgroundColor: colors.white, borderColor: colors.grayLine }]}>
+                    {sessions.length === 0 ? (
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoValue, { color: colors.gray, flex: 1, textAlign: 'center' }]}>No sessions recorded</Text>
+                      </View>
+                    ) : (
+                      sessions.map((session, i) => {
+                        const date = new Date(session.startedAt);
+                        const dateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().slice(-2)}`;
+                        const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                        const listened = session.timeListening || 0;
+                        const endPos = session.currentTime || 0;
+                        const startPos = endPos - listened;
+                        return (
+                          <View key={session.id}>
+                            {i > 0 && <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />}
+                            <View style={styles.sessionRow}>
+                              <View>
+                                <Text style={[styles.sessionDate, { color: colors.black }]}>{dateStr}</Text>
+                                <Text style={[styles.sessionTime, { color: colors.gray }]}>{timeStr}</Text>
+                              </View>
+                              <View style={styles.sessionRight}>
+                                <Text style={[styles.sessionDuration, { color: colors.black }]}>
+                                  {formatDuration(listened)}
+                                </Text>
+                                <Text style={[styles.sessionRange, { color: colors.gray }]}>
+                                  {formatDuration(Math.max(0, startPos))} → {formatDuration(endPos)}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Tags (collapsed by default) */}
+              {book?.media?.tags && book.media.tags.length > 0 && (
+                <View style={styles.infoSection}>
+                  <TouchableOpacity
+                    style={styles.infoSectionHeader}
+                    onPress={() => setTagsExpanded(!tagsExpanded)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.infoSectionTitle, { color: colors.black }]}>
+                      Tags
+                    </Text>
+                    <Text style={[styles.infoExpandIcon, { color: colors.gray }]}>
+                      {tagsExpanded ? '−' : '+'}
+                    </Text>
+                  </TouchableOpacity>
+                  {tagsExpanded && (
+                    <View style={styles.tagsList}>
+                      {(book?.media?.tags || []).map((tag, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.tagPill, { borderColor: colors.grayLine }]}
+                          onPress={() => {
+                            haptics.selection();
+                            navigation.navigate('Search', { initialQuery: tag });
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.tagPillText, { color: colors.gray }]}>{tag}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Book Metadata */}
+              <View style={styles.infoSection}>
+                <Text style={[styles.infoSectionTitle, { color: colors.black }]}>Details</Text>
+                <View style={[styles.infoCard, { backgroundColor: colors.white, borderColor: colors.grayLine }]}>
+                  {metadata?.narrators && metadata.narrators.length > 0 && (
+                    <>
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>NARRATOR</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]} numberOfLines={2}>
+                          {metadata.narrators.join(', ')}
+                        </Text>
+                      </View>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                    </>
+                  )}
+                  {metadata?.publisher && (
+                    <>
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>PUBLISHER</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{metadata.publisher}</Text>
+                      </View>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                    </>
+                  )}
+                  {metadata?.publishedYear && (
+                    <>
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>YEAR</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{metadata.publishedYear}</Text>
+                      </View>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                    </>
+                  )}
+                  {metadata?.language && (
+                    <>
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>LANGUAGE</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{metadata.language}</Text>
+                      </View>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                    </>
+                  )}
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.gray }]}>DURATION</Text>
+                    <Text style={[styles.infoValue, { color: colors.black }]}>{formatDuration(duration)}</Text>
+                  </View>
+                  <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.gray }]}>CHAPTERS</Text>
+                    <Text style={[styles.infoValue, { color: colors.black }]}>{chapterCount}</Text>
+                  </View>
+                  {(book?.media as BookMedia)?.numAudioFiles && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>FILES</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{(book!.media as BookMedia).numAudioFiles}</Text>
+                      </View>
+                    </>
+                  )}
+                  {(book?.media as BookMedia)?.size > 0 && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>SIZE</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{formatBytes((book!.media as BookMedia).size, 1)}</Text>
+                      </View>
+                    </>
+                  )}
+                  {metadata?.isbn && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>ISBN</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{metadata.isbn}</Text>
+                      </View>
+                    </>
+                  )}
+                  {metadata?.asin && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRow}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>ASIN</Text>
+                        <Text style={[styles.infoValue, { color: colors.black }]}>{metadata.asin}</Text>
+                      </View>
+                    </>
+                  )}
+                  {metadata?.genres && metadata.genres.length > 0 && (
+                    <>
+                      <View style={[styles.infoDivider, { backgroundColor: colors.grayLine }]} />
+                      <View style={styles.infoRowVertical}>
+                        <Text style={[styles.infoLabel, { color: colors.gray }]}>GENRES</Text>
+                        <View style={styles.tagsList}>
+                          {metadata.genres.map((genre, i) => (
+                            <TouchableOpacity
+                              key={i}
+                              style={[styles.tagPill, { borderColor: colors.grayLine }]}
+                              onPress={() => {
+                                haptics.selection();
+                                navigation.navigate('Search', { genre });
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.tagPillText, { color: colors.gray }]}>{genre}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
         </View>
           </ScrollView>
         </SkullRefreshControl>
@@ -1566,6 +1949,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     marginBottom: scale(12),
+    gap: scale(6),
   },
   titleLine1: {
     fontSize: scale(28),
@@ -1574,14 +1958,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: scale(32),
   },
-  titleLine2: {
-    fontSize: scale(28),
-    letterSpacing: 0.5,
-    color: staticColors.black,
-    textAlign: 'center',
-    lineHeight: scale(32),
-  },
-
   // Byline
   byline: {
     flexDirection: 'row',
@@ -1595,27 +1971,10 @@ const styles = StyleSheet.create({
     fontSize: scale(13),
     color: staticColors.gray,
   },
-  bylineLink: {
+  bylineDot: {
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
     fontSize: scale(13),
-    color: staticColors.black,
-    textDecorationLine: 'underline',
-  },
-  bylineDot: {
-    fontSize: scale(13),
     color: staticColors.gray,
-  },
-
-  // Series
-  seriesRow: {
-    marginTop: scale(4),
-  },
-  seriesLink: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(14),
-    fontStyle: 'italic',
-    color: staticColors.gray,
-    textDecorationLine: 'underline',
   },
 
   // Genre Pills
@@ -1903,19 +2262,6 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontSize: scale(10),
   },
-  // View mode toggle (Book/Shelf) - single underlined text toggle, aligned right
-  viewModeToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 'auto',
-  },
-  viewModeText: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    fontSize: scale(9),
-    textTransform: 'uppercase',
-    letterSpacing: 0.45,
-    textDecorationLine: 'underline',
-  },
   // Series book item with cover
   seriesBookItem: {
     flexDirection: 'row',
@@ -2039,6 +2385,151 @@ const styles = StyleSheet.create({
     height: scale(24),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // Info Tab
+  infoTabContent: {
+    gap: scale(20),
+    paddingTop: scale(4),
+  },
+  infoSection: {
+    gap: scale(8),
+  },
+  infoSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoSectionTitle: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    color: staticColors.gray,
+  },
+  infoExpandIcon: {
+    fontSize: scale(16),
+    fontWeight: '600',
+  },
+  infoCard: {
+    borderWidth: 1,
+    borderRadius: scale(8),
+    overflow: 'hidden',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(11),
+  },
+  infoRowVertical: {
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(11),
+    gap: scale(8),
+  },
+  infoLabel: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(9),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: staticColors.gray,
+    flex: 1,
+  },
+  infoValue: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    fontWeight: '500',
+    color: staticColors.black,
+    flex: 2,
+    textAlign: 'right',
+  },
+  infoDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: scale(14),
+  },
+  infoSourceTag: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(9),
+    fontWeight: '400',
+  },
+  driftActions: {
+    padding: scale(12),
+    gap: scale(8),
+  },
+  driftLabel: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: scale(2),
+  },
+  driftBtnRow: {
+    flexDirection: 'row',
+    gap: scale(10),
+  },
+  driftBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: scale(10),
+    borderWidth: 1,
+    borderRadius: scale(6),
+  },
+  driftBtnText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    fontWeight: '600',
+  },
+  driftBtnSub: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    marginTop: scale(2),
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(10),
+  },
+  sessionDate: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    fontWeight: '500',
+  },
+  sessionTime: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    marginTop: scale(1),
+  },
+  sessionRight: {
+    alignItems: 'flex-end',
+  },
+  sessionDuration: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    fontWeight: '500',
+  },
+  sessionRange: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(10),
+    marginTop: scale(1),
+  },
+  tagsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
+  },
+  tagPill: {
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(5),
+    borderWidth: 1,
+    borderRadius: scale(14),
+  },
+  tagPillText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(11),
+    color: staticColors.gray,
   },
 });
 

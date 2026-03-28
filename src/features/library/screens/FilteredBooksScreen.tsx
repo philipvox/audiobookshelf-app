@@ -10,30 +10,64 @@ import {
   View,
   Text,
   ScrollView,
+  FlatList,
   StyleSheet,
   StatusBar,
   Pressable,
+  Modal,
+  TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryCache } from '@/core/cache';
-import { useReadingHistory } from '@/features/reading-history-wizard';
+import { useReadingHistory } from '@/shared/hooks/useReadingHistory';
 import { apiClient } from '@/core/api';
 import { createSeriesFilter } from '@/shared/utils/seriesFilter';
 import { useContinueListening } from '@/shared/hooks/useContinueListening';
-import { CompleteBadgeOverlay } from '@/features/completion';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { TopNav, TopNavBackIcon, useBookContextMenu, CollapsibleSection } from '@/shared/components';
+import { ViewModePicker } from '@/shared/components/ViewModePicker';
+import type { ViewMode } from '@/shared/components/ViewModePicker';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { LibraryItem, BookMedia, BookMetadata } from '@/core/types';
-import { DURATION_RANGES } from '@/features/browse/hooks/useBrowseCounts';
+import { DURATION_RANGES } from '@/shared/hooks/useBrowseCounts';
 import { ShelfRow, BookSpineVerticalData } from '@/shared/spine';
+import { BookGrid } from '@/shared/components/BookGrid';
 import { filterByFeeling } from '@/shared/utils/bookDNA/feelingScoring';
-import type { FeelingChip } from '@/features/browse/stores/feelingChipStore';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import type { FeelingChip } from '@/shared/types/feelingChip';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
+import Svg, { Path } from 'react-native-svg';
+
+// Sort types for detail screens
+type DetailSortMode = 'publishedYear' | 'title' | 'duration' | 'progress';
+type DetailSortDirection = 'asc' | 'desc';
+
+const DETAIL_SORT_OPTIONS: { key: DetailSortMode; label: string; defaultDir: DetailSortDirection }[] = [
+  { key: 'publishedYear', label: 'Published', defaultDir: 'desc' },
+  { key: 'title', label: 'Title', defaultDir: 'asc' },
+  { key: 'duration', label: 'Duration', defaultDir: 'desc' },
+  { key: 'progress', label: 'Progress', defaultDir: 'desc' },
+];
+
+const SortArrow = ({ color = '#000', direction = 'desc' }: { color?: string; direction?: 'asc' | 'desc' }) => (
+  <Svg
+    width={10}
+    height={10}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={3}
+    style={direction === 'asc' ? { transform: [{ rotate: '180deg' }] } : undefined}
+  >
+    <Path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
 
 // Type guard for book media
 function isBookMedia(media: LibraryItem['media'] | undefined): media is BookMedia {
@@ -101,7 +135,7 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 
 // Convert LibraryItem to BookSpineVerticalData for ShelfRow
 function toSpineData(item: LibraryItem, cachedData?: { backgroundColor?: string; textColor?: string }): BookSpineVerticalData {
-  const metadata = getMetadata(item) as any;
+  const metadata = getMetadata(item);
   const progress = item.userMediaProgress?.progress || 0;
   const base: BookSpineVerticalData = {
     id: item.id,
@@ -146,20 +180,36 @@ export function FilteredBooksScreen() {
     return 'Books';
   }, [paramTitle, filterType, filterValue]);
 
-  const sortBy: SortType =
+  const _sortBy: SortType =
     filterType === 'all_books' || filterType === 'new_this_week' ? 'recent'
     : filterType === 'tag' || filterType === 'similar' ? 'title'
     : 'duration';
-  const sortDirection: SortDirection = 'asc';
+  const _legacySortDirection: SortDirection = 'asc';
   const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'author' | 'narrator' | 'genre'>('all');
-  const [viewMode, setViewMode] = useState<'book' | 'shelf'>('shelf');
+  const [viewMode, setViewMode] = useState<ViewMode>('shelf');
   const [displayLimit, setDisplayLimit] = useState(50);
+  const [detailSortMode, setDetailSortMode] = useState<DetailSortMode>('publishedYear');
+  const [detailSortDirection, setDetailSortDirection] = useState<DetailSortDirection>('desc');
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
 
-  const { items: libraryItems, isLoaded } = useLibraryCache();
+  const { items: libraryItems, isLoaded } = useLibraryCache(useShallow((s) => ({ items: s.items, isLoaded: s.isLoaded })));
   const { isFinished, hasBeenStarted } = useReadingHistory();
   const { items: inProgressItems } = useContinueListening();
   const slColors = useSecretLibraryColors();
   const dnaEnabled = useDNASettingsStore((s) => s.enableDNAFeatures);
+
+  const handleSortSelect = useCallback((mode: DetailSortMode) => {
+    if (mode === detailSortMode) {
+      setDetailSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      const option = DETAIL_SORT_OPTIONS.find(o => o.key === mode);
+      setDetailSortMode(mode);
+      setDetailSortDirection(option?.defaultDir || 'desc');
+    }
+    setShowSortDropdown(false);
+  }, [detailSortMode]);
+
+  const currentSortLabel = DETAIL_SORT_OPTIONS.find(o => o.key === detailSortMode)?.label || 'Published';
 
   // Create series filter
   const isSeriesAppropriate = useMemo(() => {
@@ -291,7 +341,7 @@ export function FilteredBooksScreen() {
         if (srcId) {
           const sourceItem = libraryItems.find(i => i.id === srcId);
           if (sourceItem) {
-            const srcMd = getMetadata(sourceItem) as any;
+            const srcMd = getMetadata(sourceItem);
             const srcAuthor = srcMd?.authorName || srcMd?.authors?.[0]?.name || '';
             const srcGenres: string[] = srcMd?.genres || [];
             const srcSeries = srcMd?.series?.[0]?.name || '';
@@ -299,7 +349,7 @@ export function FilteredBooksScreen() {
             result = libraryItems.filter(item => {
               if (item.id === srcId) return false;
               if (item.mediaType !== 'book') return false;
-              const md = getMetadata(item) as any;
+              const md = getMetadata(item);
               const author = md?.authorName || md?.authors?.[0]?.name || '';
               const genres: string[] = md?.genres || [];
               const series = md?.series?.[0]?.name || '';
@@ -335,21 +385,25 @@ export function FilteredBooksScreen() {
       });
     }
 
-    // Apply sorting
-    const direction = sortDirection === 'asc' ? 1 : -1;
-    switch (sortBy) {
-      case 'recent':
-        result.sort((a, b) => direction * ((b.addedAt || 0) - (a.addedAt || 0)));
-        break;
+    // Apply sorting based on detail sort mode
+    const dir = detailSortDirection === 'asc' ? 1 : -1;
+    switch (detailSortMode) {
       case 'title':
+        result.sort((a, b) => dir * (getMetadata(a).title || '').localeCompare(getMetadata(b).title || ''));
+        break;
+      case 'publishedYear':
         result.sort((a, b) => {
-          const titleA = getMetadata(a).title || '';
-          const titleB = getMetadata(b).title || '';
-          return direction * titleA.localeCompare(titleB);
+          const yearA = parseInt(getMetadata(a)?.publishedYear || '0', 10) || 0;
+          const yearB = parseInt(getMetadata(b)?.publishedYear || '0', 10) || 0;
+          if (yearA !== yearB) return dir * (yearA - yearB);
+          return (getMetadata(a)?.title || '').localeCompare(getMetadata(b)?.title || '');
         });
         break;
       case 'duration':
-        result.sort((a, b) => direction * (getBookDuration(a) - getBookDuration(b)));
+        result.sort((a, b) => dir * (getBookDuration(a) - getBookDuration(b)));
+        break;
+      case 'progress':
+        result.sort((a, b) => dir * ((a.userMediaProgress?.progress || 0) - (b.userMediaProgress?.progress || 0)));
         break;
     }
 
@@ -366,54 +420,55 @@ export function FilteredBooksScreen() {
     inProgressItems,
     minDuration,
     maxDuration,
-    sortBy,
-    sortDirection,
+    detailSortMode,
+    detailSortDirection,
     dnaEnabled,
   ]);
 
-  // Total duration and grouped lists
-  const tagTotalDuration = useMemo(() => {
-    return filteredBooks.reduce((sum, book) => sum + getBookDuration(book), 0);
-  }, [filteredBooks]);
+  // Total duration and grouped lists — single pass over filteredBooks
+  const { tagTotalDuration, tagAuthorList, tagNarratorList, tagGenreList } = useMemo(() => {
+    let totalDuration = 0;
+    const authorMap = new Map<string, { name: string; books: LibraryItem[] }>();
+    const narratorMap = new Map<string, { name: string; books: LibraryItem[] }>();
+    const genreMap = new Map<string, { name: string; books: LibraryItem[] }>();
 
-  const tagAuthorList = useMemo(() => {
-    const map = new Map<string, { name: string; books: LibraryItem[] }>();
-    filteredBooks.forEach(book => {
-      const md = getMetadata(book) as any;
-      const name = (md?.authorName || '').split(',')[0].trim();
-      if (!name) return;
-      const existing = map.get(name);
-      if (existing) existing.books.push(book);
-      else map.set(name, { name, books: [book] });
-    });
-    return Array.from(map.values()).sort((a, b) => b.books.length - a.books.length);
-  }, [filteredBooks]);
+    for (const book of filteredBooks) {
+      // Duration
+      totalDuration += getBookDuration(book);
 
-  const tagNarratorList = useMemo(() => {
-    const map = new Map<string, { name: string; books: LibraryItem[] }>();
-    filteredBooks.forEach(book => {
-      const md = getMetadata(book) as any;
-      let raw = (md?.narratorName || md?.narrators?.[0] || '').replace(/^Narrated by\s*/i, '').trim();
-      const name = raw.split(',')[0].trim();
-      if (!name) return;
-      const existing = map.get(name);
-      if (existing) existing.books.push(book);
-      else map.set(name, { name, books: [book] });
-    });
-    return Array.from(map.values()).sort((a, b) => b.books.length - a.books.length);
-  }, [filteredBooks]);
+      const md = getMetadata(book);
 
-  const tagGenreList = useMemo(() => {
-    const map = new Map<string, { name: string; books: LibraryItem[] }>();
-    filteredBooks.forEach(book => {
-      const md = getMetadata(book) as any;
-      (md?.genres || []).forEach((g: string) => {
-        const existing = map.get(g);
+      // Authors
+      const authorName = (md?.authorName || '').split(',')[0].trim();
+      if (authorName) {
+        const existing = authorMap.get(authorName);
         if (existing) existing.books.push(book);
-        else map.set(g, { name: g, books: [book] });
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => b.books.length - a.books.length);
+        else authorMap.set(authorName, { name: authorName, books: [book] });
+      }
+
+      // Narrators
+      const rawNarrator = (md?.narratorName || md?.narrators?.[0] || '').replace(/^Narrated by\s*/i, '').trim();
+      const narratorName = rawNarrator.split(',')[0].trim();
+      if (narratorName) {
+        const existing = narratorMap.get(narratorName);
+        if (existing) existing.books.push(book);
+        else narratorMap.set(narratorName, { name: narratorName, books: [book] });
+      }
+
+      // Genres
+      for (const g of (md?.genres || []) as string[]) {
+        const existing = genreMap.get(g);
+        if (existing) existing.books.push(book);
+        else genreMap.set(g, { name: g, books: [book] });
+      }
+    }
+
+    return {
+      tagTotalDuration: totalDuration,
+      tagAuthorList: Array.from(authorMap.values()).sort((a, b) => b.books.length - a.books.length),
+      tagNarratorList: Array.from(narratorMap.values()).sort((a, b) => b.books.length - a.books.length),
+      tagGenreList: Array.from(genreMap.values()).sort((a, b) => b.books.length - a.books.length),
+    };
   }, [filteredBooks]);
 
   // Tag filter: navigation handlers
@@ -449,7 +504,7 @@ export function FilteredBooksScreen() {
   if (!isLoaded) {
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: slColors.white }]}>
-        <StatusBar barStyle="light-content" backgroundColor={secretLibraryColors.black} />
+        <StatusBar barStyle="light-content" backgroundColor={slColors.white} />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: slColors.gray }]}>Loading...</Text>
         </View>
@@ -457,44 +512,56 @@ export function FilteredBooksScreen() {
     );
   }
 
-  // SeriesDetail-style layout
+  // Render a single tag book item (used by both FlatList and ScrollView paths)
+  const renderTagBookItem = useCallback(({ item: book }: { item: LibraryItem }) => {
+    const md = getMetadata(book);
+    const title = md?.title || 'Untitled';
+    const author = md?.authorName || md?.authors?.[0]?.name || '';
+    const duration = getBookDuration(book);
+    const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
+    return (
+      <Pressable
+        style={[styles.tagListItem, { borderBottomColor: slColors.grayLine }]}
+        onPress={() => handleBookPress(book.id)}
+        onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
+        delayLongPress={400}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}${author ? ` by ${author}` : ''}, ${formatDurationCompact(duration)}`}
+      >
+        <View style={styles.tagListCoverWrap}>
+          <Image source={coverUrl} style={styles.tagListCover} contentFit="cover" />
+          <CoverStars bookId={book.id} starSize={scale(12)} />
+          <CompleteBadgeOverlay bookId={book.id} size="small" />
+        </View>
+        <View style={styles.tagListInfo}>
+          <Text style={[styles.tagListTitle, { color: slColors.black }]} numberOfLines={1}>{title}</Text>
+          {author ? <Text style={[styles.tagListAuthor, { color: slColors.gray }]} numberOfLines={1}>{author}</Text> : null}
+        </View>
+        <Text style={[styles.tagListDuration, { color: slColors.gray }]}>{formatDurationCompact(duration)}</Text>
+      </Pressable>
+    );
+  }, [slColors.grayLine, slColors.black, slColors.gray, handleBookPress, navigation]);
+
+  const bookKeyExtractor = useCallback((item: LibraryItem) => item.id, []);
+
+  // SeriesDetail-style layout - used for grouped sections inside ScrollView
   const renderTagBookList = (books: LibraryItem[], paginate = false) => {
     const visibleBooks = paginate ? books.slice(0, displayLimit) : books;
     const hasMore = paginate && books.length > displayLimit;
 
     return (
       <View>
-        {visibleBooks.map((book) => {
-          const md = getMetadata(book) as any;
-          const title = md?.title || 'Untitled';
-          const author = md?.authorName || md?.authors?.[0]?.name || '';
-          const duration = getBookDuration(book);
-          const coverUrl = apiClient.getItemCoverUrl(book.id, { width: 80, height: 80 });
-          return (
-            <Pressable
-              key={book.id}
-              style={[styles.tagListItem, { borderBottomColor: slColors.grayLine }]}
-              onPress={() => handleBookPress(book.id)}
-              onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
-              delayLongPress={400}
-            >
-              <View style={styles.tagListCoverWrap}>
-                <Image source={coverUrl} style={styles.tagListCover} contentFit="cover" />
-                <CoverStars bookId={book.id} starSize={scale(12)} />
-                <CompleteBadgeOverlay bookId={book.id} size="small" />
-              </View>
-              <View style={styles.tagListInfo}>
-                <Text style={[styles.tagListTitle, { color: slColors.black }]} numberOfLines={1}>{title}</Text>
-                {author ? <Text style={[styles.tagListAuthor, { color: slColors.gray }]} numberOfLines={1}>{author}</Text> : null}
-              </View>
-              <Text style={[styles.tagListDuration, { color: slColors.gray }]}>{formatDurationCompact(duration)}</Text>
-            </Pressable>
-          );
-        })}
+        {visibleBooks.map((book) => (
+          <React.Fragment key={book.id}>
+            {renderTagBookItem({ item: book })}
+          </React.Fragment>
+        ))}
         {hasMore && (
           <Pressable
             style={[styles.showMoreBtn, { borderColor: slColors.grayLine }]}
             onPress={() => setDisplayLimit(prev => prev + 50)}
+            accessibilityRole="button"
+            accessibilityLabel={`Show more, ${books.length - displayLimit} remaining`}
           >
             <Text style={[styles.showMoreText, { color: slColors.black }]}>
               Show More ({books.length - displayLimit} remaining)
@@ -506,6 +573,27 @@ export function FilteredBooksScreen() {
   };
 
     const renderShelfOrList = (books: LibraryItem[], paginate = false) => {
+      if (viewMode === 'grid') {
+        const visibleBooks = paginate ? books.slice(0, displayLimit) : books;
+        const hasMore = paginate && books.length > displayLimit;
+        return (
+          <View>
+            <BookGrid books={visibleBooks} onBookPress={(book) => handleBookPress(book.id)} onBookLongPress={(book) => showMenu(book)} />
+            {hasMore && (
+              <Pressable
+                style={[styles.showMoreBtn, { borderColor: slColors.grayLine }]}
+                onPress={() => setDisplayLimit(prev => prev + 50)}
+                accessibilityRole="button"
+                accessibilityLabel={`Show more, ${books.length - displayLimit} remaining`}
+              >
+                <Text style={[styles.showMoreText, { color: slColors.black }]}>
+                  Show More ({books.length - displayLimit} remaining)
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        );
+      }
       if (viewMode !== 'shelf') return renderTagBookList(books, paginate);
 
       const visibleBooks = paginate ? books.slice(0, displayLimit) : books;
@@ -523,6 +611,8 @@ export function FilteredBooksScreen() {
             <Pressable
               style={[styles.showMoreBtn, { borderColor: slColors.grayLine }]}
               onPress={() => setDisplayLimit(prev => prev + 50)}
+              accessibilityRole="button"
+              accessibilityLabel={`Show more, ${books.length - displayLimit} remaining`}
             >
               <Text style={[styles.showMoreText, { color: slColors.black }]}>
                 Show More ({books.length - displayLimit} remaining)
@@ -533,67 +623,181 @@ export function FilteredBooksScreen() {
       );
     };
 
+    // Determine if we should use FlatList (flat book list with no grouping)
+    const isFlatBookList = activeFilterTab === 'all' && viewMode === 'list';
+
+    // Shared header content
+    const headerContent = (
+      <>
+        <TopNav
+          variant="dark"
+          showLogo={true}
+          onLogoPress={handleLogoPress}
+          style={{ backgroundColor: 'transparent' }}
+          pills={[
+            {
+              key: 'sort',
+              icon: <SortArrow color={showSortDropdown ? secretLibraryColors.black : secretLibraryColors.white} direction={detailSortDirection} />,
+              label: currentSortLabel,
+              onPress: () => setShowSortDropdown(true),
+              active: showSortDropdown,
+            },
+          ]}
+          circleButtons={[
+            {
+              key: 'back',
+              icon: <TopNavBackIcon color={secretLibraryColors.white} size={16} />,
+              onPress: handleBack,
+            },
+          ]}
+        />
+        {/* Title */}
+        <View style={styles.tagTitleHeader}>
+          {filterType === 'similar' && (
+            <Text style={[styles.tagHeaderSubtitle, { color: slColors.gray }]}>Because you listened to</Text>
+          )}
+          <Text style={[styles.tagHeaderName, { color: slColors.black }]}>{displayTitle}</Text>
+          <Text style={[styles.tagHeaderStats, { color: slColors.gray }]}>
+            {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'} · {formatDurationCompact(tagTotalDuration)}
+          </Text>
+        </View>
+
+        {/* Tabs + View Toggle */}
+        <View style={styles.tagTabsRow}>
+          <View style={styles.tagTabs}>
+            {(['all', 'author', 'narrator', 'genre'] as const).map((tab) => (
+              <Pressable
+                key={tab}
+                style={[
+                  styles.tagTab,
+                  { borderColor: slColors.grayLine },
+                  activeFilterTab === tab && { backgroundColor: slColors.black, borderColor: slColors.black },
+                ]}
+                onPress={() => { setActiveFilterTab(tab); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                accessibilityRole="tab"
+                accessibilityLabel={tab === 'all' ? 'All' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                accessibilityState={{ selected: activeFilterTab === tab }}
+              >
+                <Text style={[
+                  styles.tagTabText,
+                  { color: slColors.gray },
+                  activeFilterTab === tab && { color: slColors.white },
+                ]}>
+                  {tab === 'all' ? 'All' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <ViewModePicker
+            mode={viewMode}
+            onModeChange={setViewMode}
+            iconColor={slColors.black}
+            activeIconColor={slColors.white}
+            inactiveIconColor={slColors.gray}
+            borderColor={slColors.grayLine}
+            indicatorColor={slColors.black}
+            capsuleBg={slColors.grayLight}
+          />
+        </View>
+      </>
+    );
+
+    // Shared footer content
+    const footerContent = filteredBooks.length > 0 ? (
+      <View style={[styles.tagFooter, { borderTopColor: slColors.grayLine }]}>
+        <Text style={[styles.tagFooterText, { color: slColors.gray }]}>
+          {filteredBooks.length} {filteredBooks.length === 1 ? 'title' : 'titles'} · {Math.round(tagTotalDuration / 3600)} hours total
+        </Text>
+      </View>
+    ) : null;
+
+    // Sort dropdown modal
+    const sortDropdown = (
+      <Modal visible={showSortDropdown} transparent animationType="fade" onRequestClose={() => setShowSortDropdown(false)}>
+        <Pressable style={styles.dropdownOverlay} onPress={() => setShowSortDropdown(false)}>
+          <View style={[styles.dropdownMenu, { backgroundColor: slColors.white }]}>
+            {DETAIL_SORT_OPTIONS.map((option) => {
+              const isActive = detailSortMode === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  style={styles.dropdownItem}
+                  onPress={() => handleSortSelect(option.key)}
+                >
+                  <Text style={[styles.dropdownText, { color: slColors.black }, isActive && { fontWeight: '700' }]}>
+                    {option.label}
+                  </Text>
+                  {isActive && (
+                    <Text style={{ fontSize: 14 }}>{detailSortDirection === 'asc' ? '\u2191' : '\u2193'}</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
+    );
+
+    // Use FlatList for flat "All + Book" view
+    if (isFlatBookList) {
+      const visibleBooks = filteredBooks.slice(0, displayLimit);
+      const hasMore = filteredBooks.length > displayLimit;
+
+      const flatListFooter = (
+        <>
+          {hasMore && (
+            <Pressable
+              style={[styles.showMoreBtn, { borderColor: slColors.grayLine }]}
+              onPress={() => setDisplayLimit(prev => prev + 50)}
+              accessibilityRole="button"
+              accessibilityLabel={`Show more, ${filteredBooks.length - displayLimit} remaining`}
+            >
+              <Text style={[styles.showMoreText, { color: slColors.black }]}>
+                Show More ({filteredBooks.length - displayLimit} remaining)
+              </Text>
+            </Pressable>
+          )}
+          {footerContent}
+        </>
+      );
+
+      return (
+        <View style={[styles.container, { backgroundColor: slColors.white }]}>
+          <StatusBar barStyle="light-content" backgroundColor={slColors.white} />
+          {sortDropdown}
+          <FlatList
+            data={visibleBooks}
+            keyExtractor={bookKeyExtractor}
+            renderItem={renderTagBookItem}
+            ListHeaderComponent={headerContent}
+            ListFooterComponent={flatListFooter}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={[styles.emptyTitle, { color: slColors.gray }]}>No books found</Text>
+              </View>
+            }
+            style={{ flex: 1, backgroundColor: slColors.white }}
+            contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+          />
+        </View>
+      );
+    }
+
     return (
-      <View style={[styles.container, { backgroundColor: secretLibraryColors.black }]}>
-        <StatusBar barStyle="light-content" backgroundColor={secretLibraryColors.black} />
+      <View style={[styles.container, { backgroundColor: slColors.white }]}>
+        <StatusBar barStyle="light-content" backgroundColor={slColors.white} />
+        {sortDropdown}
 
         <ScrollView
-          style={{ flex: 1, backgroundColor: secretLibraryColors.black }}
+          style={{ flex: 1, backgroundColor: slColors.white }}
           contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
           showsVerticalScrollIndicator={false}
         >
-          <TopNav
-            variant="dark"
-            showLogo={true}
-            onLogoPress={handleLogoPress}
-            circleButtons={[
-              {
-                key: 'back',
-                icon: <TopNavBackIcon color={secretLibraryColors.white} size={16} />,
-                onPress: handleBack,
-              },
-            ]}
-          />
-          {/* Title */}
-          <View style={styles.tagTitleHeader}>
-            {filterType === 'similar' && (
-              <Text style={[styles.tagHeaderSubtitle, { color: slColors.gray }]}>Because you listened to</Text>
-            )}
-            <Text style={[styles.tagHeaderName, { color: slColors.black }]}>{displayTitle}</Text>
-            <Text style={[styles.tagHeaderStats, { color: slColors.gray }]}>
-              {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'} · {formatDurationCompact(tagTotalDuration)}
-            </Text>
-          </View>
-
-          {/* Tabs + View Toggle */}
-          <View style={styles.tagTabsRow}>
-            <View style={styles.tagTabs}>
-              {(['all', 'author', 'narrator', 'genre'] as const).map((tab) => (
-                <Pressable
-                  key={tab}
-                  style={[
-                    styles.tagTab,
-                    { borderColor: slColors.grayLine },
-                    activeFilterTab === tab && { backgroundColor: slColors.black, borderColor: slColors.black },
-                  ]}
-                  onPress={() => { setActiveFilterTab(tab); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                >
-                  <Text style={[
-                    styles.tagTabText,
-                    { color: slColors.gray },
-                    activeFilterTab === tab && { color: slColors.white },
-                  ]}>
-                    {tab === 'all' ? 'All' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable onPress={() => setViewMode(v => v === 'book' ? 'shelf' : 'book')}>
-              <Text style={[styles.tagToggleText, { color: slColors.black }]}>
-                {viewMode === 'book' ? 'Book' : 'Shelf'}
-              </Text>
-            </Pressable>
-          </View>
+          {headerContent}
 
           {/* Content */}
           {activeFilterTab === 'all' && renderShelfOrList(filteredBooks, true)}
@@ -640,14 +844,7 @@ export function FilteredBooksScreen() {
             </View>
           )}
 
-          {/* Footer */}
-          {filteredBooks.length > 0 && (
-            <View style={[styles.tagFooter, { borderTopColor: slColors.grayLine }]}>
-              <Text style={[styles.tagFooterText, { color: slColors.gray }]}>
-                {filteredBooks.length} {filteredBooks.length === 1 ? 'title' : 'titles'} · {Math.round(tagTotalDuration / 3600)} hours total
-              </Text>
-            </View>
-          )}
+          {footerContent}
         </ScrollView>
       </View>
     );
@@ -678,7 +875,7 @@ const styles = StyleSheet.create({
   },
   // Tag filter: SeriesDetail-style layout
   tagTitleHeader: {
-    paddingTop: 16,
+    paddingTop: 20,
     paddingBottom: 20,
     paddingHorizontal: 24,
   },
@@ -725,13 +922,6 @@ const styles = StyleSheet.create({
     fontSize: scale(10),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  tagToggleText: {
-    fontFamily: secretLibraryFonts.jetbrainsMono.regular,
-    fontSize: scale(9),
-    textTransform: 'uppercase',
-    letterSpacing: 0.45,
-    textDecorationLine: 'underline',
   },
   tagListItem: {
     flexDirection: 'row',
@@ -789,5 +979,27 @@ const styles = StyleSheet.create({
     fontSize: scale(9),
     textTransform: 'uppercase',
     letterSpacing: 0.9,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownMenu: {
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 200,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  dropdownText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: scale(12),
   },
 });

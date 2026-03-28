@@ -4,7 +4,7 @@
  * Centralized event type definitions for the app.
  *
  * Naming convention: 'domain:action'
- * - domain: book, progress, download, auth, network, app
+ * - domain: book, progress, download, network, app, websocket
  * - action: past tense verb (started, finished, failed, etc.)
  */
 
@@ -17,16 +17,6 @@ export type EventMap = {
     resumePosition: number;
   };
 
-  'book:paused': {
-    bookId: string;
-    position: number;
-  };
-
-  'book:resumed': {
-    bookId: string;
-    position: number;
-  };
-
   'book:finished': {
     bookId: string;
     seriesId?: string;
@@ -34,20 +24,7 @@ export type EventMap = {
     nextBookId?: string;
   };
 
-  'book:stopped': {
-    bookId: string;
-    position: number;
-    reason: 'user' | 'error' | 'sleep_timer';
-  };
-
   // === PROGRESS EVENTS ===
-  'progress:updated': {
-    bookId: string;
-    position: number;
-    duration: number;
-    progress: number; // 0.0 - 1.0
-  };
-
   'progress:synced': {
     bookId: string;
     position: number;
@@ -61,41 +38,7 @@ export type EventMap = {
     retryCount: number;
   };
 
-  'progress:conflict': {
-    bookId: string;
-    localPosition: number;
-    serverPosition: number;
-    winner: 'local' | 'server';
-  };
-
   // === DOWNLOAD EVENTS ===
-  'download:queued': {
-    bookId: string;
-    title: string;
-    estimatedSize?: number;
-  };
-
-  'download:started': {
-    bookId: string;
-    totalFiles: number;
-  };
-
-  'download:progress': {
-    bookId: string;
-    progress: number; // 0.0 - 1.0
-    currentFile: number;
-    totalFiles: number;
-    bytesDownloaded: number;
-    totalBytes: number;
-  };
-
-  'download:file_complete': {
-    bookId: string;
-    fileIndex: number;
-    totalFiles: number;
-    filePath: string;
-  };
-
   'download:complete': {
     bookId: string;
     totalSize: number;
@@ -108,53 +51,12 @@ export type EventMap = {
     fileIndex?: number;
   };
 
-  'download:paused': {
-    bookId: string;
-    progress: number;
-  };
-
-  'download:resumed': {
-    bookId: string;
-  };
-
-  'download:cancelled': {
-    bookId: string;
-  };
-
-  'download:stuck': {
-    bookId: string;
-    stuckDuration: number;
-  };
-
-  // === AUTH EVENTS ===
-  'auth:token_refreshed': {
-    expiresAt?: number;
-  };
-
-  'auth:token_expired': {
-    endpoint?: string;
-    sessionDuration?: number;
-  };
-
-  'auth:logout': {
-    reason: 'user' | 'token_expired' | 'server_error';
-  };
-
   // === NETWORK EVENTS ===
   'network:online': {
     connectionType: string;
   };
 
   'network:offline': Record<string, never>;
-
-  // === APP LIFECYCLE ===
-  'app:foreground': Record<string, never>;
-
-  'app:background': Record<string, never>;
-
-  'app:cold_start': {
-    loadTimeMs: number;
-  };
 
   // === WEBSOCKET EVENTS ===
   'websocket:connected': {

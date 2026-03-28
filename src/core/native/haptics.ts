@@ -135,9 +135,9 @@ class HapticService {
 
     try {
       const notificationType = this.getNotificationType(type);
-      ExpoHaptics.notificationAsync(notificationType).catch(() => {});
-    } catch {
-      // Silently fail on unsupported devices
+      ExpoHaptics.notificationAsync(notificationType).catch((e) => logger.debug('[Haptics] notification error:', e));
+    } catch (e) {
+      logger.debug('[Haptics] notification unavailable on device:', e);
     }
   }
 

@@ -56,7 +56,9 @@ export function SeriesHeartButton({
   showCircle = false,
 }: SeriesHeartButtonProps) {
   const colors = useSecretLibraryColors();
-  const { isSeriesFavorite, addSeriesToFavorites, removeSeriesFromFavorites } = useMyLibraryStore();
+  const isSeriesFavorite = useMyLibraryStore((s) => s.isSeriesFavorite);
+  const addSeriesToFavorites = useMyLibraryStore((s) => s.addSeriesToFavorites);
+  const removeSeriesFromFavorites = useMyLibraryStore((s) => s.removeSeriesFromFavorites);
   const isFavorite = isSeriesFavorite(seriesName);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -121,6 +123,9 @@ export function SeriesHeartButton({
       activeOpacity={0.7}
       hitSlop={{ top: hitSlop, bottom: hitSlop, left: hitSlop, right: hitSlop }}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={isFavorite ? `Remove ${seriesName} from favorites` : `Add ${seriesName} to favorites`}
+      accessibilityState={{ selected: isFavorite, disabled }}
     >
       {showCircle ? (
         <View style={[

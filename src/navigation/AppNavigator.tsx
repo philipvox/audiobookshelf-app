@@ -23,8 +23,6 @@ import { FilteredBooksScreen } from '@/features/library/screens/FilteredBooksScr
 import { AllBooksScreen } from '@/features/library/screens/AllBooksScreen';
 import { LibraryScreen } from '@/features/home';
 import { MyLibraryScreen } from '@/features/library';
-import { CassetteTestScreen } from '@/features/home/screens/CassetteTestScreen';
-import { SpineTemplatePreviewScreen } from '@/features/home/screens/SpineTemplatePreviewScreen';
 import { SpinePlaygroundScreen } from '@/features/home/screens/SpinePlaygroundScreen';
 import { SearchScreen } from '@/features/search';
 import { SecretLibraryBrowseScreen, DurationFilterScreen, CollectionsListScreen } from '@/features/browse';
@@ -33,25 +31,25 @@ import { SecretLibraryAuthorDetailScreen } from '@/features/author';
 import { SecretLibraryNarratorDetailScreen } from '@/features/narrator';
 import { CollectionDetailScreen } from '@/features/collections';
 import { SecretLibraryBookDetailScreen } from '@/features/book-detail';
-import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, DataStorageSettingsScreen, JoystickSeekSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, HiddenItemsScreen, KidModeSettingsScreen, AppearanceSettingsScreen, DisplaySettingsScreen, LibrarySyncSettingsScreen, PlaylistSettingsScreen, DeveloperSettingsScreen, AboutScreen, BugReportScreen } from '@/features/profile';
-import { PreferencesScreen, PreferencesOnboardingScreen } from '@/features/recommendations';
+import { ProfileScreen, PlaybackSettingsScreen, StorageSettingsScreen, DataStorageSettingsScreen, HapticSettingsScreen, ChapterCleaningSettingsScreen, DisplaySettingsScreen, PlaylistSettingsScreen, DeveloperSettingsScreen, AboutScreen, BugReportScreen } from '@/features/profile';
 import { SecretLibraryPlayerScreen, BookCompletionSheet } from '@/features/player';
-import { MarkBooksScreen, ReadingHistoryScreen } from '@/features/reading-history-wizard';
-import { QueueScreen, useQueueStore } from '@/features/queue';
+import { useQueueStore } from '@/shared/stores/queueFacade';
 import { DownloadsScreen } from '@/features/downloads/screens/DownloadsScreen';
 import { StatsScreen } from '@/features/stats';
-import { WishlistScreen, ManualAddScreen } from '@/features/wishlist';
 import { DebugStressTestScreen } from '@/features/debug';
-import { CachePromptScreen } from '@/features/onboarding';
 import { downloadManager } from '@/core/services/downloadManager';
 import { networkMonitor } from '@/core/services/networkMonitor';
-import { imageCacheService } from '@/core/services/imageCacheService';
 import { navigationMonitor } from '@/utils/runtimeMonitor';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
-import { NetworkStatusBar, ToastContainer, LocalStorageNoticeModal, GlobalCacheProgressBar, BookContextMenuProvider } from '@/shared/components';
+import { NetworkStatusBar, ToastContainer, LocalStorageNoticeModal, BookContextMenuProvider, CoachMarksOverlay } from '@/shared/components';
+import { FpsOverlay } from '@/shared/components/FpsOverlay';
 import { ErrorBoundary } from '@/core/errors/ErrorBoundary';
 import { logger } from '@/shared/utils/logger';
+import { withTimeout } from '@/shared/utils/timeout';
 import { useLocalStorageNoticeStore } from '@/core/stores/localStorageNoticeStore';
+import { useCoachMarksStore } from '@/shared/stores/coachMarksStore';
+
+const INIT_TIMEOUT_MS = 10_000;
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -140,6 +138,190 @@ function NarratorDetailScreenWithBoundary() {
   );
 }
 
+function GenreDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="GenreDetailScreen" level="screen">
+      <GenreDetailScreen />
+    </ErrorBoundary>
+  );
+}
+
+function CollectionDetailScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="CollectionDetailScreen" level="screen">
+      <CollectionDetailScreen />
+    </ErrorBoundary>
+  );
+}
+
+function DownloadsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="DownloadsScreen" level="screen">
+      <DownloadsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function StatsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="StatsScreen" level="screen">
+      <StatsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function FilteredBooksScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="FilteredBooksScreen" level="screen">
+      <FilteredBooksScreen />
+    </ErrorBoundary>
+  );
+}
+
+function SeriesListScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="SeriesListScreen" level="screen">
+      <SeriesListScreen />
+    </ErrorBoundary>
+  );
+}
+
+function AuthorsListScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="AuthorsListScreen" level="screen">
+      <AuthorsListScreen />
+    </ErrorBoundary>
+  );
+}
+
+function NarratorsListScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="NarratorsListScreen" level="screen">
+      <NarratorsListScreen />
+    </ErrorBoundary>
+  );
+}
+
+function GenresListScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="GenresListScreen" level="screen">
+      <GenresListScreen />
+    </ErrorBoundary>
+  );
+}
+
+function AllBooksScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="AllBooksScreen" level="screen">
+      <AllBooksScreen />
+    </ErrorBoundary>
+  );
+}
+
+function DurationFilterScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="DurationFilterScreen" level="screen">
+      <DurationFilterScreen />
+    </ErrorBoundary>
+  );
+}
+
+function BrowsePageScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="BrowsePageScreen" level="screen">
+      <SecretLibraryBrowseScreen />
+    </ErrorBoundary>
+  );
+}
+
+function CollectionsListScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="CollectionsListScreen" level="screen">
+      <CollectionsListScreen />
+    </ErrorBoundary>
+  );
+}
+
+function PlaybackSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="PlaybackSettingsScreen" level="screen">
+      <PlaybackSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function StorageSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="StorageSettingsScreen" level="screen">
+      <StorageSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function DataStorageSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="DataStorageSettingsScreen" level="screen">
+      <DataStorageSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function HapticSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="HapticSettingsScreen" level="screen">
+      <HapticSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function ChapterCleaningSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="ChapterCleaningSettingsScreen" level="screen">
+      <ChapterCleaningSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function DisplaySettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="DisplaySettingsScreen" level="screen">
+      <DisplaySettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function PlaylistSettingsScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="PlaylistSettingsScreen" level="screen">
+      <PlaylistSettingsScreen />
+    </ErrorBoundary>
+  );
+}
+
+function AboutScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="AboutScreen" level="screen">
+      <AboutScreen />
+    </ErrorBoundary>
+  );
+}
+
+function BugReportScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="BugReportScreen" level="screen">
+      <BugReportScreen />
+    </ErrorBoundary>
+  );
+}
+
+function SpinePlaygroundScreenWithBoundary() {
+  return (
+    <ErrorBoundary context="SpinePlaygroundScreen" level="screen">
+      <SpinePlaygroundScreen />
+    </ErrorBoundary>
+  );
+}
+
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -147,6 +329,7 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: { display: 'none' },
+        freezeOnBlur: true,
       }}
       initialRouteName="HomeTab"
     >
@@ -171,9 +354,11 @@ function AuthenticatedApp() {
   const [showLocalStorageNotice, setShowLocalStorageNotice] = React.useState(false);
   const hasCheckedNotice = useRef(false);
 
-  // Image cache prompt state
-  const [showCachePrompt, setShowCachePrompt] = React.useState(false);
-  const checkedCachePromptForLibrary = useRef<string | null>(null);
+  const libraryItems = useLibraryCache((state) => state.items);
+
+  // Coach marks (first-run walkthrough)
+  const hasSeenCoachMarks = useCoachMarksStore((s) => s.hasSeenCoachMarks);
+  const [showCoachMarks, setShowCoachMarks] = React.useState(false);
 
   // Check if we should show the notice after initial load
   useEffect(() => {
@@ -181,8 +366,7 @@ function AuthenticatedApp() {
       hasCheckedNotice.current = true;
       // Small delay to let the main UI render first
       const timer = setTimeout(() => {
-        // Don't show if cache prompt is already visible
-        if (shouldShowNotice() && !showCachePrompt) {
+        if (shouldShowNotice()) {
           setShowLocalStorageNotice(true);
         }
       }, 1500);
@@ -190,61 +374,13 @@ function AuthenticatedApp() {
     }
   }, [library?.id, shouldShowNotice]);
 
-  // Check if we should show the image cache prompt after first login
+  // Show coach marks (first-run only)
   useEffect(() => {
-    // Only check once per library (resets when user signs out and back in)
-    if (library?.id && checkedCachePromptForLibrary.current !== library.id) {
-      checkedCachePromptForLibrary.current = library.id;
-
-      let pollTimerId: NodeJS.Timeout | null = null;
-      let cancelled = false;
-
-      // Check if user has seen the cache prompt before
-      const checkCachePrompt = async () => {
-        try {
-          const hasSeen = await imageCacheService.hasSeenCachePrompt();
-          logger.debug('[AppNavigator] Cache prompt check - hasSeen:', hasSeen);
-
-          if (!hasSeen && !cancelled) {
-            // Poll for library items to be loaded (max 10 seconds)
-            let attempts = 0;
-            const maxAttempts = 20;
-
-            const checkForItems = () => {
-              if (cancelled) return;
-
-              // Use useLibraryCache - the actual zustand store that gets populated
-              const items = useLibraryCache.getState().items;
-              logger.debug(`[AppNavigator] Cache prompt - checking for items: ${items.length} (attempt ${attempts + 1})`);
-
-              if (items.length > 0) {
-                logger.debug('[AppNavigator] Cache prompt - showing prompt');
-                setShowCachePrompt(true);
-              } else if (attempts < maxAttempts) {
-                attempts++;
-                pollTimerId = setTimeout(checkForItems, 500);
-              } else {
-                // After 10 seconds, give up - library might be empty
-                logger.debug('[AppNavigator] Cache prompt - no items after timeout, skipping');
-              }
-            };
-
-            // Start checking after initial delay
-            pollTimerId = setTimeout(checkForItems, 2000);
-          }
-        } catch (err) {
-          logger.warn('[AppNavigator] Cache prompt check failed:', err);
-        }
-      };
-
-      checkCachePrompt();
-
-      return () => {
-        cancelled = true;
-        if (pollTimerId) clearTimeout(pollTimerId);
-      };
+    if (!hasSeenCoachMarks && libraryItems.length > 0) {
+      const timer = setTimeout(() => setShowCoachMarks(true), 1500);
+      return () => clearTimeout(timer);
     }
-  }, [library?.id]);
+  }, [hasSeenCoachMarks, libraryItems.length]);
 
   // Navigation state tracking for runtime monitoring
   const onNavigationStateChange = () => {
@@ -265,21 +401,32 @@ function AuthenticatedApp() {
     const task = InteractionManager.runAfterInteractions(() => {
       // Lazy import to avoid circular dependency
       const { audioService } = require('@/features/player/services/audioService');
-      audioService?.ensureSetup?.().catch((err: any) => {
-        logger.warn('[AppNavigator] Audio service pre-init failed:', err);
-      });
+      const setupPromise = audioService?.ensureSetup?.();
+      if (setupPromise) {
+        withTimeout(setupPromise, INIT_TIMEOUT_MS, 'Audio service setup').catch((err: any) => {
+          logger.warn('[AppNavigator] Audio service pre-init failed:', err);
+        });
+      }
 
       // Load player settings (control mode, progress mode, playback rate)
       const { usePlayerStore } = require('@/features/player/stores/playerStore');
-      usePlayerStore.getState().loadPlayerSettings?.().catch((err: any) => {
-        logger.warn('[AppNavigator] Player settings load failed:', err);
-      });
+      const settingsPromise = usePlayerStore.getState().loadPlayerSettings?.();
+      if (settingsPromise) {
+        withTimeout(settingsPromise, INIT_TIMEOUT_MS, 'Player settings load').catch((err: any) => {
+          logger.warn('[AppNavigator] Player settings load failed:', err);
+        });
+      }
 
       // Initialize Chromecast — sets up event listeners, starts discovery,
       // and detects existing sessions (e.g., app restarted while casting)
       try {
         const { useCastStore } = require('@/features/chromecast/stores/castStore');
-        useCastStore.getState().initialize();
+        const castPromise = useCastStore.getState().initialize();
+        if (castPromise && typeof castPromise.then === 'function') {
+          withTimeout(castPromise, INIT_TIMEOUT_MS, 'Chromecast init').catch((err: any) => {
+            logger.warn('[AppNavigator] Cast init failed:', err);
+          });
+        }
       } catch (err: any) {
         logger.warn('[AppNavigator] Cast init failed:', err);
       }
@@ -335,8 +482,6 @@ function AuthenticatedApp() {
   // Render immediately - LibraryScreen handles empty state gracefully
   return (
     <View style={{ flex: 1 }}>
-      {/* Global cache progress bar at top - pushes content down when visible */}
-      <GlobalCacheProgressBar absolute={false} />
       <NavigationContainer
         ref={navigationRef}
         onStateChange={onNavigationStateChange}
@@ -346,95 +491,65 @@ function AuthenticatedApp() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Search" component={SearchScreenWithBoundary} />
-        <Stack.Screen name="SeriesList" component={SeriesListScreen} />
-        <Stack.Screen name="AuthorsList" component={AuthorsListScreen} />
-        <Stack.Screen name="NarratorsList" component={NarratorsListScreen} />
-        <Stack.Screen name="GenresList" component={GenresListScreen} />
-        <Stack.Screen name="GenreDetail" component={GenreDetailScreen} />
-        <Stack.Screen name="FilteredBooks" component={FilteredBooksScreen} />
-        <Stack.Screen name="AllBooks" component={AllBooksScreen} />
-        <Stack.Screen name="DurationFilter" component={DurationFilterScreen} />
-        <Stack.Screen name="BrowsePage" component={SecretLibraryBrowseScreen} />
+        <Stack.Screen name="SeriesList" component={SeriesListScreenWithBoundary} />
+        <Stack.Screen name="AuthorsList" component={AuthorsListScreenWithBoundary} />
+        <Stack.Screen name="NarratorsList" component={NarratorsListScreenWithBoundary} />
+        <Stack.Screen name="GenresList" component={GenresListScreenWithBoundary} />
+        <Stack.Screen name="GenreDetail" component={GenreDetailScreenWithBoundary} />
+        <Stack.Screen name="FilteredBooks" component={FilteredBooksScreenWithBoundary} />
+        <Stack.Screen name="AllBooks" component={AllBooksScreenWithBoundary} />
+        <Stack.Screen name="DurationFilter" component={DurationFilterScreenWithBoundary} />
+        <Stack.Screen name="BrowsePage" component={BrowsePageScreenWithBoundary} />
         <Stack.Screen name="SeriesDetail" component={SeriesDetailScreenWithBoundary} />
         <Stack.Screen name="AuthorDetail" component={AuthorDetailScreenWithBoundary} />
         <Stack.Screen name="NarratorDetail" component={NarratorDetailScreenWithBoundary} />
-        <Stack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
-        <Stack.Screen name="CollectionsList" component={CollectionsListScreen} />
+        <Stack.Screen name="CollectionDetail" component={CollectionDetailScreenWithBoundary} />
+        <Stack.Screen name="CollectionsList" component={CollectionsListScreenWithBoundary} />
         <Stack.Screen
           name="BookDetail"
           component={BookDetailScreenWithBoundary}
           options={({ route }) => {
-            const dir = (route.params as any)?.animationDirection;
+            const params = route.params as { id: string; animationDirection?: string } | undefined;
+            const dir = params?.animationDirection;
             return {
               animation: dir === 'none' ? 'none' : dir === 'fade' ? 'fade' : 'default',
             };
           }}
         />
-        <Stack.Screen name="Preferences" component={PreferencesScreen} />
-        <Stack.Screen name="QueueScreen" component={QueueScreen} />
-        <Stack.Screen name="Downloads" component={DownloadsScreen} />
-        <Stack.Screen name="Stats" component={StatsScreen} />
-        <Stack.Screen name="Wishlist" component={WishlistScreen} />
-        <Stack.Screen name="ManualAdd" component={ManualAddScreen} />
-        <Stack.Screen name="PlaybackSettings" component={PlaybackSettingsScreen} />
-        <Stack.Screen name="StorageSettings" component={StorageSettingsScreen} />
-        <Stack.Screen name="DataStorageSettings" component={DataStorageSettingsScreen} />
-        <Stack.Screen name="JoystickSeekSettings" component={JoystickSeekSettingsScreen} />
-        <Stack.Screen name="HapticSettings" component={HapticSettingsScreen} />
-        <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreen} />
-        <Stack.Screen name="HiddenItems" component={HiddenItemsScreen} />
-        <Stack.Screen name="KidModeSettings" component={KidModeSettingsScreen} />
-        <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
-        <Stack.Screen name="DisplaySettings" component={DisplaySettingsScreen} />
-        <Stack.Screen name="LibrarySyncSettings" component={LibrarySyncSettingsScreen} />
-        <Stack.Screen name="PlaylistSettings" component={PlaylistSettingsScreen} />
-        <Stack.Screen name="About" component={AboutScreen} />
-        <Stack.Screen name="BugReport" component={BugReportScreen} />
-        <Stack.Screen name="CassetteTest" component={CassetteTestScreen} />
-        <Stack.Screen name="SpineTemplatePreview" component={SpineTemplatePreviewScreen} />
-        <Stack.Screen name="SpinePlayground" component={SpinePlaygroundScreen} />
+        <Stack.Screen name="Downloads" component={DownloadsScreenWithBoundary} />
+        <Stack.Screen name="Stats" component={StatsScreenWithBoundary} />
+        <Stack.Screen name="PlaybackSettings" component={PlaybackSettingsScreenWithBoundary} />
+        <Stack.Screen name="StorageSettings" component={StorageSettingsScreenWithBoundary} />
+        <Stack.Screen name="DataStorageSettings" component={DataStorageSettingsScreenWithBoundary} />
+        <Stack.Screen name="HapticSettings" component={HapticSettingsScreenWithBoundary} />
+        <Stack.Screen name="ChapterCleaningSettings" component={ChapterCleaningSettingsScreenWithBoundary} />
+        <Stack.Screen name="DisplaySettings" component={DisplaySettingsScreenWithBoundary} />
+        <Stack.Screen name="PlaylistSettings" component={PlaylistSettingsScreenWithBoundary} />
+        <Stack.Screen name="About" component={AboutScreenWithBoundary} />
+        <Stack.Screen name="BugReport" component={BugReportScreenWithBoundary} />
+        <Stack.Screen name="SpinePlayground" component={SpinePlaygroundScreenWithBoundary} />
         {__DEV__ && (
           <>
             <Stack.Screen name="DeveloperSettings" component={DeveloperSettingsScreen} />
             <Stack.Screen name="DebugStressTest" component={DebugStressTestScreen} />
           </>
         )}
-        <Stack.Screen
-          name="PreferencesOnboarding"
-          component={PreferencesOnboardingScreen}
-          options={{ presentation: 'modal' }}
-        />
-<Stack.Screen
-          name="ReadingHistoryWizard"
-          component={MarkBooksScreen}
-          options={{ presentation: 'fullScreenModal' }}
-        />
-        <Stack.Screen
-          name="ReadingHistory"
-          component={ReadingHistoryScreen}
-          options={{ presentation: 'modal' }}
-        />
       </Stack.Navigator>
       {/* Wrap overlay components in stable View to prevent Android SafeAreaProvider crash */}
       {/* The View always renders; children can conditionally return null inside */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <SecretLibraryPlayerScreen />
         <GlobalMiniPlayer />
-        {/* <NavigationBar /> */}
         <NetworkStatusBar />
         <BookCompletionSheet />
         <ToastContainer />
+        {__DEV__ && <FpsOverlay />}
         <LocalStorageNoticeModal
           visible={showLocalStorageNotice}
           onDismiss={() => setShowLocalStorageNotice(false)}
         />
-        {showCachePrompt && (
-          <View style={StyleSheet.absoluteFill}>
-            <CachePromptScreen
-              onComplete={() => setShowCachePrompt(false)}
-              libraryItems={useLibraryCache.getState().items}
-            />
-          </View>
+        {showCoachMarks && (
+          <CoachMarksOverlay onComplete={() => setShowCoachMarks(false)} />
         )}
       </View>
     </BookContextMenuProvider>

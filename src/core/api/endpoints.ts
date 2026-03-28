@@ -11,8 +11,7 @@
 export const endpoints = {
   // Server Status
   server: {
-    status: '/api/status',       // Returns server version and features
-    healthCheck: '/api/healthcheck',  // Quick health check
+    status: '/api/status',
   },
 
   // Authentication
@@ -26,7 +25,6 @@ export const endpoints = {
     me: '/api/me',
     progress: (progressId: string) => `/api/me/progress/${progressId}`,
     itemsInProgress: '/api/me/items-in-progress',
-    listeningStats: '/api/me/listening-stats',
   },
 
   // Libraries
@@ -38,7 +36,6 @@ export const endpoints = {
     series: (libraryId: string) => `/api/libraries/${libraryId}/series`,
     authors: (libraryId: string) => `/api/libraries/${libraryId}/authors`,
     filterData: (libraryId: string) => `/api/libraries/${libraryId}/filterdata`,
-    recent: (libraryId: string) => `/api/libraries/${libraryId}/recent-episodes`,
   },
 
   // Items
@@ -46,15 +43,12 @@ export const endpoints = {
     get: (itemId: string) => `/api/items/${itemId}`,
     cover: (itemId: string) => `/api/items/${itemId}/cover`,
     spine: (itemId: string) => `/api/items/${itemId}/spine`,
-    download: (itemId: string) => `/api/items/${itemId}/download`,
-    play: (itemId: string) => `/api/items/${itemId}/play`,
-    playEpisode: (itemId: string, episodeId: string) =>
-      `/api/items/${itemId}/play/${episodeId}`,
   },
 
   // Spines (image cache)
   spines: {
     manifest: '/api/spines/manifest',
+    manifestV2: '/api/spines/manifest/v2',
   },
 
   // Playback
@@ -97,45 +91,9 @@ export const endpoints = {
     batchRemove: (playlistId: string) => `/api/playlists/${playlistId}/batch/remove`,
   },
 
-  // Podcasts
-  podcasts: {
-    feed: (itemId: string) => `/api/podcasts/${itemId}/feed`,
-    episode: (itemId: string, episodeId: string) => 
-      `/api/podcasts/${itemId}/episode/${episodeId}`,
-    searchEpisode: (itemId: string) => `/api/podcasts/${itemId}/search-episode`,
-    downloadEpisodes: (itemId: string) => `/api/podcasts/${itemId}/download-episodes`,
-    clearQueue: (itemId: string) => `/api/podcasts/${itemId}/clear-episode-download-queue`,
-  },
-
-  // Notifications
-  notifications: {
-    list: '/api/notifications',
-    get: (notificationId: string) => `/api/notifications/${notificationId}`,
-    create: '/api/notifications',
-    update: (notificationId: string) => `/api/notifications/${notificationId}`,
-    delete: (notificationId: string) => `/api/notifications/${notificationId}`,
-    test: '/api/notifications/test',
-  },
-
-  // RSS Feeds
-  rss: {
-    get: (itemId: string) => `/api/items/${itemId}/rssfeed`,
-    open: (itemId: string) => `/api/items/${itemId}/open-feed`,
-    close: (itemId: string) => `/api/items/${itemId}/close-feed`,
-  },
-
   // Search (global)
   search: {
-    covers: '/api/search/covers',
     books: '/api/search/books',
-    podcast: '/api/search/podcast',
-    author: '/api/search/author',
-  },
-
-  // Tools
-  tools: {
-    encode: (itemId: string) => `/api/tools/item/${itemId}/encode`,
-    scanLibrary: (libraryId: string) => `/api/libraries/${libraryId}/scan`,
   },
 } as const;
 

@@ -173,6 +173,20 @@ class CastService {
     if (!this.isAvailable) return false;
     return CastModule.isConnected();
   }
+
+  /**
+   * Returns detailed diagnostic info about the native Cast SDK state.
+   * Only available on Android (returns a basic object on iOS).
+   */
+  async diagnose(): Promise<Record<string, any>> {
+    if (!this.isAvailable) {
+      return { error: 'Native CastModule not available (null)', platform: require('react-native').Platform.OS };
+    }
+    if (typeof CastModule.diagnose !== 'function') {
+      return { error: 'diagnose() not implemented on this platform', available: true, platform: require('react-native').Platform.OS };
+    }
+    return CastModule.diagnose();
+  }
 }
 
 export const castService = new CastService();

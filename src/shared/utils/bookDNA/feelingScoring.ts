@@ -9,7 +9,7 @@
 
 import { parseBookDNA, BookDNA } from './parseBookDNA';
 import { LibraryItem } from '@/core/types';
-import type { FeelingChip } from '@/features/browse/stores/feelingChipStore';
+import type { FeelingChip } from '@/shared/types/feelingChip';
 
 // ============================================================================
 // CACHED ITEM DATA — avoids re-parsing BookDNA per chip per item

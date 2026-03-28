@@ -19,8 +19,38 @@
 
 import React from 'react';
 import { View, Platform } from 'react-native';
-import * as LucideIcons from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import {
+  AlertTriangle,
+  ArrowRight,
+  ArrowUpDown,
+  BarChart2,
+  Camera,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  CircleUser,
+  Clock,
+  Filter,
+  Flame,
+  Globe,
+  Headset,
+  Layers,
+  Library,
+  Mic,
+  Plus,
+  ScanBarcode,
+  Search,
+  Share,
+  SlidersHorizontal,
+  Sparkles,
+  Tag,
+  Timer,
+  User,
+  X,
+  XCircle,
+} from 'lucide-react-native';
 import { scale, useTheme } from '@/shared/theme';
 
 /** Standard icon size names */
@@ -36,9 +66,44 @@ const SIZE_MAP: Record<IconSize, number> = {
   xxl: scale(48),
 };
 
+/** Curated map of icons actually used in the app (avoids importing all 1000+ icons) */
+const ICON_MAP: Record<string, LucideIcon> = {
+  AlertTriangle,
+  ArrowRight,
+  ArrowUpDown,
+  BarChart2,
+  Camera,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  CircleUser,
+  Clock,
+  Filter,
+  Flame,
+  Globe,
+  Headset,
+  Layers,
+  Library,
+  Mic,
+  Plus,
+  ScanBarcode,
+  Search,
+  Share,
+  SlidersHorizontal,
+  Sparkles,
+  Tag,
+  Timer,
+  User,
+  X,
+  XCircle,
+  // Legacy lowercase aliases
+  'chevron-right': ChevronRight,
+};
+
 interface IconProps {
   /** Lucide icon name */
-  name: keyof typeof LucideIcons | string;
+  name: string;
   /** Size - named ('sm', 'md', 'lg', etc.) or numeric for custom sizes */
   size?: IconSize | number;
   color?: string;
@@ -65,11 +130,10 @@ export function Icon({
   strokeWidth = 2,
 }: IconProps) {
   const { colors } = useTheme();
-  // eslint-disable-next-line import/namespace
-  const IconComponent = LucideIcons[name as keyof typeof LucideIcons] as LucideIcon;
+  const IconComponent = ICON_MAP[name];
 
   if (!IconComponent) {
-    console.warn(`Icon "${name}" not found in Lucide icons`);
+    console.warn(`Icon "${name}" not found in ICON_MAP — add it to Icon.tsx`);
     // Return empty View on Android to prevent SafeAreaProvider crash
     return Platform.OS === 'android' ? <View /> : null;
   }
@@ -81,5 +145,5 @@ export function Icon({
   return <IconComponent size={resolvedSize} color={resolvedColor} strokeWidth={strokeWidth} />;
 }
 
-export { LucideIcons, SIZE_MAP as ICON_SIZES };
+export { SIZE_MAP as ICON_SIZES };
 export type { LucideIcon };

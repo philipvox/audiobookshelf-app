@@ -170,7 +170,7 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
       set({ playbackRate: bookSpeed });
 
       // Always set playback rate (including 1.0x) to ensure previous book's speed is reset
-      await audioService.setPlaybackRate(bookSpeed).catch((err) => {
+      await audioService.setPlaybackRate(bookSpeed).catch((err: unknown) => {
         log.warn('[SpeedStore] Failed to apply playback rate:', bookSpeed, err);
       });
 
@@ -191,14 +191,52 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
           AsyncStorage.getItem(SPEED_PRESETS_KEY),
         ]);
 
-        const bookSpeedMap = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
-        // Fix HIGH: Validate parsed rate is within reasonable bounds
+        let bookSpeedMap: Record<string, number> = {};
+        try {
+          const parsed = bookSpeedMapStr ? JSON.parse(bookSpeedMapStr) : {};
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            log.warn('Invalid bookSpeedMap format, resetting to empty');
+            bookSpeedMap = {};
+          } else {
+            // P0 fix: validate every value is a finite number within valid range
+            for (const [key, value] of Object.entries(parsed)) {
+              if (typeof value === 'number' && Number.isFinite(value) && value >= 0.25 && value <= 4.0) {
+                bookSpeedMap[key] = value;
+              } else {
+                log.warn(`Invalid speed for book ${key}: ${value}, skipping`);
+              }
+            }
+          }
+        } catch {
+          log.warn('Corrupt bookSpeedMap JSON, resetting to empty');
+          bookSpeedMap = {};
+        }
+        // Validate parsed rate is within reasonable bounds
         let globalDefaultRate = globalDefaultRateStr ? parseFloat(globalDefaultRateStr) : 1.0;
         if (!Number.isFinite(globalDefaultRate) || globalDefaultRate < 0.25 || globalDefaultRate > 4.0) {
           log.warn(`Invalid globalDefaultRate: ${globalDefaultRate}, resetting to 1.0`);
           globalDefaultRate = 1.0;
         }
-        const speedPresets = speedPresetsStr ? JSON.parse(speedPresetsStr) : [];
+        let speedPresets: number[] = [];
+        try {
+          const parsedPresets = speedPresetsStr ? JSON.parse(speedPresetsStr) : [];
+          if (!Array.isArray(parsedPresets)) {
+            log.warn('Invalid speedPresets format, resetting to empty');
+            speedPresets = [];
+          } else {
+            // P0 fix: validate every element is a finite number within valid range
+            speedPresets = parsedPresets.filter((v: unknown) => {
+              if (typeof v === 'number' && Number.isFinite(v) && v >= 0.25 && v <= 4.0) {
+                return true;
+              }
+              log.warn(`Invalid speed preset value: ${v}, skipping`);
+              return false;
+            });
+          }
+        } catch {
+          log.warn('Corrupt speedPresets JSON, resetting to empty');
+          speedPresets = [];
+        }
 
         // Restore playback rate from active rate if available
         let playbackRate = globalDefaultRate;
@@ -224,8 +262,9 @@ export const useSpeedStore = create<SpeedState & SpeedActions>()(
           speedPresets,
         });
       } catch (error) {
-        log.warn('Error loading speed settings:', error);
-        // Use defaults
+        log.warn('Error loading speed settings — falling back to defaults (playbackRate=1.0, globalDefault=1.0, empty bookSpeedMap). User per-book speeds will be lost until next successful load:', error);
+        // State retains initial defaults (set at store creation): playbackRate=1.0, bookSpeedMap={}, etc.
+        // No explicit reset needed since set() was never called in this error path.
       }
     },
 

@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, FlatList, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -379,9 +379,10 @@ export function BookshelfView({
   // Get spine cache for fast lookups
   const getSpineData = useSpineCacheStore((state) => state.getSpineData);
 
-  // Server spine settings - subscribe to lightweight version counter instead of the full
+  // Server + community spine settings - subscribe to lightweight version counter instead of the full
   // dimensions object to avoid re-rendering every spine when ANY book's dimensions change
   const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const useCommunitySpines = useSpineCacheStore((state) => state.useCommunitySpines);
   const serverDimsVersion = useSpineCacheStore((state) => state.serverSpineDimensionsVersion);
   const isHydrated = useSpineCacheStore((state) => state.isHydrated);
   const colorVersion = useSpineCacheStore((state) => state.colorVersion);
@@ -411,7 +412,7 @@ export function BookshelfView({
 
       // Server spines: Scale to fit within max bounds while preserving exact aspect ratio
       // Unlike procedural spines, server spines have actual artwork that must not be distorted
-      if (useServerSpines && cachedServerDims) {
+      if ((useServerSpines || useCommunitySpines) && cachedServerDims) {
         const { width: serverWidth, height: serverHeight } = cachedServerDims;
         bookHash = cached?.hash ?? hashString(book.id);
 
@@ -483,7 +484,7 @@ export function BookshelfView({
 
       return { ...dims, leanAngle, shouldLean };
     });
-  }, [books, getSpineData, shelfScale, fillScale, useServerSpines, serverDimsVersion, isHydrated]);
+  }, [books, getSpineData, shelfScale, fillScale, useServerSpines, useCommunitySpines, serverDimsVersion, isHydrated]);
 
   // Enrich books with cached colors from spine cache
   const enrichedBooks = useMemo(() => {
@@ -528,7 +529,7 @@ export function BookshelfView({
     // Read via getState() - version counter in deps triggers recalc
     const allDims = useSpineCacheStore.getState().serverSpineDimensions;
     const serverDims = allDims[book.id];
-    if (useServerSpines && serverDims) {
+    if ((useServerSpines || useCommunitySpines) && serverDims) {
       const maxW = SERVER_SPINE_BOX.MAX_WIDTH * shelfScale * durationScale;
       const maxH = SERVER_SPINE_BOX.MAX_HEIGHT * shelfScale * durationScale;
       return fitToBoundingBox(serverDims.width, serverDims.height, maxW, maxH);
@@ -544,7 +545,7 @@ export function BookshelfView({
     }
     // Default fallback
     return { width: 40, height: 300, scaleFactor: 1 };
-  }, [serverDimsVersion, useServerSpines, shelfScale, getSpineData]);
+  }, [serverDimsVersion, useServerSpines, useCommunitySpines, shelfScale, getSpineData]);
 
   // Memoized render function for FlatList (stack mode) - computes dimensions inline
   const renderStackItem = useCallback(({ item }: { item: BookSpineVerticalData }) => {
@@ -563,6 +564,41 @@ export function BookshelfView({
   }, [getStackItemDims, handlePress, handleLongPress, onBookLongPress, shelfScale, stackScale]);
 
   const keyExtractor = useCallback((item: BookSpineVerticalData) => item.id, []);
+
+  // Shelf mode: render function for horizontal FlatList
+  const renderShelfItem = useCallback(({ item, index }: { item: BookSpineVerticalData; index: number }) => {
+    const info = bookInfo[index];
+    if (!info) return null;
+    return (
+      <View style={{ marginHorizontal: bookGap / 2 }}>
+        <AnimatedBookWrapper
+          book={item}
+          info={info}
+          index={index}
+          totalBooks={enrichedBooks.length}
+          phase={phase}
+          isActive={activeIndex === index}
+          onPress={handlePress}
+          onLongPress={onBookLongPress ? handleLongPress : undefined}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        />
+      </View>
+    );
+  }, [bookInfo, bookGap, enrichedBooks.length, phase, activeIndex, handlePress, handleLongPress, onBookLongPress, handlePressIn, handlePressOut]);
+
+  // "Find More Books" footer for shelf mode
+  const shelfFooter = useMemo(() => {
+    if (!onDiscoverPress || recommendations.length === 0) return null;
+    return (
+      <DiscoverMoreCard
+        recommendations={recommendations}
+        onPress={onDiscoverPress}
+        onBookPress={onRecommendationPress}
+        height={bookInfo[0]?.height || 320}
+      />
+    );
+  }, [onDiscoverPress, recommendations, onRecommendationPress, bookInfo]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.white }, !isStackMode && { paddingBottom: bottomPadding }]} onLayout={handleContainerLayout}>
@@ -589,47 +625,29 @@ export function BookshelfView({
           windowSize={5}
         />
       ) : (
-        <ScrollView
+        <FlatList
           horizontal
+          data={enrichedBooks}
+          renderItem={renderShelfItem}
+          keyExtractor={keyExtractor}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContentShelf,
             {
               paddingRight: insets.right + SHELF_PADDING_H,
               paddingBottom: 0,
-              gap: bookGap,
             },
           ]}
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews
-        >
-          {/* Shelf mode: Animated upright spines */}
-          {enrichedBooks.map((book, index) => (
-            <AnimatedBookWrapper
-              key={book.id}
-              book={book}
-              info={bookInfo[index]}
-              index={index}
-              totalBooks={enrichedBooks.length}
-              phase={phase}
-              isActive={activeIndex === index}
-              onPress={handlePress}
-              onLongPress={onBookLongPress ? handleLongPress : undefined}
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-            />
-          ))}
-
-          {/* "Find More Books" card - only in shelf mode */}
-          {onDiscoverPress && recommendations.length > 0 && (
-            <DiscoverMoreCard
-              recommendations={recommendations}
-              onPress={onDiscoverPress}
-              onBookPress={onRecommendationPress}
-              height={bookInfo[0]?.height || 320}
-            />
-          )}
-        </ScrollView>
+          ListFooterComponent={shelfFooter}
+          // Spines are narrow — keep a large window so scrolling back doesn't
+          // unmount/remount and cause visible image reloads
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={15}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={15}
+          windowSize={21}
+        />
       )}
     </View>
   );

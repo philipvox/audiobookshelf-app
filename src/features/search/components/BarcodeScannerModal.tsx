@@ -241,7 +241,7 @@ export function BarcodeScannerModal({
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
         <View style={[styles.container, { backgroundColor: colors.black, paddingTop: insets.top }]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close scanner">
               <Icon name="X" size={24} color={colors.white} />
             </TouchableOpacity>
           </View>
@@ -256,6 +256,8 @@ export function BarcodeScannerModal({
             <TouchableOpacity
               style={[styles.permissionButton, { backgroundColor: colors.white }]}
               onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <Text style={[styles.permissionButtonText, { color: colors.black }]}>
                 Close
@@ -284,7 +286,7 @@ export function BarcodeScannerModal({
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
         <View style={[styles.container, { backgroundColor: colors.black, paddingTop: insets.top }]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close scanner">
               <Icon name="X" size={24} color={colors.white} />
             </TouchableOpacity>
           </View>
@@ -299,6 +301,8 @@ export function BarcodeScannerModal({
             <TouchableOpacity
               style={[styles.permissionButton, { backgroundColor: colors.white }]}
               onPress={requestPermission}
+              accessibilityRole="button"
+              accessibilityLabel="Grant camera permission"
             >
               <Text style={[styles.permissionButtonText, { color: colors.black }]}>
                 Grant Permission
@@ -327,7 +331,7 @@ export function BarcodeScannerModal({
         <View style={styles.overlay}>
           {/* Header */}
           <View style={[styles.header, { paddingTop: insets.top }]}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close scanner">
               <Icon name="X" size={24} color="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Scan ISBN Barcode</Text>
@@ -382,12 +386,16 @@ export function BarcodeScannerModal({
                       <TouchableOpacity
                         style={[styles.promptButton, styles.promptButtonSecondary]}
                         onPress={handleDeclineSearch}
+                        accessibilityRole="button"
+                        accessibilityLabel="No thanks, dismiss"
                       >
                         <Text style={styles.promptButtonTextSecondary}>No thanks</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.promptButton, styles.promptButtonPrimary]}
                         onPress={handleSearchSimilar}
+                        accessibilityRole="button"
+                        accessibilityLabel="Yes, search for similar titles"
                       >
                         <Text style={styles.promptButtonTextPrimary}>Yes, search</Text>
                       </TouchableOpacity>

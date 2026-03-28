@@ -16,6 +16,7 @@ import {
 
 import {
   GenreProfile,
+  TitleConfig,
   applySpineSizeOverrides,
   selectFontForBook,
   FontWeight,
@@ -301,7 +302,7 @@ export function getConfigForSize<T extends { sizes?: Record<string, Partial<T>> 
   config: T,
   spineWidth: number
 ): T {
-  return applySpineSizeOverrides(config as any, spineWidth);
+  return applySpineSizeOverrides(config as unknown as TitleConfig, spineWidth) as unknown as T;
 }
 
 // =============================================================================

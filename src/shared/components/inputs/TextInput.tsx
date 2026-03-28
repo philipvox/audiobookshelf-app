@@ -97,6 +97,8 @@ export const TextInput = forwardRef<RNTextInput, TextInputProps>(
               onPress={onRightIconPress}
               disabled={!onRightIconPress}
               style={styles.rightIcon}
+              accessibilityRole="button"
+              accessibilityLabel="Input action"
             >
               {rightIcon}
             </TouchableOpacity>

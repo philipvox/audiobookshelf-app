@@ -93,6 +93,9 @@ export function MetaCategorySection({
         ]}
         onPress={handleToggle}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${metaCategory.name}, ${genres.length} genres, ${totalBooks} books`}
+        accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.metaHeaderLeft}>
           {/* Color dots instead of stacked covers */}
@@ -164,7 +167,7 @@ export function YourGenresSection({
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Your Genres</Text>
         {onSeeAll && (
-          <TouchableOpacity onPress={onSeeAll}>
+          <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all genres">
             <Text style={[styles.seeAllText, { color: colors.accent.primary }]}>See all</Text>
           </TouchableOpacity>
         )}
@@ -252,6 +255,9 @@ export function AlphabetIndex({
             activeLetter === letter && [styles.alphabetLetterActive, { backgroundColor: ACCENT }],
           ]}
           onPress={() => onLetterPress(letter)}
+          accessibilityRole="button"
+          accessibilityLabel={`Jump to letter ${letter}`}
+          accessibilityState={{ selected: activeLetter === letter }}
         >
           <Text
             style={[

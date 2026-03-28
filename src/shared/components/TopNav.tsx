@@ -251,6 +251,8 @@ export function TopNav({
                 onPress={handleLogoPress}
                 onLongPress={handleLogoLongPress}
                 delayLongPress={500}
+                accessibilityRole="button"
+                accessibilityLabel="Home"
               >
                 <SkullLogo inverted={isDark} />
               </Pressable>
@@ -303,6 +305,8 @@ export function TopNav({
                 onPress={searchBar.onClear}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ padding: 4, marginLeft: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)', borderRadius: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
               >
                 <CloseIcon color={isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)'} size={12} />
               </TouchableOpacity>
@@ -337,6 +341,9 @@ export function TopNav({
                 ]}
                 onPress={pill.onPress}
                 onLongPress={pill.onLongPress}
+                accessibilityRole="button"
+                accessibilityLabel={pill.label || pill.key}
+                accessibilityState={{ selected: pill.active }}
               >
                 {pill.icon && (
                   <View style={hasLabel || pill.showClose ? styles.pillIcon : undefined}>
@@ -377,6 +384,9 @@ export function TopNav({
                   },
                 ]}
                 onPress={button.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={button.key}
+                accessibilityState={{ selected: button.active }}
               >
                 {button.icon}
               </Pressable>

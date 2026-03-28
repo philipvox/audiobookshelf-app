@@ -432,7 +432,7 @@ function SpinePreview({ config, width, height, title, author }: SpinePreviewProp
                 color: textColor,
                 transform: [{ rotate: getTitleRotation() }],
                 width: titleHeight,
-                textAlign: tc.align as any,
+                textAlign: tc.align as TextStyle['textAlign'],
               }]}
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -452,7 +452,7 @@ function SpinePreview({ config, width, height, title, author }: SpinePreviewProp
                 fontFamily: tc.fontFamily,
                 letterSpacing: tc.letterSpacing,
                 color: textColor,
-                textAlign: tc.align as any,
+                textAlign: tc.align as TextStyle['textAlign'],
                 paddingHorizontal: 2,
               }]}
               numberOfLines={4}
@@ -487,7 +487,7 @@ function SpinePreview({ config, width, height, title, author }: SpinePreviewProp
                 opacity: 0.8,
                 transform: [{ rotate: getAuthorRotation() }],
                 width: authorHeight,
-                textAlign: ac.align as any,
+                textAlign: ac.align as TextStyle['textAlign'],
                 textDecorationLine: ac.treatment === 'underlined' ? 'underline' : 'none',
               }]}
               numberOfLines={1}
@@ -509,7 +509,7 @@ function SpinePreview({ config, width, height, title, author }: SpinePreviewProp
                 letterSpacing: ac.letterSpacing,
                 color: textColor,
                 opacity: 0.8,
-                textAlign: ac.align as any,
+                textAlign: ac.align as TextStyle['textAlign'],
                 paddingHorizontal: 2,
                 textDecorationLine: ac.treatment === 'underlined' ? 'underline' : 'none',
               }]}

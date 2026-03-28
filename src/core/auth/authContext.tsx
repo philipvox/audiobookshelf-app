@@ -77,32 +77,50 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
 
   /**
    * Handle auth failure from API client (401 after re-auth attempt failed)
-   * Triggers automatic logout
+   *
+   * CRITICAL: Only clears IN-MEMORY state, NOT persistent storage.
+   * Previously called authService.clearStorage() which wiped SecureStore +
+   * AsyncStorage fallbacks. This meant any transient 401 during a session
+   * would destroy credentials, and the next cold start would show login.
+   * Persistent storage is only cleared on explicit logout.
    */
   const handleAuthFailure = useCallback(async () => {
-    log.warn('Auth failure detected - logging out');
+    log.warn('Auth failure detected - clearing in-memory auth state');
     try {
-      // Clear auth state without calling server (token is already invalid)
+      // Clear in-memory token only (persistent storage survives for next startup)
       apiClient.clearAuthToken();
-      await authService.clearStorage();
+
+      // Clear in-memory React state → shows login screen
       setUser(null);
       setServerUrl(null);
       setError('Your session has expired. Please log in again.');
 
+      // Stop token health monitoring (no valid session)
+      tokenHealthService.stop();
+
       // Clear Sentry user context
       setSentryUser(null);
     } catch (err) {
-      log.error('Error during auth failure logout:', err);
+      log.error('Error during auth failure handling:', err);
     }
   }, []);
 
   /**
-   * Wire up API client auth failure callback
+   * Wire up API client auth failure callback and token health monitoring
    */
   useEffect(() => {
     apiClient.setOnAuthFailure(handleAuthFailure);
+
+    // Wire token health service: if consecutive health checks fail,
+    // trigger the same auth failure handler as a 401 response would.
+    tokenHealthService.setOnTokenInvalid(() => {
+      log.warn('Token health service detected invalid token — triggering re-auth');
+      handleAuthFailure();
+    });
+
     return () => {
       apiClient.setOnAuthFailure(null);
+      tokenHealthService.setOnTokenInvalid(null);
     };
   }, [handleAuthFailure]);
 

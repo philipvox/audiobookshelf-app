@@ -121,6 +121,9 @@ export function SettingsRow({
             thumbColor="#CCCCCC"
             ios_backgroundColor={colors.borderLight}
             disabled={disabled}
+            accessibilityRole="switch"
+            accessibilityLabel={`${label}${description ? `. ${description}` : ''}`}
+            accessibilityState={{ checked: switchValue }}
           />
         )}
         {onPress && !loading && (
@@ -132,7 +135,13 @@ export function SettingsRow({
 
   if (onPress && !loading) {
     return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7} disabled={disabled}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}${value ? `, ${value}` : ''}${description ? `. ${description}` : ''}`}
+      >
         {content}
       </TouchableOpacity>
     );

@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '@/core/api';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import {
   BookSearchResult,
   SeriesSearchResult,
@@ -97,7 +97,7 @@ export function useServerSearch(libraryId: string) {
       const narratorMap = new Map<string, LibraryItem[]>();
       
       books.forEach(book => {
-        const metadata = book.media?.metadata as any;
+        const metadata = book.media?.metadata as BookMetadata | undefined;
         const authorName = metadata?.authorName ||
           metadata?.authors?.[0]?.name || '';
         const narratorName = metadata?.narratorName || '';

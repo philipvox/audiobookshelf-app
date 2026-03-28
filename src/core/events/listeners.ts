@@ -85,35 +85,6 @@ export function initializeEventListeners(): () => void {
     })
   );
 
-  // === SYNC CONFLICTS (server wins) ===
-  unsubscribers.push(
-    eventBus.on('progress:conflict', async ({ bookId, localPosition, serverPosition, winner }) => {
-      // Track for analytics
-      trackEvent('sync_conflict_resolved', {
-        bookId,
-        localPosition,
-        serverPosition,
-        winner,
-      });
-
-      // When server wins a conflict, invalidate the book and refresh UI
-      logger.debug('[EventListeners] Conflict resolved (server wins), refreshing:', bookId);
-
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.progress(bookId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.book.progress(bookId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.inProgress() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.user.continueListening() });
-
-      // Refresh library cache to update series views
-      try {
-        const { useLibraryCache } = await import('@/core/cache/libraryCache');
-        useLibraryCache.getState().refreshCache();
-      } catch (err) {
-        logger.warn('[EventListeners] Failed to refresh library cache:', err);
-      }
-    })
-  );
-
   // === SYNC FAILURES ===
   unsubscribers.push(
     eventBus.on('progress:sync_failed', ({ bookId, error, retryCount }) => {
@@ -135,20 +106,6 @@ export function initializeEventListeners(): () => void {
   unsubscribers.push(
     eventBus.on('download:failed', ({ bookId, error }) => {
       trackEvent('download_failed', { bookId, error });
-    })
-  );
-
-  // === AUTH EXPIRATION ===
-  unsubscribers.push(
-    eventBus.on('auth:token_expired', ({ endpoint }) => {
-      trackEvent('auth_token_expired', { endpoint });
-    })
-  );
-
-  // === APP LIFECYCLE ===
-  unsubscribers.push(
-    eventBus.on('app:cold_start', ({ loadTimeMs }) => {
-      trackEvent('app_cold_start', { loadTimeMs });
     })
   );
 

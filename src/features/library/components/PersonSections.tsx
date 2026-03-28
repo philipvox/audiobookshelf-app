@@ -97,6 +97,8 @@ export function PersonCardLarge({ person, onPress, variant = 'light', type }: Pe
       ]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${person.name}, ${person.bookCount} ${person.bookCount === 1 ? 'book' : 'books'} in library`}
     >
       {/* Avatar */}
       <View style={[styles.largeAvatar, { backgroundColor: getAvatarColor(person.name) }]}>
@@ -153,6 +155,8 @@ export function PersonCardCompact({ person, onPress, variant = 'light', type }: 
       ]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${person.name}, ${person.bookCount} ${person.bookCount === 1 ? 'book' : 'books'}`}
     >
       {/* Avatar */}
       <View style={[styles.compactAvatar, { backgroundColor: getAvatarColor(person.name) }]}>
@@ -245,6 +249,9 @@ export function MetaCategoryPersonSection({
         ]}
         onPress={handleToggle}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${persons.length} ${personLabel}, ${totalBooks} books`}
+        accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.metaHeaderLeft}>
           {/* Color dots */}
@@ -324,7 +331,7 @@ export function YourPersonsSection({
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {onSeeAll && (
-          <TouchableOpacity onPress={onSeeAll}>
+          <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel={`See all ${type === 'author' ? 'authors' : 'narrators'}`}>
             <Text style={[styles.seeAllText, { color: colors.accent.primary }]}>See all</Text>
           </TouchableOpacity>
         )}

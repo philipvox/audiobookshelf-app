@@ -36,7 +36,7 @@ function CollectionSquareCardComponent({
   }, [books]);
 
   return (
-    <Pressable style={[styles.container, { width: size }]} onPress={onPress}>
+    <Pressable style={[styles.container, { width: size }]} onPress={onPress} accessibilityLabel={`Open collection ${collection.name}, ${bookCount} books`} accessibilityRole="button">
       {/* Cover Image */}
       <View style={[styles.coverContainer, { width: size, height: size }]}>
         {coverUrl ? (

@@ -19,7 +19,7 @@ import { filterByFeeling } from '@/shared/utils/bookDNA';
 import { useFeelingChipStore, FeelingChip } from '../stores/feelingChipStore';
 import { useLibraryMoods } from '../hooks/useLibraryMoods';
 import { SectionHeader } from './SectionHeader';
-import { useDNASettingsStore } from '@/features/profile/stores/dnaSettingsStore';
+import { useDNASettingsStore } from '@/shared/stores/dnaSettingsStore';
 
 interface LibraryMoodChipsProps {
   items: LibraryItem[];
@@ -80,6 +80,9 @@ export const LibraryMoodChips = React.memo(function LibraryMoodChips({ items }: 
                 { borderColor: isActive ? colors.black : colors.gray + '40' },
               ]}
               onPress={() => handlePress(key)}
+              accessibilityLabel={`${label} mood, ${count} books${isActive ? ', selected' : ''}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
             >
               <Text
                 style={[

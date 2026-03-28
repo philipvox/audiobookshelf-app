@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secret Library",
     "slug": "audiobookshelf-app",
-    "version": "1.0.4",
+    "version": "0.9.262",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "secretlibrary",
@@ -26,7 +26,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.secretlibrary.audiobooks",
-      "buildNumber": "3",
+      "buildNumber": "1262",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio",
@@ -46,7 +46,7 @@
         "backgroundColor": "#231f20"
       },
       "package": "com.secretlibrary.app",
-      "versionCode": 4,
+      "versionCode": 1262,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE",
@@ -73,6 +73,7 @@
       "./plugins/android-auto/withAndroidAuto",
       "./plugins/exo-player/withExoPlayer",
       "./plugins/chromecast/withChromecast",
+      "./plugins/carplay/withCarPlay",
       "expo-splash-screen",
       [
         "expo-audio",
@@ -92,10 +93,10 @@
         {
           "android": {
             "kotlinVersion": "2.1.20",
-            "enableProguardInReleaseBuilds": false,
+            "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": false,
             "useLegacyPackaging": false,
-            "enableMinifyInReleaseBuilds": false
+            "enableMinifyInReleaseBuilds": true
           },
           "ios": {
             "deploymentTarget": "16.0",

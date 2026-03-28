@@ -4,13 +4,18 @@
  * Zustand store for managing playback queue.
  * Persists queue to SQLite for offline support.
  * Supports autoplay and auto-population of next series book.
+ *
+ * Storage optimization: Only essential metadata (title, author, duration)
+ * is persisted to SQLite. Full LibraryItem objects are resolved from
+ * libraryCache at runtime. This reduces per-book storage from ~150-500KB
+ * to ~200 bytes.
  */
 
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LibraryItem, BookMetadata } from '@/core/types';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { getNextBookInSeries } from '@/core/cache/libraryCache';
+import { getNextBookInSeries, useLibraryCache } from '@/core/cache/libraryCache';
 import { createLogger } from '@/shared/utils/logger';
 
 // Helper to get book metadata safely
@@ -24,10 +29,75 @@ const log = createLogger('QueueStore');
 
 const AUTOPLAY_KEY = 'queue_autoplay_enabled';
 
+/**
+ * Slim metadata stored in SQLite for offline display.
+ * ~200 bytes per book instead of 150-500KB for a full LibraryItem.
+ */
+export interface QueueBookMeta {
+  title: string;
+  authorName: string;
+  duration: number;
+}
+
+/** Extract slim metadata from a LibraryItem for storage. */
+function extractQueueMeta(book: LibraryItem): QueueBookMeta {
+  const metadata = book.media?.metadata as BookMetadata | undefined;
+  return {
+    title: metadata?.title || 'Untitled',
+    authorName: metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author',
+    duration: book.media?.duration || 0,
+  };
+}
+
+/**
+ * Resolve a full LibraryItem from cache, falling back to a minimal
+ * stub built from persisted metadata for offline scenarios.
+ */
+function resolveLibraryItem(bookId: string, meta: QueueBookMeta): LibraryItem {
+  const cached = useLibraryCache.getState().getItem(bookId);
+  if (cached) return cached;
+
+  // Offline fallback: construct a minimal LibraryItem from stored metadata.
+  // This is enough for loadBook to fetch the real data from the server.
+  return {
+    id: bookId,
+    ino: '',
+    libraryId: '',
+    folderId: '',
+    path: '',
+    relPath: '',
+    isFile: false,
+    mtimeMs: 0,
+    ctimeMs: 0,
+    birthtimeMs: 0,
+    addedAt: 0,
+    updatedAt: 0,
+    lastScan: 0,
+    scanVersion: '',
+    isMissing: false,
+    isInvalid: false,
+    mediaType: 'book',
+    media: {
+      id: '',
+      metadata: {
+        title: meta.title,
+        authorName: meta.authorName,
+      } as unknown as BookMetadata,
+      audioFiles: [],
+      chapters: [],
+      duration: meta.duration,
+      size: 0,
+      tags: [],
+    },
+    libraryFiles: [],
+  } as LibraryItem;
+}
+
 export interface QueueBook {
   id: string;
   bookId: string;
-  book: LibraryItem;
+  /** Slim metadata for offline display (title, author, duration). */
+  meta: QueueBookMeta;
   position: number;
   addedAt: number;
   played: boolean;
@@ -57,9 +127,12 @@ interface QueueActions {
   setAutoplayEnabled: (enabled: boolean) => Promise<void>;
   checkAndAddSeriesBook: (currentBook: LibraryItem) => Promise<void>;
 
-  // Playback
+  // Playback (resolves full LibraryItem from cache or offline stub)
   playNext: () => Promise<LibraryItem | null>;
   getNextBook: () => LibraryItem | null;
+
+  // Resolve a full LibraryItem for a queue item (cache with offline fallback)
+  resolveBook: (item: QueueBook) => LibraryItem;
 
   // History
   clearPlayed: () => Promise<void>;
@@ -91,14 +164,32 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       const autoplayEnabled = autoplaySaved !== 'false';  // Default true
 
       const items = await sqliteCache.getQueue();
-      const queue: QueueBook[] = items.map((item) => ({
-        id: item.id,
-        bookId: item.bookId,
-        book: JSON.parse(item.bookData) as LibraryItem,
-        position: item.position,
-        addedAt: item.addedAt,
-        played: false,  // Fresh start on app load
-      }));
+      const queue: QueueBook[] = items.map((item) => {
+        // Parse stored data — supports both new slim format and legacy full LibraryItem
+        let meta: QueueBookMeta;
+        try {
+          const parsed = JSON.parse(item.bookData);
+          if ('title' in parsed && 'authorName' in parsed && 'duration' in parsed && !('media' in parsed)) {
+            // New slim format: QueueBookMeta
+            meta = parsed as QueueBookMeta;
+          } else {
+            // Legacy format: full LibraryItem — extract slim metadata
+            const legacyBook = parsed as LibraryItem;
+            meta = extractQueueMeta(legacyBook);
+          }
+        } catch {
+          meta = { title: 'Untitled', authorName: 'Unknown Author', duration: 0 };
+        }
+
+        return {
+          id: item.id,
+          bookId: item.bookId,
+          meta,
+          position: item.position,
+          addedAt: item.addedAt,
+          played: false,  // Fresh start on app load
+        };
+      });
 
       set({ queue, isInitialized: true, isLoading: false, autoplayEnabled });
       log.info(`Initialized with ${queue.length} items, autoplay: ${autoplayEnabled}`);
@@ -110,7 +201,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
   // Add a single book to the queue (user action)
   addToQueue: async (book: LibraryItem) => {
-    const { queue, isInQueue, autoSeriesBookId } = get();
+    const { isInQueue, autoSeriesBookId } = get();
 
     // Don't add duplicates
     if (isInQueue(book.id)) {
@@ -123,24 +214,29 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       if (autoSeriesBookId) {
         log.debug(`Clearing auto-series book: ${autoSeriesBookId}`);
         await sqliteCache.removeFromQueue(autoSeriesBookId);
-        const filteredQueue = queue.filter((item) => item.bookId !== autoSeriesBookId);
-        set({ queue: filteredQueue, autoSeriesBookId: null });
+        set((state) => ({
+          queue: state.queue.filter((item) => item.bookId !== autoSeriesBookId),
+          autoSeriesBookId: null,
+        }));
       }
 
-      const currentQueue = get().queue;
-      const bookData = JSON.stringify(book);
+      const meta = extractQueueMeta(book);
+      const bookData = JSON.stringify(meta);
       const id = await sqliteCache.addToQueue(book.id, bookData);
 
       const newItem: QueueBook = {
         id,
         bookId: book.id,
-        book,
-        position: currentQueue.length,
+        meta,
+        position: 0,  // Will be set from current queue length below
         addedAt: Date.now(),
         played: false,
       };
 
-      set({ queue: [...currentQueue, newItem] });
+      // Atomic merge: use callback to read current state at set-time
+      set((state) => ({
+        queue: [...state.queue, { ...newItem, position: state.queue.length }],
+      }));
       log.debug(`Added to queue: ${book.id}`);
     } catch (err) {
       log.error('addToQueue error:', err);
@@ -149,7 +245,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
   // Add multiple books to the queue (for series - user action)
   addBooksToQueue: async (books: LibraryItem[]) => {
-    const { queue, isInQueue, autoSeriesBookId } = get();
+    const { isInQueue, autoSeriesBookId } = get();
 
     // Filter out duplicates
     const newBooks = books.filter((book) => !isInQueue(book.id));
@@ -163,31 +259,39 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       if (autoSeriesBookId) {
         log.debug(`Clearing auto-series book: ${autoSeriesBookId}`);
         await sqliteCache.removeFromQueue(autoSeriesBookId);
-        const filteredQueue = queue.filter((item) => item.bookId !== autoSeriesBookId);
-        set({ queue: filteredQueue, autoSeriesBookId: null });
+        set((state) => ({
+          queue: state.queue.filter((item) => item.bookId !== autoSeriesBookId),
+          autoSeriesBookId: null,
+        }));
       }
 
-      const newItems: QueueBook[] = [];
-      let position = get().queue.length;
+      // Phase 1: Collect all new items by writing to SQLite sequentially
+      const newItems: Omit<QueueBook, 'position'>[] = [];
 
       for (const book of newBooks) {
-        const bookData = JSON.stringify(book);
+        const meta = extractQueueMeta(book);
+        const bookData = JSON.stringify(meta);
         const id = await sqliteCache.addToQueue(book.id, bookData);
 
         newItems.push({
           id,
           bookId: book.id,
-          book,
-          position,
+          meta,
           addedAt: Date.now(),
           played: false,
         });
-        position++;
       }
 
-      // Re-read queue after async loop to avoid overwriting concurrent changes
-      const latestQueue = get().queue;
-      set({ queue: [...latestQueue, ...newItems] });
+      // Phase 2: Atomic merge — single set() with callback reads current state
+      // at set-time, preventing concurrent writes from being overwritten
+      set((state) => {
+        const basePosition = state.queue.length;
+        const itemsWithPositions: QueueBook[] = newItems.map((item, index) => ({
+          ...item,
+          position: basePosition + index,
+        }));
+        return { queue: [...state.queue, ...itemsWithPositions] };
+      });
       log.debug(`Added ${newItems.length} books to queue`);
     } catch (err) {
       log.error('addBooksToQueue error:', err);
@@ -296,20 +400,24 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       }
 
       // Add to queue and mark as auto-series book
-      const bookData = JSON.stringify(nextBook);
+      const meta = extractQueueMeta(nextBook);
+      const bookData = JSON.stringify(meta);
       const id = await sqliteCache.addToQueue(nextBook.id, bookData);
 
       const newItem: QueueBook = {
         id,
         bookId: nextBook.id,
-        book: nextBook,
+        meta,
         position: 0,
         addedAt: Date.now(),
         played: false,
       };
 
-      const currentQueue = get().queue;
-      set({ queue: [...currentQueue, newItem], autoSeriesBookId: nextBook.id });
+      // Atomic merge
+      set((state) => ({
+        queue: [...state.queue, { ...newItem, position: state.queue.length }],
+        autoSeriesBookId: nextBook.id,
+      }));
       const nextMetadata = getBookMetadata(nextBook);
       log.info(`Auto-added next series book: ${nextMetadata?.title || nextBook.id}`);
     } catch (err) {
@@ -335,15 +443,20 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     );
     set({ queue: updatedQueue });
 
-    log.debug(`Playing next: ${nextItem.book.id}`);
-    return nextItem.book;
+    log.debug(`Playing next: ${nextItem.bookId}`);
+    return resolveLibraryItem(nextItem.bookId, nextItem.meta);
   },
 
   // Get the next unplayed book without marking it
   getNextBook: () => {
     const { queue } = get();
     const next = queue.find((item) => !item.played);
-    return next ? next.book : null;
+    return next ? resolveLibraryItem(next.bookId, next.meta) : null;
+  },
+
+  // Resolve a full LibraryItem for a queue item (cache with offline fallback)
+  resolveBook: (item: QueueBook) => {
+    return resolveLibraryItem(item.bookId, item.meta);
   },
 
   // Clear only played items from queue
@@ -380,9 +493,5 @@ export const useQueue = () => useQueueStore((state) => state.queue);
 // Derived selectors — use in components with useMemo wrapping the queue
 export const getUpNextQueue = (queue: QueueBook[]) => queue.filter((item) => !item.played);
 export const getPlayedQueue = (queue: QueueBook[]) => queue.filter((item) => item.played);
-export const useQueueCount = () => useQueueStore((state) => state.queue.length);
 export const useIsInQueue = (bookId: string) =>
   useQueueStore((state) => state.queue.some((item) => item.bookId === bookId));
-export const useAutoplayEnabled = () => useQueueStore((state) => state.autoplayEnabled);
-export const useAutoSeriesBookId = () => useQueueStore((state) => state.autoSeriesBookId);
-export const useShouldShowClearDialog = () => useQueueStore((state) => state.shouldShowClearDialog);

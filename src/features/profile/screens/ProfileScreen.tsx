@@ -31,6 +31,7 @@ import {
   Palette,
   Info,
   Bug,
+  HelpCircle,
   RefreshCw,
   Undo2,
   Redo2,
@@ -39,7 +40,7 @@ import {
 import { useAuth } from '@/core/auth';
 import { TopNavBackIcon } from '@/shared/components';
 import { useDownloads } from '@/core/hooks/useDownloads';
-import { useDefaultLibrary } from '@/features/library';
+import { useDefaultLibrary } from '@/shared/hooks/useDefaultLibrary';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { APP_VERSION } from '@/constants/version';
@@ -49,8 +50,7 @@ import {
   secretLibraryFonts as fonts,
 } from '@/shared/theme/secretLibrary';
 import { useScreenLoadTime } from '@/core/hooks/useScreenLoadTime';
-import { usePlayerStore, useSpeedStore } from '@/features/player/stores';
-import { usePlayerSettingsStore } from '@/features/player/stores/playerSettingsStore';
+import { usePlayerStore, useSpeedStore, usePlayerSettingsStore } from '@/shared/stores/playerFacade';
 const SPEED_QUICK_OPTIONS = [1, 1.25, 1.5, 2];
 const SKIP_FORWARD_OPTIONS = [10, 15, 30, 45, 60];
 const SKIP_BACK_OPTIONS = [5, 10, 15, 30, 45];
@@ -58,23 +58,17 @@ import { useChapterCleaningStore, CLEANING_LEVEL_INFO } from '../stores/chapterC
 import { useHapticSettingsStore } from '../stores/hapticSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useDNASettingsStore } from '../stores/dnaSettingsStore';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
+import { useSpineCacheStore } from '@/shared/spine';
 import { useLibrarySyncStore } from '@/shared/stores/librarySyncStore';
 import { useLibraryCache } from '@/core/cache';
 import { useAllTimeStats, useListeningStreak } from '@/features/stats/hooks/useListeningStats';
 import { isBookMedia } from '@/shared/utils/metadata';
+import { formatBytes } from '@/shared/utils/format';
+import { useCoachMarksStore } from '@/shared/stores/coachMarksStore';
 
 // =============================================================================
 // HELPERS
 // =============================================================================
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
 
 function formatListeningTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -120,8 +114,10 @@ function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: Prof
       style={[styles.profileLink, { borderBottomColor: colors.borderLight }]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="link"
+      accessibilityLabel={`${label}${subtitle ? `, ${subtitle}` : ''}${badge ? `, ${badge}` : ''}`}
     >
-      <View style={[styles.linkIconContainer, { backgroundColor: colors.grayLight }]}>
+      <View style={[styles.linkIconContainer, { backgroundColor: colors.grayLight }]} accessible={false}>
         <Icon size={scale(18)} color={colors.gray} strokeWidth={1.5} />
       </View>
       <View style={styles.linkContent}>
@@ -129,7 +125,7 @@ function ProfileLink({ Icon, label, subtitle, badge, badgeColor, onPress }: Prof
         {subtitle && <Text style={[styles.linkSubtitle, { color: colors.gray }]}>{subtitle}</Text>}
       </View>
       {badge && (
-        <View style={[styles.badge, { borderColor: badgeColor || colors.gray }]}>
+        <View style={[styles.badge, { borderColor: badgeColor || colors.gray }]} accessibilityLabel={badge} accessible={false}>
           <Text style={[styles.badgeText, { color: badgeColor || colors.gray }]}>{badge}</Text>
         </View>
       )}
@@ -284,6 +280,13 @@ export function ProfileScreen() {
     }
   }, [navigation]);
 
+  const handleShowTips = useCallback(() => {
+    haptics.selection();
+    useCoachMarksStore.getState().reset();
+    // Navigate to home tab so the coach marks trigger on the main screen
+    navigation.navigate('Main', { screen: 'HomeTab' });
+  }, [navigation]);
+
   const _handleSpeedCycle = useCallback(() => {
     haptics.buttonPress();
     const currentIdx = SPEED_QUICK_OPTIONS.indexOf(globalDefaultRate ?? 1);
@@ -327,13 +330,15 @@ export function ProfileScreen() {
 
       {/* Top Navigation */}
       <View style={[styles.topNav, { backgroundColor: colors.white }]}>
-        <Pressable onPress={handleLogoPress} style={styles.topNavLeft}>
+        <Pressable onPress={handleLogoPress} style={styles.topNavLeft} accessibilityRole="button" accessibilityLabel="Go to home screen">
           <SkullLogo size={48} color={colors.black} />
         </Pressable>
         <TouchableOpacity
           style={[styles.backPill, { borderColor: colors.borderLight }]}
           onPress={() => { haptics.buttonPress(); navigation.goBack(); }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <TopNavBackIcon size={scale(16)} color={colors.gray} />
         </TouchableOpacity>
@@ -369,6 +374,8 @@ export function ProfileScreen() {
                 onPress={handleLogout}
                 disabled={isLoading}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
               >
                 <LogOut size={scale(12)} color={colors.gray} strokeWidth={1.5} />
                 <Text style={[styles.signOutText, { color: colors.gray }]}>Log out</Text>
@@ -385,6 +392,9 @@ export function ProfileScreen() {
                 }}
                 activeOpacity={hasDNA ? 0.7 : 1}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="switch"
+                accessibilityLabel={`DNA features${!hasDNA ? ', not available' : ''}`}
+                accessibilityState={{ checked: dnaEnabled }}
               >
                 <Text style={[styles.dnaPillText, {
                   color: !hasDNA ? colors.gray
@@ -415,6 +425,9 @@ export function ProfileScreen() {
                       ]}
                       onPress={() => handleLibrarySwitch(lib.id)}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Switch to ${lib.name} library${isActive ? ', currently selected' : ''}`}
+                      accessibilityState={{ selected: isActive }}
                     >
                       <Text
                         style={[
@@ -437,6 +450,8 @@ export function ProfileScreen() {
             style={[styles.statsRow, { borderTopColor: colors.borderLight }]}
             onPress={() => navigation.navigate('Stats')}
             activeOpacity={0.7}
+            accessibilityRole="link"
+            accessibilityLabel={`Statistics: ${bookCount} books, ${formatListeningTime(totalListened)} listened, ${streak} day streak`}
           >
             <View style={styles.statItem}>
               <Text style={[styles.statValue, { color: colors.black }]}>
@@ -468,6 +483,8 @@ export function ProfileScreen() {
             style={[styles.quickTileSmall, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}
             onPress={handleSkipBackCycle}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Rewind interval, currently ${skipBackInterval} seconds`}
           >
             <Undo2 size={scale(16)} color={colors.gray} strokeWidth={1.5} />
             <Text style={[styles.quickTileSmallValue, { color: colors.black }]}>
@@ -481,6 +498,8 @@ export function ProfileScreen() {
             style={[styles.quickTileSmall, { backgroundColor: colors.cream, borderColor: colors.borderLight }]}
             onPress={handleSkipForwardCycle}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Forward interval, currently ${skipForwardInterval} seconds`}
           >
             <Redo2 size={scale(16)} color={colors.gray} strokeWidth={1.5} />
             <Text style={[styles.quickTileSmallValue, { color: colors.black }]}>
@@ -496,6 +515,8 @@ export function ProfileScreen() {
               onPress={handleSync}
               activeOpacity={0.7}
               disabled={isSyncing}
+              accessibilityRole="button"
+              accessibilityLabel={isSyncing ? 'Syncing library' : 'Sync library'}
             >
               {isSyncing ? (
                 <ActivityIndicator size={scale(16)} color={colors.gray} />
@@ -533,6 +554,9 @@ export function ProfileScreen() {
                   ]}
                   onPress={() => { haptics.buttonPress(); setGlobalDefaultRate(rate); }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Set default speed to ${rate}x${isActive ? ', currently selected' : ''}`}
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Text
                     style={[
@@ -585,6 +609,12 @@ export function ProfileScreen() {
             label="Report a Bug"
             subtitle="Help us improve"
             onPress={() => navigation.navigate('BugReport')}
+          />
+          <ProfileLink
+            Icon={HelpCircle}
+            label="Show Tips"
+            subtitle="Replay the walkthrough"
+            onPress={handleShowTips}
           />
         </View>
 

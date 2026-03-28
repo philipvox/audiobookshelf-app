@@ -50,14 +50,12 @@ describe('SearchIndex', () => {
       index.build(items);
 
       expect(index.ready).toBe(true);
-      expect(index.getStats().itemCount).toBe(2);
     });
 
     it('handles empty item list', () => {
       index.build([]);
 
       expect(index.ready).toBe(true);
-      expect(index.getStats().itemCount).toBe(0);
     });
   });
 
@@ -146,62 +144,6 @@ describe('SearchIndex', () => {
     });
   });
 
-  describe('getByExactMatch', () => {
-    beforeEach(() => {
-      const items = [
-        createMockItem({ id: '1', title: 'Test Book', author: 'John Smith' }),
-        createMockItem({ id: '2', title: 'Another Book', author: 'John Smith' }),
-        createMockItem({ id: '3', title: 'Different Book', author: 'Jane Doe' }),
-      ];
-      index.build(items);
-    });
-
-    it('finds items by exact author match', () => {
-      const results = index.getByExactMatch('author', 'John Smith');
-
-      expect(results.length).toBe(2);
-      expect(results.every(r => {
-        const metadata = (r.media?.metadata as any) || {};
-        return metadata.authorName === 'John Smith';
-      })).toBe(true);
-    });
-
-    it('is case insensitive', () => {
-      const results = index.getByExactMatch('author', 'john smith');
-
-      expect(results.length).toBe(2);
-    });
-
-    it('returns empty array for no match', () => {
-      const results = index.getByExactMatch('author', 'Unknown Author');
-
-      expect(results).toEqual([]);
-    });
-  });
-
-  describe('getById', () => {
-    beforeEach(() => {
-      const items = [
-        createMockItem({ id: '1', title: 'Test Book' }),
-        createMockItem({ id: '2', title: 'Another Book' }),
-      ];
-      index.build(items);
-    });
-
-    it('returns item by ID', () => {
-      const item = index.getById('1');
-
-      expect(item).toBeDefined();
-      expect(item?.id).toBe('1');
-    });
-
-    it('returns undefined for unknown ID', () => {
-      const item = index.getById('unknown');
-
-      expect(item).toBeUndefined();
-    });
-  });
-
   describe('performance', () => {
     it('builds index for 1000 items quickly', () => {
       const items = Array.from({ length: 1000 }, (_, i) =>
@@ -218,7 +160,7 @@ describe('SearchIndex', () => {
       const elapsed = performance.now() - startTime;
 
       expect(elapsed).toBeLessThan(500); // Should be < 500ms
-      expect(index.getStats().itemCount).toBe(1000);
+      expect(index.ready).toBe(true);
     });
 
     it('searches 1000 items quickly', () => {
@@ -249,7 +191,7 @@ describe('SearchIndex', () => {
 
       // Should not throw
       expect(() => index.build(items)).not.toThrow();
-      expect(index.getStats().itemCount).toBe(2);
+      expect(index.ready).toBe(true);
     });
 
     it('handles special characters in search', () => {

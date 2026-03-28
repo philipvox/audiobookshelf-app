@@ -20,7 +20,7 @@ import Animated, {
 import { haptics } from '@/core/native/haptics';
 import { useSpineUrl, useLibraryCache } from '@/core/cache';
 import { useSpineCacheStore } from '../stores/spineCache';
-import { useStarPositionStore } from '@/features/book-detail/stores/starPositionStore';
+import { useStarPositionStore } from '@/shared/stores/starPositionStore';
 import {
   getSpineDimensions,
   calculateBookDimensions,
@@ -29,6 +29,7 @@ import {
 import { getGenreVisualConfig } from '../utils/spine/genreVisualConfig';
 import { COMPOSITIONS, pickComposition } from '../utils/spine/compositions';
 import { hashString, hashToPick } from '../utils/spine/core/hashing';
+import { secretLibraryColors } from '@/shared/theme/secretLibrary';
 
 // =============================================================================
 // TYPES
@@ -71,7 +72,7 @@ interface BookSpineVerticalProps {
 // CONSTANTS
 // =============================================================================
 
-const DOWNLOAD_INDICATOR_COLOR = '#FF6B35';
+const DOWNLOAD_INDICATOR_COLOR = secretLibraryColors.orange;
 const DOWNLOAD_INDICATOR_HEIGHT = 1;
 const CORNER_RADIUS = 5;
 const DEFAULT_DURATION = 10 * 60 * 60;
@@ -128,21 +129,32 @@ export function BookSpineVertical({
   isHorizontalDisplay = false,
   style: styleProp,
 }: BookSpineVerticalProps) {
-  // --- Server spine support ---
+  // --- Spine image support (community + server, independent) ---
   const useServerSpines = useSpineCacheStore((state) => state.useServerSpines);
+  const useCommunitySpines = useSpineCacheStore((state) => state.useCommunitySpines);
   const setServerSpineDimensions = useSpineCacheStore((state) => state.setServerSpineDimensions);
-  const booksWithServerSpines = useLibraryCache((state) => state.booksWithServerSpines);
-  const bookHasServerSpine = booksWithServerSpines.has(book.id);
-  const cachedDimEntry = useSpineCacheStore(
-    (state) => state.serverSpineDimensions[book.id]
+  // Derive per-book booleans — always call hooks, compute result after
+  const hasServerSpineInManifest = useLibraryCache(
+    useCallback((state) => state.booksWithServerSpines.has(book.id), [book.id])
   );
-  const cachedSpineDimensions = cachedDimEntry && (Date.now() - cachedDimEntry.cachedAt < 24 * 60 * 60 * 1000)
-    ? { width: cachedDimEntry.width, height: cachedDimEntry.height }
-    : undefined;
+  const hasCommunitySpineInManifest = useLibraryCache(
+    useCallback((state) => state.booksWithCommunitySpines.has(book.id), [book.id])
+  );
+  const bookHasServerSpine = useServerSpines && hasServerSpineInManifest;
+  const bookHasCommunitySpine = useCommunitySpines && hasCommunitySpineInManifest;
+  const cachedDimEntry = useSpineCacheStore(
+    useCallback((state) => state.serverSpineDimensions[book.id], [book.id])
+  );
+  const cachedSpineDimensions = useMemo(() => {
+    if (!cachedDimEntry || (Date.now() - cachedDimEntry.cachedAt >= 24 * 60 * 60 * 1000)) return undefined;
+    return { width: cachedDimEntry.width, height: cachedDimEntry.height };
+  }, [cachedDimEntry?.width, cachedDimEntry?.height, cachedDimEntry?.cachedAt]);
   const spineImageUrlRaw = useSpineUrl(book.id);
-  const shouldTryServerSpine = useServerSpines && bookHasServerSpine;
-  const spineImageUrl = shouldTryServerSpine ? spineImageUrlRaw : null;
+  // Try spine image if either source has it
+  const shouldTrySpineImage = bookHasCommunitySpine || bookHasServerSpine;
+  const spineImageUrl = shouldTrySpineImage ? spineImageUrlRaw : null;
   const [spineImageFailed, setSpineImageFailed] = useState(false);
+
 
   useEffect(() => {
     setSpineImageFailed(false);
@@ -187,6 +199,8 @@ export function BookSpineVertical({
 
   const isUsingServerSpine = spineImageUrl && !spineImageFailed;
   const canDisplayServerSpine = !!isUsingServerSpine;
+
+
 
   const { width, height } = useMemo(() => {
     if (canDisplayServerSpine && cachedSpineDimensions) {
@@ -286,6 +300,8 @@ export function BookSpineVertical({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       hitSlop={hitSlop}
+      accessibilityLabel={`Open ${book.title} by ${book.author}`}
+      accessibilityRole="button"
       style={[
         {
           width,
@@ -308,43 +324,30 @@ export function BookSpineVertical({
           styleProp,
         ]}
       >
-        {/* === SERVER SPINE (when available) === */}
-        {canDisplayServerSpine && (
-          <Image
-            source={{ uri: spineImageUrl! }}
-            style={{ width, height, borderRadius: CORNER_RADIUS }}
-            contentFit="fill"
-            transition={150}
-            cachePolicy="memory-disk"
-            onLoad={handleSpineImageLoad}
-            onError={handleSpineImageError}
+        {/* === PROCEDURAL SPINE (always rendered as immediate fallback) === */}
+        <>
+          {/* Download indicator */}
+          {book.isDownloaded && (
+            <View style={[styles.downloadIndicator, {
+              height: DOWNLOAD_INDICATOR_HEIGHT,
+              backgroundColor: DOWNLOAD_INDICATOR_COLOR,
+            }]} />
+          )}
+
+          {/* Solid paper background */}
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor }]} />
+
+          {/* Top shadow */}
+          <LinearGradient
+            colors={[`rgba(0,0,0,${visualConfig.isDark ? 0.25 : 0.04})`, 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5 }}
+            pointerEvents="none"
           />
-        )}
 
-        {/* === PROCEDURAL SPINE === */}
-        {!canDisplayServerSpine && (
-          <>
-            {/* Download indicator */}
-            {book.isDownloaded && (
-              <View style={[styles.downloadIndicator, {
-                height: DOWNLOAD_INDICATOR_HEIGHT,
-                backgroundColor: DOWNLOAD_INDICATOR_COLOR,
-              }]} />
-            )}
-
-            {/* Solid paper background */}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor }]} />
-
-            {/* Top shadow */}
-            <LinearGradient
-              colors={[`rgba(0,0,0,${visualConfig.isDark ? 0.25 : 0.04})`, 'transparent']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5 }}
-              pointerEvents="none"
-            />
-
-            {/* Composition content (title + author + decorations) */}
+          {/* Composition content (title + author + decorations) */}
+          <View style={[StyleSheet.absoluteFill, isHorizontalDisplay && { transform: [{ rotate: '180deg' }] }]} pointerEvents="none">
             {COMPOSITIONS[compositionIndex]({
               w: width,
               h: height,
@@ -356,45 +359,58 @@ export function BookSpineVertical({
               hash: hashString(book.id),
               isHorizontalDisplay,
             })}
+          </View>
 
-            {/* Progress bar overlay at bottom */}
-            {showProgress && (
-              <View style={[styles.progressBar, { width }]}>
-                <View style={{
-                  height: 2,
-                  width: `${Math.min(progressPercent, 100)}%` as any,
-                  backgroundColor: progressPercent >= 100 ? '#4CAF50' : '#E8A000',
-                  borderRadius: 1,
-                }} />
-              </View>
-            )}
+          {/* Progress bar overlay at bottom */}
+          {showProgress && (
+            <View style={[styles.progressBar, { width }]}>
+              <View style={{
+                height: 2,
+                width: `${Math.min(progressPercent, 100)}%` as ViewStyle['width'],
+                backgroundColor: progressPercent >= 100 ? '#4CAF50' : '#E8A000',
+                borderRadius: 1,
+              }} />
+            </View>
+          )}
 
-            {/* Book cloth texture — multiply over everything */}
-            <Image
-              source={bookTexture}
-              style={[StyleSheet.absoluteFill, { mixBlendMode: 'multiply', opacity: 0.07 } as any]}
-              contentFit="fill"
-              pointerEvents="none"
-            />
+          {/* Book cloth texture — multiply over everything */}
+          <Image
+            source={bookTexture}
+            style={[StyleSheet.absoluteFill, { mixBlendMode: 'multiply', opacity: 0.07 } as any]}
+            contentFit="fill"
+            cachePolicy="memory-disk"
+            pointerEvents="none"
+          />
 
-            {/* Thin white spine-edge highlight on left */}
-            <LinearGradient
-              colors={[`rgba(255,255,255,${visualConfig.isDark ? 0.05 : 0.28})`, 'rgba(255,255,255,0)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '15%' as any }}
-              pointerEvents="none"
-            />
+          {/* Thin white spine-edge highlight on left */}
+          <LinearGradient
+            colors={[`rgba(255,255,255,${visualConfig.isDark ? 0.05 : 0.28})`, 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '15%' as ViewStyle['width'] }}
+            pointerEvents="none"
+          />
 
-            {/* Thin black shadow on right */}
-            <LinearGradient
-              colors={['rgba(0,0,0,0)', `rgba(0,0,0,${visualConfig.isDark ? 0.22 : 0.07})`]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%' as any }}
-              pointerEvents="none"
-            />
-          </>
+          {/* Thin black shadow on right */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', `rgba(0,0,0,${visualConfig.isDark ? 0.22 : 0.07})`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%' as ViewStyle['width'] }}
+            pointerEvents="none"
+          />
+        </>
+
+        {/* === SERVER SPINE (layered on top of procedural) === */}
+        {canDisplayServerSpine && (
+          <Image
+            source={{ uri: spineImageUrl! }}
+            style={[StyleSheet.absoluteFill, { borderRadius: CORNER_RADIUS }]}
+            contentFit="fill"
+            cachePolicy="memory-disk"
+            onLoad={handleSpineImageLoad}
+            onError={handleSpineImageError}
+          />
         )}
 
         {/* Gold star sticker overlay */}
@@ -415,6 +431,7 @@ export function BookSpineVertical({
                 transform: [{ rotate: `${star.rotation}deg` }],
               }}
               contentFit="contain"
+              cachePolicy="memory-disk"
               pointerEvents="none"
             />
           );

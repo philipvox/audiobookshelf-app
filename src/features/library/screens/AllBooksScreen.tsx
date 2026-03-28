@@ -27,15 +27,16 @@ import { Image } from 'expo-image';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryCache, useCoverUrl } from '@/core/cache';
 import { SkullRefreshControl, TopNav, TopNavBackIcon, TopNavSearchIcon, AlphabetScrubber, ScreenLoadingOverlay } from '@/shared/components';
 import { globalLoading } from '@/shared/stores/globalLoadingStore';
-import { CompleteBadgeOverlay } from '@/features/completion';
+import { CompleteBadgeOverlay } from '@/shared/components/CompleteBadge';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useTheme } from '@/shared/theme';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
-import { LibraryItem, BookMetadata } from '@/core/types';
-import { useStarPositionStore } from '@/features/book-detail/stores/starPositionStore';
+import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
+import { useStarPositionStore } from '@/shared/stores/starPositionStore';
 
 type AllBooksFilter = 'all' | 'new_to_library' | 'new_releases';
 type AllBooksRouteParams = { AllBooks: { filter?: AllBooksFilter } };
@@ -50,7 +51,7 @@ function getMetadata(item: LibraryItem): BookMetadata | Record<string, never> {
 
 // Helper to get book duration
 function getBookDuration(item: LibraryItem): number {
-  return (item.media as any)?.duration || 0;
+  return (item.media as BookMedia)?.duration || 0;
 }
 
 // Helper to format duration compactly
@@ -146,6 +147,8 @@ const ListBookItem = React.memo(function ListBookItem({ item, onPress, isDark, s
         isDark ? styles.cardDark : styles.cardLight,
       ]}
       onPress={() => onPress(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${durationText ? `, ${durationText}` : ''}`}
     >
       {/* Cover */}
       <View style={styles.coverContainer}>
@@ -208,7 +211,7 @@ export function AllBooksScreen() {
   const [mounted, setMounted] = useState(false);
   const [activeLetter, setActiveLetter] = useState<string | undefined>(undefined);
 
-  const { items: libraryItems, refreshCache, isLoaded: _isLoaded } = useLibraryCache();
+  const { items: libraryItems, refreshCache, isLoaded: _isLoaded } = useLibraryCache(useShallow((s) => ({ items: s.items, refreshCache: s.refreshCache, isLoaded: s.isLoaded })));
   const starPositions = useStarPositionStore((s) => s.positions);
 
   // Current sort label for the pill
@@ -501,6 +504,8 @@ export function AllBooksScreen() {
         <Pressable
           style={styles.dropdownOverlay}
           onPress={() => setShowSortDropdown(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close sort options"
         >
           <View style={[styles.dropdownMenu, { backgroundColor: isDark ? '#1a1a1a' : secretLibraryColors.white }]}>
             {SORT_OPTIONS.map((option) => {
@@ -510,6 +515,9 @@ export function AllBooksScreen() {
                   key={option.key}
                   style={styles.dropdownItem}
                   onPress={() => handleSortSelect(option.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${option.label}${isActive ? ', currently selected' : ''}`}
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Text
                     style={[

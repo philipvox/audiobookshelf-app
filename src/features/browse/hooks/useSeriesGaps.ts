@@ -10,6 +10,7 @@
 
 import { useMemo } from 'react';
 import { useLibraryCache } from '@/core/cache';
+import { BookMedia } from '@/core/types';
 
 export interface SeriesGap {
   seriesName: string;
@@ -33,7 +34,7 @@ export function useSeriesGaps(): { gaps: SeriesGap[] } {
       let maxSequence = 0;
 
       for (const book of seriesInfo.books) {
-        const metadata = (book.media as any)?.metadata;
+        const metadata = (book.media as BookMedia)?.metadata;
         const series = metadata?.series;
         if (series) {
           for (const s of series) {

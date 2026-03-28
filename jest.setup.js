@@ -257,9 +257,7 @@ jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(),
 }));
 
-jest.mock('expo-blur', () => ({
-  BlurView: 'BlurView',
-}));
+
 
 jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
@@ -445,9 +443,7 @@ jest.mock('react-native-svg', () => {
   };
 });
 
-jest.mock('@shopify/flash-list', () => ({
-  FlashList: 'FlashList',
-}));
+
 
 jest.mock('zustand', () => {
   const actual = jest.requireActual('zustand');

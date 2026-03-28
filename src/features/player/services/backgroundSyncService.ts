@@ -22,6 +22,7 @@ import { getErrorMessage } from '@/shared/utils/errorUtils';
 import { useToastStore } from '@/shared/hooks/useToast';
 import { validatePositionForSync } from '../utils/progressCalculator';
 
+
 const _DEBUG = __DEV__;
 const log = (...args: any[]) => audioLog.sync(args.join(' '));
 
@@ -407,6 +408,27 @@ class BackgroundSyncService {
       return false;
     }
 
+    // HIGH WATER MARK: Don't regress progress using local data (no extra API call)
+    // Use sessionService's in-memory HWM and local SQLite as sources of truth
+    try {
+      const { sessionService } = require('./sessionService');
+      const hwm = sessionService.getHighWaterMark?.(item.itemId) || 0;
+      const localProgress = await sqliteCache.getPlaybackProgress(item.itemId);
+      const localPosition = localProgress?.position || 0;
+      const highestKnown = Math.max(hwm, localPosition);
+
+      if (highestKnown > 0 && item.position < highestKnown - 30) {
+        // Position is more than 30s behind our highest known — likely stale data
+        // Use 30s threshold (not 5s) to allow intentional rewinds
+        audioLog.warn(`syncToServer: HIGH WATER MARK - skipping regression for ${item.itemId}. Queued=${formatDuration(item.position)}, Highest=${formatDuration(highestKnown)}`);
+        this.syncQueue.delete(item.itemId);
+        return true; // Don't sync stale position
+      }
+    } catch {
+      // Can't check HWM - proceed with sync anyway
+      log(`  Could not check high water mark, proceeding`);
+    }
+
     // Skip sync if user is actively playing this book (they'll sync on pause)
     // Lazy import to break circular dependency with playerStore
     const { usePlayerStore } = require('../stores/playerStore');
@@ -484,7 +506,7 @@ class BackgroundSyncService {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       // Handle 404 - resource doesn't exist on server, no point retrying
-      if (errorMessage === 'Resource not found' || (error as any)?.status === 404) {
+      if (errorMessage === 'Resource not found' || (error as unknown as { status?: number })?.status === 404) {
         audioLog.warn(`Item ${item.itemId} not found on server (404), removing from sync queue`);
         this.syncQueue.delete(item.itemId);
         // Mark as synced to prevent future retries for this non-existent item

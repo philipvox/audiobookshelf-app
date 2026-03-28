@@ -105,6 +105,7 @@ describe('WebSocketService', () => {
 
       expect(mockIo).toHaveBeenCalledWith('https://abs.example.com', {
         auth: { token: 'test-token' },
+        path: '/audiobookshelf/socket.io',
         transports: ['websocket', 'polling'],
         reconnection: false,
         timeout: 10000,

@@ -9,9 +9,7 @@
  */
 
 import { AppState, AppStateStatus } from 'react-native';
-import { eventBus } from '@/core/events';
 import { queryClient, queryKeys } from '@/core/queryClient';
-import { backgroundSyncService } from '@/features/player/services/backgroundSyncService';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 import { logger } from '@/shared/utils/logger';
 
@@ -58,7 +56,6 @@ function handleAppStateChange(nextState: AppStateStatus): void {
     if (!backgroundedAt) {
       backgroundedAt = Date.now();
       logger.debug('[AppStateListener] App backgrounded');
-      eventBus.emit('app:background', {});
     }
     return;
   }
@@ -69,7 +66,6 @@ function handleAppStateChange(nextState: AppStateStatus): void {
     backgroundedAt = null;
 
     logger.debug(`[AppStateListener] App foregrounded (was background for ${timeInBackground}ms)`);
-    eventBus.emit('app:foreground', {});
 
     // Only refetch if we were in background long enough
     if (timeInBackground >= MIN_BACKGROUND_TIME) {
@@ -102,8 +98,9 @@ async function handleForegroundReturn(timeInBackground: number): Promise<void> {
       await libraryState.loadCache(libraryState.currentLibraryId!);
     }
 
-    // Process any pending syncs first (they may have failed while backgrounded)
-    await backgroundSyncService.syncUnsyncedFromStorage();
+    // NOTE: backgroundSyncService has its own AppState listener that calls
+    // syncUnsyncedFromStorage() on foreground. We do NOT duplicate that here
+    // to avoid concurrent sync operations and double API calls.
 
     // Invalidate queries that might be stale
     // These will refetch on next access or if components are mounted

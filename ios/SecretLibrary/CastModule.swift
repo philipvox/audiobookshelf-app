@@ -1,4 +1,5 @@
 import Foundation
+import React
 import GoogleCast
 
 /**
@@ -72,7 +73,7 @@ class CastModule: RCTEventEmitter {
           "id": device.deviceID,
           "name": device.friendlyName ?? "Unknown",
           "isConnected": self.sessionManager.currentCastSession?.connectionState == .connected
-            && self.sessionManager.currentCastSession?.device?.deviceID == device.deviceID,
+            && self.sessionManager.currentCastSession?.device.deviceID == device.deviceID,
         ])
       }
       resolve(devices)
@@ -255,7 +256,7 @@ extension CastModule: GCKSessionManagerListener {
     startMediaStatusPolling()
     sendEvent(withName: "onSessionStarted", body: [
       "sessionId": session.sessionID ?? "",
-      "deviceName": session.device?.friendlyName ?? "Unknown",
+      "deviceName": session.device.friendlyName ?? "Unknown",
     ])
   }
 
@@ -264,7 +265,7 @@ extension CastModule: GCKSessionManagerListener {
     startMediaStatusPolling()
     sendEvent(withName: "onSessionStarted", body: [
       "sessionId": session.sessionID ?? "",
-      "deviceName": session.device?.friendlyName ?? "Unknown",
+      "deviceName": session.device.friendlyName ?? "Unknown",
     ])
   }
 

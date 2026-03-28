@@ -27,7 +27,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import com.bumptech.glide.Glide
@@ -207,8 +209,18 @@ class AudioPlaybackService : Service() {
         Log.d(TAG, "Initializing AudioPlaybackService")
 
         try {
-            // Create ExoPlayer
+            // HTTP data source with extended timeouts for remote streaming.
+            // Default is 8s connect / 8s read — too short when the server fetches
+            // audio from SSHFS (cross-Atlantic storage). Increase to 30s to avoid
+            // connection resets ("reset by peer") during initial buffering.
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(30_000)
+                .setReadTimeoutMs(30_000)
+                .setAllowCrossProtocolRedirects(true)
+
+            // Create ExoPlayer with custom data source
             val player = ExoPlayer.Builder(applicationContext)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSourceFactory))
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
@@ -344,11 +356,18 @@ class AudioPlaybackService : Service() {
             lastTrack.startOffset + lastTrack.duration
         } else 0.0
 
-        // Build MediaItems from tracks
+        // Build MediaItems from tracks with metadata for Bluetooth AVRCP
         val mediaItems = trackInfos.map { track ->
             MediaItem.Builder()
                 .setUri(Uri.parse(track.url))
                 .setMediaId(track.title)
+                .setMediaMetadata(
+                    androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(currentTitle.ifEmpty { track.title })
+                        .setArtist(currentAuthor.ifEmpty { null })
+                        .setAlbumTitle(currentTitle.ifEmpty { null })
+                        .build()
+                )
                 .build()
         }
 
@@ -367,6 +386,14 @@ class AudioPlaybackService : Service() {
         player.clearMediaItems()
         player.setMediaItems(mediaItems, safeStartIndex, safeStartPositionMs)
         player.playWhenReady = autoPlay
+
+        // Cancel any in-flight prepare callback from a previous rapid loadTracks call
+        // to prevent the old callback from firing with stale context
+        prepareCallback?.let { oldCb ->
+            Log.w(TAG, "loadTracks: cancelling previous prepareCallback (rapid load detected)")
+            prepareCallback = null
+            oldCb(false, "Superseded by new loadTracks call")
+        }
 
         // Store prepare callback and start timeout
         prepareCallback = onPrepared
@@ -549,8 +576,39 @@ class AudioPlaybackService : Service() {
             }
         }
 
+        // Update legacy MediaSession (notification, Android Auto)
         updateMediaSessionMetadata()
         updateNotification()
+
+        // Update Media3 session metadata for Bluetooth AVRCP
+        // Media3 reads metadata from the current MediaItem — replace it with updated metadata
+        updateMedia3Metadata()
+    }
+
+    /**
+     * Update the current MediaItem's metadata so Media3 MediaSession publishes it
+     * to Bluetooth AVRCP, Wear OS, and other media consumers.
+     */
+    private fun updateMedia3Metadata() {
+        val player = exoPlayer ?: return
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0 || currentIndex >= player.mediaItemCount) return
+
+        val currentItem = player.getMediaItemAt(currentIndex)
+        val displayTitle = if (!currentChapterTitle.isNullOrEmpty()) currentChapterTitle else currentTitle
+
+        val updatedMetadata = androidx.media3.common.MediaMetadata.Builder()
+            .setTitle(displayTitle)
+            .setArtist(currentAuthor.ifEmpty { null })
+            .setAlbumTitle(currentTitle.ifEmpty { null })
+            .setArtworkUri(if (!currentArtworkUrl.isNullOrEmpty()) Uri.parse(currentArtworkUrl) else null)
+            .build()
+
+        val updatedItem = currentItem.buildUpon()
+            .setMediaMetadata(updatedMetadata)
+            .build()
+
+        player.replaceMediaItem(currentIndex, updatedItem)
     }
 
     /**

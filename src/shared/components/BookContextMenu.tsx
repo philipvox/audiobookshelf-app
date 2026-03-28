@@ -60,32 +60,35 @@ import {
   X as XIcon,
   type LucideIcon,
 } from 'lucide-react-native';
-import Svg, { Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, Rect } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { RootStackNavigationProp } from '@/navigation/types';
 import { useCoverUrl } from '@/core/cache';
 import { useDownloadStatus, useDownloads } from '@/core/hooks/useDownloads';
-import { useQueueStore, useIsInQueue } from '@/features/queue/stores/queueStore';
+import { useQueueStore, useIsInQueue } from '@/shared/stores/queueFacade';
 import { useProgressStore, useIsInLibrary } from '@/core/stores/progressStore';
-import { usePlayerStore } from '@/features/player/stores';
-import { useIsComplete, useToggleComplete } from '@/features/completion';
+import { usePlayerStore } from '@/shared/stores/playerFacade';
+import { useIsComplete, useToggleComplete } from '@/shared/stores/completionStore';
 import { usePlaylists } from '@/features/playlists/hooks/usePlaylists';
 import { playlistsApi } from '@/core/api/endpoints/playlists';
 import { useLibraryCache } from '@/core/cache';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/shared/hooks/useToast';
 import { scale, useTheme } from '@/shared/theme';
-import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
+import { secretLibraryColors, secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
+import { logger } from '@/shared/utils/logger';
+import { SpinePickerContent } from './SpinePickerSheet';
 import type { LibraryItem, Playlist } from '@/core/types';
 
-// Palette — high contrast black/white
-const BLACK = '#0f0f0f';
+// Palette — sourced from theme for consistency
+const BLACK = secretLibraryColors.black;
 const WHITE = '#FFFFFF';
-const WHITE_DIM = '#e8e8e8';
+const WHITE_DIM = secretLibraryColors.white;
 const ICON_SIZE = scale(16);
-const DANGER = '#E85050';
-const ACCENT = '#F3B60C';
+const DANGER = secretLibraryColors.coral;
+const ACCENT = secretLibraryColors.gold;
 
 // =============================================================================
 // TOGGLE ACTION — icon circle grid
@@ -127,6 +130,9 @@ function ToggleAction({ icon: Icon, label, onPress, active, danger, progress }: 
         onPress();
       }}
       activeOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
     >
       {showProgress ? (
         <View style={[styles.toggleCircle, { borderWidth: 0 }]}>
@@ -192,6 +198,8 @@ function NavRow({ icon: Icon, label, onPress, danger }: NavRowProps) {
         onPress();
       }}
       activeOpacity={0.6}
+      accessibilityRole="link"
+      accessibilityLabel={`Go to ${label}`}
     >
       <Icon size={scale(14)} color={color} strokeWidth={1.5} />
       <Text style={[styles.navRowLabel, danger && { color: DANGER }]}>{label}</Text>
@@ -261,6 +269,9 @@ function PlaylistPicker({
         onPress={() => !alreadyAdded && handleAddToPlaylist(item)}
         disabled={alreadyAdded}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={alreadyAdded ? `${item.name}, already added` : `Add to ${item.name}`}
+        accessibilityState={{ disabled: alreadyAdded }}
       >
         <Text
           style={[
@@ -282,7 +293,7 @@ function PlaylistPicker({
   return (
     <View>
       <View style={styles.playlistHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Go back">
           <ChevronLeft size={scale(16)} color={WHITE_DIM} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.playlistTitle}>Add to Playlist</Text>
@@ -322,6 +333,9 @@ function PlaylistPicker({
             style={styles.createButton}
             onPress={handleCreatePlaylist}
             disabled={!newName.trim() || submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Create playlist"
+            accessibilityState={{ disabled: !newName.trim() || submitting }}
           >
             {submitting ? (
               <ActivityIndicator size="small" color={BLACK} />
@@ -335,6 +349,8 @@ function PlaylistPicker({
           style={styles.createNewRow}
           onPress={() => setCreating(true)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="New Playlist"
         >
           <Plus size={scale(13)} color={WHITE_DIM} strokeWidth={2} />
           <Text style={styles.createNewLabel}>New Playlist</Text>
@@ -365,13 +381,14 @@ export function BookContextMenu({
 }: BookContextMenuProps) {
   const { colors: _colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootStackNavigationProp>();
   const { height: screenHeight } = useWindowDimensions();
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const addToast = useToastStore((s) => s.addToast);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
+  const [showSpinePicker, setShowSpinePicker] = useState(false);
 
   // Book state
   const { isDownloaded, isDownloading, progress: dlProgress } = useDownloadStatus(book?.id || '');
@@ -401,7 +418,7 @@ export function BookContextMenu({
 
   useEffect(() => {
     if (!visible) {
-      const t = setTimeout(() => setShowPlaylistPicker(false), 250);
+      const t = setTimeout(() => { setShowPlaylistPicker(false); setShowSpinePicker(false); }, 250);
       return () => clearTimeout(t);
     }
   }, [visible]);
@@ -429,12 +446,12 @@ export function BookContextMenu({
 
   const handlePlay = useCallback(async () => {
     if (book) {
+      onClose();
       try {
-        await loadBook(book, { autoPlay: true, showPlayer: true });
+        await loadBook(book, { autoPlay: true, showPlayer: false });
       } catch {
         // loadBook handles its own error logging
       }
-      onClose();
     }
   }, [book, loadBook, onClose]);
 
@@ -529,8 +546,13 @@ export function BookContextMenu({
     if (seriesDisplay) parts.push(`(${seriesDisplay})`);
     try {
       await Share.share({ message: parts.join(' ') });
-    } catch {}
+    } catch (e) { logger.debug('[BookContextMenu] Share cancelled or failed', e); }
   }, [book, title, author, seriesDisplay]);
+
+  const handleSpinePicker = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowSpinePicker(true);
+  }, []);
 
   const handleRemoveFromPlaylist = useCallback(async () => {
     if (!book || !playlistId) return;
@@ -575,7 +597,7 @@ export function BookContextMenu({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <TouchableWithoutFeedback onPress={handleClose}>
+      <TouchableWithoutFeedback onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close menu">
         <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
           <TouchableWithoutFeedback>
             <Animated.View
@@ -590,11 +612,19 @@ export function BookContextMenu({
                 onPress={handleClose}
                 style={styles.closeHandle}
                 hitSlop={{ top: 8, bottom: 8, left: 40, right: 40 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close menu"
               >
                 <ChevronDown size={scale(18)} color="rgba(255,255,255,0.35)" strokeWidth={2.5} />
               </TouchableOpacity>
 
-              {showPlaylistPicker ? (
+              {showSpinePicker ? (
+                <SpinePickerContent
+                  bookId={book?.id}
+                  bookTitle={title}
+                  onBack={() => setShowSpinePicker(false)}
+                />
+              ) : showPlaylistPicker ? (
                 <PlaylistPicker
                   book={book}
                   onBack={() => setShowPlaylistPicker(false)}
@@ -610,9 +640,25 @@ export function BookContextMenu({
                       {seriesDisplay ? <Text style={styles.metaLine} numberOfLines={1}>{seriesDisplay}</Text> : null}
                     </View>
                     <TouchableOpacity
+                      onPress={handleSpinePicker}
+                      style={styles.shareBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose spine"
+                    >
+                      <Svg width={scale(18)} height={scale(18)} viewBox="0 0 24 24" fill="rgba(255,255,255,0.4)">
+                        <Rect x={3} y={4} width={4} height={14} rx={1} />
+                        <Rect x={9} y={6} width={4} height={12} rx={1} />
+                        <Rect x={15} y={3} width={4} height={15} rx={1} />
+                        <Rect x={2} y={19} width={20} height={2} rx={0.5} />
+                      </Svg>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       onPress={handleShare}
                       style={styles.shareBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Share ${title}`}
                     >
                       <Share2 size={scale(20)} color="rgba(255,255,255,0.4)" strokeWidth={1.5} />
                     </TouchableOpacity>
@@ -678,6 +724,8 @@ export function BookContextMenu({
                         style={styles.detailsBtn}
                         onPress={handleViewDetails}
                         activeOpacity={0.85}
+                        accessibilityRole="button"
+                        accessibilityLabel={`View details for ${title}`}
                       >
                         <Text style={styles.detailsBtnText}>DETAILS</Text>
                       </TouchableOpacity>
@@ -686,6 +734,8 @@ export function BookContextMenu({
                       style={styles.playBtn}
                       onPress={handlePlay}
                       activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Play ${title}`}
                     >
                       <Play size={scale(16)} color={BLACK} fill={BLACK} strokeWidth={0} />
                       <Text style={styles.playBtnText}>PLAY</Text>

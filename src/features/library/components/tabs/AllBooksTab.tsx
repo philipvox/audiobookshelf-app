@@ -3,10 +3,16 @@
  *
  * All books tab content for MyLibraryScreen.
  * Shows continue listening hero, books, series, authors, narrators.
+ *
+ * Uses FlatList for proper virtualization - only renders visible items.
+ * Non-book sections (hero, downloads, series, authors, narrators) are
+ * rendered as ListHeaderComponent and ListFooterComponent.
  */
 
-import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, ScrollView, FlatList, StyleSheet, Platform } from 'react-native';
+import type { BookMedia } from '@/core/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { SectionHeader } from '@/shared/components/SectionHeader';
 import { ContinueListeningHero } from '../ContinueListeningHero';
@@ -16,6 +22,7 @@ import { FannedSeriesCard } from '../FannedSeriesCard';
 import { PersonCard } from '../PersonCard';
 import { DownloadItem } from '@/features/downloads/components/DownloadItem';
 import { scale } from '@/shared/theme';
+import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { EnrichedBook, FannedSeriesCardData } from '../../types';
 
 interface AllBooksTabProps {
@@ -40,6 +47,9 @@ interface AllBooksTabProps {
   hasDownloading: boolean;
   hasPaused: boolean;
   onBrowse: () => void;
+  // Refresh control props passed from parent
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 export function AllBooksTab({
@@ -60,25 +70,38 @@ export function AllBooksTab({
   onDownloadDelete,
   isMarkedFinished,
   onBrowse,
+  refreshing = false,
+  onRefresh,
 }: AllBooksTabProps) {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const hasContent = books.length > 0 || activeDownloads.length > 0 ||
     favoriteSeriesData.length > 0 || favoriteAuthorData.length > 0 ||
     favoriteNarratorData.length > 0;
 
-  if (!hasContent) {
-    return <LibraryEmptyState tab="all" onAction={onBrowse} />;
-  }
-
   // Get continue listening hero data
   const heroBook = continueListeningBook;
   const heroProgress = heroBook?.userMediaProgress?.progress || 0;
-  const heroDuration = (heroBook?.media as any)?.duration || 0;
+  const heroDuration = (heroBook?.media as BookMedia | undefined)?.duration || 0;
   const heroRemainingSeconds = heroDuration * (1 - heroProgress);
   const showHero = heroBook && heroProgress > 0 && heroProgress < 0.95;
 
-  return (
+  // Memoized render function for FlatList
+  const renderItem = useCallback(({ item: book }: { item: EnrichedBook }) => (
+    <BookRow
+      book={book}
+      onPress={() => onBookPress(book.id)}
+      onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
+      onPlay={() => onBookPlay(book)}
+      isMarkedFinished={isMarkedFinished(book.id)}
+    />
+  ), [onBookPress, onBookPlay, isMarkedFinished, navigation]);
+
+  const keyExtractor = useCallback((item: EnrichedBook) => item.id, []);
+
+  // Header: hero + downloads + books section header
+  const ListHeader = useCallback(() => (
     <View>
       {/* Continue Listening Hero */}
       {showHero && (
@@ -112,23 +135,16 @@ export function AllBooksTab({
         </View>
       )}
 
-      {/* Books Section */}
+      {/* Books section header */}
       {books.length > 0 && (
-        <View style={styles.section}>
-          <SectionHeader title={`Books (${books.length})`} showViewAll={false} />
-          {books.map(book => (
-            <BookRow
-              key={book.id}
-              book={book}
-              onPress={() => onBookPress(book.id)}
-              onLongPress={() => navigation.navigate('BookDetail', { id: book.id })}
-              onPlay={() => onBookPlay(book)}
-              isMarkedFinished={isMarkedFinished(book.id)}
-            />
-          ))}
-        </View>
+        <SectionHeader title={`Books (${books.length})`} showViewAll={false} />
       )}
+    </View>
+  ), [showHero, heroBook, heroProgress, heroRemainingSeconds, onContinueListeningPlay, onBookPress, activeDownloads, onDownloadPause, onDownloadResume, onDownloadDelete, books.length]);
 
+  // Footer: series, authors, narrators
+  const ListFooter = useCallback(() => (
+    <View>
       {/* Series Section */}
       {favoriteSeriesData.length > 0 && (
         <View style={styles.section}>
@@ -190,6 +206,35 @@ export function AllBooksTab({
         </View>
       )}
     </View>
+  ), [favoriteSeriesData, favoriteAuthorData, favoriteNarratorData, onSeriesPress, onAuthorPress, onNarratorPress]);
+
+  if (!hasContent) {
+    return <LibraryEmptyState tab="all" onAction={onBrowse} />;
+  }
+
+  return (
+    <FlatList
+      data={books}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      ListHeaderComponent={ListHeader}
+      ListFooterComponent={ListFooter}
+      // Performance optimizations
+      removeClippedSubviews={Platform.OS === 'android'}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      initialNumToRender={10}
+      windowSize={5}
+      // Pull to refresh
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      // Content styling
+      contentContainerStyle={[
+        styles.listContent,
+        { paddingBottom: SCREEN_BOTTOM_PADDING + insets.bottom },
+      ]}
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -209,6 +254,9 @@ const styles = StyleSheet.create({
   horizontalList: {
     paddingHorizontal: scale(20),
     gap: scale(12),
+  },
+  listContent: {
+    flexGrow: 1,
   },
 });
 

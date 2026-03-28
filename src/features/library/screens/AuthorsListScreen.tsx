@@ -26,6 +26,7 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import type { BookMetadata } from '@/core/types';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,6 +103,8 @@ const ListAuthorItem = React.memo(function ListAuthorItem({
     <Pressable
       style={[styles.row, isDark ? styles.rowDark : styles.rowLight]}
       onPress={() => onPress(item.name)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, ${item.bookCount} ${item.bookCount === 1 ? 'book' : 'books'}${item.primaryGenre ? `, ${item.primaryGenre}` : ''}`}
     >
       {/* Avatar */}
       <View style={[styles.avatar, { backgroundColor: getAvatarColor(item.name) }]}>
@@ -171,7 +174,7 @@ export function AuthorsListScreen() {
     return Array.from(authorsMap.values()).map(author => {
       const genreCounts = new Map<string, number>();
       author.books?.forEach(book => {
-        const genres = (book.media?.metadata as any)?.genres || [];
+        const genres = (book.media?.metadata as BookMetadata)?.genres || [];
         genres.forEach((genre: string) => {
           genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
         });
@@ -409,6 +412,8 @@ export function AuthorsListScreen() {
         <Pressable
           style={styles.dropdownOverlay}
           onPress={() => setShowSortDropdown(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close sort options"
         >
           <View style={[styles.dropdownMenu, { backgroundColor: isDark ? '#1a1a1a' : secretLibraryColors.white }]}>
             {SORT_OPTIONS.map((option) => {
@@ -418,6 +423,9 @@ export function AuthorsListScreen() {
                   key={option.key}
                   style={styles.dropdownItem}
                   onPress={() => handleSortSelect(option.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${option.label}${isActive ? ', currently selected' : ''}`}
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Text
                     style={[

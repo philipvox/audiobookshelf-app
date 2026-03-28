@@ -23,7 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/core/api';
 import { queryKeys } from '@/core/queryClient';
 import { LibraryItem } from '@/core/types';
-import { useCompletionStore } from '@/features/completion';
+import { useCompletionStore } from '@/shared/stores/completionStore';
 import { useProgressStore } from '@/core/stores/progressStore';
 import { useLibraryCache } from '@/core/cache/libraryCache';
 

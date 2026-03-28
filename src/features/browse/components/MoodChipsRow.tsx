@@ -46,6 +46,8 @@ export const MoodChipsRow = React.memo(function MoodChipsRow({ items, onMoodPres
             key={key}
             style={[styles.chip, { borderColor: colors.gray + '40' }]}
             onPress={() => handlePress(key)}
+            accessibilityLabel={`${label} mood, ${count} books`}
+            accessibilityRole="button"
           >
             <Text style={[styles.chipText, { color: colors.gray }]}>{label}</Text>
             <Text style={[styles.chipCount, { color: colors.black }]}>{count}</Text>

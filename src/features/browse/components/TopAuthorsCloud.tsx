@@ -58,6 +58,8 @@ export const TopAuthorsCloud = React.memo(function TopAuthorsCloud({ onAuthorPre
                 styles.authorItem,
                 pressed && { opacity: 0.7 },
               ]}
+              accessibilityLabel={`${author.name}, ${author.bookCount} books`}
+              accessibilityRole="link"
             >
               <Text style={[styles.authorName, { color: colors.black, fontSize }]}>
                 {author.name}

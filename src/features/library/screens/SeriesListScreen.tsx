@@ -16,7 +16,7 @@ import {
   StatusBar,
   TextInput,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,8 +30,7 @@ import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useTheme } from '@/shared/theme';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { hashString, SPINE_COLOR_PALETTE } from '@/shared/spine';
-import { useSpineCacheStore } from '@/features/home/stores/spineCache';
-import { fitToBoundingBox } from '@/features/home/utils/spine/core/dimensions';
+import { useSpineCacheStore, fitToBoundingBox } from '@/shared/spine';
 
 const PADDING = 16;
 const ESTIMATED_SERIES_HEIGHT = 100; // Approximate height for getItemLayout
@@ -42,7 +41,7 @@ const MINI_SPINE_MAX_WIDTH = scale(18);
 const DEFAULT_SPINE_WIDTH = 80;
 const DEFAULT_SPINE_HEIGHT = 1200;
 const SPINE_GAP = 1;
-const MAX_SPINES_TOTAL_WIDTH = Math.round(Dimensions.get('window').width * 0.35);
+const MAX_SPINES_TOTAL_WIDTH_RATIO = 0.35;
 
 // Get deterministic color for a book based on its ID
 function getBookDotColor(bookId: string): string {
@@ -54,6 +53,7 @@ function getBookDotColor(bookId: string): string {
 function buildSpineItems(
   bookIds: string[],
   serverDims: Record<string, { width: number; height: number; cachedAt: number }>,
+  maxSpinesTotalWidth: number,
 ) {
   const result: { id: string; url: string; color: string; width: number; height: number }[] = [];
   let totalWidth = 0;
@@ -64,7 +64,7 @@ function buildSpineItems(
     const srcH = cached?.height ?? DEFAULT_SPINE_HEIGHT;
     const { width, height } = fitToBoundingBox(srcW, srcH, MINI_SPINE_MAX_WIDTH, MINI_SPINE_MAX_HEIGHT);
     const nextTotal = totalWidth + width + (result.length > 0 ? SPINE_GAP : 0);
-    if (nextTotal > MAX_SPINES_TOTAL_WIDTH) break;
+    if (nextTotal > maxSpinesTotalWidth) break;
     totalWidth = nextTotal;
     result.push({ id, url: getSpineUrl(id), color: getBookDotColor(id), width, height });
   }
@@ -138,6 +138,8 @@ type SortDirection = 'asc' | 'desc';
 export function SeriesListScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const maxSpinesTotalWidth = Math.round(screenWidth * MAX_SPINES_TOTAL_WIDTH_RATIO);
   const { colors, isDark } = useTheme();
   const accent = colors.accent.primary;
   const accentDim = accent + '80'; // 50% opacity
@@ -263,7 +265,7 @@ export function SeriesListScreen() {
   const renderSeriesItem = useCallback(({ item: series }: { item: any }) => {
     // Build spine items from book IDs
     const bookIds = series.books.map((b: any) => b.id);
-    const spineItems = buildSpineItems(bookIds, serverDims);
+    const spineItems = buildSpineItems(bookIds, serverDims, maxSpinesTotalWidth);
 
     // Calculate progress
     const progress = getSeriesProgress(series.books);
@@ -284,6 +286,8 @@ export function SeriesListScreen() {
           isDark ? styles.cardDark : styles.cardLight,
         ]}
         onPress={() => handleSeriesPress(series.name)}
+        accessibilityRole="button"
+        accessibilityLabel={`${series.name}${author ? ` by ${author}` : ''}, ${series.bookCount} ${series.bookCount === 1 ? 'book' : 'books'}${isComplete ? ', completed' : ''}`}
       >
         {/* Left side: Name, author, count */}
         <View style={styles.seriesCardLeft}>
@@ -375,7 +379,7 @@ export function SeriesListScreen() {
         </View>
       </Pressable>
     );
-  }, [isDark, serverDims, handleSeriesPress, accent, accentDim, colors.text.tertiary, colors.text.inverse]);
+  }, [isDark, serverDims, handleSeriesPress, accent, accentDim, colors.text.tertiary, colors.text.inverse, maxSpinesTotalWidth]);
 
   if (!isLoaded) {
     return (
@@ -434,6 +438,9 @@ export function SeriesListScreen() {
               sortBy === 'name' && { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)' },
             ]}
             onPress={() => handleSortPress('name')}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by name${sortBy === 'name' ? `, currently ${sortDirection === 'asc' ? 'A to Z' : 'Z to A'}` : ''}`}
+            accessibilityState={{ selected: sortBy === 'name' }}
           >
             <Icon
               name={sortBy === 'name' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'ArrowUpDown'}
@@ -451,6 +458,9 @@ export function SeriesListScreen() {
               sortBy === 'bookCount' && { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)' },
             ]}
             onPress={() => handleSortPress('bookCount')}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by book count${sortBy === 'bookCount' ? ', currently selected' : ''}`}
+            accessibilityState={{ selected: sortBy === 'bookCount' }}
           >
             <Icon
               name={sortBy === 'bookCount' ? (sortDirection === 'asc' ? 'ArrowUp' : 'ArrowDown') : 'Library'}

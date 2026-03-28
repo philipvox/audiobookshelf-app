@@ -18,10 +18,11 @@ import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useCoverUrl } from '@/core/cache';
-import { LibraryItem } from '@/core/types';
-import { usePlayerStore } from '@/features/player/stores';
-import { useCurrentChapter, useTimeRemaining } from '@/features/player/stores/playerSelectors';
+import { logger } from '@/shared/utils/logger';
+import { LibraryItem, BookMetadata } from '@/core/types';
+import { usePlayerStore, useCurrentChapter, useTimeRemaining } from '@/shared/stores/playerFacade';
 import { scale } from '@/shared/theme';
+import { formatDuration } from '@/shared/utils/format';
 import {
   useQueueStore,
   useQueue,
@@ -32,20 +33,13 @@ import {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getMetadata(book: LibraryItem) {
-  const m = book.media?.metadata as any;
+function getMetadataFromLibraryItem(book: LibraryItem) {
+  const m = book.media?.metadata as BookMetadata | undefined;
   return {
     title: m?.title || 'Untitled',
     author: m?.authorName || m?.authors?.[0]?.name || 'Unknown Author',
-    duration: (book.media as any)?.duration || 0,
+    duration: book.media?.duration || 0,
   };
-}
-
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
 }
 
 function formatTimeRemaining(seconds: number): string {
@@ -110,7 +104,7 @@ function NowPlayingSection() {
 
   if (!currentBook) return null;
 
-  const { title } = getMetadata(currentBook);
+  const { title } = getMetadataFromLibraryItem(currentBook);
   const chapterTitle = currentChapter?.title || 'Unknown Chapter';
 
   return (
@@ -127,9 +121,9 @@ function NowPlayingSection() {
 }
 
 function QueueRow({ item, onRemove, onPlay }: { item: QueueBook; onRemove: () => void; onPlay?: () => void }) {
-  const { title, author, duration } = getMetadata(item.book);
+  const { title, authorName, duration } = item.meta;
   const durationText = duration > 0 ? formatDuration(duration) : '';
-  const subtitle = durationText ? `${author} · ${durationText}` : author;
+  const subtitle = durationText ? `${authorName} · ${durationText}` : authorName;
 
   return (
     <View style={[styles.row, item.played && styles.rowPlayed]}>
@@ -138,17 +132,17 @@ function QueueRow({ item, onRemove, onPlay }: { item: QueueBook; onRemove: () =>
           <GripIcon size={scale(16)} />
         </View>
       )}
-      <BookCover bookId={item.book.id} size={scale(44)} />
+      <BookCover bookId={item.bookId} size={scale(44)} />
       <View style={styles.rowInfo}>
         <Text style={[styles.rowTitle, item.played && styles.textFaded]} numberOfLines={1}>{title}</Text>
         <Text style={[styles.rowSubtitle, item.played && styles.textFaded]} numberOfLines={1}>{subtitle}</Text>
       </View>
       {onPlay && !item.played ? (
-        <TouchableOpacity style={styles.playBtn} onPress={onPlay}>
+        <TouchableOpacity style={styles.playBtn} onPress={onPlay} accessibilityRole="button" accessibilityLabel={`Play ${title}`}>
           <PlayIcon />
         </TouchableOpacity>
       ) : null}
-      <TouchableOpacity style={styles.removeBtn} onPress={onRemove}>
+      <TouchableOpacity style={styles.removeBtn} onPress={onRemove} accessibilityRole="button" accessibilityLabel={`Remove ${title} from queue`}>
         <CloseIcon color="rgba(255,255,255,0.4)" size={scale(12)} />
       </TouchableOpacity>
     </View>
@@ -165,7 +159,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const clearQueue = useQueueStore((s) => s.clearQueue);
 
   const totalDuration = useMemo(() =>
-    upNext.reduce((acc, item) => acc + ((item.book.media as any)?.duration || 0), 0),
+    upNext.reduce((acc, item) => acc + (item.meta.duration || 0), 0),
     [upNext]
   );
 
@@ -179,16 +173,19 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     clearQueue();
   }, [clearQueue]);
 
-  const handlePlay = useCallback((book: LibraryItem) => {
+  const resolveBook = useQueueStore((s) => s.resolveBook);
+
+  const handlePlay = useCallback((item: QueueBook) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onClose();
     setTimeout(async () => {
       try {
+        const book = resolveBook(item);
         const { usePlayerStore } = await import('@/features/player/stores');
         usePlayerStore.getState().loadBook(book, { autoPlay: true, showPlayer: true });
-      } catch (_) {}
+      } catch (e) { logger.warn('[QueuePanel] Failed to play queued book', e); }
     }, 200);
-  }, [onClose]);
+  }, [onClose, resolveBook]);
 
   // Empty state
   if (queue.length === 0) {
@@ -228,12 +225,12 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Up Next</Text>
-              <TouchableOpacity onPress={handleClear}>
+              <TouchableOpacity onPress={handleClear} accessibilityRole="button" accessibilityLabel="Clear queue">
                 <Text style={styles.sectionAction}>Clear</Text>
               </TouchableOpacity>
             </View>
             {upNext.map((item) => (
-              <QueueRow key={item.id} item={item} onRemove={() => handleRemove(item.bookId)} onPlay={() => handlePlay(item.book)} />
+              <QueueRow key={item.id} item={item} onRemove={() => handleRemove(item.bookId)} onPlay={() => handlePlay(item)} />
             ))}
           </View>
         )}

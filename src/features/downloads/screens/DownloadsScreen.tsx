@@ -12,7 +12,7 @@
  * - Empty state with CTA
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -41,58 +41,70 @@ import { DownloadTask } from '@/core/services/downloadManager';
 import { useCoverUrl } from '@/core/cache';
 import { CoverStars } from '@/shared/components/CoverStars';
 import { sqliteCache } from '@/core/services/sqliteCache';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { haptics } from '@/core/native/haptics';
 import { SCREEN_BOTTOM_PADDING } from '@/constants/layout';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
-import { secretLibraryFonts as fonts } from '@/shared/theme/secretLibrary';
+import { secretLibraryFonts as fonts, secretLibraryColors } from '@/shared/theme/secretLibrary';
 import { Snackbar, useSnackbar, EmptyState } from '@/shared/components';
-import { SettingsHeader } from '@/features/profile/components/SettingsHeader';
+import { SettingsHeader } from '@/shared/components/SettingsHeader';
+import { formatBytes } from '@/shared/utils/format';
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
 const COVER_SIZE = scale(56);
-const ACCENT_COLOR = '#F3B60C';
 
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
 
 function formatDate(date: Date): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
-function formatTimeRemaining(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s left`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min left`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
-  return `${hours}h ${mins}m left`;
-}
-
 // ============================================================================
 // STORAGE CARD COMPONENT
 // ============================================================================
 
+const DISK_QUERY_DEBOUNCE_MS = 5000;
+
 function StorageCard({ usedBytes }: { usedBytes: number }) {
   const colors = useSecretLibraryColors();
   const [freeBytes, setFreeBytes] = useState<number | null>(null);
+  const [diskQueryFailed, setDiskQueryFailed] = useState(false);
+  const lastQueryTime = useRef(0);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    FileSystem.getFreeDiskStorageAsync()
-      .then(setFreeBytes)
-      .catch(() => setFreeBytes(null));
+    const queryDiskSpace = () => {
+      lastQueryTime.current = Date.now();
+      FileSystem.getFreeDiskStorageAsync()
+        .then((bytes) => {
+          setFreeBytes(bytes);
+          setDiskQueryFailed(false);
+        })
+        .catch(() => {
+          setFreeBytes(null);
+          setDiskQueryFailed(true);
+        });
+    };
+
+    const elapsed = Date.now() - lastQueryTime.current;
+    if (elapsed >= DISK_QUERY_DEBOUNCE_MS) {
+      // Enough time has passed, query immediately
+      queryDiskSpace();
+    } else {
+      // Debounce: schedule query after remaining time
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(queryDiskSpace, DISK_QUERY_DEBOUNCE_MS - elapsed);
+    }
+
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, [usedBytes]);
 
   const totalBytes = freeBytes ? freeBytes + usedBytes : null;
@@ -115,8 +127,11 @@ function StorageCard({ usedBytes }: { usedBytes: number }) {
         <Text style={[styles.storageLabel, { color: colors.black }]}>
           {formatBytes(usedBytes)} used
         </Text>
-        <Text style={[styles.storageLabel, { color: colors.gray }]}>
-          {freeBytes ? `${formatBytes(freeBytes)} free` : 'Calculating...'}
+        <Text
+          style={[styles.storageLabel, { color: diskQueryFailed ? colors.coral : colors.gray }]}
+          accessibilityLabel={diskQueryFailed ? 'Unable to determine free disk space' : freeBytes ? `${formatBytes(freeBytes)} free` : 'Calculating free disk space'}
+        >
+          {diskQueryFailed ? 'Unable to read disk space' : freeBytes ? `${formatBytes(freeBytes)} free` : 'Calculating...'}
         </Text>
       </View>
     </View>
@@ -146,16 +161,13 @@ function ActiveDownloadRow({
     sqliteCache.getLibraryItem(download.itemId).then(setBook);
   }, [download.itemId]);
 
-  const metadata = book?.media?.metadata as any;
+  const metadata = book?.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Loading...';
   const author = metadata?.authorName || '';
 
   const progress = Math.round(download.progress * 100);
   const isPaused = download.status === 'paused';
   const isQueued = download.status === 'pending';
-
-  const bytesRemaining = (download.totalBytes || 0) - (download.bytesDownloaded || 0);
-  const estimatedSeconds = download.totalBytes > 0 ? (bytesRemaining / (download.totalBytes / 300)) : 0;
 
   return (
     <View style={[styles.row, { borderBottomColor: colors.borderLight }]}>
@@ -177,7 +189,6 @@ function ActiveDownloadRow({
           {isQueued ? 'Waiting...' : (
             <>
               {formatBytes(download.bytesDownloaded || 0)} / {formatBytes(download.totalBytes || 0)}
-              {!isPaused && estimatedSeconds > 0 && ` · ${formatTimeRemaining(estimatedSeconds)}`}
               {isPaused && ' · Paused'}
             </>
           )}
@@ -190,6 +201,8 @@ function ActiveDownloadRow({
             style={styles.actionButton}
             onPress={isPaused ? onResume : onPause}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isPaused ? `Resume downloading ${title}` : `Pause downloading ${title}`}
           >
             {isPaused ? (
               <Play size={scale(16)} color={colors.black} strokeWidth={1.5} />
@@ -198,8 +211,14 @@ function ActiveDownloadRow({
             )}
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.actionButton} onPress={onCancel} activeOpacity={0.7}>
-          <X size={scale(16)} color="#ff4b4b" strokeWidth={1.5} />
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={onCancel}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Cancel downloading ${title}`}
+        >
+          <X size={scale(16)} color={colors.coral} strokeWidth={1.5} />
         </TouchableOpacity>
       </View>
     </View>
@@ -233,7 +252,7 @@ function DownloadedRow({
     });
   }, [download.itemId]);
 
-  const metadata = book?.media?.metadata as any;
+  const metadata = book?.media?.metadata as BookMetadata | undefined;
   const title = isLoading ? 'Loading...' : (metadata?.title || 'Unknown Title');
   const author = metadata?.authorName || '';
   const downloadDate = download.completedAt ? new Date(download.completedAt) : new Date();
@@ -258,7 +277,13 @@ function DownloadedRow({
   }, [onDelete, title]);
 
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.swipeDeleteButton} onPress={handleDelete} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={styles.swipeDeleteButton}
+      onPress={handleDelete}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Delete download of ${title}`}
+    >
       <Trash2 size={scale(18)} color="#fff" strokeWidth={1.5} />
       <Text style={styles.swipeDeleteText}>Delete</Text>
     </TouchableOpacity>
@@ -275,6 +300,8 @@ function DownloadedRow({
         style={[styles.row, { borderBottomColor: colors.borderLight, backgroundColor: colors.grayLight }]}
         onPress={onPress}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}${author ? ` by ${author}` : ''}, downloaded, ${formatBytes(download.totalBytes || 0)}`}
       >
         <View style={styles.coverContainer}>
           <Image source={coverUrl} style={styles.cover} contentFit="cover" />
@@ -320,7 +347,12 @@ function DownloadSectionHeader({
         {title}{count !== undefined ? ` (${count})` : ''}
       </Text>
       {actionLabel && onAction && (
-        <TouchableOpacity onPress={onAction} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={onAction}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+        >
           <Text style={[styles.sectionAction, { color: actionColor || colors.black }]}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
@@ -513,7 +545,7 @@ export function DownloadsScreen() {
                 count={completed.length}
                 actionLabel="Delete All"
                 onAction={handleDeleteAll}
-                actionColor="#ff4b4b"
+                actionColor={colors.coral}
               />
               {completed.map((d) => (
                 <DownloadedRow
@@ -531,6 +563,8 @@ export function DownloadsScreen() {
             style={[styles.settingsLink, { borderBottomColor: colors.borderLight }]}
             onPress={handleSettings}
             activeOpacity={0.7}
+            accessibilityRole="link"
+            accessibilityLabel="Data and Storage Settings, quality, WiFi-only, storage location"
           >
             <View style={[styles.settingsIconContainer, { backgroundColor: colors.white }]}>
               <Settings size={scale(18)} color={colors.gray} strokeWidth={1.5} />
@@ -588,7 +622,7 @@ const styles = StyleSheet.create({
   },
   storageBarFill: {
     height: '100%',
-    backgroundColor: ACCENT_COLOR,
+    backgroundColor: secretLibraryColors.gold,
     borderRadius: 3,
   },
   storageLabels: {
@@ -681,7 +715,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT_COLOR,
+    backgroundColor: secretLibraryColors.gold,
     borderRadius: 1.5,
   },
   progressText: {
@@ -691,7 +725,7 @@ const styles = StyleSheet.create({
 
   // Swipe delete
   swipeDeleteButton: {
-    backgroundColor: '#ff4b4b',
+    backgroundColor: secretLibraryColors.coral,
     justifyContent: 'center',
     alignItems: 'center',
     width: 72,

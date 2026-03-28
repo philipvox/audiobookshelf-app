@@ -219,20 +219,18 @@ class DownloadManager {
    * Pause all active downloads due to network change
    */
   private async pauseAllForNetwork(): Promise<void> {
-    const pausedIds: string[] = [];
-    for (const [itemId, download] of this.activeDownloads) {
+    // Snapshot and clear activeDownloads synchronously FIRST to prevent
+    // processQueue from seeing stale entries during async pause operations
+    const downloadsToPause = new Map(this.activeDownloads);
+    this.activeDownloads.clear();
+
+    for (const [itemId, download] of downloadsToPause) {
       try {
         await download.pauseAsync();
         log(`Paused download for network: ${itemId}`);
-        pausedIds.push(itemId);
       } catch (err) {
         logWarn(`Failed to pause download ${itemId}:`, err);
-        pausedIds.push(itemId); // Still remove — download object is likely in bad state
       }
-    }
-    // Only clear successfully handled downloads
-    for (const id of pausedIds) {
-      this.activeDownloads.delete(id);
     }
 
     // Update all downloading items to waiting_wifi status
@@ -858,6 +856,9 @@ class DownloadManager {
   // ===========================================================================
 
   private async processQueue(): Promise<void> {
+    // Mutex guard: the flag check + set are synchronous (no await in between),
+    // so JavaScript's single-threaded event loop guarantees no race condition
+    // even if processQueue is called rapidly from multiple callers.
     if (this.isProcessingQueue) {
       logVerbose('Queue processing already in progress, skipping...');
       return;
@@ -874,6 +875,7 @@ class DownloadManager {
       return;
     }
 
+    // Set flag immediately (synchronous) before any await to prevent re-entry
     this.isProcessingQueue = true;
     log('Processing download queue...');
 
@@ -1144,7 +1146,7 @@ class DownloadManager {
       // Get audio files — access directly instead of via isBookMedia type guard,
       // since the non-expanded API response lacks 'duration' in media
       const audioFiles: AudioFileInfo[] =
-        ((fullItem.media as any)?.audioFiles || []) as AudioFileInfo[];
+        ((fullItem.media as BookMedia)?.audioFiles || []) as AudioFileInfo[];
       log(`Audio files found: ${audioFiles.length}`);
 
       if (audioFiles.length === 0) {
@@ -1379,13 +1381,7 @@ class DownloadManager {
           this.progressInfo.set(itemId, progressUpdate);
         }
 
-        // Emit file complete event for partial download playback
-        eventBus.emit('download:file_complete', {
-          bookId: itemId,
-          fileIndex: i,
-          totalFiles: audioFiles.length,
-          filePath: destPath,
-        });
+
       }
 
       // Download cover image

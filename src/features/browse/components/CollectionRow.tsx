@@ -6,7 +6,7 @@
 
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Collection } from '@/core/types';
+import { Collection, BookMetadata } from '@/core/types';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { CollectionThumb } from './CollectionThumb';
 import { scale } from '@/shared/theme';
@@ -26,7 +26,7 @@ function CollectionRowComponent({
   const bookCount = collection.books.length;
 
   return (
-    <Pressable style={styles.container} onPress={onPress}>
+    <Pressable style={styles.container} onPress={onPress} accessibilityLabel={`Open collection ${collection.name}, ${bookCount} books`} accessibilityRole="button">
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>{collection.name}</Text>
@@ -39,7 +39,7 @@ function CollectionRowComponent({
           <CollectionThumb
             key={book.id}
             bookId={book.id}
-            bookTitle={(book.media?.metadata as any)?.title}
+            bookTitle={(book.media?.metadata as BookMetadata | undefined)?.title}
             index={index}
             onPress={() => onBookPress?.(book.id)}
           />

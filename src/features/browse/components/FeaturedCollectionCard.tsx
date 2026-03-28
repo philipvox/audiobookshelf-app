@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { BookOpen } from 'lucide-react-native';
 import { Collection } from '@/core/types';
@@ -14,9 +14,7 @@ import { apiClient } from '@/core/api';
 import { scale, radius } from '@/shared/theme';
 import { secretLibraryColors as colors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 24;
-const CARD_WIDTH = SCREEN_WIDTH - CARD_PADDING * 2;
 const MOSAIC_HEIGHT = scale(180);
 
 interface FeaturedCollectionCardProps {
@@ -25,6 +23,8 @@ interface FeaturedCollectionCardProps {
 }
 
 export const FeaturedCollectionCard = React.memo(function FeaturedCollectionCard({ collection, onPress }: FeaturedCollectionCardProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = screenWidth - CARD_PADDING * 2;
   const books = collection.books || [];
   const bookCount = books.length;
 
@@ -39,9 +39,11 @@ export const FeaturedCollectionCard = React.memo(function FeaturedCollectionCard
     <Pressable
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}
       onPress={onPress}
+      accessibilityLabel={`Open collection ${collection.name}, ${bookCount} books`}
+      accessibilityRole="button"
     >
       {/* Cover Mosaic */}
-      <View style={styles.mosaic}>
+      <View style={[styles.mosaic, { width: cardWidth }]}>
         {coverUrls.length >= 4 ? (
           // 2x2 grid
           <View style={styles.mosaicGrid}>
@@ -109,7 +111,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   mosaic: {
-    width: CARD_WIDTH,
+    // width set inline via useWindowDimensions
     height: MOSAIC_HEIGHT,
     overflow: 'hidden',
   },

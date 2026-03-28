@@ -5,6 +5,7 @@
  */
 
 import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryCache } from '@/core/cache';
 import { LibraryItem } from '@/core/types';
 import { DURATION_RANGES, DurationRangeId } from './useBrowseCounts';
@@ -13,7 +14,7 @@ import { DURATION_RANGES, DurationRangeId } from './useBrowseCounts';
  * Filter books by duration range
  */
 export function useDurationBooks(minSeconds: number, maxSeconds: number): LibraryItem[] {
-  const { items, isLoaded } = useLibraryCache();
+  const { items, isLoaded } = useLibraryCache(useShallow((s) => ({ items: s.items, isLoaded: s.isLoaded })));
 
   return useMemo(() => {
     if (!isLoaded || !items.length) {
@@ -21,7 +22,7 @@ export function useDurationBooks(minSeconds: number, maxSeconds: number): Librar
     }
 
     return items.filter((item) => {
-      const duration = (item.media as any)?.duration || 0;
+      const duration = item.media?.duration || 0;
       return duration >= minSeconds && duration < maxSeconds;
     });
   }, [items, isLoaded, minSeconds, maxSeconds]);
@@ -31,7 +32,7 @@ export function useDurationBooks(minSeconds: number, maxSeconds: number): Librar
  * Get book count for each duration range
  */
 export function useDurationCounts(): Record<DurationRangeId, number> {
-  const { items, isLoaded } = useLibraryCache();
+  const { items, isLoaded } = useLibraryCache(useShallow((s) => ({ items: s.items, isLoaded: s.isLoaded })));
 
   return useMemo(() => {
     const counts: Record<DurationRangeId, number> = {
@@ -47,7 +48,7 @@ export function useDurationCounts(): Record<DurationRangeId, number> {
     }
 
     items.forEach((item) => {
-      const duration = (item.media as any)?.duration || 0;
+      const duration = item.media?.duration || 0;
 
       for (const range of DURATION_RANGES) {
         if (duration >= range.min && duration < range.max) {

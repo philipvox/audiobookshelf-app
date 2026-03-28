@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LibraryItem, BookMetadata } from '@/core/types';
+import { LibraryItem, BookMetadata, BookMedia } from '@/core/types';
 
 // =============================================================================
 // Types
@@ -120,7 +120,7 @@ const DEFAULT_KIDS_AGES: AgeRecommendation[] = ['4', '6', '8', '10'];
  */
 function getBookMetadata(item: LibraryItem): BookMetadata | null {
   if (item.mediaType !== 'book') return null;
-  return (item.media as any)?.metadata || null;
+  return (item.media as BookMedia)?.metadata || null;
 }
 
 /**
@@ -128,7 +128,7 @@ function getBookMetadata(item: LibraryItem): BookMetadata | null {
  */
 function getBookTags(item: LibraryItem): string[] {
   if (item.mediaType !== 'book') return [];
-  const tags = (item.media as any)?.tags || [];
+  const tags = (item.media as BookMedia)?.tags || [];
   return tags.map((t: string) => t.toLowerCase());
 }
 
@@ -328,7 +328,7 @@ export function matchesSelectedRatings(
  */
 function getBookDurationHours(item: LibraryItem): number {
   if (item.mediaType !== 'book') return 0;
-  const durationSeconds = (item.media as any)?.duration || 0;
+  const durationSeconds = (item.media as BookMedia)?.duration || 0;
   return durationSeconds / 3600; // Convert seconds to hours
 }
 

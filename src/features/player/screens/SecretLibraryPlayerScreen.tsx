@@ -40,7 +40,10 @@ import { useShallow } from 'zustand/react/shallow';
 import Slider from '@react-native-community/slider';
 
 import { LinearGradient } from 'expo-linear-gradient';
+import type { TextStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { RootStackNavigationProp } from '@/navigation/types';
+import type { BookMetadata } from '@/core/types';
 import { TopNav, TopNavBackIcon } from '@/shared/components';
 import {
   playerTransitionProgress,
@@ -70,17 +73,18 @@ import {
   secretLibraryColors as staticColors,
 } from '@/shared/theme/secretLibrary';
 import { useResponsive } from '@/shared/hooks/useResponsive';
+import { useToastStore } from '@/shared/hooks/useToast';
 import { useSpineCacheStore, getTypographyForGenres, getSeriesStyle } from '@/shared/spine';
 
 // Chromecast
-import { useCastStore } from '@/features/chromecast';
+import { useCastStore, CastDeviceSheet } from '@/features/chromecast';
 
 // Sheets/Panels
 import { SpeedSheet } from '../sheets/SpeedSheet';
 import { SleepTimerSheet } from '../sheets/SleepTimerSheet';
 import { ChaptersSheet } from '../sheets/ChaptersSheet';
 import { BookmarksSheet } from '../sheets/BookmarksSheet';
-import { QueuePanel } from '@/features/queue/components/QueuePanel';
+import { QueuePanel } from '@/shared/stores/queueFacade';
 
 // Sheet types
 type ActiveSheet = 'speed' | 'sleep' | 'queue' | 'chapters' | 'bookmarks' | null;
@@ -189,6 +193,14 @@ const _ChevronDownIcon = ({ color = staticColors.black, size = 12 }: IconProps) 
   </Svg>
 );
 
+const CarIcon = ({ color = staticColors.black, size = 16 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2.7-3.6A2 2 0 0 0 13.7 5H10.3a2 2 0 0 0-1.6.9L6 9l-2.5 1.1C2.7 10.7 2 11.5 2 12.4V16c0 .6.4 1 1 1h2" />
+    <Circle cx={7} cy={17} r={2} />
+    <Circle cx={17} cy={17} r={2} />
+  </Svg>
+);
+
 const CastIcon = ({ color = staticColors.black, size = 16 }: IconProps) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <Path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
@@ -216,6 +228,14 @@ function formatTimeRemaining(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
   return `-${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatTimeLeft(seconds: number, includeLeft = true): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return includeLeft ? '0m left' : '0m';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const time = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+  return includeLeft ? `${time} left` : time;
 }
 
 function formatDeltaTime(seconds: number): string {
@@ -261,7 +281,7 @@ function getDeltaFontSize(seconds: number): number {
 
 export function SecretLibraryPlayerScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootStackNavigationProp>();
 
   // Responsive layout for iPad
   const responsive = useResponsive();
@@ -284,6 +304,7 @@ export function SecretLibraryPlayerScreen() {
   const castAvailable = useCastStore((s) => s.isAvailable);
   const castConnected = useCastStore((s) => s.isConnected);
   const showCastPicker = useCastStore((s) => s.showPicker);
+  const [castSheetVisible, setCastSheetVisible] = useState(false);
 
   // Sheet state - no sheet open by default
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
@@ -293,6 +314,9 @@ export function SecretLibraryPlayerScreen() {
 
   // Progress mode: 'book' shows full book progress, 'chapter' shows current chapter progress
   const [progressMode, setProgressMode] = useState<'book' | 'chapter'>('chapter');
+
+  // Car mode: simplified large-button interface for driving
+  const [carMode, setCarMode] = useState(false);
 
   // Slider scrubbing state
   const [sliderValue, setSliderValue] = useState(0);
@@ -392,7 +416,7 @@ export function SecretLibraryPlayerScreen() {
   const { queueDownload } = useDownloads();
 
   // Book metadata
-  const metadata = currentBook?.media?.metadata as any;
+  const metadata = currentBook?.media?.metadata as BookMetadata | undefined;
   const title = metadata?.title || 'Unknown Title';
   const author = metadata?.authorName || metadata?.authors?.[0]?.name || 'Unknown Author';
   const authorId = metadata?.authors?.[0]?.id || null;
@@ -401,8 +425,8 @@ export function SecretLibraryPlayerScreen() {
   // Parse series name - handle multiple formats
   const seriesName = useMemo(() => {
     // Try series array first (expanded API data)
-    if (metadata?.series?.length > 0) {
-      const seriesEntry = metadata.series[0];
+    if ((metadata?.series?.length ?? 0) > 0) {
+      const seriesEntry = metadata!.series[0];
       const name = seriesEntry.name || seriesEntry;
       if (name && typeof name === 'string') {
         return name;
@@ -419,22 +443,16 @@ export function SecretLibraryPlayerScreen() {
 
   // Parse narrator name - handle multiple formats
   const narratorName = useMemo(() => {
-    // Try narrators array first (strings)
-    if (metadata?.narrators?.length > 0) {
-      const narrator = metadata.narrators[0];
-      if (typeof narrator === 'string') return narrator;
-      return narrator?.name || null;
+    // Try narrators array first (strings per ABS API)
+    if ((metadata?.narrators?.length ?? 0) > 0) {
+      return metadata!.narrators[0];
     }
-    // Try narratorName string
+    // Try narratorName computed field
     if (metadata?.narratorName) {
       return metadata.narratorName;
     }
-    // Try narrator (singular)
-    if (metadata?.narrator) {
-      return metadata.narrator;
-    }
     return null;
-  }, [metadata?.narrators, metadata?.narratorName, metadata?.narrator]);
+  }, [metadata?.narrators, metadata?.narratorName]);
 
   // Get normalized chapter names
   const normalizedChapters = useNormalizedChapters(chapters, { bookTitle: title });
@@ -552,7 +570,7 @@ export function SecretLibraryPlayerScreen() {
 
   // Mini player cover center in screen coordinates
   const miniCoverCenterX = miniPlayerPadH + miniCoverSize / 2;
-  const miniCoverCenterY = screenHeight - bottomPad - miniCoverSize / 2;
+  const miniCoverCenterY = screenHeight - bottomPad - miniCoverSize / 2 + scale(25);
 
   // Full player cover center in screen coordinates (at progress=0, container at screenHeight)
   const fullCoverCenterX = screenWidth / 2;
@@ -865,15 +883,28 @@ export function SecretLibraryPlayerScreen() {
     nextChapter();
   }, [nextChapter]);
 
-  const handleBookmark = useCallback(() => {
+  const handleBookmark = useCallback(async () => {
     haptics.success();
     // Add bookmark at current position
-    addBookmark({
-      title: `Bookmark at ${formatTime(position)}`,
-      note: null,
-      time: position,
-      chapterTitle,
-    });
+    try {
+      await addBookmark({
+        title: `Bookmark at ${formatTime(position)}`,
+        note: null,
+        time: position,
+        chapterTitle,
+      });
+      useToastStore.getState().addToast({
+        type: 'success',
+        message: 'BOOKMARK SAVED',
+        duration: 2000,
+      });
+    } catch {
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: 'Failed to save bookmark',
+        duration: 2000,
+      });
+    }
   }, [addBookmark, position, chapterTitle]);
 
   const handleClose = useCallback(() => {
@@ -1136,13 +1167,30 @@ export function SecretLibraryPlayerScreen() {
           pointerEvents="none"
         />
 
+        {/* Blurred cover background — matches browse discover hero, fades with transition */}
+        {coverUrl && (
+          <RAnimated.View style={[styles.blurBackground, bgSolidAnimStyle]} pointerEvents="none">
+            <Image
+              source={{ uri: coverUrl }}
+              blurRadius={205}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.85)', colors.white]}
+              locations={[0, 0.2, 0.75, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+          </RAnimated.View>
+        )}
+
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.creamGray} />
 
         {/* Safe Area Top */}
-        <View style={{ height: insets.top }} />
+        {!carMode && <View style={{ height: insets.top }} />}
 
-        {/* Header - fades in during transition */}
-        <RAnimated.View style={topNavAnimStyle}>
+        {/* Header - fades in during transition (hidden in car mode) */}
+        {!carMode && <RAnimated.View style={topNavAnimStyle}>
           <TopNav
         variant={isDarkMode ? 'dark' : 'light'}
         showLogo={true}
@@ -1172,11 +1220,11 @@ export function SecretLibraryPlayerScreen() {
           },
         ]}
           circleButtons={[
-            ...(castAvailable ? [{
+            {
               key: 'cast',
               icon: <CastIcon color={castConnected ? '#F3B60C' : colors.black} size={16} />,
-              onPress: showCastPicker,
-            }] : []),
+              onPress: castConnected ? () => setCastSheetVisible(true) : showCastPicker,
+            },
             {
               key: 'back',
               icon: <TopNavBackIcon color={colors.black} size={16} />,
@@ -1184,19 +1232,116 @@ export function SecretLibraryPlayerScreen() {
             },
           ]}
         />
-        </RAnimated.View>
+        </RAnimated.View>}
 
+        {/* ============ CAR MODE ============ */}
+        {carMode ? (
+          <View style={styles.carModeContainer}>
+            {/* Blurred cover background */}
+            {coverUrl && (
+              <Image
+                source={{ uri: coverUrl }}
+                blurRadius={50}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+              />
+            )}
+            {/* Dark overlay */}
+            <LinearGradient
+              colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.85)']}
+              locations={[0, 0.5, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+
+            {/* Exit car mode button */}
+            <TouchableOpacity
+              style={[styles.carModeExit, { top: insets.top + scale(8) }]}
+              onPress={() => setCarMode(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Exit car mode"
+            >
+              <Text style={[styles.carModeExitText, { color: 'rgba(255,255,255,0.6)' }]}>✕</Text>
+            </TouchableOpacity>
+
+            {/* Spacer — pushes content to center */}
+            <View style={{ flex: 1 }} />
+
+            {/* Title + Chapter — centered */}
+            <View style={styles.carModeInfo}>
+              <Text style={[styles.carModeTitle, { color: '#FFFFFF' }]} numberOfLines={2}>
+                {title}
+              </Text>
+              <Text style={[styles.carModeChapter, { color: 'rgba(255,255,255,0.6)' }]} numberOfLines={1}>
+                {chapterTitle}
+              </Text>
+            </View>
+
+            {/* Time remaining — below title */}
+            <Text style={[styles.carModeTime, { color: '#FFFFFF' }]}>
+              {formatTimeLeft(timeRemaining, false)}
+            </Text>
+            <Text style={[styles.carModeTimeLabel, { color: '#FFFFFF' }]}>
+              left
+            </Text>
+
+            {/* Spacer — pushes controls to bottom */}
+            <View style={{ flex: 1 }} />
+
+            {/* Skip Controls — pill buttons */}
+            <View style={styles.carModeControls}>
+              <TouchableOpacity
+                style={styles.carModeSkipPill}
+                onPress={handleSkipBack}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Skip back ${skipBackInterval} seconds`}
+              >
+                <RewindIcon color="#FFFFFF" size={36} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.carModeSkipPill}
+                onPress={handleSkipForward}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Skip forward ${skipForwardInterval} seconds`}
+              >
+                <FastForwardIcon color="#FFFFFF" size={36} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Play/Pause — pill button */}
+            <TouchableOpacity
+              style={styles.carModePlayPill}
+              onPress={isLoading || isBuffering ? handleStop : handlePlayPause}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isLoading || isBuffering ? (
+                <StopIcon color="#000000" size={44} />
+              ) : isPlaying ? (
+                <PauseIcon color="#000000" size={52} />
+              ) : (
+                <PlayIcon color="#000000" size={52} />
+              )}
+            </TouchableOpacity>
+
+            <View style={{ height: insets.bottom + scale(24) }} />
+          </View>
+        ) : (
         <View style={[styles.screen, contentStyle]}>
-          {/* Main Content - New Layout */}
+          {/* ============ NORMAL MODE ============ */}
           <View style={styles.mainContent}>
-            {/* 1. Cover Image - Full width, larger — scales up during transition */}
+            {/* Cover Image */}
             <RAnimated.View style={coverAnimStyle}>
-              {/* Double-tap left half = rewind, right half = fast-forward */}
-              {/* Dims to 60% opacity when scrubbing time is displayed over it */}
               <Pressable
                 ref={coverRef}
                 style={styles.coverWrapper}
                 onPress={handleCoverPress}
+                accessibilityRole="image"
+                accessibilityLabel={`Cover art for ${title}. Double tap left half to skip back, right half to skip forward`}
               >
             <View style={[styles.coverContainer, showDelta && { opacity: 0.6 }]}>
               {coverUrl ? (
@@ -1204,6 +1349,7 @@ export function SecretLibraryPlayerScreen() {
                   source={{ uri: coverUrl }}
                   style={styles.cover}
                   contentFit="cover"
+                  accessible={false}
                 />
               ) : (
                 <View style={[styles.cover, styles.coverPlaceholder]}>
@@ -1213,7 +1359,6 @@ export function SecretLibraryPlayerScreen() {
                 </View>
               )}
               {bookId && <CoverStars bookId={bookId} starSize={scale(48)} />}
-              {/* Loading/buffering spinner overlay on cover */}
               {(isLoading || isBuffering) && (
                 <View style={styles.coverLoadingOverlay}>
                   <ActivityIndicator size={scale(64)} color="rgba(255,255,255,0.9)" />
@@ -1221,7 +1366,6 @@ export function SecretLibraryPlayerScreen() {
               )}
             </View>
 
-            {/* Time Delta Popup - overlays cover */}
             {showDelta && (
               <Animated.View style={[styles.deltaPopup, { opacity: deltaOpacity }]}>
                 <Animated.Text style={[styles.deltaText, { fontSize: deltaFontSize, color: colors.black }]}>
@@ -1230,7 +1374,6 @@ export function SecretLibraryPlayerScreen() {
               </Animated.View>
             )}
 
-            {/* Double-tap ripple ovals — flash in small, ripple outward while fading */}
             <Animated.View
               pointerEvents="none"
               style={[styles.tapCircle, styles.tapCircleLeft, {
@@ -1248,70 +1391,187 @@ export function SecretLibraryPlayerScreen() {
           </Pressable>
             </RAnimated.View>
 
-          {/* Controls section: byline, title — fades in during transition */}
+          {/* Title, chapter, byline — below cover */}
           <RAnimated.View style={controlsAnimStyle}>
-            {/* 2. Byline - By Author (left) · Narrated by Narrator (right) - justified to cover width */}
+            {/* Title + Chapter centered */}
+            <View style={styles.titleChapterColumn}>
+              <TouchableOpacity
+                onPress={handleTitlePress}
+                activeOpacity={0.7}
+                accessibilityRole="link"
+                accessibilityLabel={`Book title: ${displayTitle}`}
+                accessibilityHint="Double tap to view book details"
+              >
+                <Text
+                  style={[
+                    styles.bookTitle,
+                    { fontFamily: titleFontFamily, fontWeight: titleFontWeight as TextStyle['fontWeight'], color: colors.black }
+                  ]}
+                  numberOfLines={3}
+                >
+                  {displayTitle}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => openSheet('chapters')}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Current chapter: ${chapterTitle}`}
+                accessibilityHint="Double tap to open chapter list"
+              >
+                <Text style={[styles.chapterText, { color: colors.black }]} numberOfLines={2}>
+                  {chapterTitle}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Byline - Author · Series centered */}
             <View style={styles.byline}>
-            {/* Left side: By Author */}
-            <View style={styles.bylineLeft}>
-              <Text style={[styles.bylineText, { color: colors.gray }]}>By </Text>
               <TouchableOpacity
                 onPress={authorId ? handleAuthorPress : undefined}
                 activeOpacity={authorId ? 0.7 : 1}
+                accessibilityRole={authorId ? 'link' : 'text'}
+                accessibilityLabel={`Author: ${author}`}
+                accessibilityHint={authorId ? 'Double tap to view author details' : undefined}
               >
-                <Text style={[styles.bylineLink, { color: colors.black }]}>{author}</Text>
+                <Text style={[styles.bylineText, { color: colors.gray }]}>{author}</Text>
               </TouchableOpacity>
-            </View>
-            {/* Right side: Narrated by Narrator */}
-            {narratorName && (
-              <View style={styles.bylineRight}>
-                <Text style={[styles.bylineText, { color: colors.gray }]}>Narrated by </Text>
-                <TouchableOpacity onPress={handleNarratorPress} activeOpacity={0.7}>
-                  <Text style={[styles.bylineLink, { color: colors.black }]}>{narratorName}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* 3. Title/Chapter Row */}
-          <View style={styles.titleChapterRow}>
-            {/* Left: Book Title */}
-            <TouchableOpacity
-              style={styles.titleContainer}
-              onPress={handleTitlePress}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.bookTitle,
-                  { fontFamily: titleFontFamily, fontWeight: titleFontWeight as any, color: colors.black }
-                ]}
-                numberOfLines={3}
-              >
-                {displayTitle}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Right: Chapter name */}
-            <TouchableOpacity
-              onPress={() => openSheet('chapters')}
-              activeOpacity={0.7}
-              style={styles.chapterTextContainer}
-            >
-              <Text style={[styles.chapterText, { color: colors.black }]} numberOfLines={3}>
-                {chapterTitle}
-              </Text>
-            </TouchableOpacity>
+              {seriesName && (
+                <>
+                  <Text style={[styles.bylineDot, { color: colors.gray }]}>  ·  </Text>
+                  <TouchableOpacity onPress={_handleSeriesPress} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`Series: ${seriesName}`} accessibilityHint="Double tap to view series details">
+                    <Text style={[styles.bylineText, { color: colors.gray }]}>{seriesName}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </RAnimated.View>
+
+          {/* Controls Section — flows right after byline */}
+          <RAnimated.View style={controlsAnimStyle}>
+          <View style={{ height: scale(44) }} />
+
+          {/* 5-Button Controls Row: |< ⏪ ▶ ⏩ >| */}
+          <View style={styles.controlsRow}>
+            <TouchableOpacity
+              style={styles.skipChapterBtn}
+              onPress={handlePrev}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="Previous chapter"
+              accessibilityHint="Double tap to go to the previous chapter"
+            >
+              <SkipPrevIcon color={colors.black} size={28} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkipBack}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel={`Skip back ${skipBackInterval} seconds`}
+              accessibilityHint="Double tap to skip backward"
+            >
+              <RewindIcon color={colors.black} size={24} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.playBtn}
+              onPress={isLoading || isBuffering ? handleStop : handlePlayPause}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={isLoading || isBuffering ? 'Stop loading' : isPlaying ? 'Pause' : 'Play'}
+              accessibilityHint={isLoading || isBuffering ? 'Double tap to stop loading' : isPlaying ? 'Double tap to pause playback' : 'Double tap to resume playback'}
+            >
+              {isLoading || isBuffering ? (
+                <StopIcon color="#000000" size={28} />
+              ) : isPlaying ? (
+                <PauseIcon color="#000000" size={36} />
+              ) : (
+                <PlayIcon color="#000000" size={36} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkipForward}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel={`Skip forward ${skipForwardInterval} seconds`}
+              accessibilityHint="Double tap to skip forward"
+            >
+              <FastForwardIcon color={colors.black} size={24} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.skipChapterBtn}
+              onPress={handleNext}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="Next chapter"
+              accessibilityHint="Double tap to go to the next chapter"
+            >
+              <SkipNextIcon color={colors.black} size={28} />
+            </TouchableOpacity>
           </View>
 
-          {/* Bottom Controls Section — also fades in with transition */}
-          <RAnimated.View style={controlsAnimStyle}>
-            <View style={[styles.bottomInfo, { paddingBottom: insets.bottom + scale(20) }]}>
-          {/* Progress Bar - Slider with Bookmark Markers */}
-          <View style={styles.progressBarContainer}>
-            {/* Bookmark Markers (below slider, clickable) */}
+          {/* Time Labels — elapsed | total left | remaining */}
+          <View style={styles.progressTimes}>
+            <TouchableOpacity
+              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityHint={`Double tap to switch to ${progressMode === 'book' ? 'chapter' : 'book'} progress`}
+            >
+              <Text style={[styles.timeText, { color: colors.gray }, isScrubbing && { color: colors.black, fontWeight: '600' }]}>
+                {formatTime(
+                  isScrubbing
+                    ? (progressMode === 'book' ? sliderValue * duration : sliderValue * chapterDuration + (chapter?.start || 0))
+                    : (progressMode === 'book' ? position : chapterPosition)
+                )}
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.timeTextCenter, { color: colors.gray }]}>
+              {formatTimeLeft(
+                isScrubbing
+                  ? duration - sliderValue * duration
+                  : timeRemaining
+              )}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityHint={`Double tap to switch to ${progressMode === 'book' ? 'chapter' : 'book'} progress`}
+            >
+              <Text style={[styles.timeText, { color: colors.gray }]}>
+                {formatTimeRemaining(
+                  isScrubbing
+                    ? (progressMode === 'book' ? duration - sliderValue * duration : chapterDuration - sliderValue * chapterDuration)
+                    : (progressMode === 'book' ? timeRemaining : chapterDuration - chapterPosition)
+                )}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+            {/* Slider */}
+            <Slider
+              style={styles.slider}
+              minimumValue={0}
+              maximumValue={1}
+              value={sliderValue}
+              onSlidingStart={handleSliderStart}
+              onValueChange={handleSliderChange}
+              onSlidingComplete={handleSliderComplete}
+              minimumTrackTintColor={colors.black}
+              maximumTrackTintColor={colors.grayLine}
+              thumbTintColor={colors.black}
+              accessibilityRole="adjustable"
+              accessibilityLabel={`${progressMode === 'book' ? 'Book' : 'Chapter'} progress, ${Math.round(sliderValue * 100)} percent`}
+              accessibilityHint="Swipe left or right to seek through the audio"
+            />
+            {/* Bookmark Markers — absolutely positioned over the slider, takes no layout space */}
             <View style={styles.bookmarkMarkersContainer} pointerEvents="box-none">
               {bookmarks.map((bookmark) => {
                 const bmProgress = progressMode === 'book'
@@ -1319,7 +1579,6 @@ export function SecretLibraryPlayerScreen() {
                   : (chapterDuration > 0
                     ? (bookmark.time - (chapter?.start ?? 0)) / chapterDuration
                     : 0);
-                // Only show markers that are within the current view (also filter NaN)
                 if (!Number.isFinite(bmProgress) || bmProgress < 0 || bmProgress > 1) return null;
                 return (
                   <TouchableOpacity
@@ -1334,122 +1593,30 @@ export function SecretLibraryPlayerScreen() {
                     }}
                     hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Bookmark at ${formatTime(bookmark.time)}`}
+                    accessibilityHint="Double tap to seek to this bookmark"
                   >
-                    {/* Vertical line (flagpole) */}
                     <View style={styles.bookmarkLine} />
-                    {/* Triangle flag at top */}
                     <View style={styles.bookmarkFlag} />
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            {/* Slider */}
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={1}
-              value={sliderValue}
-              onSlidingStart={handleSliderStart}
-              onValueChange={handleSliderChange}
-              onSlidingComplete={handleSliderComplete}
-              minimumTrackTintColor={colors.black}
-              maximumTrackTintColor={colors.grayLine}
-              thumbTintColor={colors.black}
-            />
-          </View>
+          </RAnimated.View>
 
-          {/* Time Labels */}
-          <View style={styles.progressTimes}>
-            <TouchableOpacity
-              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.timeText, { color: colors.gray }, isScrubbing && { color: colors.black, fontWeight: '600' }]}>
-                {formatTime(
-                  isScrubbing
-                    ? (progressMode === 'book' ? sliderValue * duration : sliderValue * chapterDuration + (chapter?.start || 0))
-                    : (progressMode === 'book' ? position : chapterPosition)
-                )}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.timeText, { color: colors.gray }]}>
-                {formatTimeRemaining(
-                  isScrubbing
-                    ? (progressMode === 'book' ? duration - sliderValue * duration : chapterDuration - sliderValue * chapterDuration)
-                    : (progressMode === 'book' ? timeRemaining : chapterDuration - chapterPosition)
-                )}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 5-Button Controls Row: |< ⏪ ▶ ⏩ >| */}
-          <View style={styles.controlsRow}>
-            {/* Previous Chapter - no border */}
-            <TouchableOpacity
-              style={styles.skipChapterBtn}
-              onPress={handlePrev}
-              activeOpacity={0.6}
-            >
-              <SkipPrevIcon color={colors.black} size={28} />
-            </TouchableOpacity>
-
-            {/* Skip Back - with thin circle border */}
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={handleSkipBack}
-              activeOpacity={0.6}
-            >
-              <RewindIcon color={colors.black} size={24} />
-            </TouchableOpacity>
-
-            {/* Play/Pause - Large white rounded pill */}
-            {/* During loading/buffering: stop icon (square) to cancel */}
-            {/* Normal: play or pause icon */}
-            <TouchableOpacity
-              style={styles.playBtn}
-              onPress={isLoading || isBuffering ? handleStop : handlePlayPause}
-              activeOpacity={0.8}
-            >
-              {isLoading || isBuffering ? (
-                <StopIcon color="#000000" size={28} />
-              ) : isPlaying ? (
-                <PauseIcon color="#000000" size={36} />
-              ) : (
-                <PlayIcon color="#000000" size={36} />
-              )}
-            </TouchableOpacity>
-
-            {/* Skip Forward - with thin circle border */}
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={handleSkipForward}
-              activeOpacity={0.6}
-            >
-              <FastForwardIcon color={colors.black} size={24} />
-            </TouchableOpacity>
-
-            {/* Next Chapter - no border */}
-            <TouchableOpacity
-              style={styles.skipChapterBtn}
-              onPress={handleNext}
-              activeOpacity={0.6}
-            >
-              <SkipNextIcon color={colors.black} size={28} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Settings Row - Progress Mode toggle on left, Speed & Sleep on right */}
+          {/* Settings Row — pinned to bottom */}
+          <RAnimated.View style={controlsAnimStyle}>
+            <View style={[styles.bottomInfo, { paddingBottom: insets.bottom + scale(20) }]}>
           <View style={styles.settingsRow}>
-            {/* Progress Mode Toggle - Left side */}
             <TouchableOpacity
               style={styles.settingPill}
               onPress={() => setProgressMode(progressMode === 'book' ? 'chapter' : 'book')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Progress mode: ${progressMode === 'book' ? 'Book' : 'Chapter'}`}
+              accessibilityHint={`Double tap to switch to ${progressMode === 'book' ? 'chapter' : 'book'} progress`}
             >
               <Text style={[styles.settingPillText, { color: colors.black }]}>
                 {progressMode === 'book' ? 'Book' : 'Chapter'}
@@ -1464,6 +1631,9 @@ export function SecretLibraryPlayerScreen() {
               style={[styles.settingPill, activeSheet === 'speed' && { backgroundColor: colors.black }]}
               onPress={() => openSheet('speed')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Playback speed: ${playbackRate.toFixed(1)} times`}
+              accessibilityHint="Double tap to open speed settings"
             >
               <Text style={[styles.settingPillText, { color: activeSheet === 'speed' ? colors.white : colors.black }]}>
                 {playbackRate.toFixed(1)}×
@@ -1478,6 +1648,9 @@ export function SecretLibraryPlayerScreen() {
               ]}
               onPress={() => openSheet('sleep')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={sleepTimer !== null ? `Sleep timer: ${sleepTimer >= 3600 ? `${Math.floor(sleepTimer / 3600)} hours ${Math.floor((sleepTimer % 3600) / 60)} minutes` : sleepTimer >= 60 ? `${Math.floor(sleepTimer / 60)} minutes` : `${sleepTimer} seconds`} remaining` : 'Sleep timer: off'}
+              accessibilityHint="Double tap to open sleep timer settings"
             >
               <ClockIcon
                 color={(sleepTimer !== null || activeSheet === 'sleep') ? colors.white : colors.black}
@@ -1494,10 +1667,23 @@ export function SecretLibraryPlayerScreen() {
                 </Text>
               )}
             </TouchableOpacity>
+            {/* Car Mode Toggle */}
+            <TouchableOpacity
+              style={[styles.settingPill, carMode && { backgroundColor: colors.black }]}
+              onPress={() => setCarMode(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Car mode"
+              accessibilityHint="Double tap to switch to simplified driving interface"
+            >
+              <CarIcon color={carMode ? colors.white : colors.black} size={14} />
+            </TouchableOpacity>
             </View>
             </View>
           </RAnimated.View>
         </View>
+        </View>
+        )}
 
         {/* Sheet Overlay - Centered popup */}
       {sheetVisible && (
@@ -1508,6 +1694,8 @@ export function SecretLibraryPlayerScreen() {
               style={StyleSheet.absoluteFill}
               activeOpacity={1}
               onPress={closeSheet}
+              accessibilityRole="button"
+              accessibilityLabel="Close panel"
             />
           </Animated.View>
           {/* Sheet - centered popup */}
@@ -1515,7 +1703,7 @@ export function SecretLibraryPlayerScreen() {
             style={[
               styles.sheetContainer,
               {
-                backgroundColor: colors.white,
+                backgroundColor: activeSheet === 'bookmarks' ? '#1a1a1a' : colors.white,
                 opacity: overlayOpacity,
                 maxHeight: screenHeight * 0.80,
               },
@@ -1555,6 +1743,9 @@ export function SecretLibraryPlayerScreen() {
         </View>
       )}
 
+      {/* Chromecast device sheet */}
+      <CastDeviceSheet visible={castSheetVisible} onClose={() => setCastSheetVisible(false)} />
+
       {/* Bookmark Add/Edit Modal */}
       <Modal
         visible={bookmarkModalMode !== null}
@@ -1570,6 +1761,8 @@ export function SecretLibraryPlayerScreen() {
             style={styles.editModalOverlay}
             activeOpacity={1}
             onPress={handleCancelBookmarkModal}
+            accessibilityRole="button"
+            accessibilityLabel="Close bookmark editor"
           />
           <View style={[styles.editModalContent, { backgroundColor: colors.white }]}>
             <View style={[styles.editModalHandle, { backgroundColor: colors.grayLine }]} />
@@ -1592,27 +1785,35 @@ export function SecretLibraryPlayerScreen() {
                   <TouchableOpacity
                     style={[styles.timeAdjustBtn, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
                     onPress={() => adjustTime(-30)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back 30 seconds"
                   >
                     <Text style={[styles.timeAdjustBtnText, { color: colors.black }]}>-30s</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.timeAdjustBtn, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
                     onPress={() => adjustTime(-10)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back 10 seconds"
                   >
                     <Text style={[styles.timeAdjustBtnText, { color: colors.black }]}>-10s</Text>
                   </TouchableOpacity>
-                  <View style={[styles.timeDisplay, { backgroundColor: colors.black }]}>
+                  <View style={[styles.timeDisplay, { backgroundColor: colors.black }]} accessibilityRole="text" accessibilityLabel={`Bookmark position: ${formatTime(editTime)}`}>
                     <Text style={[styles.timeDisplayText, { color: colors.white }]}>{formatTime(editTime)}</Text>
                   </View>
                   <TouchableOpacity
                     style={[styles.timeAdjustBtn, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
                     onPress={() => adjustTime(10)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Forward 10 seconds"
                   >
                     <Text style={[styles.timeAdjustBtnText, { color: colors.black }]}>+10s</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.timeAdjustBtn, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
                     onPress={() => adjustTime(30)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Forward 30 seconds"
                   >
                     <Text style={[styles.timeAdjustBtnText, { color: colors.black }]}>+30s</Text>
                   </TouchableOpacity>
@@ -1645,6 +1846,7 @@ export function SecretLibraryPlayerScreen() {
                 placeholderTextColor={colors.gray}
                 multiline
                 textAlignVertical="top"
+                accessibilityLabel="Bookmark note"
               />
             </View>
 
@@ -1654,6 +1856,8 @@ export function SecretLibraryPlayerScreen() {
                 <TouchableOpacity
                   style={styles.editDeleteBtn}
                   onPress={handleDeleteEditingBookmark}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete bookmark"
                 >
                   <Text style={[styles.editDeleteText, { color: colors.coral }]}>Delete</Text>
                 </TouchableOpacity>
@@ -1664,12 +1868,16 @@ export function SecretLibraryPlayerScreen() {
                 <TouchableOpacity
                   style={[styles.editCancelBtn, { borderColor: colors.grayLine, backgroundColor: colors.grayLight }]}
                   onPress={handleCancelBookmarkModal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
                 >
                   <Text style={[styles.editCancelText, { color: colors.black }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.editSaveBtn, { backgroundColor: colors.black }]}
                   onPress={handleSaveBookmark}
+                  accessibilityRole="button"
+                  accessibilityLabel={bookmarkModalMode === 'add' ? 'Add bookmark' : 'Save bookmark'}
                 >
                   <Text style={[styles.editSaveText, { color: colors.white }]}>
                     {bookmarkModalMode === 'add' ? 'Add' : 'Save'}
@@ -1703,6 +1911,16 @@ const styles = StyleSheet.create({
     // paddingHorizontal is set dynamically via contentStyle for iPad support
   },
 
+  // Blurred cover background
+  blurBackground: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    zIndex: 0,
+  },
+
   // Main Content
   mainContent: {
     flex: 1,
@@ -1710,8 +1928,9 @@ const styles = StyleSheet.create({
 
   // Cover - Full width, larger
   coverWrapper: {
-    width: '100%',
+    width: '85%',
     aspectRatio: 1,
+    alignSelf: 'center',
     position: 'relative',
     marginBottom: scale(16),
     overflow: 'hidden',
@@ -1781,9 +2000,10 @@ const styles = StyleSheet.create({
   // Byline - By Author (left) · Narrated by Narrator (right) - justified to cover width
   byline: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: scale(12),
+    marginBottom: scale(6),
   },
   bylineLeft: {
     flexDirection: 'row',
@@ -1794,57 +2014,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bylineText: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(11),
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
     color: staticColors.gray,
   },
   bylineLink: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(11),
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
     color: staticColors.black,
     textDecorationLine: 'underline',
   },
-
-  // Title/Chapter Row
-  titleChapterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: scale(20),
-    gap: scale(16),
+  bylineDot: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
+    color: staticColors.gray,
   },
-  titleContainer: {
-    flex: 1,
+
+  // Title + Chapter centered column
+  titleChapterColumn: {
+    alignItems: 'center',
+    marginBottom: scale(12),
+    gap: scale(6),
   },
   bookTitle: {
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
-    fontSize: scale(32),
-    fontWeight: '400',
-    letterSpacing: -0.5,
+    fontSize: scale(28),
+    letterSpacing: 0.5,
     color: staticColors.black,
-    lineHeight: scale(36),
-  },
-  chapterTextContainer: {
-    maxWidth: scale(100),
-    alignItems: 'flex-end',
+    lineHeight: scale(32),
+    textAlign: 'center',
   },
   chapterText: {
-    fontSize: scale(16),
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: scale(13),
     fontWeight: '400',
-    color: staticColors.black,
-    textAlign: 'right',
-    lineHeight: scale(20),
+    color: staticColors.gray,
+    textAlign: 'center',
+    lineHeight: scale(17),
   },
 
   // Bottom Controls
   bottomInfo: {
     marginTop: 'auto',
   },
-  progressBarContainer: {
-    height: scale(40),
-    justifyContent: 'center',
-    marginBottom: scale(4),
+  sliderWrapper: {
     position: 'relative',
   },
   bookmarkMarkersContainer: {
@@ -1885,12 +2097,20 @@ const styles = StyleSheet.create({
   progressTimes: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: scale(24),
+    marginTop: scale(22),
+    marginBottom: scale(8),
   },
   timeText: {
-    fontSize: scale(13),
+    fontSize: scale(12),
     color: staticColors.gray,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    textTransform: 'uppercase',
+  },
+  timeTextCenter: {
+    fontSize: scale(12),
+    color: staticColors.gray,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    textTransform: 'uppercase',
   },
 
   // 5-Button Controls Row
@@ -1899,6 +2119,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: scale(4),
+    marginBottom: scale(16),
   },
   // Chapter skip buttons - no border, just icon
   skipChapterBtn: {
@@ -1955,6 +2176,83 @@ const styles = StyleSheet.create({
     fontSize: scale(12),
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
     fontWeight: '500',
+  },
+
+  // Car Mode
+  carModeContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(24),
+    zIndex: 100,
+  },
+  carModeExit: {
+    position: 'absolute',
+    top: scale(16),
+    right: scale(16),
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(22),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carModeExitText: {
+    fontSize: scale(24),
+    fontWeight: '300',
+  },
+  carModeInfo: {
+    alignItems: 'center',
+    marginBottom: scale(60),
+  },
+  carModeTitle: {
+    fontSize: scale(36),
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: scale(8),
+  },
+  carModeChapter: {
+    fontSize: scale(16),
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  carModeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: scale(16),
+    marginBottom: scale(16),
+  },
+  carModeSkipPill: {
+    flex: 1,
+    height: scale(72),
+    borderRadius: scale(36),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carModePlayPill: {
+    alignSelf: 'stretch',
+    height: scale(90),
+    borderRadius: scale(45),
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: scale(16),
+  },
+  carModeTime: {
+    fontSize: scale(48),
+    fontWeight: '700',
+  },
+  carModeTimeLabel: {
+    fontSize: scale(12),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: scale(16),
   },
 
   // Sheet Overlay

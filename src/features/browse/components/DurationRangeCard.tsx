@@ -34,6 +34,8 @@ function DurationRangeCardComponent({
         pressed && { backgroundColor: colors.cream },
       ]}
       onPress={onPress}
+      accessibilityLabel={`${label}, ${description}, ${bookCount} books`}
+      accessibilityRole="button"
     >
       <View style={styles.content}>
         <View style={[styles.iconContainer, { backgroundColor: colors.grayLight }]}>

@@ -25,37 +25,10 @@ import {
   validateUrl,
 } from '@/shared/utils/audioDebug';
 import { getErrorMessage } from '@/shared/utils/errorUtils';
+import type { PlaybackState, AudioTrackInfo, AudioErrorType, AudioError, StatusCallback, ErrorCallback, RemoteCommandCallback } from './audioServiceTypes';
 
-// Re-export shared types
-export interface PlaybackState {
-  isPlaying: boolean;
-  position: number;       // Global position across all tracks
-  duration: number;       // Total duration of all tracks
-  isBuffering: boolean;
-  didJustFinish: boolean; // True when last track in queue ends
-  isStuck?: boolean;      // True when playback appears stuck
-}
-
-export interface AudioTrackInfo {
-  url: string;
-  title: string;
-  startOffset: number;    // Global start position of this track
-  duration: number;
-}
-
-export type AudioErrorType = 'URL_EXPIRED' | 'NETWORK_ERROR' | 'LOAD_FAILED';
-
-export interface AudioError {
-  type: AudioErrorType;
-  message: string;
-  httpStatus?: number;
-  position?: number;
-  bookId?: string;
-}
-
-type StatusCallback = (status: PlaybackState) => void;
-type ErrorCallback = (error: AudioError) => void;
-type RemoteCommandCallback = (command: 'nextChapter' | 'prevChapter' | 'skipForward' | 'skipBackward' | 'seek', position?: number) => void;
+// Re-export shared types so existing consumers can still import from this file
+export type { PlaybackState, AudioTrackInfo, AudioErrorType, AudioError } from './audioServiceTypes';
 
 const log = (...args: unknown[]) => audioLog.audio(args.map(String).join(' '));
 
@@ -215,7 +188,7 @@ class IOSAudioService {
           case 'prevChapter':
           case 'skipForward':
           case 'skipBackward':
-            this.remoteCommandCallback?.(data.command as any);
+            this.remoteCommandCallback?.(data.command as 'nextChapter' | 'prevChapter' | 'skipForward' | 'skipBackward');
             break;
           case 'seek':
             if (data.param) {

@@ -18,18 +18,6 @@ export function formatBytes(bytes: number, decimals = 2): string {
 }
 
 /**
- * Format file size to human readable string (alias for formatBytes)
- * @param bytes - Number of bytes
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 MB';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-/**
  * Format duration in seconds to human readable string
  * @param seconds - Duration in seconds (handles null/undefined)
  */

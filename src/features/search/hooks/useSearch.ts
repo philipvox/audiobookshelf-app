@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import Fuse, { IFuseOptions } from 'fuse.js';
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { getTitle, getAuthorName, getNarratorName, getSeriesName } from '@/shared/utils/metadata';
 
 export interface SearchResults {
@@ -68,7 +68,7 @@ export function useSearch(items: LibraryItem[]) {
       author: getAuthorName(item),
       narrator: getNarratorName(item),
       series: getSeriesName(item) || '',
-      genres: (item.media?.metadata as any)?.genres || [],
+      genres: (item.media?.metadata as BookMetadata | undefined)?.genres || [],
     }));
   }, [items]);
 

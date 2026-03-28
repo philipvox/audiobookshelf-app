@@ -29,6 +29,8 @@ export const VibeCard = React.memo(function VibeCard({ slug, bookCount, bookIds,
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => onPress(slug)}
+      accessibilityLabel={`${formatCompVibe(slug)}, ${bookCount} books`}
+      accessibilityRole="button"
     >
       {/* Cover thumbnails at top */}
       {bookIds && bookIds.length > 0 && (

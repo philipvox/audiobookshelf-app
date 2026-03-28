@@ -44,7 +44,7 @@ function getBookDuration(item: LibraryItem): number {
 
 function toSpineData(item: LibraryItem, cachedData?: { backgroundColor?: string; textColor?: string }): BookSpineVerticalData {
   const metadata = getMetadata(item);
-  const progress = (item as any)?.mediaProgress?.progress || item.userMediaProgress?.progress || 0;
+  const progress = item.mediaProgress?.progress || item.userMediaProgress?.progress || 0;
 
   const base: BookSpineVerticalData = {
     id: item.id,

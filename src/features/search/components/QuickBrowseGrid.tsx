@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 import { Icon } from '@/shared/components/Icon';
-import { useBrowseCounts } from '@/features/browse/hooks/useBrowseCounts';
+import { useBrowseCounts } from '@/shared/hooks/useBrowseCounts';
 
 export type QuickBrowseCategory = 'genres' | 'authors' | 'series' | 'narrators' | 'duration';
 
@@ -39,6 +39,8 @@ function GridItem({ iconName, title, count, onPress }: GridItemProps) {
         pressed && { backgroundColor: colors.isDark ? 'rgba(255,255,255,0.05)' : colors.cream },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Browse ${title}, ${count}`}
     >
       <View style={styles.iconContainer}>
         <Icon name={iconName} size={24} color={colors.black} strokeWidth={1.5} />
@@ -65,7 +67,7 @@ export function QuickBrowseGrid({ onCategoryPress, onBrowsePagePress }: QuickBro
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.black }]}>Quick Browse</Text>
-        <Pressable onPress={onBrowsePagePress}>
+        <Pressable onPress={onBrowsePagePress} accessibilityRole="link" accessibilityLabel="Go to Browse Page">
           <Text style={[styles.browseLink, { color: colors.gray }]}>
             Browse Page <Text style={styles.arrow}>→</Text>
           </Text>

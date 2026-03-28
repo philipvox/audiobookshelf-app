@@ -6,11 +6,43 @@
  * - Faster session start
  */
 
+import { Platform } from 'react-native';
 import { apiClient } from '@/core/api';
 import { audioLog, createTimer, logSection, formatDuration } from '@/shared/utils/audioDebug';
 import { getErrorMessage } from '@/shared/utils/errorUtils';
+import { withTimeout } from '@/shared/utils/timeout';
+import { APP_VERSION } from '@/constants/version';
+
+const SESSION_START_TIMEOUT_MS = 10_000;
 
 const log = (msg: string, ...args: any[]) => audioLog.session(msg, ...args);
+
+/** Get device model (e.g. "Pixel 10 Pro XL", "iPhone16,2") */
+function getDeviceModel(): string {
+  const constants = Platform.constants as any;
+  if (Platform.OS === 'android') {
+    return constants?.Model || constants?.Brand || 'Android Device';
+  }
+  return constants?.systemName || 'iOS Device';
+}
+
+/** Get device manufacturer (e.g. "Google", "Apple") */
+function getDeviceManufacturer(): string {
+  const constants = Platform.constants as any;
+  if (Platform.OS === 'android') {
+    return constants?.Manufacturer || constants?.Brand || 'Unknown';
+  }
+  return 'Apple';
+}
+
+/** Get Android SDK version (e.g. 36). Returns null on iOS. */
+function getSdkVersion(): number | null {
+  if (Platform.OS === 'android') {
+    const constants = Platform.constants as any;
+    return constants?.Version || null;
+  }
+  return null;
+}
 
 export interface AudioTrack {
   index: number;
@@ -55,6 +87,12 @@ class SessionService {
   // Fix Bug #1/#4: Track pending close operations to prevent race conditions
   private pendingClosePromise: Promise<void> | null = null;
   private closingSessionId: string | null = null;
+  // HIGH WATER MARK: Track highest known position per item to prevent progress regression
+  // Capped at 200 entries to prevent unbounded growth over long app sessions
+  private static readonly MAX_HWM_ENTRIES = 200;
+  private highWaterMark: Map<string, number> = new Map();
+  // Track last sync time to calculate timeListened for server stats
+  private lastSyncTimestamp: number = 0;
 
   /**
    * Start a new playback session
@@ -90,39 +128,56 @@ class SessionService {
       const token = apiClient.getAuthToken();
       const fullUrl = `${baseUrl}${requestUrl}`;
 
-      const rawResponse = await fetch(fullUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          deviceInfo: {
-            clientName: 'AudiobookShelf-RN',
-            clientVersion: '1.0.0',
-            deviceId: 'rn-mobile-app',
+      const rawResponse = await withTimeout(
+        fetch(fullUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
-          forceDirectPlay: true,
-          forceTranscode: false,
-          supportedMimeTypes: [
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/m4b',
-            'audio/m4a',
-            'audio/flac',
-            'audio/ogg',
-            'audio/webm',
-            'audio/aac',
-          ],
-          mediaPlayer: 'expo-audio',
+          body: JSON.stringify({
+            deviceInfo: {
+              clientName: 'Secret Library',
+              clientVersion: APP_VERSION,
+              deviceId: `${Platform.OS}-secret-library`,
+              manufacturer: getDeviceManufacturer(),
+              model: getDeviceModel(),
+              ...(getSdkVersion() != null ? { sdkVersion: getSdkVersion() } : {}),
+            },
+            forceDirectPlay: true,
+            forceTranscode: false,
+            supportedMimeTypes: [
+              'audio/mpeg',
+              'audio/mp4',
+              'audio/m4b',
+              'audio/m4a',
+              'audio/flac',
+              'audio/ogg',
+              'audio/webm',
+              'audio/aac',
+            ],
+            mediaPlayer: 'expo-audio',
+          }),
         }),
-      });
+        SESSION_START_TIMEOUT_MS,
+        'Session start request',
+      );
 
       if (!rawResponse.ok) {
         throw new Error(`Session request failed: ${rawResponse.status} ${rawResponse.statusText}`);
       }
 
-      const session = JSON.parse(await rawResponse.text()) as PlaybackSession;
+      let session: PlaybackSession;
+      const responseText = await rawResponse.text();
+      try {
+        session = JSON.parse(responseText) as PlaybackSession;
+      } catch (parseError) {
+        // Server returned non-JSON (e.g. HTML error page, empty body)
+        const preview = responseText.substring(0, 200);
+        throw new Error(
+          `Session response is not valid JSON (status ${rawResponse.status}). Body preview: ${preview}`
+        );
+      }
 
       timing('Response received');
 
@@ -145,10 +200,22 @@ class SessionService {
       }
 
       this.currentSession = session;
+      // Initialize listening time tracker
+      this.lastSyncTimestamp = Date.now();
       // Backup chapters for fallback during race conditions
       if (session.chapters?.length) {
         this.lastKnownChapters = session.chapters;
       }
+
+      // HIGH WATER MARK: Initialize with server's current position
+      if (session.currentTime > 0) {
+        const existingHwm = this.highWaterMark.get(session.libraryItemId) || 0;
+        if (session.currentTime > existingHwm) {
+          this.highWaterMark.set(session.libraryItemId, session.currentTime);
+          log('  High water mark initialized:', formatDuration(session.currentTime));
+        }
+      }
+
       return session;
     } catch (error) {
       audioLog.error('startSession failed:', getErrorMessage(error));
@@ -201,7 +268,7 @@ class SessionService {
     }
 
     const separator = contentUrl.includes('?') ? '&' : '?';
-    const url = `${baseUrl}${contentUrl}${separator}token=${token}`;
+    const url = `${baseUrl}${contentUrl}${separator}token=${encodeURIComponent(token)}`;
     log('  Final URL:', url.substring(0, 80) + '...');
     return url;
   }
@@ -216,8 +283,18 @@ class SessionService {
     log('  Audio tracks:', session.audioTracks?.length || 0);
     log('  Chapters:', session.chapters?.length || 0);
     this.currentSession = session;
+    this.lastSyncTimestamp = Date.now();
     if (session.chapters?.length) {
       this.lastKnownChapters = session.chapters;
+    }
+
+    // HIGH WATER MARK: Initialize from adopted session's position
+    if (session.currentTime > 0) {
+      const existingHwm = this.highWaterMark.get(session.libraryItemId) || 0;
+      if (session.currentTime > existingHwm) {
+        this.highWaterMark.set(session.libraryItemId, session.currentTime);
+        log('  High water mark set from adopted session:', formatDuration(session.currentTime));
+      }
     }
   }
 
@@ -242,6 +319,32 @@ class SessionService {
    */
   clearBackupChapters(): void {
     this.lastKnownChapters = [];
+  }
+
+  /**
+   * Update the high water mark for an item.
+   * Called when position is resolved during loadBook to ensure the HWM
+   * reflects the highest known position from any source (server, local, session).
+   */
+  updateHighWaterMark(itemId: string, position: number): void {
+    const current = this.highWaterMark.get(itemId) || 0;
+    if (position > current) {
+      this.highWaterMark.set(itemId, position);
+      // Evict oldest entries if over capacity
+      if (this.highWaterMark.size > SessionService.MAX_HWM_ENTRIES) {
+        const firstKey = this.highWaterMark.keys().next().value;
+        if (firstKey) this.highWaterMark.delete(firstKey);
+      }
+      log(`High water mark updated for ${itemId}: ${formatDuration(position)}`);
+    }
+  }
+
+  /**
+   * Get the high water mark for an item.
+   * Used by backgroundSyncService to prevent position regression without extra API calls.
+   */
+  getHighWaterMark(itemId: string): number {
+    return this.highWaterMark.get(itemId) || 0;
   }
 
   getStartTime(): number {
@@ -273,22 +376,41 @@ class SessionService {
       return;
     }
 
+    // HIGH WATER MARK: Block regression
+    const itemId = this.currentSession.libraryItemId;
+    const hwm = this.highWaterMark.get(itemId) || 0;
+    if (currentTime < hwm - 5) { // Allow 5s tolerance for normal scrubbing
+      audioLog.warn(`syncProgress: Blocked regression for ${itemId}. Attempted=${formatDuration(currentTime)}, HWM=${formatDuration(hwm)}`);
+      return;
+    }
+    // Update high water mark
+    if (currentTime > hwm) {
+      this.highWaterMark.set(itemId, currentTime);
+    }
+
     const sessionId = this.currentSession.id;
     audioLog.network('POST', `/api/session/${sessionId}/sync`);
 
+    // Calculate actual listening time since last sync
+    const now = Date.now();
+    const timeListened = this.lastSyncTimestamp > 0
+      ? Math.max(0, (now - this.lastSyncTimestamp) / 1000)
+      : 0;
+    this.lastSyncTimestamp = now;
+
     // Non-blocking with retry
-    this.syncProgressWithRetry(sessionId, currentTime, 3);
+    this.syncProgressWithRetry(sessionId, currentTime, timeListened, 3);
   }
 
   /**
    * Helper to sync progress with retries
    */
-  private async syncProgressWithRetry(sessionId: string, currentTime: number, maxRetries: number): Promise<void> {
+  private async syncProgressWithRetry(sessionId: string, currentTime: number, timeListened: number, maxRetries: number): Promise<void> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await apiClient.post(`/api/session/${sessionId}/sync`, {
           currentTime,
-          timeListened: 0,
+          timeListened,
         });
         if (attempt > 1) {
           log(`Progress synced successfully (attempt ${attempt})`);
@@ -327,14 +449,33 @@ class SessionService {
       return;
     }
 
+    // HIGH WATER MARK: Block regression
+    const itemId = this.currentSession.libraryItemId;
+    const hwm = this.highWaterMark.get(itemId) || 0;
+    if (currentTime < hwm - 5) { // Allow 5s tolerance for normal scrubbing
+      audioLog.warn(`syncProgressAsync: Blocked regression for ${itemId}. Attempted=${formatDuration(currentTime)}, HWM=${formatDuration(hwm)}`);
+      return;
+    }
+    // Update high water mark
+    if (currentTime > hwm) {
+      this.highWaterMark.set(itemId, currentTime);
+    }
+
     const sessionId = this.currentSession.id;
     log('Syncing progress:', formatDuration(currentTime));
     audioLog.network('POST', `/api/session/${sessionId}/sync`);
 
+    // Calculate actual listening time since last sync
+    const now = Date.now();
+    const timeListened = this.lastSyncTimestamp > 0
+      ? Math.max(0, (now - this.lastSyncTimestamp) / 1000)
+      : 0;
+    this.lastSyncTimestamp = now;
+
     try {
       await apiClient.post(`/api/session/${sessionId}/sync`, {
         currentTime,
-        timeListened: 0,
+        timeListened,
       });
       log('Progress synced successfully');
     } catch (error) {
@@ -384,16 +525,37 @@ class SessionService {
     // Fix Bug #4: Track which session is being closed
     this.closingSessionId = sessionId;
 
-    // VALIDATION: Sanitize finalTime before sending
+    // FALLBACK: If no finalTime provided, use high water mark or session's currentTime
+    // This prevents closing a session with undefined/0 when called during reconnection
+    const itemId = sessionToClose.libraryItemId;
     let sanitizedFinalTime = finalTime;
-    if (finalTime !== undefined) {
-      if (finalTime < 0) {
-        audioLog.warn(`closeSessionAsync: Clamping negative position ${finalTime} to 0`);
-        sanitizedFinalTime = 0;
-      } else if (duration > 0 && finalTime > duration + 60) {
-        audioLog.warn(`closeSessionAsync: Clamping position ${finalTime} to duration ${duration}`);
-        sanitizedFinalTime = duration;
+    if (sanitizedFinalTime === undefined || sanitizedFinalTime === null) {
+      const hwm = this.highWaterMark.get(itemId) || 0;
+      const sessionTime = sessionToClose.currentTime || 0;
+      sanitizedFinalTime = Math.max(hwm, sessionTime);
+      if (sanitizedFinalTime > 0) {
+        log(`closeSessionAsync: No finalTime provided, using fallback position ${formatDuration(sanitizedFinalTime)} (HWM=${formatDuration(hwm)}, session=${formatDuration(sessionTime)})`);
       }
+    }
+
+    // VALIDATION: Sanitize finalTime before sending
+    if (sanitizedFinalTime < 0) {
+      audioLog.warn(`closeSessionAsync: Clamping negative position ${sanitizedFinalTime} to 0`);
+      sanitizedFinalTime = 0;
+    } else if (duration > 0 && sanitizedFinalTime > duration + 60) {
+      audioLog.warn(`closeSessionAsync: Clamping position ${sanitizedFinalTime} to duration ${duration}`);
+      sanitizedFinalTime = duration;
+    }
+
+    // HIGH WATER MARK: Don't close session with a position lower than our known max
+    const hwm = this.highWaterMark.get(itemId) || 0;
+    if (sanitizedFinalTime < hwm - 5) {
+      audioLog.warn(`closeSessionAsync: Upgrading close position from ${formatDuration(sanitizedFinalTime)} to HWM ${formatDuration(hwm)} for ${itemId}`);
+      sanitizedFinalTime = hwm;
+    }
+    // Update high water mark if closing at a higher position
+    if (sanitizedFinalTime > hwm) {
+      this.highWaterMark.set(itemId, sanitizedFinalTime);
     }
 
     // Backup chapters before clearing (for race condition safety)
@@ -406,8 +568,15 @@ class SessionService {
       log('  Final time:', formatDuration(sanitizedFinalTime));
     }
 
+    // Calculate timeListened for the close payload
+    const now = Date.now();
+    const closeTimeListened = this.lastSyncTimestamp > 0
+      ? Math.max(0, (now - this.lastSyncTimestamp) / 1000)
+      : 0;
+    this.lastSyncTimestamp = 0; // Reset for next session
+
     // Fix Bug #1: Track the close promise so startSession can await it
-    this.pendingClosePromise = this.closeSessionWithRetry(sessionId, sanitizedFinalTime, 3)
+    this.pendingClosePromise = this.closeSessionWithRetry(sessionId, sanitizedFinalTime, closeTimeListened, 3)
       .finally(() => {
         // Fix Bug #4: Only clear currentSession if it's still the session we're closing
         // This prevents clearing a new session that was started while we were closing
@@ -427,12 +596,12 @@ class SessionService {
   /**
    * Helper to close session with retries
    */
-  private async closeSessionWithRetry(sessionId: string, finalTime: number | undefined, maxRetries: number): Promise<void> {
+  private async closeSessionWithRetry(sessionId: string, finalTime: number | undefined, timeListened: number, maxRetries: number): Promise<void> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await apiClient.post(`/api/session/${sessionId}/close`, {
           currentTime: finalTime,
-          timeListened: 0,
+          timeListened,
         });
         log(`Session ${sessionId} closed successfully (attempt ${attempt})`);
         return;
@@ -473,17 +642,44 @@ class SessionService {
     // Track which session is being closed
     this.closingSessionId = sessionId;
 
-    // VALIDATION: Sanitize finalTime before sending
+    // FALLBACK: If no finalTime provided, use high water mark or session's currentTime
+    const itemId = this.currentSession.libraryItemId;
     let sanitizedFinalTime = finalTime;
-    if (finalTime !== undefined) {
-      if (finalTime < 0) {
-        audioLog.warn(`closeSession: Clamping negative position ${finalTime} to 0`);
-        sanitizedFinalTime = 0;
-      } else if (duration > 0 && finalTime > duration + 60) {
-        audioLog.warn(`closeSession: Clamping position ${finalTime} to duration ${duration}`);
-        sanitizedFinalTime = duration;
+    if (sanitizedFinalTime === undefined || sanitizedFinalTime === null) {
+      const hwm = this.highWaterMark.get(itemId) || 0;
+      const sessionTime = this.currentSession.currentTime || 0;
+      sanitizedFinalTime = Math.max(hwm, sessionTime);
+      if (sanitizedFinalTime > 0) {
+        log(`closeSession: No finalTime provided, using fallback position ${formatDuration(sanitizedFinalTime)} (HWM=${formatDuration(hwm)}, session=${formatDuration(sessionTime)})`);
       }
     }
+
+    // VALIDATION: Sanitize finalTime before sending
+    if (sanitizedFinalTime < 0) {
+      audioLog.warn(`closeSession: Clamping negative position ${sanitizedFinalTime} to 0`);
+      sanitizedFinalTime = 0;
+    } else if (duration > 0 && sanitizedFinalTime > duration + 60) {
+      audioLog.warn(`closeSession: Clamping position ${sanitizedFinalTime} to duration ${duration}`);
+      sanitizedFinalTime = duration;
+    }
+
+    // HIGH WATER MARK: Don't close session with a position lower than our known max
+    const hwmClose = this.highWaterMark.get(itemId) || 0;
+    if (sanitizedFinalTime < hwmClose - 5) {
+      audioLog.warn(`closeSession: Upgrading close position from ${formatDuration(sanitizedFinalTime)} to HWM ${formatDuration(hwmClose)} for ${itemId}`);
+      sanitizedFinalTime = hwmClose;
+    }
+    // Update high water mark if closing at a higher position
+    if (sanitizedFinalTime > hwmClose) {
+      this.highWaterMark.set(itemId, sanitizedFinalTime);
+    }
+
+    // Calculate timeListened for the close payload
+    const closeNow = Date.now();
+    const closeTimeListened = this.lastSyncTimestamp > 0
+      ? Math.max(0, (closeNow - this.lastSyncTimestamp) / 1000)
+      : 0;
+    this.lastSyncTimestamp = 0; // Reset for next session
 
     logSection('CLOSE SESSION');
     log('Session ID:', sessionId);
@@ -494,7 +690,7 @@ class SessionService {
     try {
       await apiClient.post(`/api/session/${sessionId}/close`, {
         currentTime: sanitizedFinalTime,
-        timeListened: 0,
+        timeListened: closeTimeListened,
       });
       log('Session closed successfully');
     } catch (error) {

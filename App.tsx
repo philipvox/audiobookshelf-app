@@ -18,6 +18,7 @@ import { appInitializer, InitResult } from './src/core/services/appInitializer';
 import { AnimatedSplash } from './src/shared/components/AnimatedSplash';
 import { GlobalLoadingOverlay } from './src/shared/components';
 import { ErrorProvider } from './src/core/errors';
+import { logger } from './src/shared/utils/logger';
 
 
 import { useLibraryCache } from './src/core/cache';
@@ -34,9 +35,10 @@ import * as SplashScreen from 'expo-splash-screen';
 setAppBootComplete(false);
 setAppRefreshComplete(false);
 
+
 // IMMEDIATELY hide native splash when JS bundle loads
 // AnimatedSplash will already be rendering, so transition is seamless
-SplashScreen.hideAsync().catch(() => {});
+SplashScreen.hideAsync().catch((e) => logger.debug('[App] SplashScreen.hideAsync failed', e));
 
 // Global error handler to catch silent crashes in release builds
 if (typeof ErrorUtils !== 'undefined') {

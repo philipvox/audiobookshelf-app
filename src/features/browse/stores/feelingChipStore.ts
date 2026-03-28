@@ -6,16 +6,10 @@
  */
 
 import { create } from 'zustand';
+import type { FeelingChip } from '@/shared/types/feelingChip';
 
-export type FeelingChip =
-  | 'thrilling'
-  | 'funny'
-  | 'dark'
-  | 'heartwarming'
-  | 'escapist'
-  | 'thought-provoking'
-  | 'cozy'
-  | 'intense';
+// Re-export the type for backward compatibility
+export type { FeelingChip } from '@/shared/types/feelingChip';
 
 interface FeelingChipState {
   activeChip: FeelingChip | null;

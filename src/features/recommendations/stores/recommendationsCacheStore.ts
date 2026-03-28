@@ -89,10 +89,10 @@ export const useRecommendationsCacheStore = create<RecommendationsCacheState>((s
     try {
       // Run all queries in parallel
       const [historyStats, finishedBooks, inProgressBooks, abandonedBooks] = await Promise.all([
-        sqliteCache.getReadHistoryStats().catch(() => null),
-        sqliteCache.getFinishedUserBooks().catch(() => []),
-        sqliteCache.getInProgressUserBooks().catch(() => []),
-        sqliteCache.getAbandonedBooks().catch(() => []),
+        sqliteCache.getReadHistoryStats().catch((e) => { logger.debug('[RecommendationsCache] getReadHistoryStats failed', e); return null; }),
+        sqliteCache.getFinishedUserBooks().catch((e) => { logger.debug('[RecommendationsCache] getFinishedUserBooks failed', e); return []; }),
+        sqliteCache.getInProgressUserBooks().catch((e) => { logger.debug('[RecommendationsCache] getInProgressUserBooks failed', e); return []; }),
+        sqliteCache.getAbandonedBooks().catch((e) => { logger.debug('[RecommendationsCache] getAbandonedBooks failed', e); return []; }),
       ]);
 
       const totalTime = Date.now() - startTime;

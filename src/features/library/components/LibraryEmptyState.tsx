@@ -129,6 +129,8 @@ export function LibraryEmptyState({ tab, onAction }: LibraryEmptyStateProps) {
         }]}
         onPress={onAction}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={config.actionText}
       >
         <ActionIcon size={scale(18)} color={colors.text.inverse} strokeWidth={2} />
         <Text style={[styles.actionText, { color: colors.text.inverse }]}>

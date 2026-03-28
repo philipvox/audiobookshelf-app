@@ -32,6 +32,8 @@ export const ActionNeededSection = React.memo(function ActionNeededSection({ onS
           style={[styles.card, { borderLeftColor: colors.black }]}
           onPress={() => onSeriesPress(gap.seriesName)}
           activeOpacity={0.7}
+          accessibilityLabel={`${gap.seriesName} series gap, ${gap.missing} books missing`}
+          accessibilityRole="button"
         >
           <View style={styles.cardContent}>
             <Text style={[styles.seriesName, { color: colors.black }]} numberOfLines={1}>

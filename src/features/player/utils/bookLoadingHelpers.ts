@@ -5,7 +5,7 @@
  * Extracted from playerStore.ts for modularity.
  */
 
-import { LibraryItem } from '@/core/types';
+import { LibraryItem, BookMetadata } from '@/core/types';
 import { SessionChapter } from '../services/sessionService';
 import { getCleanChapterName } from '@/core/services/chapterNormalizer';
 
@@ -179,7 +179,7 @@ export async function checkAutoDownloadNextInSeries(
       return;
     }
 
-    const nextTitle = (nextBook.media?.metadata as any)?.title || 'Unknown';
+    const nextTitle = (nextBook.media?.metadata as BookMetadata)?.title || 'Unknown';
 
     // Check if already downloaded
     const isDownloaded = await downloadManager.isDownloaded(nextBook.id);

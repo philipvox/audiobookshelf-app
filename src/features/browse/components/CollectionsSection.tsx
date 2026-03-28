@@ -6,16 +6,14 @@
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { secretLibraryColors, secretLibraryFonts } from '@/shared/theme/secretLibrary';
 import { Collection } from '@/core/types';
 import { CollectionSquareCard } from './CollectionSquareCard';
 import { scale, useSecretLibraryColors } from '@/shared/theme';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
 const HORIZONTAL_PADDING = 16;
-const CARD_SIZE = (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - CARD_GAP) / 2;
 
 interface CollectionsSectionProps {
   /** Collections data passed from parent */
@@ -30,13 +28,15 @@ interface CollectionsSectionProps {
   skipFirst?: boolean;
 }
 
-export function CollectionsSection({
+export const CollectionsSection = React.memo(function CollectionsSection({
   collections,
   onCollectionPress,
   onViewAll,
   maxCollections = 4,
   skipFirst = false,
 }: CollectionsSectionProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const cardSize = (screenWidth - HORIZONTAL_PADDING * 2 - CARD_GAP) / 2;
   // Theme-aware colors (used for header)
   const _colors = useSecretLibraryColors();
 
@@ -61,7 +61,7 @@ export function CollectionsSection({
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Collections</Text>
-        <Pressable onPress={onViewAll}>
+        <Pressable onPress={onViewAll} accessibilityLabel="View all collections" accessibilityRole="button">
           <Text style={styles.link}>VIEW ALL</Text>
         </Pressable>
       </View>
@@ -76,7 +76,7 @@ export function CollectionsSection({
           <View key={collection.id} style={styles.cardWrapper}>
             <CollectionSquareCard
               collection={collection}
-              size={CARD_SIZE}
+              size={cardSize}
               onPress={() => handleCollectionPress(collection.id)}
             />
           </View>
@@ -84,7 +84,7 @@ export function CollectionsSection({
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

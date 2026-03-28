@@ -99,13 +99,13 @@ export function ContentFilterSheet({ visible, onClose }: ContentFilterSheetProps
         entering={FadeIn.duration(150)}
         exiting={FadeOut.duration(100)}
       >
-        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
+        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} accessibilityLabel="Close filter" accessibilityRole="button" />
 
         <View style={[styles.popup, { backgroundColor: colors.white }]}>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.grayLine }]}>
             <Text style={[styles.headerTitle, { color: colors.black }]}>Kids Mode</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityLabel="Close" accessibilityRole="button">
               <Icon name="X" size={20} color={colors.black} />
             </TouchableOpacity>
           </View>
@@ -129,6 +129,9 @@ export function ContentFilterSheet({ visible, onClose }: ContentFilterSheetProps
                         isSelected && { backgroundColor: colors.black, borderColor: colors.black },
                       ]}
                       onPress={() => handleToggleAge(option.id)}
+                      accessibilityLabel={`Age ${option.label}${isSelected ? ', selected' : ''}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text
                         style={[
@@ -162,6 +165,9 @@ export function ContentFilterSheet({ visible, onClose }: ContentFilterSheetProps
                         isSelected && { backgroundColor: colors.black, borderColor: colors.black },
                       ]}
                       onPress={() => handleToggleRating(option.id)}
+                      accessibilityLabel={`Rating ${option.label}${isSelected ? ', selected' : ''}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text
                         style={[
@@ -181,13 +187,15 @@ export function ContentFilterSheet({ visible, onClose }: ContentFilterSheetProps
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: colors.grayLine }]}>
             {hasActiveFilter && (
-              <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
+              <TouchableOpacity style={styles.resetButton} onPress={handleReset} accessibilityLabel="Clear all filters" accessibilityRole="button">
                 <Text style={[styles.resetText, { color: colors.gray }]}>Clear</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               style={[styles.applyButton, { backgroundColor: colors.black }]}
               onPress={handleDone}
+              accessibilityLabel={hasActiveFilter ? `Done, ${filterCount} filters active` : 'Done'}
+              accessibilityRole="button"
             >
               <Text style={[styles.applyText, { color: colors.white }]}>
                 Done{hasActiveFilter ? ` (${filterCount})` : ''}

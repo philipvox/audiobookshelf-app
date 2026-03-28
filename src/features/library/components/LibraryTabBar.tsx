@@ -40,6 +40,7 @@ export const LibraryTabBar = React.memo(function LibraryTabBar({
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
+            accessibilityLabel={`${TAB_LABELS[tabId]} tab`}
             style={styles.textTab}
           >
             <Text style={[
