@@ -18,6 +18,17 @@
 
 ---
 
+## Download
+
+| Platform | Link |
+|----------|------|
+| **iOS** | [TestFlight](https://testflight.apple.com/join/ah2XdVu6) |
+| **Android** | [Download APK](https://mysecretlibrary.com/downloads/secret-library.apk) |
+
+No account needed. Install, point it at your AudiobookShelf server, and go.
+
+---
+
 ## What Is This?
 
 Secret Library is a mobile client for [AudiobookShelf](https://www.audiobookshelf.org/) — the open-source, self-hosted audiobook server. It connects to your ABS server and plays your books. Your data stays on your server. No analytics, no tracking, no third-party anything.
