@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS } from 'react-native-reanimated';
+import Animated, { runOnJS, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { PlayIcon, PauseIcon } from '@/shared/components/PlayerIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -447,6 +447,29 @@ export function SecretLibraryBookDetailScreen() {
     }
     return tap;
   }, [handleDoubleTap, panGestureRef]);
+
+  // Pinch-to-zoom on cover
+  const coverPinchScale = useSharedValue(1);
+  const coverPinchGesture = useMemo(() =>
+    Gesture.Pinch()
+      .onUpdate((e) => {
+        'worklet';
+        coverPinchScale.value = Math.min(e.scale, 5);
+      })
+      .onEnd(() => {
+        'worklet';
+        coverPinchScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+      }),
+  []);
+
+  const coverPinchStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: coverPinchScale.value }],
+    zIndex: coverPinchScale.value > 1.01 ? 9999 : 0,
+  }));
+
+  const composedCoverGesture = useMemo(() =>
+    Gesture.Simultaneous(doubleTapGesture, coverPinchGesture),
+  [doubleTapGesture, coverPinchGesture]);
 
   // Library membership state
   const isInLibrary = useIsInLibrary(bookId);
@@ -1725,8 +1748,8 @@ export function SecretLibraryBookDetailScreen() {
         <View style={styles.desktopLayout}>
           {/* LEFT COLUMN: Cover + Buttons */}
           <View style={styles.desktopLeftCol}>
-            <GestureDetector gesture={doubleTapGesture}>
-            <Animated.View style={styles.desktopCover}>
+            <GestureDetector gesture={composedCoverGesture}>
+            <Animated.View style={[styles.desktopCover, coverPinchStyle]}>
               {coverUrl ? (
                 <Image source={{ uri: coverUrl }} placeholder={coverPlaceholderUrl ? { uri: coverPlaceholderUrl } : undefined} placeholderContentFit="cover" style={styles.coverImage} contentFit="cover" cachePolicy="memory-disk" transition={0} />
               ) : (
@@ -1836,8 +1859,8 @@ export function SecretLibraryBookDetailScreen() {
         <>
         {/* ============ MOBILE: Original stacked layout ============ */}
         <View style={styles.hero}>
-          <GestureDetector gesture={doubleTapGesture}>
-          <Animated.View style={styles.heroCover}>
+          <GestureDetector gesture={composedCoverGesture}>
+          <Animated.View style={[styles.heroCover, coverPinchStyle]}>
             {coverUrl ? (
               <Image source={{ uri: coverUrl }} placeholder={coverPlaceholderUrl ? { uri: coverPlaceholderUrl } : undefined} placeholderContentFit="cover" style={styles.coverImage} contentFit="cover" cachePolicy="memory-disk" transition={0} />
             ) : (

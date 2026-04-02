@@ -11,6 +11,7 @@
  * - Error logging and fallback behavior
  */
 
+import { Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { User } from '@/core/types';
@@ -240,6 +241,12 @@ class AppInitializer {
     // Initialize automotive (CarPlay/Android Auto) in background
     // Don't await - this doesn't need to block app startup
     this.initAutomotive();
+
+    // Pre-build Android Auto browse data as soon as library cache loads
+    // so the file is always warm on disk before Auto connects
+    if (Platform.OS === 'android') {
+      this.prebuildAutoBrowseData();
+    }
 
     // Initialize Chromecast in background
     this.initChromecast();
@@ -668,6 +675,35 @@ class AppInitializer {
    * This eliminates the flash of procedural spines on first login by ensuring
    * the manifest data is in memory before loadSpineManifest() runs.
    */
+  /**
+   * Pre-build Android Auto browse data file on every app boot.
+   * Waits for library cache to load, then writes the browse data file
+   * so it's always warm on disk before the user connects to Android Auto.
+   */
+  async prebuildAutoBrowseData(): Promise<void> {
+    try {
+      const { useLibraryCache } = await import('@/core/cache/libraryCache');
+
+      // Wait for library cache to be loaded (poll up to 30s)
+      for (let i = 0; i < 60; i++) {
+        if (useLibraryCache.getState().items.length > 0) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      if (useLibraryCache.getState().items.length === 0) {
+        log.debug('Library not loaded after 30s, skipping Auto browse pre-build');
+        return;
+      }
+
+      // Trigger automotive browse sync
+      const { automotiveService } = await import('@/features/automotive');
+      automotiveService.syncBrowseDataToAndroidAuto(true);
+      log.debug('Pre-built Android Auto browse data');
+    } catch (err) {
+      log.warn('Auto browse pre-build failed:', err);
+    }
+  }
+
   async prefetchCommunitySpines(): Promise<void> {
     try {
       const { prefetchCommunityManifest } = await import('@/core/cache/libraryCache');

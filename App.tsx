@@ -108,7 +108,9 @@ export default function App() {
 
   // Track if initial refresh has completed (prevents library flash on first load)
   const [isInitialRefreshComplete, setIsInitialRefreshComplete] = useState(false);
+  const [spineImagesPrefetched, setSpineImagesPrefetched] = useState(false);
   const hasTriggeredRefresh = React.useRef(false);
+  const hasTriggeredSpinePrefetch = React.useRef(false);
   const setBootComplete = useAppReadyStore((s) => s.setBootComplete);
 
   // Trigger initial refresh after cache is loaded (prevents library flash)
@@ -178,8 +180,47 @@ export default function App() {
   // 2. Library cache loaded (book data)
   // 3. Spine cache populated (dimensions, colors, typography)
   // 4. Initial refresh complete (prevents library flash)
+  // 5. Spine images prefetched for My Library books
   const [cacheTimedOut, setCacheTimedOut] = useState(false);
-  const isCacheReady = cacheTimedOut || (fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated && isInitialRefreshComplete);
+  const isCacheReady = cacheTimedOut || (fontsLoaded && isLibraryCacheLoaded && isSpineCachePopulated && isInitialRefreshComplete && spineImagesPrefetched);
+
+  // Prefetch spine images for My Library / in-progress books once spine cache is ready
+  useEffect(() => {
+    if (!isSpineCachePopulated || !isLibraryCacheLoaded || hasTriggeredSpinePrefetch.current) return;
+    hasTriggeredSpinePrefetch.current = true;
+
+    (async () => {
+      try {
+        const { Image } = await import('expo-image');
+        const { getSpineUrl } = await import('./src/core/cache/useSpineUrl');
+        const { useProgressStore } = await import('./src/core/stores/progressStore');
+
+        // Get books in My Library + in-progress (the ones shown on home screen)
+        const libraryBookIds = useProgressStore.getState().getLibraryBookIds();
+        const inProgressIds = useProgressStore.getState().getInProgressBookIds();
+        const allIds = [...new Set([...libraryBookIds, ...inProgressIds])];
+
+        // Resolve spine URLs
+        const spineUrls = allIds
+          .map(id => getSpineUrl(id))
+          .filter((url): url is string => !!url);
+
+        if (spineUrls.length > 0) {
+          console.log(`[App] Prefetching ${spineUrls.length} spine images...`);
+          // Prefetch with 8s timeout — don't block splash forever
+          await Promise.race([
+            Image.prefetch(spineUrls),
+            new Promise(resolve => setTimeout(resolve, 8000)),
+          ]);
+          console.log(`[App] Spine images prefetched`);
+        }
+      } catch (err) {
+        console.log('[App] Spine prefetch failed (non-blocking):', err);
+      } finally {
+        setSpineImagesPrefetched(true);
+      }
+    })();
+  }, [isSpineCachePopulated, isLibraryCacheLoaded]);
 
   // Absolute timeout: force-proceed if cache conditions stall
   useEffect(() => {
@@ -245,7 +286,8 @@ export default function App() {
     !isLibraryCacheLoaded && !isLibraryCacheLoading ? 0.2 :
     !isLibraryCacheLoaded && isLibraryCacheLoading ? 0.35 :
     isLibraryCacheLoaded && !isSpineCachePopulated ? 0.5 :
-    isSpineCachePopulated && !isInitialRefreshComplete ? 0.75 :
+    isSpineCachePopulated && !spineImagesPrefetched ? 0.65 :
+    !isInitialRefreshComplete ? 0.8 :
     isCacheReady ? 1 : 0.5;
 
   // Status text based on loading phase (with slow loading messages)
@@ -267,6 +309,7 @@ export default function App() {
     if (!isLibraryCacheLoaded && !isLibraryCacheLoading) return 'restoring session...';
     if (!isLibraryCacheLoaded && isLibraryCacheLoading) return 'loading library...';
     if (isLibraryCacheLoaded && !isSpineCachePopulated) return 'preparing bookshelf...';
+    if (isSpineCachePopulated && !spineImagesPrefetched) return 'loading spines...';
     if (isSpineCachePopulated && !isInitialRefreshComplete) return 'syncing library...';
     if (isCacheReady) return 'ready';
     return 'loading...';

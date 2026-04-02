@@ -244,7 +244,6 @@ export function GlobalMiniPlayer() {
               </Animated.View>
               <View style={styles.textContainer}>
                 <Text style={styles.bookTitle} numberOfLines={1}>{title}</Text>
-                {seriesDisplay ? <Text style={styles.seriesName} numberOfLines={1}>{seriesDisplay}</Text> : null}
                 <Text style={styles.chapterName} numberOfLines={1}>{chapterName}</Text>
               </View>
             </Pressable>

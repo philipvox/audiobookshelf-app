@@ -21,9 +21,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import RAnimated, {
   useAnimatedStyle,
+  useSharedValue,
   interpolate,
   Extrapolation,
   withSpring,
@@ -574,8 +576,10 @@ export function SecretLibraryPlayerScreen() {
   const coverCenterYInPlayer = coverTopInPlayer + fullCoverWidth / 2;
 
   // Mini player cover center in screen coordinates
+  // Mini player layout from bottom: safe area (bottomPad) → controls row → paddingTop
+  // Cover is vertically centered in controls row, so its center is bottomPad + rowHeight/2 from bottom
   const miniCoverCenterX = miniPlayerPadH + miniCoverSize / 2;
-  const miniCoverCenterY = screenHeight - bottomPad - miniCoverSize / 2 + scale(25);
+  const miniCoverCenterY = screenHeight - bottomPad - miniCoverSize / 2 + scale(28);
 
   // Full player cover center in screen coordinates (at progress=0, container at screenHeight)
   const fullCoverCenterX = screenWidth / 2;
@@ -585,6 +589,21 @@ export function SecretLibraryPlayerScreen() {
   const targetTX = miniCoverCenterX - fullCoverCenterX;
   const targetTY = miniCoverCenterY - fullCoverCenterYAtP0;
 
+  // Pinch-to-zoom on cover
+  const coverPinchScale = useSharedValue(1);
+  const coverPinchSavedScale = useSharedValue(1);
+
+  const coverPinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      'worklet';
+      coverPinchScale.value = Math.min(coverPinchSavedScale.value * e.scale, 5);
+    })
+    .onEnd(() => {
+      'worklet';
+      coverPinchScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+      coverPinchSavedScale.value = 1;
+    });
+
   const coverAnimStyle = useAnimatedStyle(() => {
     const p = playerTransitionProgress.value;
     const coverScale = interpolate(p, [0, 0.7], [scaleRatio, 1], Extrapolation.CLAMP);
@@ -593,12 +612,17 @@ export function SecretLibraryPlayerScreen() {
     const offsetX = interpolate(p, [0, 0.7], [targetTX, 0], Extrapolation.CLAMP);
     const offsetY = interpolate(p, [0, 0.7], [targetTY, 0], Extrapolation.CLAMP);
 
+    // Combine transition scale with pinch zoom
+    const finalScale = coverScale * coverPinchScale.value;
+
     return {
       transform: [
         { translateX: offsetX },
         { translateY: offsetY },
-        { scale: coverScale },
+        { scale: finalScale },
       ],
+      // Render above everything while pinching
+      zIndex: coverPinchScale.value > 1.01 ? 9999 : 0,
     };
   });
 
@@ -1336,18 +1360,20 @@ export function SecretLibraryPlayerScreen() {
             <View style={{ height: insets.bottom + scale(24) }} />
           </View>
         ) : (
-        <View style={[styles.screen, Platform.OS !== 'web' && contentStyle, Platform.OS === 'web' && { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 64, gap: 48, paddingTop: 0 }]}>
+        <View style={[styles.screen, Platform.OS !== 'web' && contentStyle, Platform.OS === 'web' && { paddingHorizontal: 64, paddingTop: 0 }]}>
           {/* ============ NORMAL MODE ============ */}
-          {/* On web: cover is in a fixed-width left column */}
+          {/* Top section: cover+info left, chapters right on web */}
+          <View style={Platform.OS === 'web' ? { flexDirection: 'row' as const, flex: 1, gap: 48, alignItems: 'flex-start' as const } : { flex: 1 }}>
           <View style={[styles.mainContent, Platform.OS === 'web' && { width: '30%' as any, maxWidth: 400, flexShrink: 0, flex: undefined as any }]}>
-            {/* Cover Image */}
+            {/* Cover Image — pinch to zoom */}
+            <GestureDetector gesture={coverPinchGesture}>
             <RAnimated.View style={Platform.OS === 'web' ? undefined : coverAnimStyle}>
               <Pressable
                 ref={coverRef}
                 style={styles.coverWrapper}
                 onPress={handleCoverPress}
                 accessibilityRole="image"
-                accessibilityLabel={`Cover art for ${title}. Double tap left half to skip back, right half to skip forward`}
+                accessibilityLabel={`Cover art for ${title}. Double tap to skip, pinch to zoom`}
               >
             <View style={[styles.coverContainer, showDelta && { opacity: 0.6 }]}>
               {coverUrl ? (
@@ -1396,15 +1422,98 @@ export function SecretLibraryPlayerScreen() {
             />
           </Pressable>
             </RAnimated.View>
+            </GestureDetector>
+
+            {/* Web: title + chapter + byline under cover */}
+            {Platform.OS === 'web' && (
+              <View style={{ marginTop: 16 }}>
+                <View style={[styles.titleChapterColumn, { alignItems: 'flex-start' as const }]}>
+                  <TouchableOpacity
+                    onPress={handleTitlePress}
+                    activeOpacity={0.7}
+                    accessibilityRole="link"
+                    accessibilityLabel={`Book title: ${displayTitle}`}
+                    accessibilityHint="Double tap to view book details"
+                  >
+                    <Text
+                      style={[
+                        styles.bookTitle,
+                        { fontFamily: titleFontFamily, fontWeight: titleFontWeight as TextStyle['fontWeight'], color: colors.black },
+                        { fontSize: 24, lineHeight: 30, textAlign: 'left' as const },
+                      ]}
+                      numberOfLines={3}
+                    >
+                      {displayTitle}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => openSheet('chapters')}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Current chapter: ${chapterTitle}`}
+                    accessibilityHint="Double tap to open chapter list"
+                  >
+                    <Text style={[styles.chapterText, { color: colors.black, textAlign: 'left' as const }]} numberOfLines={2}>
+                      {chapterTitle}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.byline, { justifyContent: 'flex-start' as const }]}>
+                  <TouchableOpacity
+                    onPress={authorId ? handleAuthorPress : undefined}
+                    activeOpacity={authorId ? 0.7 : 1}
+                    accessibilityRole={authorId ? 'link' : 'text'}
+                    accessibilityLabel={`Author: ${author}`}
+                    accessibilityHint={authorId ? 'Double tap to view author details' : undefined}
+                  >
+                    <Text style={[styles.bylineText, { color: colors.gray }]}>{author}</Text>
+                  </TouchableOpacity>
+                  {seriesName && (
+                    <>
+                      <Text style={[styles.bylineDot, { color: colors.gray }]}>  ·  </Text>
+                      <TouchableOpacity onPress={_handleSeriesPress} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`Series: ${seriesName}`} accessibilityHint="Double tap to view series details">
+                        <Text style={[styles.bylineText, { color: colors.gray }]}>{seriesName}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
           </View>{/* close mainContent / left column */}
 
-          {/* Right column on web: title, controls, slider. On mobile: flows below cover */}
-          <View style={Platform.OS === 'web' ? { flex: 1, paddingTop: 8 } : undefined}>
+          {/* Web: right column with chapter list */}
+          {Platform.OS === 'web' && normalizedChapters.length > 0 && (
+            <View style={{ flex: 1 }}>
+              <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1 }}>
+                {normalizedChapters.map((ch, idx) => {
+                  const isActive = idx === chapterIndex;
+                  const chStart = chapters[idx]?.start ?? 0;
+                  const chEnd = chapters[idx]?.end ?? 0;
+                  const chDur = chEnd > chStart ? chEnd - chStart : 0;
+                  const chMins = Math.floor(chDur / 60);
+                  const chSecs = Math.floor(chDur % 60);
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => { seekTo(chStart); }}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.08)' }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ width: 28, fontSize: 12, color: isActive ? colors.orange : colors.gray, textAlign: 'right', marginRight: 12 }}>{idx + 1}</Text>
+                      <Text style={{ flex: 1, fontSize: 14, color: isActive ? colors.black : colors.gray }} numberOfLines={1}>{ch.displayTitle || `Chapter ${idx + 1}`}</Text>
+                      <Text style={{ fontSize: 12, color: colors.gray, marginLeft: 8 }}>{chMins}:{String(chSecs).padStart(2, '0')}</Text>
+                      {isActive && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.orange, marginLeft: 8 }} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
-          {/* Title, chapter, byline */}
-          <RAnimated.View style={Platform.OS === 'web' ? undefined : controlsAnimStyle}>
-            {/* Title + Chapter — left-aligned on web */}
-            <View style={[styles.titleChapterColumn, Platform.OS === 'web' && { alignItems: 'flex-start' as const }]}>
+          {/* Mobile: title, chapter, byline (web has these in left column) */}
+          {Platform.OS !== 'web' && (
+          <RAnimated.View style={controlsAnimStyle}>
+            <View style={styles.titleChapterColumn}>
               <TouchableOpacity
                 onPress={handleTitlePress}
                 activeOpacity={0.7}
@@ -1416,7 +1525,6 @@ export function SecretLibraryPlayerScreen() {
                   style={[
                     styles.bookTitle,
                     { fontFamily: titleFontFamily, fontWeight: titleFontWeight as TextStyle['fontWeight'], color: colors.black },
-                    Platform.OS === 'web' && { fontSize: 32, lineHeight: 38, textAlign: 'left' as const },
                   ]}
                   numberOfLines={3}
                 >
@@ -1431,14 +1539,14 @@ export function SecretLibraryPlayerScreen() {
                 accessibilityLabel={`Current chapter: ${chapterTitle}`}
                 accessibilityHint="Double tap to open chapter list"
               >
-                <Text style={[styles.chapterText, { color: colors.black }, Platform.OS === 'web' && { textAlign: 'left' as const }]} numberOfLines={2}>
+                <Text style={[styles.chapterText, { color: colors.black }]} numberOfLines={2}>
                   {chapterTitle}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Byline - Author · Series — left-aligned on web */}
-            <View style={[styles.byline, Platform.OS === 'web' && { justifyContent: 'flex-start' as const }]}>
+            {/* Byline - Author · Series */}
+            <View style={styles.byline}>
               <TouchableOpacity
                 onPress={authorId ? handleAuthorPress : undefined}
                 activeOpacity={authorId ? 0.7 : 1}
@@ -1458,72 +1566,69 @@ export function SecretLibraryPlayerScreen() {
               )}
             </View>
           </RAnimated.View>
+          )}
+          </View>{/* close top section row */}
 
-          {/* Controls Section — flows right after byline */}
+          {/* Controls Section — full width on web, below byline on mobile */}
           <RAnimated.View style={Platform.OS === 'web' ? undefined : controlsAnimStyle}>
-          <View style={{ height: Platform.OS === 'web' ? 24 : scale(44) }} />
+          <View style={{ height: Platform.OS === 'web' ? 12 : scale(44) }} />
 
           {/* 5-Button Controls Row: |< ⏪ ▶ ⏩ >| */}
-          <View style={styles.controlsRow}>
+          <View style={[styles.controlsRow, Platform.OS === 'web' && { justifyContent: 'center' as const, gap: 16, paddingHorizontal: 0, marginBottom: 8 }]}>
             <TouchableOpacity
-              style={styles.skipChapterBtn}
+              style={[styles.skipChapterBtn, Platform.OS === 'web' && { width: 36, height: 36 }]}
               onPress={handlePrev}
               activeOpacity={0.6}
               accessibilityRole="button"
               accessibilityLabel="Previous chapter"
-              accessibilityHint="Double tap to go to the previous chapter"
             >
-              <SkipPrevIcon color={colors.black} size={28} />
+              <SkipPrevIcon color={colors.black} size={Platform.OS === 'web' ? 18 : 28} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.skipBtn}
+              style={[styles.skipBtn, Platform.OS === 'web' && { width: 40, height: 40, borderRadius: 20 }]}
               onPress={handleSkipBack}
               activeOpacity={0.6}
               accessibilityRole="button"
               accessibilityLabel={`Skip back ${skipBackInterval} seconds`}
-              accessibilityHint="Double tap to skip backward"
             >
-              <RewindIcon color={colors.black} size={24} />
+              <RewindIcon color={colors.black} size={Platform.OS === 'web' ? 16 : 24} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.playBtn}
+              style={[styles.playBtn, Platform.OS === 'web' && { width: 56, height: 48, borderRadius: 24 }]}
               onPress={isLoading || isBuffering ? handleStop : handlePlayPause}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={isLoading || isBuffering ? 'Stop loading' : isPlaying ? 'Pause' : 'Play'}
-              accessibilityHint={isLoading || isBuffering ? 'Double tap to stop loading' : isPlaying ? 'Double tap to pause playback' : 'Double tap to resume playback'}
             >
               {isLoading || isBuffering ? (
-                <StopIcon color="#000000" size={28} />
+                <StopIcon color="#000000" size={Platform.OS === 'web' ? 18 : 28} />
               ) : isPlaying ? (
-                <PauseIcon color="#000000" size={36} />
+                <PauseIcon color="#000000" size={Platform.OS === 'web' ? 20 : 36} />
               ) : (
-                <PlayIcon color="#000000" size={36} />
+                <PlayIcon color="#000000" size={Platform.OS === 'web' ? 20 : 36} />
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.skipBtn}
+              style={[styles.skipBtn, Platform.OS === 'web' && { width: 40, height: 40, borderRadius: 20 }]}
               onPress={handleSkipForward}
               activeOpacity={0.6}
               accessibilityRole="button"
               accessibilityLabel={`Skip forward ${skipForwardInterval} seconds`}
-              accessibilityHint="Double tap to skip forward"
             >
-              <FastForwardIcon color={colors.black} size={24} />
+              <FastForwardIcon color={colors.black} size={Platform.OS === 'web' ? 16 : 24} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.skipChapterBtn}
+              style={[styles.skipChapterBtn, Platform.OS === 'web' && { width: 36, height: 36 }]}
               onPress={handleNext}
               activeOpacity={0.6}
               accessibilityRole="button"
               accessibilityLabel="Next chapter"
-              accessibilityHint="Double tap to go to the next chapter"
             >
-              <SkipNextIcon color={colors.black} size={28} />
+              <SkipNextIcon color={colors.black} size={Platform.OS === 'web' ? 18 : 28} />
             </TouchableOpacity>
           </View>
 
@@ -1692,7 +1797,6 @@ export function SecretLibraryPlayerScreen() {
             </View>
             </View>
           </RAnimated.View>
-        </View>{/* close right column */}
         </View>
         )}
 

@@ -317,7 +317,9 @@ class AutomotiveService {
 
           // Refresh Android Auto browse data when library changes
           if (Platform.OS === 'android') {
-            this.syncBrowseDataToAndroidAuto();
+            // Reset retry count — library just loaded, fresh sync should succeed
+            this.browseSyncRetryCount = 0;
+            this.syncBrowseDataToAndroidAuto(true); // Immediate — don't debounce on library load
           }
         }
       );
@@ -344,7 +346,28 @@ class AutomotiveService {
   private browseSyncInProgress = false;
   private hasCompletedInitialSync = false;
 
-  private syncBrowseDataToAndroidAuto(immediate = false): void {
+  /**
+   * Handle playFromMediaId from ExoPlayer's MediaSession callback.
+   * Called by audioService.android.ts when Android Auto sends a play command.
+   */
+  async handlePlayFromMediaId(mediaId: string): Promise<void> {
+    log('handlePlayFromMediaId:', mediaId);
+    if (mediaId.startsWith('chapter:')) {
+      await this.playChapter(mediaId);
+    } else {
+      await this.playItem(mediaId);
+    }
+  }
+
+  /**
+   * Handle playFromSearch from ExoPlayer's MediaSession callback (voice search via Auto).
+   */
+  async handlePlayFromSearch(query: string): Promise<void> {
+    log('handlePlayFromSearch:', query || '(empty - resume recent)');
+    await this.handleSearch(query);
+  }
+
+  syncBrowseDataToAndroidAuto(immediate = false): void {
     if (Platform.OS !== 'android') return;
 
     // First sync is immediate (no debounce) — Android Auto may already be waiting
@@ -369,8 +392,8 @@ class AutomotiveService {
 
   private browseSyncRetryTimer: NodeJS.Timeout | null = null;
   private browseSyncRetryCount = 0;
-  private static readonly BROWSE_SYNC_MAX_RETRIES = 10;
-  private static readonly BROWSE_SYNC_RETRY_INTERVAL_MS = 1000;
+  private static readonly BROWSE_SYNC_MAX_RETRIES = 30;
+  private static readonly BROWSE_SYNC_RETRY_INTERVAL_MS = 2000;
 
   private async performBrowseSync(): Promise<void> {
     // Lock: skip if already syncing
@@ -2002,10 +2025,14 @@ class AutomotiveService {
       }
     }
 
-    // Clear browse sync debounce timer
+    // Clear browse sync timers
     if (this.browseSyncDebounceTimer) {
       clearTimeout(this.browseSyncDebounceTimer);
       this.browseSyncDebounceTimer = null;
+    }
+    if (this.browseSyncRetryTimer) {
+      clearTimeout(this.browseSyncRetryTimer);
+      this.browseSyncRetryTimer = null;
     }
 
     // Clear template references and command queue

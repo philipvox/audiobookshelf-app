@@ -25,8 +25,8 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
         private const val TAG = "AndroidAutoModule"
         private const val EVENT_NAME = "AndroidAutoCommand"
         private const val BROWSE_DATA_FILE = "android_auto_browse.json"
-        private const val MAX_RETRY_ATTEMPTS = 30
-        private const val RETRY_DELAY_MS = 200L
+        private const val MAX_RETRY_ATTEMPTS = 60
+        private const val RETRY_DELAY_MS = 500L
 
         @Volatile
         private var moduleInstance: AndroidAutoModule? = null
@@ -175,6 +175,24 @@ class AndroidAutoModule(private val reactContext: ReactApplicationContext) :
     fun isConnected(promise: Promise) {
         val connected = AndroidAutoMediaBrowserService.instance != null
         promise.resolve(connected)
+    }
+
+    /**
+     * Clear browse data file and SharedPreferences cache (called on logout)
+     */
+    @ReactMethod
+    fun clearBrowseData(promise: Promise) {
+        try {
+            val file = java.io.File(reactContext.filesDir, BROWSE_DATA_FILE)
+            if (file.exists()) file.delete()
+            reactContext.getSharedPreferences("android_auto", android.content.Context.MODE_PRIVATE)
+                .edit().remove("browse_cache").apply()
+            Log.d(TAG, "Browse data cleared")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing browse data", e)
+            promise.reject("CLEAR_ERROR", e.message, e)
+        }
     }
 
     override fun getConstants(): MutableMap<String, Any> {

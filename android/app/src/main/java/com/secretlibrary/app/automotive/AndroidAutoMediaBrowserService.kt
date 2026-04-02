@@ -60,8 +60,8 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
         const val DESCRIPTION_EXTRAS_KEY_COMPLETION_PERCENTAGE = "android.media.extra.MEDIA_PROGRESS"
 
         // Retry constants for browse data polling
-        private const val BROWSE_DATA_POLL_INTERVAL_MS = 500L
-        private const val BROWSE_DATA_POLL_MAX_ATTEMPTS = 60  // 30 seconds total
+        private const val BROWSE_DATA_POLL_INTERVAL_MS = 1000L
+        private const val BROWSE_DATA_POLL_MAX_ATTEMPTS = 120  // 120 seconds total
 
         // Instance reference for module communication
         @Volatile
@@ -70,10 +70,12 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     // NO own MediaSession — we share the one from AudioPlaybackService
-    private var browseData: JSONArray? = null
-    private var browseDataLoaded = false  // true once we have non-empty data
-    private var isPollingForData = false  // prevents duplicate poll loops
-    private var hasPolledOnce = false     // true after first polling cycle completes
+    // @Volatile: these fields are accessed from binder thread (onLoadChildren),
+    // Main dispatcher (polling coroutine), and RN bridge thread (notifyBrowseDataChanged)
+    @Volatile private var browseData: JSONArray? = null
+    @Volatile private var browseDataLoaded = false  // true once we have non-empty data
+    @Volatile private var isPollingForData = false  // prevents duplicate poll loops
+    @Volatile private var hasPolledOnce = false     // true after first polling cycle completes
 
     // Coroutine scope for async operations
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -89,6 +91,25 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
 
         // Load initial browse data (may exist from previous session)
         loadBrowseData()
+
+        // Persistent retry for session token — runs independently of browse data polling.
+        // ExoPlayer may start well after the browse data arrives, so we keep trying
+        // every 2 seconds until we have it or the service is destroyed.
+        if (sessionToken == null) {
+            serviceScope.launch {
+                for (attempt in 1..60) { // Up to 120 seconds
+                    delay(2000)
+                    trySetSessionToken()
+                    if (sessionToken != null) {
+                        Log.d(TAG, "Session token acquired after ${attempt * 2}s of retrying")
+                        break
+                    }
+                }
+                if (sessionToken == null) {
+                    Log.w(TAG, "Session token still null after 120s — playback controls may not work")
+                }
+            }
+        }
 
         // On cold start, Android Auto only starts this service — React Native
         // doesn't boot automatically. Launch the main activity so JS can write
@@ -164,7 +185,7 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
                         .setTitle("Loading library...")
                         .setSubtitle("Please wait")
                         .build(),
-                    MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+                    MediaBrowserCompat.MediaItem.FLAG_PLAYABLE // Not browsable — prevents empty drill-down
                 )
             } else {
                 // Polling completed but no data — user not signed in
@@ -175,7 +196,7 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
                         .setTitle("Open Secret Library to get started")
                         .setSubtitle("Sign in to your server to browse audiobooks")
                         .build(),
-                    MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+                    MediaBrowserCompat.MediaItem.FLAG_PLAYABLE // Not browsable — prevents empty drill-down
                 )
             }
             result.sendResult(mutableListOf(placeholder))
@@ -369,18 +390,38 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
 
     private fun loadBrowseData() {
         try {
+            // Try file first (written by JS via AndroidAutoModule)
             val file = File(filesDir, BROWSE_DATA_FILE)
             if (file.exists()) {
                 val content = file.readText()
                 val data = JSONArray(content)
                 browseData = data
                 browseDataLoaded = data.length() > 0
-                Log.d(TAG, "Loaded browse data: ${data.length()} sections")
-            } else {
-                Log.d(TAG, "Browse data file not found, using empty data")
-                browseData = JSONArray()
-                browseDataLoaded = false
+                if (browseDataLoaded) {
+                    // Cache in SharedPreferences for instant read on next cold start
+                    getSharedPreferences("android_auto", MODE_PRIVATE)
+                        .edit().putString("browse_cache", content).apply()
+                    Log.d(TAG, "Loaded browse data from file: ${data.length()} sections")
+                    return
+                }
             }
+
+            // Fallback: read from SharedPreferences (instant, survives file deletion)
+            val cached = getSharedPreferences("android_auto", MODE_PRIVATE)
+                .getString("browse_cache", null)
+            if (cached != null) {
+                val data = JSONArray(cached)
+                if (data.length() > 0) {
+                    browseData = data
+                    browseDataLoaded = true
+                    Log.d(TAG, "Loaded browse data from SharedPreferences cache: ${data.length()} sections")
+                    return
+                }
+            }
+
+            Log.d(TAG, "No browse data available (file or cache)")
+            browseData = JSONArray()
+            browseDataLoaded = false
         } catch (e: Exception) {
             Log.e(TAG, "Error loading browse data", e)
             browseData = JSONArray()
@@ -393,6 +434,14 @@ class AndroidAutoMediaBrowserService : MediaBrowserServiceCompat() {
      */
     fun notifyBrowseDataChanged() {
         loadBrowseData()
+        if (hasBrowseData()) {
+            // Reset polling state so Auto re-fetches children properly
+            // This is critical for cold start: if polling timed out before data arrived,
+            // hasPolledOnce=true would show "sign in" instead of the real browse tree.
+            hasPolledOnce = false
+            isPollingForData = false
+            Log.d(TAG, "Browse data updated — notifying all children")
+        }
         notifyChildrenChanged(MEDIA_ROOT_ID)
         browseData?.let { sections ->
             for (i in 0 until sections.length()) {

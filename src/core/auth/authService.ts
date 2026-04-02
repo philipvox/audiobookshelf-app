@@ -244,6 +244,14 @@ class AuthService {
       // This deletes from ALL tables (library_items, authors, series, user_books, etc.)
       await sqliteCache.clearAllUserData();
 
+      // 3b. Clear Android Auto browse data (prevents next user seeing previous user's library)
+      if (Platform.OS === 'android') {
+        try {
+          const { NativeModules } = require('react-native');
+          await NativeModules.AndroidAutoModule?.clearBrowseData();
+        } catch { /* Non-critical */ }
+      }
+
       // 4. Clear React Query cache (in-memory server state)
       queryClient.clear();
 

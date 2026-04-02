@@ -217,10 +217,19 @@ class AndroidAudioService {
             }
             break;
           case 'playFromMediaId':
-            // Forward to Android Auto handler via the existing automotive bridge
-            // This is handled by automotiveService.ts which listens separately
+            // Forward to automotiveService which knows how to resolve media IDs to books
+            if (data.param) {
+              import('@/features/automotive').then(({ automotiveService }) => {
+                automotiveService.handlePlayFromMediaId(data.param!);
+              }).catch(() => {});
+            }
             break;
           case 'playFromSearch':
+            if (data.param !== undefined) {
+              import('@/features/automotive').then(({ automotiveService }) => {
+                automotiveService.handlePlayFromSearch(data.param || '');
+              }).catch(() => {});
+            }
             break;
         }
       }
