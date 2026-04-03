@@ -53,3 +53,6 @@ modules/*/ios/build/
 
 # Backup directories
 **/_backup_*/
+
+# Git worktrees
+.worktrees/
