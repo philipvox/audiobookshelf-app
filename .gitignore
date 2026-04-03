@@ -3,8 +3,8 @@
 dist/
 web-build/
 
-# Maestro test output
-.maestro/screenshots/
+# Maestro test flows & screenshots
+.maestro/
 
 # Dependencies
 node_modules/
@@ -56,5 +56,11 @@ modules/*/ios/build/
 
 # Git worktrees
 .worktrees/
+# Dev docs & audits
+docs/
+AUDIT_REPORT.md
+SPINE_DESIGN_SYSTEM_AUDIT.md
+
+# Claude Code
 .claude/
 docs/superpowers/

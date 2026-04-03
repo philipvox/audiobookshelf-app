@@ -27,42 +27,25 @@ Feature-complete, in daily use. Development focused on polish, performance, plat
 - Per-book playback speed, sleep timer, bookmarks
 - Full-screen CD player UI
 
-### Uncommitted Work (as of 2026-04-03)
-
-There is a large batch of uncommitted changes (42 files modified, 24 new files). Key areas:
-
-1. **i18n system** — `i18next` + `react-i18next` added. All user-facing strings across 15+ screens wrapped in `t()` calls. 11 locale files in `src/i18n/locales/`. Initializes in parallel with app startup.
-
-2. **Native HTTP plugin + OIDC auth redesign** — New `plugins/native-http/` Expo config plugin (Kotlin + Swift) that makes HTTP GET requests without following redirects — needed because RN's `fetch()` returns opaque responses for `redirect:'manual'`. Used by `oauthService.ts` for proper OIDC mobile flow matching the official ABS Capacitor app: native HTTP captures the 302 + session cookie from `/auth/openid`, system browser handles IdP auth, native HTTP exchanges the code at `/auth/openid/callback` with the session cookie. Replaced the old WebView-based SSO approach which couldn't extract tokens from httpOnly cookies. `OAuthWebView.tsx` was deleted. `app.json` scheme is now `["secretlibrary", "audiobookshelf"]` (second scheme for OIDC redirect URI). **Currently building — needs iOS rebuild verification.**
-
-3. **Android Auto fixes** — TOCTOU race crash fix, cold-start race condition fix, stale progress in browse data, sign-in prompt for unauthenticated state (Google Play rejection fix). Changes in both `plugins/android-auto/src/` and `android/` copies.
-
-4. **Auth improvements** — Logout timeout (no more hanging), login screen pre-fills server URL, better error visibility with red-tinted error containers.
-
-5. **Player performance** — Memoized ChapterItem/BookmarkItem, throttled slider animations, debounced chapter search, static keep-awake import.
-
-6. **OAuth service rewrite** — `oauthService.ts` rewritten to use PKCE + native HTTP + system browser (see #2 above). Old WebView-based `OAuthWebView.tsx` deleted. `LoginScreen.tsx` simplified — `handleSsoLogin` now calls `oauthService.startOAuthFlow()` directly instead of managing WebView state.
-
-7. **Download manager updates** — `src/core/services/downloadManager.ts` has 90+ lines of changes.
-
-8. **Display settings expansion** — `DisplaySettingsScreen.tsx` grew by ~200 lines.
-
-9. **PROJECT_CONTEXT.md + Stop hook** — This briefing document was created, CLAUDE.md was updated to mandate continuous updates, and a Stop hook in `.claude/settings.local.json` reminds Claude if source files are newer than this file.
+### Recent Commits (latest first)
+- `4250b24` — gitignore `.claude/` and `docs/superpowers/`
+- `1103373` — i18n system, OIDC native auth, Android Auto fixes, player polish (71 files, 10.5K lines)
+- `1bb276a` — logout hang fix, login pre-fill, error visibility
 
 ### Recent Focus Areas (last ~5 sessions)
-1. **Splash screen + spine loading overhaul** — Real progress bar via appInitializer callback, descriptive status text per step. Server-unreachable → login redirect. Spine prefetch behind splash: waits for community manifest match, prefetches first 12 visible spines (only books with known community/server spines). Community spine server serves pre-generated 800px small versions (`?h=800` → `-sm.webp`, ~17KB vs ~33KB). App always requests `?h=800` for community spines. Stable URLs built directly (no `apiClient` cache buster) prevent black flash on background refresh. 6s fallback if manifest stalls.
-2. **Full-app code review + bug fixes** — 6 bugs fixed: iOS URLSession leak, barrel export build error, SleepTimerSheet i18n, sort label maps, Android Auto stale progress, iOS redirect inconsistency. BookmarksSheet + ChaptersSheet i18n completed.
-3. **OIDC auth redesign** — Replaced WebView SSO with proper mobile OIDC flow (native HTTP plugin + system browser + PKCE)
-4. **Android Auto stability** — Race conditions (TOCTOU fix), stale data, Google Play compliance
-5. **Cover pinch-to-zoom polish** — `ZoomableCoverModal` now uses semi-transparent backdrop (80% opacity), smooth spring animation back to 1x before closing (pinch-out or double-tap), no more instant snap-to-center
+1. **Repo cleanup + production readiness** — Committed all uncommitted work (71 files). Removed dev artifacts from git: `.maestro/` (150+ test flows/screenshots), `docs/` (audits, specs), root audit reports. Added comprehensive `.gitignore` entries. AI-generated translation disclaimer added to language settings.
+2. **Splash screen + spine loading overhaul** — Real progress bar, descriptive status text, server-unreachable → login redirect, spine prefetch behind splash.
+3. **Full-app code review + bug fixes** — 6 bugs fixed, BookmarksSheet + ChaptersSheet i18n completed.
+4. **OIDC auth redesign** — Replaced WebView SSO with native HTTP plugin + system browser + PKCE.
+5. **Android Auto stability** — Race conditions (TOCTOU fix), stale data, Google Play compliance.
 
 ### Known Issues / Tech Debt
 - `package.json` version (0.9.261) is out of sync with `version.ts` (0.9.282)
-- No CI/CD — builds are manual
-- Large uncommitted diff (48+ modified files, 24 new) — needs to be committed and organized
+- No CI/CD — builds are manual (fine for solo project)
 - Full library scan over SSHFS takes ~9 hours — never trigger without explicit ask
-- Non-English translations are LLM-generated — should be reviewed by native speakers before release
+- Non-English translations are AI-generated — disclaimer shown in language settings, should be reviewed by native speakers
 - No `i18next.d.ts` type declaration — `t()` key typos fail silently at runtime
+- OIDC native HTTP plugin needs iOS rebuild verification
 
 ---
 
